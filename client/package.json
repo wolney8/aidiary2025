@@ -1,0 +1,10 @@
+{
+  "name": "client-stub",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "echo \\"[stub] Replace with Angular app and scripts\\" && exit 0",
+    "test": "echo \\"[stub] Add unit tests\\" && exit 0",
+    "e2e": "echo \\"[stub] Add Playwright tests\\" && exit 0"
+  }
+}
