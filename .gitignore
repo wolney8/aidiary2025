@@ -1,0 +1,36 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+server/.venv/
+
+# Environment files
+.env
+.env.*
+server/.env
+server/.env.*
+
+# --- Node / Angular ---
+client/node_modules/
+client/dist/
+client/.angular/
+
+# --- OS / Editor junk ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
