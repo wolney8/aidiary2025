@@ -34,3 +34,8 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/settings.json
+
+# SQLite databases
+server/db/*.db
+server/db/*.sqlite
+server/db/*.sqlite3
