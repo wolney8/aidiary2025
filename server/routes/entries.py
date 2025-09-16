@@ -20,7 +20,7 @@ def get_db():
 @jwt_required()
 def get_daily_entries():
     """Get all daily entries for authenticated user."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()
@@ -39,7 +39,7 @@ def get_daily_entries():
 @jwt_required()
 def get_daily_entry(entry_id):
     """Get specific daily entry."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()
@@ -60,7 +60,7 @@ def get_daily_entry(entry_id):
 @jwt_required()
 def create_daily_entry():
     """Create new daily entry."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     data = request.get_json()
     
     entry_date = data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
@@ -98,7 +98,7 @@ def create_daily_entry():
 @jwt_required()
 def update_daily_entry(entry_id):
     """Update daily entry with AI analysis results."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     data = request.get_json()
     
     conn = get_db()
@@ -146,7 +146,7 @@ def update_daily_entry(entry_id):
 @jwt_required()
 def delete_daily_entry(entry_id):
     """Delete daily entry."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()
@@ -170,7 +170,7 @@ def delete_daily_entry(entry_id):
 @jwt_required()
 def get_dream_entries():
     """Get all dream entries for authenticated user."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()
@@ -189,7 +189,7 @@ def get_dream_entries():
 @jwt_required()
 def get_dream_entry(entry_id):
     """Get specific dream entry."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()
@@ -210,7 +210,7 @@ def get_dream_entry(entry_id):
 @jwt_required()
 def create_dream_entry():
     """Create new dream entry."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     data = request.get_json()
     
     entry_date = data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
@@ -261,7 +261,7 @@ def create_dream_entry():
 @jwt_required()
 def update_dream_entry(entry_id):
     """Update dream entry with AI analysis results."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     data = request.get_json()
     
     conn = get_db()
@@ -315,7 +315,7 @@ def update_dream_entry(entry_id):
 @jwt_required()
 def delete_dream_entry(entry_id):
     """Delete dream entry."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()

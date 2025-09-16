@@ -59,7 +59,7 @@ def test_register_success(client):
     assert response.status_code == 201
     data = json.loads(response.data)
     assert 'token' in data
-    assert data['username'] == 'testuser'
+    assert data['user']['username'] == 'testuser'
 
 def test_register_missing_credentials(client):
     """Test registration with missing credentials."""

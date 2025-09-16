@@ -18,7 +18,7 @@ def get_db():
 @jwt_required()
 def get_profile():
     """Get current user profile."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     
     conn = get_db()
     cursor = conn.cursor()
@@ -41,7 +41,7 @@ def get_profile():
 @jwt_required()
 def update_profile():
     """Update user profile."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     data = request.get_json()
     
     # Build update query dynamically

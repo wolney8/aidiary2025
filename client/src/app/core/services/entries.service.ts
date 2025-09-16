@@ -14,11 +14,16 @@ export class EntriesService {
   private apiUrl = 'http://localhost:5001/api';
   
   private getHeaders(): HttpHeaders {
-    const token = this.authService.getToken();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${token}`,
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json'
-    });
+    };
+
+    const token = this.authService.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return new HttpHeaders(headers);
   }
   
   // Daily entries

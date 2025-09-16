@@ -2,11 +2,12 @@
 import { Component, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatIconModule } from '@angular/material/icon';
 
 @Component({
   selector: 'app-view-toggle',
   standalone: true,
-  imports: [CommonModule, MatButtonToggleModule],
+  imports: [CommonModule, MatButtonToggleModule, MatIconModule],
   template: `
     <mat-button-toggle-group 
       class="view-toggle"

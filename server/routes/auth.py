@@ -42,12 +42,16 @@ def register():
         user_id = cursor.lastrowid
         
         # Create JWT token
-        access_token = create_access_token(identity=user_id)
+        access_token = create_access_token(identity=str(user_id))
         
         return jsonify({
-            'id': user_id,
-            'username': username,
-            'token': access_token
+            'token': access_token,
+            'user': {
+                'id': user_id,
+                'username': username,
+                'first_name': first_name,
+                'last_name': last_name
+            }
         }), 201
         
     except sqlite3.IntegrityError:
@@ -88,7 +92,7 @@ def login():
             return jsonify({'error': 'Invalid credentials'}), 401
     
     # Create JWT token
-    access_token = create_access_token(identity=user['id'])
+    access_token = create_access_token(identity=str(user['id']))
     
     return jsonify({
         'token': access_token,
