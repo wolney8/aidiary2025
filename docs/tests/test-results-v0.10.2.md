@@ -8,10 +8,11 @@
 1. `cd server && PYTHONPATH=. venv/bin/pytest`
 2. `cd client && npm install`
 3. `cd client && npm run build`
+4. `cd client && npm run build` (re-run after routing guard changes)
 
 ## Outcomes
 - Pytest: 8 passed.
-- Angular build: succeeded (no TypeScript template errors).
+- Angular build: succeeded (no TypeScript template errors) — verified twice to cover the new auth guard.
 - `npm install` reported 11 known vulnerabilities from upstream dependencies (4 low, 7 moderate). No direct fixes applied this iteration; monitor for package updates.
 
 ## Follow-up
