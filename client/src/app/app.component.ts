@@ -21,7 +21,7 @@ import { MatSidenavModule } from '@angular/material/sidenav';
       <mat-sidenav #sidenav mode="over" position="start">
         <app-side-nav (closeSidenav)="sidenav.close()"></app-side-nav>
       </mat-sidenav>
-      
+
       <mat-sidenav-content>
         <app-top-bar (toggleSidenav)="sidenav.toggle()"></app-top-bar>
         <main class="main-content">
@@ -34,7 +34,7 @@ import { MatSidenavModule } from '@angular/material/sidenav';
     .app-container {
       height: 100vh;
     }
-    
+
     .main-content {
       padding: var(--spacing-md);
       max-width: 1400px;

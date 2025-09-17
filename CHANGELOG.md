@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.10.3] - 2025-09-17
+
+### Added
+- Reactive search bar component using Angular Material form controls.
+- "New Entry" action on the entries list plus query-string support for Daily/Dream filtering.
+
+### Changed
+- Authentication service retains the logged-in user across reloads and redirects to the login screen on logout.
+- Route guard and bootstrap logging cleaned up now that the app starts reliably.
+
+### Fixed
+- Backend now resolves the SQLite database path relative to the server package, preventing "no such table" errors against `server/db/app.db`.
+
 ## [AIDIARY v0.10.2] - 2025-09-16
 
 ### Added

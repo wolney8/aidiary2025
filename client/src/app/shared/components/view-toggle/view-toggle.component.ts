@@ -1,5 +1,5 @@
 // Pill toggle for All/Daily/Dreams
-import { Component, Output, EventEmitter } from '@angular/core';
+import { Component, Output, EventEmitter, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
@@ -35,6 +35,11 @@ import { MatIconModule } from '@angular/material/icon';
   `]
 })
 export class ViewToggleComponent {
+  @Input() set value(view: string) {
+    if (view === 'all' || view === 'daily' || view === 'dreams') {
+      this.selectedView = view;
+    }
+  }
   @Output() viewChange = new EventEmitter<string>();
   selectedView = 'all';
   

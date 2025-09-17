@@ -61,9 +61,9 @@ import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/
             <mat-datepicker #picker></mat-datepicker>
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="full-width" *ngIf="selectedType === 'dream'">
+          <mat-form-field appearance="outline" class="full-width">
             <mat-label>Title</mat-label>
-            <input matInput [(ngModel)]="title" name="title">
+            <input matInput [(ngModel)]="entryTitle" name="title">
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="full-width">
@@ -77,7 +77,15 @@ import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/
             ></textarea>
           </mat-form-field>
 
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>My Tags (comma separated)</mat-label>
+            <input matInput [(ngModel)]="tagsInput" name="tags">
+          </mat-form-field>
+
           <div class="actions">
+            <button mat-stroked-button color="warn" (click)="cancelCreate()" [disabled]="isSaving">
+              Cancel
+            </button>
             <button mat-raised-button (click)="saveAsDraft()" [disabled]="isSaving">
               Save Entry
             </button>
@@ -137,8 +145,9 @@ export class CreateComponent {
   private analysisService = inject(AnalysisService);
 
   entryDate: Date | null = new Date();
-  title = '';
+  entryTitle = '';
   content = '';
+  tagsInput = '';
   leaveItToAI = false;
   selectedType: 'daily' | 'dream' = 'daily';
   isSaving = false;
@@ -167,15 +176,26 @@ export class CreateComponent {
 
     this.isSaving = true;
     const entryDate = this.entryDate.toISOString().split('T')[0];
+    const tags = this.normaliseTags(this.tagsInput);
+    const trimmedTitle = this.entryTitle.trim();
+    const body = this.content.trim();
 
     if (this.selectedType === 'daily') {
       const payload = {
         entry_date: entryDate,
-        user_message: this.content
+        user_message: this.composeDailyMessage(trimmedTitle, body),
+        tags
       };
 
       this.entriesService.createDailyEntry(payload).subscribe({
         next: (created) => {
+          if (!shouldAnalyse && tags) {
+            this.entriesService.updateDailyEntry(created.id!, { tags }).subscribe({
+              next: () => this.finishNavigation(created.id!),
+              error: () => this.handleError('Failed to store tags for your daily entry.')
+            });
+            return;
+          }
           if (shouldAnalyse) {
             this.runDailyAnalysis(created.id!);
           } else {
@@ -187,12 +207,20 @@ export class CreateComponent {
     } else {
       const payload = {
         entry_date: entryDate,
-        title: this.title,
-        plot: this.content
+        title: trimmedTitle,
+        plot: body,
+        tags
       };
 
       this.entriesService.createDreamEntry(payload).subscribe({
         next: (created) => {
+          if (!shouldAnalyse && tags) {
+            this.entriesService.updateDreamEntry(created.id!, { tags }).subscribe({
+              next: () => this.finishNavigation(created.id!),
+              error: () => this.handleError('Failed to store tags for your dream entry.')
+            });
+            return;
+          }
           if (shouldAnalyse) {
             this.runDreamAnalysis(created.id!);
           } else {
@@ -213,7 +241,7 @@ export class CreateComponent {
         const dailyAnalysis = analysis as DailyAnalysisResponse;
         this.entriesService.updateDailyEntry(entryId, {
           ai_response: dailyAnalysis.ai_response,
-          tags: dailyAnalysis.tags,
+          tags: this.tagsInput.trim() ? this.normaliseTags(this.tagsInput) : dailyAnalysis.tags,
           daily_people_names: dailyAnalysis.daily_people_names
         }).subscribe({
           next: () => this.finishNavigation(entryId),
@@ -235,7 +263,7 @@ export class CreateComponent {
           summary: dreamAnalysis.summary,
           interpretation: dreamAnalysis.interpretation,
           image_prompt: dreamAnalysis.image_prompt,
-          tags: dreamAnalysis.tags,
+          tags: this.tagsInput.trim() ? this.normaliseTags(this.tagsInput) : dreamAnalysis.tags,
           dream_people_names: dreamAnalysis.dream_people_names
         }).subscribe({
           next: () => this.finishNavigation(entryId),
@@ -254,5 +282,30 @@ export class CreateComponent {
   private handleError(message: string): void {
     this.isSaving = false;
     this.errorMessage = message;
+  }
+
+  private composeDailyMessage(title: string, body: string): string {
+    if (title && body) {
+      return `${title}\n\n${body}`;
+    }
+    if (title) {
+      return title;
+    }
+    return body;
+  }
+
+  private normaliseTags(tags: string): string {
+    return tags
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0)
+      .join(',');
+  }
+
+  cancelCreate(): void {
+    const hasChanges = this.entryTitle || this.content || this.tagsInput;
+    if (!hasChanges || confirm('Discard this entry?')) {
+      this.router.navigate(['/entries']);
+    }
   }
 }

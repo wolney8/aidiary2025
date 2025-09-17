@@ -1,13 +1,15 @@
 // Entry list with timeline and card grid
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { ViewToggleComponent } from '../../shared/components/view-toggle/view-toggle.component';
 import { EntriesService } from '../../core/services/entries.service';
 import { DailyEntry, DreamEntry } from '../../core/models/entry.model';
+
+type TimelineMonth = { label: string; year: string };
 
 @Component({
   selector: 'app-list',
@@ -22,7 +24,10 @@ import { DailyEntry, DreamEntry } from '../../core/models/entry.model';
   ],
   template: `
     <div class="list-container">
-      <app-view-toggle (viewChange)="onViewChange($event)"></app-view-toggle>
+      <div class="list-header">
+        <app-view-toggle [value]="currentView" (viewChange)="onViewChange($event)"></app-view-toggle>
+        <button mat-raised-button color="primary" routerLink="/entries/create">New Entry</button>
+      </div>
       
       <!-- Timeline scroller -->
       <div class="timeline-scroller">
@@ -31,9 +36,9 @@ import { DailyEntry, DreamEntry } from '../../core/models/entry.model';
         </button>
         
         <div class="timeline-months">
-          <div class="month-item" *ngFor="let month of months">
-            <div class="year">2024</div>
-            <div class="month">{{ month }}</div>
+          <div class="month-item" *ngFor="let item of months">
+            <div class="year">{{ item.year }}</div>
+            <div class="month">{{ item.label }}</div>
           </div>
         </div>
         
@@ -77,6 +82,15 @@ import { DailyEntry, DreamEntry } from '../../core/models/entry.model';
     </div>
   `,
   styles: [`
+    .list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--spacing-sm);
+      flex-wrap: wrap;
+      margin-bottom: var(--spacing-sm);
+    }
+
     .timeline-scroller {
       display: flex;
       align-items: center;
@@ -136,15 +150,26 @@ import { DailyEntry, DreamEntry } from '../../core/models/entry.model';
 })
 export class ListComponent implements OnInit {
   private entriesService = inject(EntriesService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
   
-  months = ['September', 'October', 'November', 'December'];
-  currentView = 'all';
+  months: TimelineMonth[] = this.generateTimelineMonths();
+  currentView: 'all' | 'daily' | 'dreams' = 'all';
   dailyEntries: DailyEntry[] = [];
   dreamEntries: DreamEntry[] = [];
   filteredEntries: any[] = [];
   
   ngOnInit(): void {
-    this.loadEntries();
+    this.route.queryParamMap.subscribe(params => {
+      const type = params.get('type');
+      if (type === 'daily' || type === 'dreams') {
+        this.currentView = type;
+      } else {
+        this.currentView = 'all';
+      }
+
+      this.loadEntries();
+    });
   }
   
   loadEntries(): void {
@@ -160,8 +185,14 @@ export class ListComponent implements OnInit {
   }
   
   onViewChange(view: string): void {
-    this.currentView = view;
+    this.currentView = view as 'all' | 'daily' | 'dreams';
     this.filterEntries();
+    const queryParams = this.currentView === 'all' ? {} : { type: this.currentView };
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams,
+      queryParamsHandling: 'merge'
+    });
   }
   
   filterEntries(): void {
@@ -179,11 +210,38 @@ export class ListComponent implements OnInit {
     if (entry.type === 'dream' && entry.title) {
       return `"${entry.title}"`;
     }
-    return entry.type === 'dream' ? 'Dream Entry' : 'Daily Entry';
+    if (entry.type === 'daily') {
+      const [title] = this.splitDailyMessage(entry.user_message || '');
+      return title || 'Daily Entry';
+    }
+    return 'Dream Entry';
   }
   
   getEntrySnippet(entry: any): string {
-    const text = entry.user_message || entry.plot || '';
+    const text = entry.type === 'daily'
+      ? this.splitDailyMessage(entry.user_message || '')[1]
+      : entry.plot || entry.user_message || '';
     return text.substring(0, 150) + (text.length > 150 ? '...' : '');
+  }
+
+  private splitDailyMessage(message: string): [string, string] {
+    const [title, ...rest] = message.split(/\n\n?/);
+    if (rest.length === 0) {
+      return ['', title];
+    }
+    return [title, rest.join('\n\n')];
+  }
+
+  private generateTimelineMonths(count = 4): TimelineMonth[] {
+    const months: TimelineMonth[] = [];
+    const now = new Date();
+    for (let i = count - 1; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        label: date.toLocaleString('default', { month: 'long' }),
+        year: date.getFullYear().toString()
+      });
+    }
+    return months;
   }
 }

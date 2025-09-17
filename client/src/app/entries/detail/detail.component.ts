@@ -174,11 +174,23 @@ export class DetailComponent implements OnInit {
   }
   
   getTitle(): string {
-    return this.isDream() && this.entry.title ? this.entry.title : 'Entry';
+    if (!this.entry) {
+      return 'Entry';
+    }
+    if (this.isDream() && this.entry.title) {
+      return this.entry.title;
+    }
+    const [title] = this.splitDailyMessage(this.entry.user_message || '');
+    return title || 'Entry';
   }
   
   getUserContent(): string {
-    return this.isDream() ? this.entry.plot || '' : this.entry.user_message || '';
+    if (!this.entry) {
+      return '';
+    }
+    return this.isDream()
+      ? this.entry.plot || ''
+      : this.splitDailyMessage(this.entry.user_message || '')[1];
   }
   
   getAIContent(): string {
@@ -195,5 +207,16 @@ export class DetailComponent implements OnInit {
   
   isDream(): boolean {
     return this.entryType === 'dream';
+  }
+
+  private splitDailyMessage(message: string): [string, string] {
+    if (!message) {
+      return ['', ''];
+    }
+    const [title, ...rest] = message.split(/\n\n?/);
+    if (rest.length === 0) {
+      return ['', title];
+    }
+    return [title, rest.join('\n\n')];
   }
 }

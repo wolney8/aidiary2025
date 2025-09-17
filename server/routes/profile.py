@@ -1,15 +1,15 @@
 # server/routes/profile.py
 # Profile management routes
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import sqlite3
-import os
 
 profile_bp = Blueprint('profile', __name__)
 
 def get_db():
     """Get database connection."""
-    db_path = os.getenv('DB_PATH', './app.db')
+    db_path = current_app.config['DATABASE_PATH']
+    current_app.logger.debug('Profile get_db connecting to %s', db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn

@@ -1,16 +1,16 @@
 # server/routes/entries.py
 # CRUD routes for diary entries
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import sqlite3
-import os
 from datetime import datetime
 
 entries_bp = Blueprint('entries', __name__)
 
 def get_db():
     """Get database connection."""
-    db_path = os.getenv('DB_PATH', './app.db')
+    db_path = current_app.config['DATABASE_PATH']
+    current_app.logger.debug('Entries get_db connecting to %s', db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -80,9 +80,9 @@ def create_daily_entry():
     
     cursor.execute('''
         INSERT INTO dailydiary_entries 
-        (user_id, entry_date, entry_number, user_message)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, entry_date, entry_number, user_message))
+        (user_id, entry_date, entry_number, user_message, tags)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, entry_date, entry_number, user_message, data.get('tags', '')))
     
     conn.commit()
     entry_id = cursor.lastrowid
@@ -231,8 +231,8 @@ def create_dream_entry():
     cursor.execute('''
         INSERT INTO dreamdiary_entries 
         (user_id, entry_date, entry_number, title, cast, location, 
-         period, emotion, plot, symbols_and_imagery, insight, action, other)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         period, emotion, plot, symbols_and_imagery, insight, action, other, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id, entry_date, entry_number,
         data.get('title', ''),
@@ -244,7 +244,8 @@ def create_dream_entry():
         data.get('symbols_and_imagery', ''),
         data.get('insight', ''),
         data.get('action', ''),
-        data.get('other', '')
+        data.get('other', ''),
+        data.get('tags', '')
     ))
     
     conn.commit()

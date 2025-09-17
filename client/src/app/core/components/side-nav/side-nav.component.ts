@@ -30,12 +30,12 @@ import { AuthService } from '../../services/auth.service';
           <span matListItemTitle>Home</span>
         </a>
         
-        <a mat-list-item routerLink="/entries?type=daily" (click)="closeSidenav.emit()">
+        <a mat-list-item [routerLink]="['/entries']" [queryParams]="{ type: 'daily' }" (click)="closeSidenav.emit()">
           <mat-icon matListItemIcon>book</mat-icon>
           <span matListItemTitle>Daily Diary</span>
         </a>
         
-        <a mat-list-item routerLink="/entries?type=dream" (click)="closeSidenav.emit()">
+        <a mat-list-item [routerLink]="['/entries']" [queryParams]="{ type: 'dreams' }" (click)="closeSidenav.emit()">
           <mat-icon matListItemIcon>nights_stay</mat-icon>
           <span matListItemTitle>Dream Diary</span>
         </a>

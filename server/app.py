@@ -15,7 +15,25 @@ def create_app():
     # Configuration
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'dev-secret-key')
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
-    app.config['DATABASE_PATH'] = os.getenv('DB_PATH', './app.db')
+    env_db_path = os.getenv('DB_PATH')
+    fallback_path = os.path.join(app.root_path, 'db', 'app.db')
+
+    if env_db_path:
+        # Resolve relative paths against the server package root
+        resolved_path = env_db_path if os.path.isabs(env_db_path) else os.path.join(app.root_path, env_db_path)
+        if os.path.exists(resolved_path):
+            database_path = resolved_path
+        elif os.path.exists(fallback_path):
+            database_path = fallback_path
+        else:
+            database_path = resolved_path
+    else:
+        database_path = fallback_path
+
+    if not os.path.exists(database_path):
+        app.logger.warning('Database file not found at %s', database_path)
+
+    app.config['DATABASE_PATH'] = database_path
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')

@@ -1,7 +1,7 @@
 // Search bar component from wireframes
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { ReactiveFormsModule, FormControl } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
@@ -11,50 +11,34 @@ import { MatIconModule } from '@angular/material/icon';
   standalone: true,
   imports: [
     CommonModule,
-    FormsModule,
+    ReactiveFormsModule,
     MatFormFieldModule,
     MatInputModule,
     MatIconModule
   ],
   template: `
-    <div class="search-container">
-      <mat-icon>search</mat-icon>
-      <input 
-        type="text" 
-        placeholder="Search" 
-        [(ngModel)]="searchQuery"
+    <mat-form-field appearance="outline" class="search-field">
+      <mat-icon matPrefix>search</mat-icon>
+      <input
+        matInput
+        placeholder="Search"
+        [formControl]="searchControl"
         (keyup.enter)="onSearch()"
       />
-    </div>
+    </mat-form-field>
   `,
   styles: [`
-    .search-container {
-      display: flex;
-      align-items: center;
-      background: white;
-      border-radius: 4px;
-      padding: 4px 12px;
-      min-width: 300px;
-      
-      mat-icon {
-        color: #666;
-        margin-right: 8px;
-      }
-      
-      input {
-        border: none;
-        outline: none;
-        flex: 1;
-        font-size: 14px;
-      }
+    .search-field {
+      width: 100%;
+      min-width: 280px;
     }
   `]
 })
 export class SearchBarComponent {
-  searchQuery = '';
-  
+  searchControl = new FormControl('');
+
   onSearch(): void {
-    console.log('Searching for:', this.searchQuery);
+    console.log('Searching for:', this.searchControl.value);
     // Implement search functionality
   }
 }
