@@ -1,5 +1,5 @@
 // Create entry with support for daily and dream flows
-import { Component, inject } from '@angular/core';
+import { Component, HostListener, inject, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -9,11 +9,26 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
+import { MatNativeDateModule, MAT_DATE_FORMATS, MAT_DATE_LOCALE } from '@angular/material/core';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatChipsModule, MatChipInputEvent } from '@angular/material/chips';
+import { MatIconModule } from '@angular/material/icon';
+import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { EntriesService } from '../../core/services/entries.service';
 import { AnalysisService } from '../../core/services/analysis.service';
 import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/entry.model';
+
+const UK_DATE_FORMATS = {
+  parse: {
+    dateInput: 'dd/MM/yyyy'
+  },
+  display: {
+    dateInput: 'dd/MM/yyyy',
+    monthYearLabel: 'MMMM yyyy',
+    dateA11yLabel: 'dd/MM/yyyy',
+    monthYearA11yLabel: 'MMMM yyyy'
+  }
+};
 
 @Component({
   selector: 'app-create',
@@ -28,7 +43,13 @@ import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/
     MatSlideToggleModule,
     MatDatepickerModule,
     MatNativeDateModule,
-    MatButtonToggleModule
+    MatButtonToggleModule,
+    MatChipsModule,
+    MatIconModule
+  ],
+  providers: [
+    { provide: MAT_DATE_LOCALE, useValue: 'en-GB' },
+    { provide: MAT_DATE_FORMATS, useValue: UK_DATE_FORMATS }
   ],
   template: `
     <div class="create-container">
@@ -56,7 +77,7 @@ import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/
 
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Date</mat-label>
-            <input matInput [matDatepicker]="picker" [(ngModel)]="entryDate" name="entry_date">
+            <input matInput [matDatepicker]="picker" [(ngModel)]="entryDate" name="entry_date" [max]="maxDate">
             <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
             <mat-datepicker #picker></mat-datepicker>
           </mat-form-field>
@@ -78,23 +99,47 @@ import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="full-width">
-            <mat-label>My Tags (comma separated)</mat-label>
-            <input matInput [(ngModel)]="tagsInput" name="tags">
+            <mat-label>My Tags</mat-label>
+            <mat-chip-grid #chipGrid>
+              <mat-chip-row *ngFor="let tag of tags" (removed)="removeTag(tag)">
+                {{ tag }}
+                <button matChipRemove type="button">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+              <input
+                placeholder="Type and press enter"
+                [matChipInputFor]="chipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                [matChipInputAddOnBlur]="true"
+                (matChipInputTokenEnd)="addTag($event)"
+              />
+            </mat-chip-grid>
           </mat-form-field>
 
           <div class="actions">
             <button mat-stroked-button color="warn" (click)="cancelCreate()" [disabled]="isSaving">
               Cancel
             </button>
-            <button mat-raised-button (click)="saveAsDraft()" [disabled]="isSaving">
-              Save Entry
-            </button>
-            <button mat-raised-button color="primary" (click)="saveAndAnalyse()" [disabled]="isSaving">
-              Save & Analyse
-            </button>
+
+            <ng-container *ngIf="!leaveItToAI; else aiActions">
+              <button mat-stroked-button (click)="triggerImageUpload()" [disabled]="isSaving">
+                Upload Image
+              </button>
+              <button mat-raised-button color="primary" (click)="saveAsDraft()" [disabled]="isSaving">
+                Save Entry
+              </button>
+            </ng-container>
+
+            <ng-template #aiActions>
+              <button mat-raised-button color="primary" (click)="saveAndAnalyse()" [disabled]="isSaving">
+                Save & Analyse
+              </button>
+            </ng-template>
           </div>
 
           <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+          <input #fileInput type="file" class="hidden" (change)="handleImageUpload($event)" accept="image/*" />
         </mat-card-content>
       </mat-card>
     </div>
@@ -126,6 +171,10 @@ import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/
       margin-top: var(--spacing-sm);
     }
 
+    .hidden {
+      display: none;
+    }
+
     mat-card-header {
       display: flex;
       justify-content: space-between;
@@ -143,15 +192,19 @@ export class CreateComponent {
   private router = inject(Router);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
+  @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>;
 
   entryDate: Date | null = new Date();
   entryTitle = '';
   content = '';
-  tagsInput = '';
+  tags: string[] = [];
   leaveItToAI = false;
   selectedType: 'daily' | 'dream' = 'daily';
   isSaving = false;
   errorMessage = '';
+  maxDate = new Date();
+  readonly separatorKeysCodes = [ENTER, COMMA] as const;
+  private initialDate = this.entryDate?.toDateString() ?? '';
 
   saveAsDraft(): void {
     this.persistEntry(this.leaveItToAI);
@@ -176,7 +229,7 @@ export class CreateComponent {
 
     this.isSaving = true;
     const entryDate = this.entryDate.toISOString().split('T')[0];
-    const tags = this.normaliseTags(this.tagsInput);
+    const tags = this.tags.join(',');
     const trimmedTitle = this.entryTitle.trim();
     const body = this.content.trim();
 
@@ -189,13 +242,6 @@ export class CreateComponent {
 
       this.entriesService.createDailyEntry(payload).subscribe({
         next: (created) => {
-          if (!shouldAnalyse && tags) {
-            this.entriesService.updateDailyEntry(created.id!, { tags }).subscribe({
-              next: () => this.finishNavigation(created.id!),
-              error: () => this.handleError('Failed to store tags for your daily entry.')
-            });
-            return;
-          }
           if (shouldAnalyse) {
             this.runDailyAnalysis(created.id!);
           } else {
@@ -214,13 +260,6 @@ export class CreateComponent {
 
       this.entriesService.createDreamEntry(payload).subscribe({
         next: (created) => {
-          if (!shouldAnalyse && tags) {
-            this.entriesService.updateDreamEntry(created.id!, { tags }).subscribe({
-              next: () => this.finishNavigation(created.id!),
-              error: () => this.handleError('Failed to store tags for your dream entry.')
-            });
-            return;
-          }
           if (shouldAnalyse) {
             this.runDreamAnalysis(created.id!);
           } else {
@@ -241,7 +280,7 @@ export class CreateComponent {
         const dailyAnalysis = analysis as DailyAnalysisResponse;
         this.entriesService.updateDailyEntry(entryId, {
           ai_response: dailyAnalysis.ai_response,
-          tags: this.tagsInput.trim() ? this.normaliseTags(this.tagsInput) : dailyAnalysis.tags,
+          tags: this.tags.length ? this.tags.join(',') : dailyAnalysis.tags,
           daily_people_names: dailyAnalysis.daily_people_names
         }).subscribe({
           next: () => this.finishNavigation(entryId),
@@ -263,7 +302,7 @@ export class CreateComponent {
           summary: dreamAnalysis.summary,
           interpretation: dreamAnalysis.interpretation,
           image_prompt: dreamAnalysis.image_prompt,
-          tags: this.tagsInput.trim() ? this.normaliseTags(this.tagsInput) : dreamAnalysis.tags,
+          tags: this.tags.length ? this.tags.join(',') : dreamAnalysis.tags,
           dream_people_names: dreamAnalysis.dream_people_names
         }).subscribe({
           next: () => this.finishNavigation(entryId),
@@ -276,6 +315,7 @@ export class CreateComponent {
 
   private finishNavigation(entryId: number): void {
     this.isSaving = false;
+    this.resetForm();
     this.router.navigate(['/entries', entryId]);
   }
 
@@ -294,18 +334,68 @@ export class CreateComponent {
     return body;
   }
 
-  private normaliseTags(tags: string): string {
-    return tags
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0)
-      .join(',');
-  }
-
   cancelCreate(): void {
-    const hasChanges = this.entryTitle || this.content || this.tagsInput;
-    if (!hasChanges || confirm('Discard this entry?')) {
+    if (!this.hasUnsavedChanges() || confirm('Discard this entry?')) {
+      this.resetForm();
       this.router.navigate(['/entries']);
     }
+  }
+
+  addTag(event: MatChipInputEvent): void {
+    const value = (event.value || '').trim();
+    if (value && !this.tags.includes(value)) {
+      this.tags.push(value);
+    }
+    event.chipInput?.clear();
+  }
+
+  removeTag(tag: string): void {
+    this.tags = this.tags.filter(t => t !== tag);
+  }
+
+  triggerImageUpload(): void {
+    this.fileInput?.nativeElement.click();
+  }
+
+  handleImageUpload(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length) {
+      // Placeholder for future upload handling
+      alert('Image upload is not implemented yet.');
+      input.value = '';
+    }
+  }
+
+  canDeactivate(): boolean {
+    return !this.hasUnsavedChanges() || confirm('Discard your entry?');
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.hasUnsavedChanges()) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  }
+
+  private hasUnsavedChanges(): boolean {
+    return Boolean(
+      (this.entryTitle && this.entryTitle.trim()) ||
+      (this.content && this.content.trim()) ||
+      this.tags.length ||
+      (this.entryDate && this.entryDate.toDateString() !== this.initialDate)
+    );
+  }
+
+  private resetForm(): void {
+    this.isSaving = false;
+    this.errorMessage = '';
+    this.entryDate = new Date();
+    this.initialDate = this.entryDate.toDateString();
+    this.entryTitle = '';
+    this.content = '';
+    this.tags = [];
+    this.leaveItToAI = false;
+    this.selectedType = 'daily';
   }
 }

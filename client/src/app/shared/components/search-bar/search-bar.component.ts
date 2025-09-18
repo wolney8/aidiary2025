@@ -30,7 +30,7 @@ import { MatIconModule } from '@angular/material/icon';
   styles: [`
     .search-field {
       width: 100%;
-      min-width: 280px;
+      max-width: 420px;
     }
   `]
 })

@@ -1,6 +1,7 @@
 // Application routing configuration
 import { Routes } from '@angular/router';
 import { authGuard } from './auth/auth.guard';
+import { pendingChangesGuard } from './entries/pending-changes.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/login', pathMatch: 'full' },
@@ -14,6 +15,7 @@ export const routes: Routes = [
   {
     path: 'entries/create',
     canActivate: [authGuard],
+    canDeactivate: [pendingChangesGuard],
     loadComponent: () => import('./entries/create/create.component').then(m => m.CreateComponent)
   },
   {

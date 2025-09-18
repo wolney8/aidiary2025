@@ -21,6 +21,7 @@ Milestones
 5) AI analysis flows wired to DB columns
 6) Tests: backend pytest; frontend unit + minimal e2e
 7) Polish: profile mapping, error states, loading indicators
+8) Future feature track: structured CBT diary modules derived from Melanie Fennell’s “Overcoming Low Self-Esteem” worksheets (with scope to add further titles). Initial focus on “Daily activity diary” plus logging templates for predictions vs. outcomes, anxious predictions, self-critical thought spotting/questioning, experimenting with new rules, and bottom-line reviews. Requires dedicated schema additions, UI templates, and content authoring support.
 
 Operating Rhythm
 - Each iteration: update CHANGELOG (Unreleased), run tests, commit with version + status, write `docs/tests/test-results-v*.md`.

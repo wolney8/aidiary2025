@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.10.4] - 2025-09-18
+
+### Added
+- Navigation guard on the New Entry screen (with window unload protection) and a Cancel/Upload Image flow matching the wireframes.
+- Tag chips input with remove/add behaviour plus backend persistence for both diary types.
+- User menu in the top bar that exposes Settings and Logout alongside the current user name and release label (`AIDIARY v0.10.4 DEV`).
+- Dynamic timeline months and date formatting in UK style (`dd/MM/yyyy`).
+
+### Changed
+- Daily entries now capture a title separately (stored in the first paragraph) so lists/detail views present headings consistently.
+- New entry buttons adapt to the AI toggle: manual mode shows Upload Image + Save Entry; AI mode only exposes Save & Analyse.
+- Search layout centred with adjacent filter action, and the auth service persists the signed-in user across reloads.
+
+### Fixed
+- Prevented future dates in the create form and ensured backend inserts propagate supplied tags.
+- Daily detail view now separates title/body text correctly when rendering stored entries.
+
 ## [AIDIARY v0.10.3] - 2025-09-17
 
 ### Added

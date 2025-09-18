@@ -55,7 +55,7 @@ type TimelineMonth = { label: string; year: string };
               {{ entry.type === 'dream' ? 'nights_stay' : 'book' }}
             </mat-icon>
             <mat-card-title>{{ getEntryTitle(entry) }}</mat-card-title>
-            <mat-card-subtitle>{{ entry.entry_date | date:'EEEE d MMMM yyyy' }}</mat-card-subtitle>
+            <mat-card-subtitle>{{ entry.entry_date | date:'dd/MM/yyyy' }}</mat-card-subtitle>
           </mat-card-header>
           
           <mat-card-content>

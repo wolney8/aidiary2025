@@ -25,7 +25,7 @@ import { EntriesService } from '../../core/services/entries.service';
         <button mat-icon-button>
           <mat-icon>chevron_left</mat-icon>
         </button>
-        <h2>{{ entry.entry_date | date:'EEEE d MMMM yyyy' }}</h2>
+        <h2>{{ entry.entry_date | date:'dd/MM/yyyy' }}</h2>
         <button mat-icon-button>
           <mat-icon>chevron_right</mat-icon>
         </button>
