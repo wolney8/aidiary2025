@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.10.5] - 2025-09-19
+
+### Added
+- Angular 17 reactive search form in the top bar with inline filter panel (tags/date/keywords/people) and active filter indicator.
+
+### Changed
+- Search bar centred per wireframes; filter trigger now sits within the input and collapses after each search.
+
+### Fixed
+- Removed legacy search component usage; top bar now uses the new form-based control exclusively.
+
 ## [AIDIARY v0.10.4] - 2025-09-18
 
 ### Added
