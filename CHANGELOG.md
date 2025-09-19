@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.10.6] - 2025-09-19
+
+### Changed
+- Refined the top-bar search to match the Google-style pill (white, rounded, centred) and moved the filter indicator into the icon badge.
+- Filter panel now stacks options vertically per the wireframes.
+
 ## [AIDIARY v0.10.5] - 2025-09-19
 
 ### Added

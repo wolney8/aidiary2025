@@ -42,20 +42,24 @@ import { map } from 'rxjs/operators';
 
       <div class="search-wrapper">
         <form [formGroup]="searchForm" (ngSubmit)="filterResults()" class="search-form">
-          <mat-form-field appearance="outline" class="search-field">
-            <mat-icon matPrefix>search</mat-icon>
-            <input matInput placeholder="Search" formControlName="query">
-            <button mat-icon-button matSuffix type="button" (click)="toggleFilters()">
-              <mat-icon [class.active-filter]="hasActiveFilters">filter_list</mat-icon>
-              <span class="filter-indicator" *ngIf="hasActiveFilters"></span>
+          <div class="search-shell">
+            <mat-icon class="search-icon">search</mat-icon>
+            <input
+              class="search-input"
+              type="search"
+              placeholder="Search"
+              formControlName="query"
+            />
+            <button type="button" class="filter-button" (click)="toggleFilters()">
+              <mat-icon>tune</mat-icon>
+              <span class="filter-dot" *ngIf="hasActiveFilters"></span>
             </button>
-          </mat-form-field>
-          <button mat-flat-button color="accent" type="submit">Search</button>
+          </div>
         </form>
 
         <div class="filter-panel" *ngIf="showFilters">
           <mat-divider></mat-divider>
-          <div class="filter-row">
+          <div class="filter-list" [formGroup]="searchForm">
             <mat-checkbox formControlName="filterTags">Tags</mat-checkbox>
             <mat-checkbox formControlName="filterDate">Date</mat-checkbox>
             <mat-checkbox formControlName="filterKeywords">Keywords</mat-checkbox>
@@ -98,6 +102,7 @@ import { map } from 'rxjs/operators';
     }
 
     .search-wrapper {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -106,52 +111,85 @@ import { map } from 'rxjs/operators';
     }
 
     .search-form {
+      width: 100%;
+      max-width: 540px;
+    }
+
+    .search-shell {
       display: flex;
-      gap: var(--spacing-sm);
       align-items: center;
       width: 100%;
-      max-width: 520px;
+      background: white;
+      border-radius: 999px;
+      padding: 6px 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
     }
 
-    .search-field {
+    .search-icon {
+      color: #616161;
+      margin-right: 8px;
+    }
+
+    .search-input {
       flex: 1;
+      border: none;
+      outline: none;
+      font-size: 16px;
+      background: transparent;
     }
 
-    .filter-indicator {
-      display: inline-block;
+    .filter-button {
+      position: relative;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      color: #424242;
+    }
+
+    .filter-button mat-icon {
+      font-size: 24px;
+    }
+
+    .filter-dot {
+      position: absolute;
+      top: 4px;
+      right: 4px;
       width: 8px;
       height: 8px;
       background: #e53935;
       border-radius: 50%;
-      margin-left: 4px;
     }
 
     .filter-panel {
       position: absolute;
-      top: 64px;
+      top: 56px;
+      width: 260px;
       background: white;
-      color: black;
+      color: #212121;
       padding: var(--spacing-sm) var(--spacing-md);
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.2);
       display: flex;
       flex-direction: column;
       gap: var(--spacing-sm);
-      z-index: 10;
+      z-index: 20;
     }
 
-    .filter-row {
+    .filter-list {
       display: flex;
-      gap: var(--spacing-lg);
-    }
-
-    .filter-panel mat-checkbox {
-      margin-right: var(--spacing-sm);
+      flex-direction: column;
+      gap: var(--spacing-sm);
     }
 
     @media (max-width: 768px) {
       .filter-panel {
-        right: var(--spacing-sm);
+        right: 0;
       }
     }
 
