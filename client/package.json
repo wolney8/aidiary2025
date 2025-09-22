@@ -1,6 +1,6 @@
 {
   "name": "ai-diary-client",
-  "version": "0.10.6",
+  "version": "0.10.7",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",

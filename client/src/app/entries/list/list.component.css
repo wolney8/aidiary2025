@@ -1,0 +1,93 @@
+.list-container {
+  padding: 1rem;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.search-mode-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.search-mode-header button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #666;
+}
+
+.search-mode-header button:hover {
+  color: #333;
+}
+
+.search-mode-header mat-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.timeline-scroller {
+  display: flex;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.timeline-months {
+  display: flex;
+  gap: 2rem;
+  overflow-x: auto;
+  flex: 1;
+  padding: 0 1rem;
+}
+
+.month-item {
+  text-align: center;
+  min-width: 100px;
+}
+
+.month-item .year {
+  font-size: 12px;
+  color: #666;
+}
+
+.month-item .month {
+  font-weight: 500;
+}
+
+.entries-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.entry-card {
+  cursor: pointer;
+}
+
+.entry-image-placeholder {
+  height: 150px;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.entry-image-placeholder mat-icon {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  color: #ccc;
+}

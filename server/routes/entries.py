@@ -4,6 +4,8 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import sqlite3
 from datetime import datetime
+import re
+from html import escape
 
 entries_bp = Blueprint('entries', __name__)
 
@@ -14,6 +16,65 @@ def get_db():
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _parse_entry_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        try:
+            return datetime.strptime(value, '%Y-%m-%d')
+        except ValueError:
+            return None
+
+
+def _format_date_strings(date_obj):
+    if not date_obj:
+        return []
+    return [
+        date_obj.strftime('%d/%m/%Y'),
+        date_obj.strftime('%A %d %B %Y'),
+        date_obj.strftime('%d %B %Y'),
+        date_obj.strftime('%B %Y'),
+        date_obj.strftime('%B')
+    ]
+
+
+def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
+    if not source:
+        return None
+    pattern = re.compile(re.escape(term), re.IGNORECASE)
+    match = pattern.search(source)
+    if not match:
+        return None
+
+    start = max(match.start() - context, 0)
+    end = min(match.end() + context, len(source))
+    excerpt = source[start:end]
+    escaped = escape(excerpt)
+    escaped_term = escape(term)
+    escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
+    highlighted = escaped_pattern.sub(lambda m: f'<span class="match">{m.group(0)}</span>', escaped)
+    if start > 0:
+        highlighted = '…' + highlighted
+    if end < len(source):
+        highlighted = highlighted + '…'
+    return highlighted
+
+
+def _highlight_inline(source: str, term: str) -> str | None:
+    if not source:
+        return None
+    escaped = escape(source)
+    escaped_term = escape(term)
+    pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
+    if not pattern.search(escaped):
+        return None
+    return pattern.sub(lambda m: f'<span class="match">{m.group(0)}</span>', escaped)
 
 # Daily entries endpoints
 @entries_bp.route('/daily', methods=['GET'])
@@ -334,3 +395,170 @@ def delete_dream_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     return '', 204
+
+
+@entries_bp.route('/search', methods=['GET'])
+@jwt_required()
+def search_entries():
+    """Search diary entries by content, tags, AI response, and metadata."""
+    user_id = int(get_jwt_identity())
+    query = (request.args.get('q') or '').strip()
+    filters_param = (request.args.get('filters') or '').strip()
+
+    if not query:
+        return jsonify({
+            'query': query,
+            'filters': [],
+            'filters_display': 'All Entries',
+            'results': []
+        }), 200
+
+    filter_tokens = [token.strip().lower() for token in filters_param.split(',') if token.strip()]
+    valid_filters = {'tags', 'date', 'keywords', 'people'}
+    active_filters = {token for token in filter_tokens if token in valid_filters}
+    include_all = not active_filters
+
+    filter_labels = {
+        'tags': 'Tags',
+        'date': 'Date',
+        'keywords': 'Keywords',
+        'people': "People's Names"
+    }
+    filters_display = 'All Entries' if include_all else ', '.join(filter_labels[f] for f in active_filters)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    daily_rows = cursor.execute('''
+        SELECT id, entry_date, user_message, ai_response, tags, daily_people_names
+        FROM dailydiary_entries
+        WHERE user_id = ?
+    ''', (user_id,)).fetchall()
+
+    dream_rows = cursor.execute('''
+        SELECT id, entry_date, title, plot, interpretation, tags, dream_people_names
+        FROM dreamdiary_entries
+        WHERE user_id = ?
+    ''', (user_id,)).fetchall()
+
+    conn.close()
+
+    results = []
+    term = query.lower()
+
+    def field_enabled(field_name: str) -> bool:
+        if include_all:
+            return True
+        mapping = {
+            'body': None,
+            'ai': 'keywords',
+            'tags': 'tags',
+            'people': 'people',
+            'date': 'date'
+        }
+        mapped = mapping.get(field_name)
+        if mapped is None:
+            return include_all
+        return mapped in active_filters
+
+    def process_entry(entry_type: str, base_data: dict) -> None:
+        text_body = base_data.get('body') or ''
+        ai_text = base_data.get('ai') or ''
+        tags_text = base_data.get('tags') or ''
+        people_text = base_data.get('people') or ''
+        entry_date_obj = base_data.get('date_obj')
+        entry_date_iso = base_data.get('entry_date')
+        title_plain = base_data.get('title_plain') or ''
+
+        matches = {}
+        matched = False
+
+        if field_enabled('body'):
+            highlighted = _highlight_text(text_body, query)
+            if highlighted:
+                matches['body'] = highlighted
+                matched = True
+
+        if field_enabled('tags') and tags_text:
+            highlighted = _highlight_inline(tags_text, query)
+            if highlighted:
+                matches['tags'] = highlighted
+                matched = True
+
+        if field_enabled('people') and people_text:
+            highlighted = _highlight_inline(people_text, query)
+            if highlighted:
+                matches['people'] = highlighted
+                matched = True
+
+        if field_enabled('ai') and ai_text:
+            highlighted = _highlight_text(ai_text, query)
+            if highlighted:
+                matches['ai'] = highlighted
+                matched = True
+
+        if field_enabled('date') and entry_date_obj:
+            date_strings = _format_date_strings(entry_date_obj)
+            for date_str in date_strings:
+                if term in date_str.lower():
+                    matches['date'] = _highlight_inline(date_str, query) or escape(date_str)
+                    matched = True
+                    break
+
+        if not matched:
+            return
+
+        title_highlight = _highlight_inline(title_plain, query) or escape(title_plain)
+        entry_date_display = entry_date_obj.strftime('%d/%m/%Y') if entry_date_obj else ''
+
+        results.append({
+            'id': base_data['id'],
+            'type': entry_type,
+            'title': title_plain,
+            'title_highlight': title_highlight,
+            'entry_date': entry_date_iso,
+            'entry_date_display': entry_date_display,
+            'tags': tags_text,
+            'matches': matches
+        })
+
+    for row in daily_rows:
+        entry_date_obj = _parse_entry_date(row['entry_date'])
+        user_message = row['user_message'] or ''
+        parts = user_message.split('\n', 1)
+        title_plain = parts[0].strip('" ')
+        body_text = parts[1] if len(parts) > 1 else user_message
+        base_data = {
+            'id': row['id'],
+            'entry_date': row['entry_date'],
+            'date_obj': entry_date_obj,
+            'title_plain': title_plain or 'Daily Entry',
+            'body': user_message,
+            'ai': row['ai_response'] or '',
+            'tags': row['tags'] or '',
+            'people': row['daily_people_names'] or ''
+        }
+        process_entry('daily', base_data)
+
+    for row in dream_rows:
+        entry_date_obj = _parse_entry_date(row['entry_date'])
+        base_data = {
+            'id': row['id'],
+            'entry_date': row['entry_date'],
+            'date_obj': entry_date_obj,
+            'title_plain': (row['title'] or 'Dream Entry').strip('" '),
+            'body': row['plot'] or '',
+            'ai': row['interpretation'] or '',
+            'tags': row['tags'] or '',
+            'people': row['dream_people_names'] or ''
+        }
+        process_entry('dream', base_data)
+
+    results.sort(key=lambda item: item['entry_date'], reverse=True)
+
+    return jsonify({
+        'query': query,
+        'filters': list(active_filters),
+        'filters_display': filters_display,
+        'results': results
+    }), 200
