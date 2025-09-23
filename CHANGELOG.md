@@ -8,6 +8,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.11.1] - 2025-09-23
+
+### 🎉 Major Feature: Advanced Timeline Navigation & Entry Management
+
+#### Added
+- **Complete Timeline System**: 5-phase implementation with pagination (2x4 card grid), dynamic timeline generation, entry count badges, view coordination, and scroll limits
+- **Smart Navigation Buttons**: First/Today buttons with intelligent date selection and timeline centering
+- **Timeline Animation System**: Smooth 300ms animations with ease-out curves for professional visual feedback
+- **Date Pre-population**: New entries automatically inherit selected timeline date with UK format support
+- **Entry Type Auto-selection**: Create entry form pre-selects Daily/Dream based on current view filter
+- **Memory-Safe Animation**: Proper cleanup with ngOnDestroy lifecycle management
+
+#### Enhanced
+- **Timeline Scroller**: Dynamic month generation based on actual entry data with future month limits
+- **View Toggle Logic**: ALL/DAILY/DREAMS buttons now filter current selection instead of jumping to recent entries
+- **Entry Count Badges**: Real-time count display for each month in timeline with proper filtering
+- **Navigation UX**: First button jumps to earliest entry month, Today button centers current month
+- **Dream Entry Creation**: Fixed critical bug where dream entries were saving as daily entries
+- **Pagination Control**: Proper 8-entries-per-page (2 rows × 4 cards) with Material paginator
+
+#### Technical Improvements
+- **Timeline State Management**: Preserved selection across view changes with intelligent fallback
+- **Animation Framework**: RequestAnimationFrame-based smooth scrolling with performance optimization
+- **Query Parameter Handling**: Enhanced routing with date and type parameter support
+- **Component Architecture**: Improved separation of concerns between timeline, pagination, and filtering
+- **Database Integrity**: Proper dream entry API endpoint verification and testing
+
+#### Fixed
+- **Critical Dream Entry Bug**: Dream entries now save correctly to dreamdiary_entries table instead of daily entries
+- **View Toggle Behavior**: Buttons no longer jump to recent entries, properly filter current timeline selection
+- **Timeline Selection**: Preserved month selection when switching between ALL/DAILY/DREAMS views
+- **Entry Type Detection**: New entry form correctly determines type from navigation context
+- **Timeline Centering**: First/Today buttons now properly center selected months in timeline scroller
+
+#### User Experience
+- **Visual Feedback**: Smooth animations provide clear indication of timeline movements and selections
+- **Intuitive Navigation**: First/Today buttons with intelligent month centering and entry filtering
+- **Responsive Design**: Maintains 2x4 card grid layout with proper pagination controls
+- **Smart Defaults**: Entry creation pre-populates dates and types based on user context
+
+### 🔧 Technical Details
+- **Animation System**: 300ms duration with cubic ease-out easing for natural movement
+- **Timeline Logic**: Dynamic range calculation from earliest entry to 2 months future limit
+- **State Preservation**: Maintains timeline selection across view toggles and navigation actions
+- **Memory Management**: Proper cleanup of animation frames and event listeners
+- **API Integration**: Verified dream entry endpoints with proper database table routing
+
 ## [AIDIARY v0.11.0] - 2025-09-23
 
 ### 🎉 Major Feature: Entry Title Support System

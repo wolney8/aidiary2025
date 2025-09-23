@@ -1,8 +1,8 @@
 // Create entry with support for daily and dream flows
-import { Component, HostListener, inject, ViewChild, ElementRef } from '@angular/core';
+import { Component, HostListener, inject, ViewChild, ElementRef, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -188,8 +188,9 @@ const UK_DATE_FORMATS = {
     }
   `]
 })
-export class CreateComponent {
+export class CreateComponent implements OnInit {
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
   @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>;
@@ -205,6 +206,30 @@ export class CreateComponent {
   maxDate = new Date();
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
   private initialDate = this.entryDate?.toDateString() ?? '';
+
+  ngOnInit(): void {
+    // Check for pre-populated date and type from query params
+    this.route.queryParamMap.subscribe(params => {
+      const dateParam = params.get('date');
+      if (dateParam) {
+        // Parse UK format date DD/MM/YYYY
+        const [day, month, year] = dateParam.split('/');
+        if (day && month && year) {
+          const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          if (!isNaN(parsedDate.getTime())) {
+            this.entryDate = parsedDate;
+            this.initialDate = this.entryDate.toDateString();
+          }
+        }
+      }
+
+      // Check for entry type parameter
+      const typeParam = params.get('type');
+      if (typeParam === 'dream' || typeParam === 'daily') {
+        this.selectedType = typeParam;
+      }
+    });
+  }
 
   saveAsDraft(): void {
     this.persistEntry(this.leaveItToAI);
