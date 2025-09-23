@@ -126,7 +126,6 @@ def create_daily_entry():
     
     entry_date = data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
     user_message = data.get('user_message', '')
-    title = data.get('title', '')
     
     conn = get_db()
     cursor = conn.cursor()
@@ -142,9 +141,9 @@ def create_daily_entry():
     
     cursor.execute('''
         INSERT INTO dailydiary_entries 
-        (user_id, entry_date, entry_number, title, user_message, tags)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (user_id, entry_date, entry_number, title, user_message, data.get('tags', '')))
+        (user_id, entry_date, entry_number, user_message, tags)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, entry_date, entry_number, user_message, data.get('tags', '')))
     
     conn.commit()
     entry_id = cursor.lastrowid
@@ -153,8 +152,7 @@ def create_daily_entry():
     return jsonify({
         'id': entry_id,
         'entry_date': entry_date,
-        'entry_number': entry_number,
-        'title': title
+        'entry_number': entry_number
     }), 201
 
 @entries_bp.route('/daily/<int:entry_id>', methods=['PUT'])
@@ -178,7 +176,7 @@ def update_daily_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     # Update allowed fields
-    allowed_fields = ['title', 'user_message', 'ai_response', 'daily_people_names', 'tags']
+    allowed_fields = ['user_message', 'ai_response', 'daily_people_names', 'tags']
     updates = []
     values = []
     

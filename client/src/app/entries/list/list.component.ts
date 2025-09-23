@@ -170,6 +170,11 @@ export class ListComponent implements OnInit {
       return `"${entry.title}"`;
     }
     if (entry.type === 'daily') {
+      // Use the title field from database if available
+      if (entry.title) {
+        return entry.title;
+      }
+      // Fallback to old logic for entries without titles
       const [title] = this.splitDailyMessage(entry.user_message || '');
       return title || 'Daily Entry';
     }

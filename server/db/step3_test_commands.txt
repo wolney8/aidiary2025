@@ -1,0 +1,39 @@
+
+# Manual API Testing Commands for Step 3
+
+## 1. Test Login (get auth token)
+curl -X POST http://localhost:5001/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","password":"testpass"}'
+
+## 2. Test Create Entry with Title (use token from step 1)
+curl -X POST http://localhost:5001/api/entries/daily \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{
+    "title": "My Test Entry Title",
+    "user_message": "This is a test entry created via API with title support.",
+    "entry_date": "2025-09-23",
+    "tags": "test,api,step3"
+  }'
+
+## 3. Test Get All Entries (should include title field)
+curl -X GET http://localhost:5001/api/entries/daily \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+## 4. Test Get Specific Entry (use entry ID from step 2)
+curl -X GET http://localhost:5001/api/entries/daily/ENTRY_ID \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+## 5. Test Update Entry Title
+curl -X PUT http://localhost:5001/api/entries/daily/ENTRY_ID \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{
+    "title": "Updated Entry Title",
+    "user_message": "Updated content with new title."
+  }'
+
+## 6. Verify Changes
+curl -X GET http://localhost:5001/api/entries/daily/ENTRY_ID \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"

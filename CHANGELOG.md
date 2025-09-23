@@ -8,6 +8,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.11.0] - 2025-09-23
+
+### 🎉 Major Feature: Entry Title Support System
+
+#### Added
+- **Complete title field support** for daily diary entries
+- **Database schema enhancement**: Added `title` column to `dailydiary_entries` table
+- **Smart migration system**: Auto-populated all 163 existing entries with date-based titles
+- **Frontend title management**: Entry creation, display, and editing with title support
+- **Backward compatibility**: Seamless handling of both old and new entry formats
+- **Enhanced login error messaging**: User-friendly error messages for authentication failures
+
+#### Enhanced
+- **Entry Creation**: Title input field now saves to separate database column
+- **Entry Display**: List and detail views prioritize title field with intelligent fallbacks
+- **API Endpoints**: All entry endpoints support title field (GET/POST/PUT)
+- **Search Integration**: Search functionality works with title fields
+- **Data Migration**: Safe, tested migration with comprehensive rollback plan
+
+#### Technical Improvements
+- **Database Migration Scripts**: Step-by-step migration with testing and verification
+- **API Backward Compatibility**: Handles both old and new entry formats
+- **Frontend Resilience**: Graceful handling of entries with/without titles
+- **Comprehensive Testing**: Migration verification and frontend testing guides
+- **Project Documentation**: Detailed TODO tracking and implementation guides
+
+#### Fixed
+- **Logo Navigation**: Fixed logo redirect to navigate to `/entries` instead of `/login`
+- **Login UX**: Added loading states, input validation, and comprehensive error handling
+- **Entry Structure**: Standardized title/content separation for better organization
+
+#### Developer Experience
+- **Migration Safety**: Complete backup and rollback system
+- **Testing Framework**: Automated verification scripts and manual testing guides
+- **Documentation**: Step-by-step implementation tracking and testing procedures
+
+### 🔧 Technical Details
+- **Database**: SQLite schema update with title column addition
+- **Backend**: Flask API endpoints enhanced for title field support
+- **Frontend**: Angular components updated for title display and management
+- **Migration**: 163 entries successfully migrated with zero data loss
+
+## [AIDIARY v0.10.7.1] - 2025-09-23
+
+### Fixed
+- Enhanced login form with comprehensive error handling and user feedback
+- Added loading states and input validation for better user experience
+
+## [AIDIARY v0.10.7] - 2025-09-22
+
+### Fixed
+- TopBar logo navigation now redirects to `/entries` instead of `/login`
+- Improved search functionality and component syntax fixes
+
 ## [AIDIARY v0.10.6] - 2025-09-19
 
 ### Changed

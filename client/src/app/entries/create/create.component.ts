@@ -236,7 +236,8 @@ export class CreateComponent {
     if (this.selectedType === 'daily') {
       const payload = {
         entry_date: entryDate,
-        user_message: this.composeDailyMessage(trimmedTitle, body),
+        title: trimmedTitle,
+        user_message: body,
         tags
       };
 

@@ -4,6 +4,7 @@ export interface DailyEntry {
   user_id?: number;
   entry_date: string; // ISO date
   entry_number?: number;
+  title?: string;
   user_message: string;
   ai_response?: string;
   daily_people_names?: string; // Comma-separated

@@ -49,6 +49,7 @@ class DailyDiaryEntry(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     entry_date = Column(Date)
     entry_number = Column(Integer)
+    title = Column(Text)
     user_message = Column(Text)
     ai_response = Column(Text)
     daily_people_names = Column(Text)

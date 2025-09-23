@@ -180,17 +180,32 @@ export class DetailComponent implements OnInit {
     if (this.isDream() && this.entry.title) {
       return this.entry.title;
     }
-    const [title] = this.splitDailyMessage(this.entry.user_message || '');
-    return title || 'Entry';
+    if (!this.isDream()) {
+      // For daily entries, use the title field if available
+      if (this.entry.title) {
+        return this.entry.title;
+      }
+      // Fallback to old logic for entries without titles
+      const [title] = this.splitDailyMessage(this.entry.user_message || '');
+      return title || 'Entry';
+    }
+    return 'Entry';
   }
   
   getUserContent(): string {
     if (!this.entry) {
       return '';
     }
-    return this.isDream()
-      ? this.entry.plot || ''
-      : this.splitDailyMessage(this.entry.user_message || '')[1];
+    if (this.isDream()) {
+      return this.entry.plot || '';
+    }
+    // For daily entries
+    if (this.entry.title) {
+      // New format: title is separate, user_message contains only content
+      return this.entry.user_message || '';
+    }
+    // Old format: extract content from user_message (skip title part)
+    return this.splitDailyMessage(this.entry.user_message || '')[1];
   }
   
   getAIContent(): string {
