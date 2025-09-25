@@ -73,9 +73,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                 <mat-icon>pie_chart</mat-icon>
               </div>
               <div class="match-snippets">
-                <p *ngIf="result.matches.body" class="snippet" [innerHTML]="getSafeHtml(result.matches.body)"></p>
-                <p *ngIf="result.matches.tags" class="snippet" [innerHTML]="getSafeHtml(result.matches.tags)"></p>
-                <p *ngIf="result.matches.people" class="snippet" [innerHTML]="getSafeHtml(result.matches.people)"></p>
+                <p class="snippet" [innerHTML]="getSafeHtml(getBestSnippet(result))"></p>
               </div>
             </mat-card-content>
           </mat-card>
@@ -286,6 +284,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       display: flex;
       flex-direction: column;
       justify-content: space-between;
+      overflow: hidden; /* Prevent content overflow */
     }
 
     .entry-card:hover {
@@ -294,18 +293,19 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     }
 
     .entry-image-placeholder {
-      height: 150px;
+      height: 120px; /* Reduced from 150px to give more space for text */
       background: #f5f5f5;
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 8px;
       margin-bottom: 12px;
+      flex-shrink: 0; /* Don't shrink, maintain fixed height */
 
       mat-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
+        font-size: 36px; /* Slightly smaller icon */
+        width: 36px;
+        height: 36px;
         color: #9e9e9e;
       }
     }
@@ -313,6 +313,10 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
+      overflow: hidden; /* Prevent overflow from container */
+      flex: 1; /* Take remaining space after image placeholder */
+      max-height: 100px; /* Reduced since we only show one snippet now */
+      padding: 8px 0; /* Add some vertical padding for better spacing */
     }
 
     .snippet {
@@ -320,6 +324,13 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       font-size: 0.9rem;
       color: #495057;
       line-height: 1.4;
+      /* Text truncation for long snippets */
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 4; /* Increased to 4 lines since we only show one snippet */
+      -webkit-box-orient: vertical;
+      word-break: break-word; /* Handle long words */
 
       ::ng-deep mark {
         background: none;
@@ -496,6 +507,57 @@ export class SearchResultsComponent {
 
   getSafeHtml(content: string): SafeHtml {
     return this.sanitizer.bypassSecurityTrustHtml(content);
+  }
+
+  getBestSnippet(result: SearchResult): string {
+    // Prioritize: body match > tags match > people match
+    // Return the most relevant single snippet to avoid visual clutter
+    if (result.matches.body) {
+      return this.truncateSnippet(result.matches.body);
+    }
+    if (result.matches.tags) {
+      return this.truncateSnippet(result.matches.tags);
+    }
+    if (result.matches.people) {
+      return this.truncateSnippet(result.matches.people);
+    }
+    
+    // Fallback to a simple message if no matches found
+    return 'No preview available';
+  }
+
+  private truncateSnippet(snippet: string): string {
+    // Remove HTML tags temporarily to count actual text length
+    const textOnly = snippet.replace(/<[^>]*>/g, '');
+    
+    // If the text is already short, return as-is
+    if (textOnly.length <= 120) {
+      return snippet;
+    }
+    
+    // For longer text, try to truncate at word boundaries while preserving highlighting
+    const maxLength = 100;
+    let truncated = snippet;
+    
+    // Find a good truncation point near the highlighted term
+    const matchIndex = snippet.toLowerCase().indexOf('<span');
+    if (matchIndex > -1) {
+      // Keep content around the match
+      const beforeMatch = snippet.substring(0, matchIndex);
+      const afterMatchStart = snippet.indexOf('</span>', matchIndex) + 7;
+      const afterMatch = snippet.substring(afterMatchStart);
+      
+      // Truncate before and after the match
+      const beforeTruncated = beforeMatch.length > 50 ? '...' + beforeMatch.substring(beforeMatch.length - 40) : beforeMatch;
+      const afterTruncated = afterMatch.length > 50 ? afterMatch.substring(0, 40) + '...' : afterMatch;
+      
+      truncated = beforeTruncated + snippet.substring(matchIndex, afterMatchStart) + afterTruncated;
+    } else {
+      // No highlighting found, just truncate normally
+      truncated = snippet.substring(0, maxLength) + (snippet.length > maxLength ? '...' : '');
+    }
+    
+    return truncated;
   }
 
   closeExpanded(event: Event): void {
