@@ -123,7 +123,10 @@ type TimelineMonth = {
           </div>
 
           <!-- Entry cards grid -->
-          <div class="entries-grid" *ngIf="paginatedEntries.length > 0">
+          <div class="entries-grid" 
+               [class.one-entry]="paginatedEntries.length === 1"
+               [class.two-entries]="paginatedEntries.length === 2"
+               *ngIf="paginatedEntries.length > 0">
             <mat-card class="entry-card" *ngFor="let entry of paginatedEntries">
               <mat-card-header>
                 <mat-icon mat-card-avatar>

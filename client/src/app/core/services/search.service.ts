@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { BehaviorSubject, Observable, tap, catchError } from 'rxjs';
 
 export interface SearchMatches {
+  title?: string;
   body?: string;
   tags?: string;
   people?: string;

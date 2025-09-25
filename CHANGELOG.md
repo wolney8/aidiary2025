@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.11.2] - 2025-09-25
+
+### 🔍 Major Feature: Advanced Search Results Interface
+
+#### Added
+- **Enhanced Search Results Display**: Complete redesign with proper title highlighting instead of body text overflow
+- **Red Search Term Highlighting**: Implemented secure HTML sanitization bypass for highlighting search matches in red with bold formatting
+- **Material Design Dropdown Structure**: Added structured expanded details with Material icons (bookmark, calendar, tags, edit, psychology)
+- **Smart Visual Connectors**: Blue circular chevron indicators showing clear connection between selected cards and expanded details
+- **Intelligent Card Positioning**: Dynamic positioning system that prevents expanded cards from going off-screen with grid-aware alignment
+- **Uniform Card Sizing**: Consistent 350px height for search cards and 400px for standard entry cards with proper flexbox content distribution
+- **Smooth Animation System**: 300ms cubic-bezier animations for card expansion, collapse, and smooth scroll-to-view functionality
+- **Click-Away Functionality**: Expanded cards close when clicking outside, providing intuitive interaction patterns
+
+#### Enhanced
+- **Search Result Grid Layout**: Improved CSS Grid system with proper spacing and visual hierarchy
+- **Entry Cards Centering**: 1-2 cards now center beautifully in standard entry views while 3+ maintain left alignment
+- **Visual Selection Feedback**: Selected cards show blue borders and enhanced shadows for clear state indication
+- **Grid-Aligned Expanded Cards**: Expanded cards align perfectly within grid boundaries using dynamic CSS custom properties
+- **Responsive Positioning**: Smart positioning prevents content overflow on different screen sizes
+
+#### Technical Improvements
+- **HTML Security**: Implemented Angular DomSanitizer for safe HTML rendering of highlighted search terms
+- **Dynamic CSS Properties**: Custom CSS variables for responsive positioning (--offset-x, --expanded-width)
+- **Animation Performance**: Hardware-accelerated transforms with translateZ(0) for smooth 60fps animations
+- **Browser Compatibility**: :has() selector with JavaScript fallbacks for older browser support
+- **Clean State Management**: Proper cleanup of positioning classes and styles when switching between expanded cards
+
 ## [AIDIARY v0.11.1] - 2025-09-23
 
 ### 🎉 Major Feature: Advanced Timeline Navigation & Entry Management

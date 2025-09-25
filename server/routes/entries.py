@@ -58,7 +58,7 @@ def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
     escaped = escape(excerpt)
     escaped_term = escape(term)
     escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
-    highlighted = escaped_pattern.sub(lambda m: f'<span class="match">{m.group(0)}</span>', escaped)
+    highlighted = escaped_pattern.sub(lambda m: f'<span style="color: red; font-weight: bold;">{m.group(0)}</span>', escaped)
     if start > 0:
         highlighted = '…' + highlighted
     if end < len(source):
@@ -66,15 +66,50 @@ def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
     return highlighted
 
 
-def _highlight_inline(source: str, term: str) -> str | None:
+def _highlight_inline(source: str, term: str, max_length: int = 80) -> str | None:
     if not source:
         return None
-    escaped = escape(source)
-    escaped_term = escape(term)
-    pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
-    if not pattern.search(escaped):
+    
+    pattern = re.compile(re.escape(term), re.IGNORECASE)
+    match = pattern.search(source)
+    if not match:
         return None
-    return pattern.sub(lambda m: f'<span class="match">{m.group(0)}</span>', escaped)
+    
+    # If source is short enough, just highlight and return
+    if len(source) <= max_length:
+        escaped = escape(source)
+        escaped_term = escape(term)
+        escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
+        return escaped_pattern.sub(lambda m: f'<span style="color: red; font-weight: bold;">{m.group(0)}</span>', escaped)
+    
+    # For longer text, truncate around the match
+    context = (max_length - len(term)) // 2
+    start = max(match.start() - context, 0)
+    end = min(match.end() + context, len(source))
+    
+    # Adjust to try to break at word boundaries
+    if start > 0:
+        space_before = source.rfind(' ', 0, start + 10)
+        if space_before > start - 10:
+            start = space_before + 1
+    
+    if end < len(source):
+        space_after = source.find(' ', end - 10)
+        if space_after != -1 and space_after < end + 10:
+            end = space_after
+    
+    excerpt = source[start:end]
+    escaped = escape(excerpt)
+    escaped_term = escape(term)
+    escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
+    highlighted = escaped_pattern.sub(lambda m: f'<span style="color: red; font-weight: bold;">{m.group(0)}</span>', escaped)
+    
+    if start > 0:
+        highlighted = '…' + highlighted
+    if end < len(source):
+        highlighted = highlighted + '…'
+        
+    return highlighted
 
 # Daily entries endpoints
 @entries_bp.route('/daily', methods=['GET'])
@@ -432,7 +467,7 @@ def search_entries():
     cursor = conn.cursor()
 
     daily_rows = cursor.execute('''
-        SELECT id, entry_date, user_message, ai_response, tags, daily_people_names
+        SELECT id, entry_date, title, user_message, ai_response, tags, daily_people_names
         FROM dailydiary_entries
         WHERE user_id = ?
     ''', (user_id,)).fetchall()
@@ -475,6 +510,13 @@ def search_entries():
         matches = {}
         matched = False
 
+        # Check title match (always enabled as it's core content)
+        if title_plain:
+            highlighted = _highlight_inline(title_plain, query)
+            if highlighted:
+                matches['title'] = highlighted
+                matched = True
+
         if field_enabled('body'):
             highlighted = _highlight_text(text_body, query)
             if highlighted:
@@ -510,7 +552,8 @@ def search_entries():
         if not matched:
             return
 
-        title_highlight = _highlight_inline(title_plain, query) or escape(title_plain)
+        # Use the title match if found, otherwise escape plain title
+        title_highlight = matches.get('title') or escape(title_plain)
         entry_date_display = entry_date_obj.strftime('%d/%m/%Y') if entry_date_obj else ''
 
         results.append({
@@ -527,14 +570,21 @@ def search_entries():
     for row in daily_rows:
         entry_date_obj = _parse_entry_date(row['entry_date'])
         user_message = row['user_message'] or ''
-        parts = user_message.split('\n', 1)
-        title_plain = parts[0].strip('" ')
-        body_text = parts[1] if len(parts) > 1 else user_message
+        
+        # Use database title field, fallback to first line of user_message
+        db_title = (row['title'] or '').strip()
+        if db_title:
+            title_plain = db_title
+        else:
+            # Fallback: use first line of user_message
+            parts = user_message.split('\n', 1)
+            title_plain = parts[0].strip('" ') if parts[0].strip() else 'Daily Entry'
+        
         base_data = {
             'id': row['id'],
             'entry_date': row['entry_date'],
             'date_obj': entry_date_obj,
-            'title_plain': title_plain or 'Daily Entry',
+            'title_plain': title_plain,
             'body': user_message,
             'ai': row['ai_response'] or '',
             'tags': row['tags'] or '',

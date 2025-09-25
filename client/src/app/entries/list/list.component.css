@@ -192,11 +192,56 @@
 
 .entries-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(2, 1fr);
   gap: 1.5rem;
   padding: 2rem 0;
   min-height: 600px; /* Ensure consistent height for 2 rows */
+  
+  /* Default: 4 columns, 2 rows */
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+/* Center cards when there are 1-2 entries */
+.entries-grid:has(.entry-card:nth-child(1):nth-last-child(1)) {
+  /* 1 card: center it with fixed width */
+  display: flex;
+  justify-content: center;
+}
+
+.entries-grid:has(.entry-card:nth-child(2):nth-last-child(1)) {
+  /* 2 cards: center them with fixed widths */
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.entries-grid:has(.entry-card:nth-child(1):nth-last-child(1)) .entry-card,
+.entries-grid:has(.entry-card:nth-child(2):nth-last-child(1)) .entry-card {
+  /* Force consistent card width when centered */
+  width: 300px;
+  max-width: 300px;
+  flex-shrink: 0;
+}
+
+/* Fallback for browsers without :has() support - use JavaScript classes */
+@supports not (selector(:has(.entry-card))) {
+  .entries-grid.one-entry {
+    display: flex;
+    justify-content: center;
+  }
+  
+  .entries-grid.two-entries {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+  }
+  
+  .entries-grid.one-entry .entry-card,
+  .entries-grid.two-entries .entry-card {
+    width: 300px;
+    max-width: 300px;
+    flex-shrink: 0;
+  }
 }
 
 /* Responsive grid */
@@ -285,6 +330,25 @@
 
 .entry-card {
   cursor: pointer;
+  width: 100%;
+  min-width: 300px;
+  max-width: 350px;
+  /* Force consistent height for all cards */
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure card content fills the available space properly */
+.entry-card .mat-mdc-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.entry-card .mat-mdc-card-actions {
+  margin-top: auto;
 }
 
 .entry-image-placeholder {

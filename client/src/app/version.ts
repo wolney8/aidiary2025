@@ -1,1 +1,1 @@
-export const APP_VERSION = 'AIDIARY v0.11.1 DEV';
+export const APP_VERSION = 'AIDIARY v0.11.2';
