@@ -39,9 +39,38 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
         <h2>Search results for "{{ searchState.query }}" in {{ searchState.filters_display }}</h2>
       </div>
 
-      <!-- Loading Spinner -->
-      <div *ngIf="searchState.loading" class="loading-overlay">
-        <mat-progress-spinner diameter="56" mode="indeterminate"></mat-progress-spinner>
+      <!-- Enhanced Loading State -->
+      <div *ngIf="searchState.loading" class="loading-container">
+        <!-- Skeleton Loading Cards -->
+        <div class="skeleton-grid">
+          <div *ngFor="let i of [1,2,3,4,5,6]" class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-title-group">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-subtitle"></div>
+              </div>
+            </div>
+            <div class="skeleton-content">
+              <div class="skeleton-image"></div>
+              <div class="skeleton-text-lines">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line medium"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Centered Loading Message (positioned like no-results card) -->
+        <div class="loading-message-overlay">
+          <mat-card class="loading-message-card">
+            <mat-card-content class="loading-message-content">
+              <mat-progress-spinner diameter="48" mode="indeterminate" color="primary"></mat-progress-spinner>
+              <p class="loading-text">Searching your entries...</p>
+            </mat-card-content>
+          </mat-card>
+        </div>
       </div>
 
       <!-- Error Panel -->
@@ -170,11 +199,175 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       padding: 1rem;
     }
 
-    .loading-overlay {
+    .loading-container {
+      position: relative;
+      min-height: 400px;
+    }
+
+    /* Centered Loading Message Card - aligned with first row of results */
+    .loading-message-overlay {
+      position: absolute;
+      top: 1rem; /* Align with skeleton-grid padding */
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      z-index: 10;
+      pointer-events: none; /* Allow interaction with skeleton cards underneath */
+      padding-top: 2rem; /* Additional spacing to align with first card row */
+    }
+
+    .loading-message-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid #e0e0e0;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+      max-width: 400px;
+      pointer-events: auto;
+    }
+
+    .loading-message-content {
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      text-align: center;
+    }
+
+    .loading-text {
+      margin: 0;
+      color: #616161;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    /* Skeleton Loading Cards */
+    .skeleton-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+      padding: 1rem;
+      animation: fadeInSkeletons 0.5s ease-in-out;
+    }
+
+    .skeleton-card {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      /* Match actual entry-card dimensions exactly: 303 x 350 */
+      height: 350px;
+      width: 303px;
+      min-width: 303px;
+      max-width: 303px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0.8;
+      border: 1px solid #f0f0f0;
+    }
+
+    .skeleton-header {
       display: flex;
       align-items: center;
-      justify-content: center;
-      padding: 1rem 0 2rem;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+
+    .skeleton-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    .skeleton-title-group {
+      flex: 1;
+    }
+
+    .skeleton-title {
+      height: 16px;
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      width: 70%;
+    }
+
+    .skeleton-subtitle {
+      height: 12px;
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+      width: 50%;
+    }
+
+    .skeleton-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .skeleton-image {
+      height: 120px; /* Match entry-image-placeholder height exactly */
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 8px;
+      margin-bottom: 12px; /* Match entry-image-placeholder margin-bottom */
+      flex-shrink: 0; /* Match entry-image-placeholder behavior */
+    }
+
+    .skeleton-text-lines {
+      flex: 1; /* Match match-snippets flex behavior */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 100px; /* Match match-snippets max-height */
+      overflow: hidden;
+      padding: 8px 0; /* Match match-snippets padding */
+    }
+
+    .skeleton-line {
+      height: 14px;
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+      width: 100%;
+    }
+
+    .skeleton-line.short {
+      width: 60%;
+    }
+
+    .skeleton-line.medium {
+      width: 80%;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: -200% 0;
+      }
+      100% {
+        background-position: 200% 0;
+      }
+    }
+
+    @keyframes fadeInSkeletons {
+      from { 
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to { 
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .error-card {

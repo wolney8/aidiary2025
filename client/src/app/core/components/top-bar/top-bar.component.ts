@@ -4,6 +4,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -24,6 +25,7 @@ import { Location } from '@angular/common';
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
+    MatProgressSpinnerModule,
     RouterModule,
     ReactiveFormsModule,
     MatFormFieldModule,
@@ -40,8 +42,9 @@ import { Location } from '@angular/common';
       <div class="search-wrapper">
         <form [formGroup]="searchForm" (ngSubmit)="filterResults()" class="search-form">
           <div class="search-shell">
-            <button type="button" class="search-button" (click)="filterResults()">
-              <mat-icon>search</mat-icon>
+            <button type="button" class="search-button" (click)="filterResults()" [disabled]="isSearching">
+              <mat-progress-spinner *ngIf="isSearching" diameter="20" mode="indeterminate"></mat-progress-spinner>
+              <mat-icon *ngIf="!isSearching">search</mat-icon>
             </button>
             <input
               class="search-input"
@@ -49,6 +52,7 @@ import { Location } from '@angular/common';
               placeholder="Search entries, tags, people, dates..."
               formControlName="query"
               (keydown.enter)="$event.preventDefault(); filterResults()"
+              [disabled]="isSearching"
             />
           </div>
         </form>
@@ -99,6 +103,9 @@ export class TopBarComponent implements OnDestroy {
   );
 
   versionLabel = APP_VERSION;
+  
+  // Track search loading state
+  isSearching = false;
 
   searchForm = this.fb.group({
     query: ['']
@@ -144,10 +151,17 @@ export class TopBarComponent implements OnDestroy {
       people: true
     };
 
+    this.isSearching = true;
     this.searchService.search(normalized, filters).subscribe({
-      next: () => {},
-      error: () => {},
-      complete: () => {}
+      next: () => {
+        this.isSearching = false;
+      },
+      error: () => {
+        this.isSearching = false;
+      },
+      complete: () => {
+        this.isSearching = false;
+      }
     });
   }
 
