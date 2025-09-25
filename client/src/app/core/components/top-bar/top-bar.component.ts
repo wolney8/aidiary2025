@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, inject, OnDestroy, HostListener } from '@angular/core';
+import { Component, Output, EventEmitter, inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,8 +8,6 @@ import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatCheckboxModule } from '@angular/material/checkbox';
-import { MatDividerModule } from '@angular/material/divider';
 import { AuthService } from '../../services/auth.service';
 import { APP_VERSION } from '../../../version';
 import { Observable, Subject } from 'rxjs';
@@ -29,9 +27,7 @@ import { Location } from '@angular/common';
     RouterModule,
     ReactiveFormsModule,
     MatFormFieldModule,
-    MatInputModule,
-    MatCheckboxModule,
-    MatDividerModule
+    MatInputModule
   ],
   template: `
     <mat-toolbar color="primary">
@@ -50,26 +46,12 @@ import { Location } from '@angular/common';
             <input
               class="search-input"
               type="search"
-              placeholder="Search"
+              placeholder="Search entries, tags, people, dates..."
               formControlName="query"
               (keydown.enter)="$event.preventDefault(); filterResults()"
             />
-            <button type="button" class="filter-button" (click)="toggleFilters()">
-              <mat-icon>tune</mat-icon>
-              <span class="filter-dot" *ngIf="hasActiveFilters"></span>
-            </button>
           </div>
         </form>
-
-        <div class="filter-panel" *ngIf="showFilters">
-          <mat-divider></mat-divider>
-          <div class="filter-list" [formGroup]="searchForm">
-            <mat-checkbox formControlName="filterTags">Tags</mat-checkbox>
-            <mat-checkbox formControlName="filterDate">Date</mat-checkbox>
-            <mat-checkbox formControlName="filterKeywords">Keywords</mat-checkbox>
-            <mat-checkbox formControlName="filterPeople">People&apos;s Names</mat-checkbox>
-          </div>
-        </div>
       </div>
 
       <span class="spacer"></span>
@@ -98,10 +80,6 @@ import { Location } from '@angular/common';
     .search-shell { display: flex; align-items: center; width: 100%; background: white; border-radius: 999px; padding: 6px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
     .search-button { background: none; border: none; color: #616161; cursor: pointer; padding: 4px; margin-right: 8px; }
     .search-input { flex: 1; border: none; outline: none; font-size: 16px; background: transparent; }
-    .filter-button { position: relative; border: none; background: transparent; cursor: pointer; width: 32px; height: 32px; }
-    .filter-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; background: #e53935; border-radius: 50%; }
-    .filter-panel { position: absolute; top: 56px; width: 260px; background: white; color: #212121; padding: var(--spacing-sm) var(--spacing-md); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); display: flex; flex-direction: column; gap: var(--spacing-sm); z-index: 20; }
-    .filter-list { display: flex; flex-direction: column; gap: var(--spacing-sm); }
     .user-section { display: flex; align-items: center; gap: var(--spacing-sm); }
     .version-label { font-size: 12px; padding: 4px 8px; background: rgba(255,255,255,0.2); border-radius: 12px; }
     `
@@ -121,14 +99,9 @@ export class TopBarComponent implements OnDestroy {
   );
 
   versionLabel = APP_VERSION;
-  showFilters = false;
 
   searchForm = this.fb.group({
-    query: [''],
-    filterTags: [false],
-    filterDate: [false],
-    filterKeywords: [false],
-    filterPeople: [false]
+    query: ['']
   });
 
   constructor() {
@@ -141,41 +114,12 @@ export class TopBarComponent implements OnDestroy {
       if (!event.url.includes('/entries')) {
         this.searchService.clear();
         this.searchForm.patchValue({ query: '' });
-        this.showFilters = false;
       }
     });
   }
 
-  get hasActiveFilters(): boolean {
-    const v = this.searchForm.value;
-    return Boolean(v.filterTags || v.filterDate || v.filterKeywords || v.filterPeople);
-  }
-
   logout(): void {
     this.authService.logout();
-  }
-
-  toggleFilters(): void {
-    this.showFilters = !this.showFilters;
-  }
-
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: MouseEvent): void {
-    if (!this.showFilters) return;
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-
-    // Walk up the DOM to see if the click occurred inside the filter panel or button
-    let el: HTMLElement | null = target;
-    while (el) {
-      if (el.classList && (el.classList.contains('filter-panel') || el.classList.contains('filter-button'))) {
-        return; // click inside, do nothing
-      }
-      el = el.parentElement;
-    }
-
-    // otherwise close
-    this.showFilters = false;
   }
 
   filterResults(): void {
@@ -192,18 +136,18 @@ export class TopBarComponent implements OnDestroy {
 
   private performSearch(query: string): void {
     const normalized = this.normalizeQuery(query);
-    const v = this.searchForm.value;
+    // Always search all categories since we removed filters
     const filters = {
-      tags: !!v.filterTags,
-      date: !!v.filterDate,
-      keywords: !!v.filterKeywords,
-      people: !!v.filterPeople
+      tags: true,
+      date: true,
+      keywords: true,
+      people: true
     };
 
     this.searchService.search(normalized, filters).subscribe({
-      next: () => this.showFilters = false,
-      error: () => this.showFilters = false,
-      complete: () => this.showFilters = false
+      next: () => {},
+      error: () => {},
+      complete: () => {}
     });
   }
 
@@ -231,7 +175,6 @@ export class TopBarComponent implements OnDestroy {
     this.router.navigate(['/entries']).then(() => {
       this.searchService.clear();
       this.searchForm.patchValue({ query: '' });
-      this.showFilters = false;
     });
   }
 

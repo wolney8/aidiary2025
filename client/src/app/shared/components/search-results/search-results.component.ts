@@ -55,6 +55,34 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
           <button mat-button (click)="searchService.clear()">Close</button>
         </mat-card-actions>
       </mat-card>
+
+      <!-- No Results State -->
+      <mat-card *ngIf="!searchState.loading && !searchState.error && searchState.active && searchState.results.length === 0" 
+                class="no-results-card">
+        <mat-card-content class="no-results-content">
+          <div class="no-results-icon">
+            <mat-icon>search_off</mat-icon>
+          </div>
+          <h3>No results found</h3>
+          <p class="no-results-message">
+            We couldn't find any entries matching "<strong>{{ searchState.query }}</strong>" in {{ searchState.filters_display }}.
+          </p>
+          
+          <!-- Smart Suggestions -->
+          <div class="search-suggestions" *ngIf="getSearchSuggestions(searchState.query).length > 0">
+            <h4>Try these suggestions:</h4>
+            <ul>
+              <li *ngFor="let suggestion of getSearchSuggestions(searchState.query)">{{ suggestion }}</li>
+            </ul>
+          </div>
+          
+          <div class="no-results-actions">
+            <button mat-raised-button color="primary" (click)="browseAllEntries()">
+              Browse All Entries
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
       
       <div class="results-grid">
         <div *ngFor="let result of searchState.results" class="result-container" [attr.data-card-id]="result.id">
@@ -154,6 +182,74 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       background: #fff4f4;
       border: 1px solid #f1c0c0;
       color: #611;
+    }
+
+    .no-results-card {
+      margin: 2rem auto;
+      max-width: 500px;
+      text-align: center;
+      background: #fafafa;
+      border: 1px solid #e0e0e0;
+    }
+
+    .no-results-content {
+      padding: 3rem 2rem 2rem;
+    }
+
+    .no-results-icon {
+      margin-bottom: 1.5rem;
+    }
+
+    .no-results-icon mat-icon {
+      font-size: 64px;
+      width: 64px;
+      height: 64px;
+      color: #9e9e9e;
+    }
+
+    .no-results-content h3 {
+      margin: 0 0 1rem;
+      font-size: 1.5rem;
+      font-weight: 500;
+      color: #424242;
+    }
+
+    .no-results-message {
+      margin: 0 0 2rem;
+      color: #757575;
+      line-height: 1.5;
+    }
+
+    .search-suggestions {
+      margin: 2rem 0;
+      text-align: left;
+      background: #f5f5f5;
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    .search-suggestions h4 {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      font-weight: 500;
+      color: #424242;
+    }
+
+    .search-suggestions ul {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: #616161;
+    }
+
+    .search-suggestions li {
+      margin-bottom: 0.5rem;
+    }
+
+    .no-results-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
     }
 
     .search-header {
@@ -583,5 +679,39 @@ export class SearchResultsComponent {
       next: () => {},
       error: () => {}
     });
+  }
+
+  clearSearch(): void {
+    this.searchService.clear();
+  }
+
+  browseAllEntries(): void {
+    // Clear the search first
+    this.searchService.clear();
+    // Navigate to entries (latest entries will be shown by default)
+    // The entries list component should handle showing latest entries
+    window.location.href = '/entries';
+  }
+
+  getSearchSuggestions(query: string): string[] {
+    const suggestions: string[] = [];
+    
+    // Basic suggestions based on query characteristics
+    if (query.length > 0) {
+      // Check if query looks like a person's name (capitalized)
+      if (query.charAt(0) === query.charAt(0).toUpperCase() && !query.includes(' ')) {
+        suggestions.push(`Try variations like "${query.toLowerCase()}" or nicknames`);
+        suggestions.push('Search for the full name if you used a nickname');
+      }
+      
+      // Always show comprehensive search tips
+      suggestions.push('Try searching for a date (e.g., "26th August", "October 2023")');
+      suggestions.push('Search for keywords, places, or emotions from your entries');
+      suggestions.push('Try tags or people names mentioned in your diary');
+      suggestions.push('Check your spelling and try fewer keywords');
+    }
+    
+    // Limit to 4 suggestions max for clean UI
+    return suggestions.slice(0, 4);
   }
 }
