@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams, HttpHeaders } from '@angular/common/http';
 import { AuthService } from './auth.service';
-import { BehaviorSubject, Observable, tap, catchError } from 'rxjs';
+import { BehaviorSubject, Observable, tap, catchError, timeout, TimeoutError } from 'rxjs';
 
 export interface SearchMatches {
   title?: string;
@@ -95,6 +95,7 @@ export class SearchService {
   const headers = token ? new HttpHeaders({ Authorization: `Bearer ${token}` }) : undefined;
 
   return this.http.get<SearchResponse>(this.apiUrl, { params, headers }).pipe(
+      timeout(8000), // 8 second timeout (Google UX standard for search)
       tap(response => {
         this.resultsSubject.next({ 
           ...response, 
@@ -104,9 +105,19 @@ export class SearchService {
         });
       }),
       catchError(error => {
-        const errorMessage = error.status === 0 
-          ? 'Could not connect to search service'
-          : error.error?.message || 'Error performing search';
+        let errorMessage: string;
+        
+        if (error instanceof TimeoutError) {
+          errorMessage = 'Search request timed out. Please try again.';
+        } else if (error.status === 0) {
+          errorMessage = 'Network connection error. Please check your internet connection.';
+        } else if (error.status >= 500) {
+          errorMessage = 'Server error. Please try again in a moment.';
+        } else if (error.status === 401) {
+          errorMessage = 'Authentication error. Please refresh and log in again.';
+        } else {
+          errorMessage = error.error?.message || 'Search failed. Please try again.';
+        }
           
         this.resultsSubject.next({
           ...this.resultsSubject.getValue(),

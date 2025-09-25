@@ -73,16 +73,32 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
         </div>
       </div>
 
-      <!-- Error Panel -->
+      <!-- Enhanced Error Panel -->
       <mat-card *ngIf="searchState.error" class="error-card">
-        <mat-card-title>Search Error</mat-card-title>
-        <mat-card-content>
-          <p>{{ searchState.error }}</p>
+        <mat-card-content class="error-content">
+          <div class="error-icon">
+            <mat-icon>error_outline</mat-icon>
+          </div>
+          <h3>Search failed</h3>
+          <p class="error-message">{{ getErrorMessage(searchState.error) }}</p>
+          
+          <!-- Error-specific suggestions -->
+          <div class="error-suggestions" *ngIf="getErrorSuggestions(searchState.error).length > 0">
+            <h4>Try these steps:</h4>
+            <ul>
+              <li *ngFor="let suggestion of getErrorSuggestions(searchState.error)">{{ suggestion }}</li>
+            </ul>
+          </div>
+          
+          <div class="error-actions">
+            <button mat-raised-button color="primary" (click)="retry(searchState)" [disabled]="isRetrying">
+              <mat-progress-spinner *ngIf="isRetrying" diameter="20" mode="indeterminate"></mat-progress-spinner>
+              <span *ngIf="!isRetrying">Try Again</span>
+              <span *ngIf="isRetrying">Retrying...</span>
+            </button>
+            <button mat-button (click)="searchService.clear()">Cancel</button>
+          </div>
         </mat-card-content>
-        <mat-card-actions>
-          <button mat-raised-button color="primary" (click)="retry(searchState)">Retry</button>
-          <button mat-button (click)="searchService.clear()">Close</button>
-        </mat-card-actions>
       </mat-card>
 
       <!-- No Results State -->
@@ -371,10 +387,77 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     }
 
     .error-card {
-      margin: 1rem 0;
-      background: #fff4f4;
-      border: 1px solid #f1c0c0;
-      color: #611;
+      margin: 2rem auto;
+      max-width: 500px;
+      background: #fff8f8;
+      border: 1px solid #ffcdd2;
+      color: #c62828;
+    }
+
+    .error-content {
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .error-icon {
+      margin-bottom: 1rem;
+    }
+
+    .error-icon mat-icon {
+      font-size: 48px;
+      width: 48px;
+      height: 48px;
+      color: #e57373;
+    }
+
+    .error-content h3 {
+      margin: 0 0 1rem;
+      font-size: 1.25rem;
+      font-weight: 500;
+      color: #c62828;
+    }
+
+    .error-message {
+      margin: 0 0 1.5rem;
+      color: #d32f2f;
+      line-height: 1.5;
+    }
+
+    .error-suggestions {
+      margin: 1.5rem 0;
+      text-align: left;
+      background: #ffebee;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .error-suggestions h4 {
+      margin: 0 0 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #c62828;
+    }
+
+    .error-suggestions ul {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: #d32f2f;
+    }
+
+    .error-suggestions li {
+      margin-bottom: 0.25rem;
+      font-size: 0.85rem;
+    }
+
+    .error-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .error-actions button {
+      min-width: 120px;
     }
 
     .no-results-card {
@@ -704,6 +787,7 @@ export class SearchResultsComponent {
   private readonly elementRef = inject(ElementRef);
   protected readonly results$ = this.searchService.results$;
   private expandedId: number | null = null;
+  protected isRetrying = false;
 
   toggleExpand(id: number): void {
     // Clean up any previously expanded cards
@@ -862,16 +946,74 @@ export class SearchResultsComponent {
   }
 
   retry(state: SearchState): void {
+    if (this.isRetrying) return; // Prevent multiple retry attempts
+    
+    this.isRetrying = true;
     const filtersObj = {
       tags: state.filters.includes('tags'),
       date: state.filters.includes('date'),
       keywords: state.filters.includes('keywords'),
       people: state.filters.includes('people')
     };
+    
     this.searchService.search(state.query, filtersObj).subscribe({
-      next: () => {},
-      error: () => {}
+      next: () => {
+        this.isRetrying = false;
+      },
+      error: () => {
+        this.isRetrying = false;
+      },
+      complete: () => {
+        this.isRetrying = false;
+      }
     });
+  }
+
+  getErrorMessage(error: string): string {
+    // Parse common error types and provide user-friendly messages
+    if (error.toLowerCase().includes('network') || error.toLowerCase().includes('connection')) {
+      return 'Unable to connect to the server. Please check your internet connection.';
+    }
+    if (error.toLowerCase().includes('timeout')) {
+      return 'Search request timed out. The server may be busy or your connection is slow.';
+    }
+    if (error.toLowerCase().includes('server') || error.includes('500')) {
+      return 'The search service is temporarily unavailable. Please try again in a moment.';
+    }
+    if (error.toLowerCase().includes('unauthorized') || error.includes('401')) {
+      return 'Your session has expired. Please refresh the page and log in again.';
+    }
+    
+    // Generic error message for unknown errors
+    return 'Something went wrong while searching. Please try again.';
+  }
+
+  getErrorSuggestions(error: string): string[] {
+    const suggestions: string[] = [];
+    
+    if (error.toLowerCase().includes('network') || error.toLowerCase().includes('connection')) {
+      suggestions.push('Check your internet connection');
+      suggestions.push('Try refreshing the page');
+      suggestions.push('Contact support if the issue persists');
+    } else if (error.toLowerCase().includes('timeout')) {
+      suggestions.push('Try a simpler search term');
+      suggestions.push('Check your internet speed');
+      suggestions.push('Wait a moment and try again');
+    } else if (error.toLowerCase().includes('server') || error.includes('500')) {
+      suggestions.push('Wait a few minutes and try again');
+      suggestions.push('Try a different search term');
+      suggestions.push('Contact support if the issue continues');
+    } else if (error.toLowerCase().includes('unauthorized') || error.includes('401')) {
+      suggestions.push('Refresh the page and log in again');
+      suggestions.push('Clear your browser cache');
+    } else {
+      // Generic suggestions
+      suggestions.push('Try refreshing the page');
+      suggestions.push('Check your internet connection');
+      suggestions.push('Try a different search term');
+    }
+    
+    return suggestions.slice(0, 3); // Limit to 3 suggestions
   }
 
   clearSearch(): void {
