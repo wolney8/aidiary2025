@@ -1,4 +1,4 @@
-import { Component, inject, ElementRef } from '@angular/core';
+import { Component, inject, ElementRef, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SearchService, SearchResult, SearchState } from '../../../core/services/search.service';
 import { RouterLink } from '@angular/router';
@@ -6,8 +6,10 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-search-results',
@@ -18,7 +20,8 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     MatCardModule,
     MatIconModule,
     MatButtonModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    MatPaginatorModule
   ],
   animations: [
     trigger('slideInOut', [
@@ -36,7 +39,12 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
   template: `
     <div *ngIf="results$ | async as searchState" class="search-results" (click)="closeExpandedIfClickingAway($event)">
       <div *ngIf="searchState.active" class="search-header">
-        <h2>Search results for "{{ searchState.query }}" in {{ searchState.filters_display }}</h2>
+        <h2 *ngIf="!searchState.loading && !searchState.error && searchState.results.length > 0">
+          {{ getResultCountMessage(searchState) }}
+        </h2>
+        <h2 *ngIf="searchState.loading">
+          Searching for "{{ searchState.query }}" in {{ searchState.filters_display }}...
+        </h2>
       </div>
 
       <!-- Enhanced Loading State -->
@@ -130,7 +138,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       </mat-card>
       
       <div class="results-grid">
-        <div *ngFor="let result of searchState.results" class="result-container" [attr.data-card-id]="result.id">
+        <div *ngFor="let result of paginatedResults" class="result-container" [attr.data-card-id]="result.id">
           <!-- Main Card View (Fixed Size) -->
           <mat-card class="entry-card" (click)="toggleExpand(result.id); $event.stopPropagation()">
             <mat-card-header>
@@ -207,6 +215,20 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
             </div>
           </mat-card>
         </div>
+      </div>
+
+      <!-- Pagination Controls (matching entries list exactly) -->
+      <div class="pagination-container" 
+           *ngIf="!searchState.loading && !searchState.error && searchState.active && searchState.results.length > 0">
+        <mat-paginator
+          [length]="searchState.results.length"
+          [pageSize]="pageSize"
+          [pageSizeOptions]="[8, 16, 32]"
+          [pageIndex]="currentPage"
+          [showFirstLastButtons]="true"
+          (page)="onPageChange($event)"
+          aria-label="Select page">
+        </mat-paginator>
       </div>
     </div>
   `,
@@ -779,15 +801,55 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     .close-btn:hover {
       color: #495057;
     }
+
+    /* Pagination Styles - matching entries list exactly */
+    .pagination-container {
+      display: flex;
+      justify-content: center;
+      margin: 2rem 0;
+      padding: 1rem 0;
+    }
+
+    /* Responsive pagination */
+    @media (max-width: 768px) {
+      .pagination-container {
+        margin: 1.5rem 0;
+        padding: 0.75rem 0;
+      }
+    }
   `]
 })
-export class SearchResultsComponent {
+export class SearchResultsComponent implements OnInit, OnDestroy {
   protected readonly searchService = inject(SearchService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly elementRef = inject(ElementRef);
   protected readonly results$ = this.searchService.results$;
   private expandedId: number | null = null;
   protected isRetrying = false;
+  private searchSubscription?: Subscription;
+  
+  // Pagination properties matching entries list exactly
+  protected pageSize = 8; // 2 rows of 4 cards - default from entries
+  protected currentPage = 0;
+  protected paginatedResults: SearchResult[] = [];
+
+  ngOnInit(): void {
+    // Subscribe to search state changes and update pagination
+    this.searchSubscription = this.results$.subscribe(searchState => {
+      if (searchState.results && searchState.results.length > 0) {
+        // Reset to first page when new search results arrive
+        // (We'll always reset pagination for new searches to avoid complexity)
+        this.currentPage = 0;
+        this.updatePaginatedResults(searchState);
+      } else {
+        this.paginatedResults = [];
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.searchSubscription?.unsubscribe();
+  }
 
   toggleExpand(id: number): void {
     // Clean up any previously expanded cards
@@ -1048,5 +1110,46 @@ export class SearchResultsComponent {
     
     // Limit to 4 suggestions max for clean UI
     return suggestions.slice(0, 4);
+  }
+
+  getResultCountMessage(searchState: SearchState): string {
+    const count = searchState.results.length;
+    const query = searchState.query;
+    const context = searchState.filters_display;
+    
+    if (count === 0) {
+      return `No results found for "${query}" in ${context}`;
+    } else if (count === 1) {
+      return `About 1 result for "${query}" in ${context}`;
+    } else {
+      return `About ${count} results for "${query}" in ${context}`;
+    }
+  }
+
+  // Pagination Methods - Matching entries list exactly
+  
+  onPageChange(event: PageEvent): void {
+    this.currentPage = event.pageIndex;
+    this.pageSize = event.pageSize;
+    this.updatePaginatedResults();
+  }
+
+  updatePaginatedResults(searchState?: SearchState): void {
+    // Use current search state or get it from the service
+    const currentState = searchState || this.searchService.getCurrentSearchState();
+    
+    if (currentState && currentState.results && currentState.results.length > 0) {
+      const startIndex = this.currentPage * this.pageSize;
+      const endIndex = startIndex + this.pageSize;
+      this.paginatedResults = currentState.results.slice(startIndex, endIndex);
+    } else {
+      this.paginatedResults = [];
+    }
+  }
+
+  // Reset pagination when new search performed
+  resetPagination(): void {
+    this.currentPage = 0;
+    this.updatePaginatedResults();
   }
 }

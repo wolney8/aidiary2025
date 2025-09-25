@@ -141,4 +141,8 @@ export class SearchService {
       error: undefined
     });
   }
+
+  getCurrentSearchState(): SearchState {
+    return this.resultsSubject.getValue();
+  }
 }
