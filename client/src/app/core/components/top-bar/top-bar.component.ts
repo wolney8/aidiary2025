@@ -1,4 +1,4 @@
-import { Component, Output, EventEmitter, inject, OnDestroy } from '@angular/core';
+import { Component, Output, EventEmitter, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,6 +9,8 @@ import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { trigger, state, style, transition, animate } from '@angular/animations';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { AuthService } from '../../services/auth.service';
 import { APP_VERSION } from '../../../version';
 import { Observable, Subject } from 'rxjs';
@@ -31,6 +33,19 @@ import { Location } from '@angular/common';
     MatFormFieldModule,
     MatInputModule
   ],
+  animations: [
+    trigger('slideDown', [
+      transition(':enter', [
+        style({ opacity: '0', transform: 'translateY(-10px)' }),
+        animate('200ms cubic-bezier(0.4, 0.0, 0.2, 1)', 
+                style({ opacity: '1', transform: 'translateY(0)' }))
+      ]),
+      transition(':leave', [
+        animate('150ms cubic-bezier(0.4, 0.0, 1, 1)', 
+                style({ opacity: '0', transform: 'translateY(-10px)' }))
+      ])
+    ])
+  ],
   template: `
     <mat-toolbar color="primary">
       <button mat-icon-button (click)="toggleSidenav.emit()">
@@ -47,13 +62,47 @@ import { Location } from '@angular/common';
               <mat-icon *ngIf="!isSearching">search</mat-icon>
             </button>
             <input
+              #searchInput
               class="search-input"
               type="search"
               placeholder="Search entries, tags, people, dates..."
               formControlName="query"
               (keydown.enter)="$event.preventDefault(); filterResults()"
-              [disabled]="isSearching"
+              (focus)="onSearchInputFocus()"
+              (blur)="onSearchInputBlur()"
+              (input)="onSearchInputChange($event)"
             />
+          </div>
+          
+          <!-- Search History Dropdown (Google-style) -->
+          <div class="search-history-dropdown" 
+               *ngIf="showSearchHistory && (filteredSearchHistory.length > 0 || (searchInputFocused && currentSearchQuery.length === 0))"
+               [@slideDown]>
+            
+            <!-- Recent Searches Header -->
+            <div class="search-history-header" *ngIf="filteredSearchHistory.length > 0">
+              <span class="search-history-title">Recent searches</span>
+            </div>
+            
+            <!-- History Items -->
+            <div class="search-history-item" 
+                 *ngFor="let historyItem of filteredSearchHistory"
+                 (click)="selectHistoryItem(historyItem)">
+              <mat-icon class="history-icon">history</mat-icon>
+              <span class="history-text" [innerHTML]="highlightMatch(historyItem, currentSearchQuery)"></span>
+              <button class="history-remove" 
+                      (click)="removeHistoryItem(historyItem, $event)"
+                      type="button"
+                      [attr.aria-label]="'Remove ' + historyItem + ' from history'">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+            
+            <!-- Empty State -->
+            <div class="search-history-empty" *ngIf="filteredSearchHistory.length === 0 && searchInputFocused && currentSearchQuery.length === 0">
+              <mat-icon class="empty-icon">search</mat-icon>
+              <span class="empty-text">Start searching to see recent searches</span>
+            </div>
           </div>
         </form>
       </div>
@@ -80,23 +129,149 @@ import { Location } from '@angular/common';
     .logo { background: black; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; border: none; }
     .spacer { flex: 1; }
     .search-wrapper { position: relative; display: flex; flex-direction: column; align-items: center; flex: 1; gap: var(--spacing-sm); }
-    .search-form { width: 100%; max-width: 540px; }
+    .search-form { width: 100%; max-width: 540px; position: relative; }
     .search-shell { display: flex; align-items: center; width: 100%; background: white; border-radius: 999px; padding: 6px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
     .search-button { background: none; border: none; color: #616161; cursor: pointer; padding: 4px; margin-right: 8px; }
     .search-input { flex: 1; border: none; outline: none; font-size: 16px; background: transparent; }
     .user-section { display: flex; align-items: center; gap: var(--spacing-sm); }
     .version-label { font-size: 12px; padding: 4px 8px; background: rgba(255,255,255,0.2); border-radius: 12px; }
+
+    /* Search History Dropdown - Google Style */
+    .search-history-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+      border: 1px solid #e0e0e0;
+      max-height: 320px;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+
+    .search-history-header {
+      padding: 12px 16px 8px 16px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .search-history-title {
+      font-size: 14px;
+      color: #666;
+      font-weight: 500;
+    }
+
+    .search-history-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      cursor: pointer;
+      border-bottom: 1px solid #f5f5f5;
+      transition: background-color 0.2s ease;
+    }
+
+    .search-history-item:hover {
+      background-color: #f8f9fa;
+    }
+
+    .search-history-item:last-child {
+      border-bottom: none;
+    }
+
+    .history-icon {
+      color: #9e9e9e;
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      margin-right: 12px;
+    }
+
+    .history-text {
+      flex: 1;
+      font-size: 14px;
+      color: #333;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .search-history-dropdown .highlight-match {
+      color: #d73502 !important;
+      font-weight: 600 !important;
+      background: rgba(215, 53, 2, 0.15) !important;
+      padding: 1px 2px !important;
+      border-radius: 2px !important;
+      display: inline !important;
+    }
+
+    .history-remove {
+      background: none;
+      border: none;
+      color: #999;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.2s ease, background-color 0.2s ease;
+    }
+
+    .search-history-item:hover .history-remove {
+      opacity: 1;
+    }
+
+    .history-remove:hover {
+      background-color: #e0e0e0;
+      color: #666;
+    }
+
+    .history-remove mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+
+    .search-history-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      color: #999;
+      font-size: 14px;
+      gap: 8px;
+    }
+
+    .empty-icon {
+      color: #ccc;
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .search-form { max-width: none; }
+      .search-history-dropdown { max-height: 240px; }
+    }
     `
   ]
 })
-export class TopBarComponent implements OnDestroy {
+export class TopBarComponent implements OnInit, OnDestroy {
   @Output() toggleSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
   private searchService = inject(SearchService);
   private router = inject(Router);
   private location = inject(Location);
   private fb = inject(FormBuilder);
+  private sanitizer = inject(DomSanitizer);
   private destroy$ = new Subject<void>();
+
+  // Search History Properties
+  protected searchHistory: string[] = [];
+  protected filteredSearchHistory: string[] = [];
+  protected showSearchHistory = false;
+  protected searchInputFocused = false;
+  protected currentSearchQuery = '';
 
   userName$: Observable<string | null> = this.authService.currentUser$.pipe(
     map(user => user?.first_name || user?.username || null)
@@ -152,15 +327,21 @@ export class TopBarComponent implements OnDestroy {
     };
 
     this.isSearching = true;
+    // Disable the search input during search
+    this.searchForm.get('query')?.disable();
+    
     this.searchService.search(normalized, filters).subscribe({
       next: () => {
         this.isSearching = false;
+        this.searchForm.get('query')?.enable();
       },
       error: () => {
         this.isSearching = false;
+        this.searchForm.get('query')?.enable();
       },
       complete: () => {
         this.isSearching = false;
+        this.searchForm.get('query')?.enable();
       }
     });
   }
@@ -190,6 +371,98 @@ export class TopBarComponent implements OnDestroy {
       this.searchService.clear();
       this.searchForm.patchValue({ query: '' });
     });
+  }
+
+  // Search History Methods
+  
+  ngOnInit(): void {
+    // Subscribe to search history changes
+    this.searchService.searchHistory$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(history => {
+        this.searchHistory = history;
+        this.updateFilteredHistory();
+      });
+
+    // Subscribe to search state changes to clear input when search is cleared
+    this.searchService.results$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(searchState => {
+        // Clear the search input when search is not active (user navigated away from search results)
+        if (!searchState.active && this.searchForm.get('query')?.value) {
+          this.searchForm.patchValue({ query: '' });
+          this.currentSearchQuery = '';
+          this.updateFilteredHistory();
+        }
+      });
+  }
+
+  onSearchInputFocus(): void {
+    this.searchInputFocused = true;
+    this.currentSearchQuery = this.searchForm.get('query')?.value || '';
+    this.updateFilteredHistory();
+    this.showSearchHistory = true;
+  }
+
+  onSearchInputBlur(): void {
+    // Delay hiding to allow for click events
+    setTimeout(() => {
+      this.searchInputFocused = false;
+      this.showSearchHistory = false;
+    }, 200);
+  }
+
+  onSearchInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const value = input.value.trim();
+    
+    this.currentSearchQuery = value;
+    this.updateFilteredHistory();
+    
+    // Show dropdown based on filtering results or empty query with focus
+    this.showSearchHistory = this.searchInputFocused && 
+                              (this.filteredSearchHistory.length > 0 || value.length === 0);
+  }
+
+  private updateFilteredHistory(): void {
+    if (!this.currentSearchQuery) {
+      // Show all history when query is empty
+      this.filteredSearchHistory = [...this.searchHistory];
+    } else {
+      // Filter history items that start with the current query (case-insensitive)
+      this.filteredSearchHistory = this.searchHistory.filter(item =>
+        item.toLowerCase().startsWith(this.currentSearchQuery.toLowerCase())
+      );
+    }
+  }
+
+  highlightMatch(historyItem: string, query: string): SafeHtml {
+    if (!query) {
+      return this.sanitizer.bypassSecurityTrustHtml(historyItem);
+    }
+    
+    // Only highlight at the beginning of the text (matching our filtering logic)
+    const regex = new RegExp(`^(${this.escapeRegExp(query)})`, 'i');
+    const highlighted = historyItem.replace(regex, '<span class="highlight-match">$1</span>');
+    
+    return this.sanitizer.bypassSecurityTrustHtml(highlighted);
+  }
+
+  private escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  selectHistoryItem(historyItem: string): void {
+    // Update form and perform search
+    this.searchForm.patchValue({ query: historyItem });
+    this.currentSearchQuery = historyItem;
+    this.showSearchHistory = false;
+    this.filterResults();
+  }
+
+  removeHistoryItem(historyItem: string, event: Event): void {
+    event.stopPropagation(); // Prevent triggering selectHistoryItem
+    this.searchService.removeFromHistory(historyItem);
   }
 
   ngOnDestroy(): void {

@@ -8,6 +8,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Nothing yet.
 
+## [AIDIARY v0.11.3] - 2025-09-29
+
+### 🚀 Major Release: Comprehensive Search System Overhaul
+
+#### 🔍 **Professional Search Experience**
+- **Google UX Standard Result Count**: "About X results for 'query'" messaging with proper formatting
+- **Complete Pagination System**: Matches ALL ENTRIES exactly with 8/16/32 page sizes, top and bottom controls, default 8 items
+- **Smart Search History**: Session-based 6-item history with intelligent filtering and Google-style dropdown behavior
+- **Advanced Error Handling**: Context-aware error messages, smart retry logic, and comprehensive HTTP status classification
+- **Professional Loading States**: Skeleton cards matching exact result dimensions (303x350px) with shimmer animations
+
+#### 🎯 **Search History Intelligence**
+- **Dynamic Filtering**: Shows only history items that match typed characters, hides when no matches found
+- **Visual Text Highlighting**: Red highlighting for matching characters in history items (HTML sanitization with DomSanitizer)
+- **Individual Item Deletion**: X buttons on each history item for granular control
+- **Smart Input Clearing**: Automatically clears search field when navigating away from results while preserving history
+- **Material Design Animations**: Smooth dropdown transitions with cubic-bezier easing
+
+#### 🛠 **Technical Architecture Improvements**
+- **Enhanced SearchService**: Session storage management, reactive history streams, automatic query tracking
+- **Robust State Management**: OnInit/OnDestroy lifecycle hooks with proper subscription cleanup
+- **Form Control Excellence**: Proper reactive form implementation with programmatic enable/disable states
+- **Memory Leak Prevention**: Comprehensive RxJS subscription management with takeUntil pattern
+
+#### 📱 **User Experience Enhancements**
+- **Always-Visible Pagination**: Shows for any number of results (not just 9+) for consistent UX
+- **Responsive Design**: Mobile-optimized search history dropdown with proper touch interactions
+- **Professional Error States**: Glass-morphism error cards with actionable suggestions and retry functionality
+- **Loading Performance**: 8-second timeout with Google UX standards for search operations
+
+#### 🎨 **Material Design Integration**
+- **Enhanced Visual Hierarchy**: Proper spacing, typography, and color schemes throughout search interface
+- **Interactive Feedback**: Hover states, focus indicators, and smooth transitions for all search components
+- **Accessibility Ready**: ARIA labels, screen reader support, and keyboard navigation patterns
+- **Professional Polish**: Consistent styling with entry list components for seamless user experience
+
 ## [AIDIARY v0.11.2] - 2025-09-25
 
 ### 🔍 Major Feature: Advanced Search Results Interface

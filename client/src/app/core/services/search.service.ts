@@ -58,6 +58,13 @@ export class SearchService {
   });
 
   results$ = this.resultsSubject.asObservable();
+  
+  // Search History Management (Session Storage)
+  private readonly MAX_HISTORY_SIZE = 6;
+  private readonly HISTORY_KEY = 'search-history';
+  private searchHistorySubject = new BehaviorSubject<string[]>(this.loadSearchHistory());
+  
+  searchHistory$ = this.searchHistorySubject.asObservable();
 
   search(query: string, filters?: SearchFilters): Observable<SearchResponse> {
     if (!query.trim()) {
@@ -97,6 +104,9 @@ export class SearchService {
   return this.http.get<SearchResponse>(this.apiUrl, { params, headers }).pipe(
       timeout(8000), // 8 second timeout (Google UX standard for search)
       tap(response => {
+        // Add to search history on successful search
+        this.addToHistory(query.trim());
+        
         this.resultsSubject.next({ 
           ...response, 
           active: true,
@@ -144,5 +154,53 @@ export class SearchService {
 
   getCurrentSearchState(): SearchState {
     return this.resultsSubject.getValue();
+  }
+
+  // Search History Methods
+  private loadSearchHistory(): string[] {
+    try {
+      const history = sessionStorage.getItem(this.HISTORY_KEY);
+      return history ? JSON.parse(history) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private saveSearchHistory(history: string[]): void {
+    try {
+      sessionStorage.setItem(this.HISTORY_KEY, JSON.stringify(history));
+      this.searchHistorySubject.next(history);
+    } catch {
+      // Silently fail if storage is unavailable
+    }
+  }
+
+  addToHistory(query: string): void {
+    if (!query.trim()) return;
+    
+    const currentHistory = this.loadSearchHistory();
+    const trimmedQuery = query.trim();
+    
+    // Remove if already exists (move to front)
+    const filteredHistory = currentHistory.filter(item => item !== trimmedQuery);
+    
+    // Add to front and limit size
+    const newHistory = [trimmedQuery, ...filteredHistory].slice(0, this.MAX_HISTORY_SIZE);
+    
+    this.saveSearchHistory(newHistory);
+  }
+
+  removeFromHistory(query: string): void {
+    const currentHistory = this.loadSearchHistory();
+    const newHistory = currentHistory.filter(item => item !== query);
+    this.saveSearchHistory(newHistory);
+  }
+
+  clearHistory(): void {
+    this.saveSearchHistory([]);
+  }
+
+  getSearchHistory(): string[] {
+    return this.loadSearchHistory();
   }
 }

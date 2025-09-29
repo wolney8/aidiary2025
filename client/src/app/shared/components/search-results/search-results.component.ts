@@ -137,7 +137,22 @@ import { Subscription } from 'rxjs';
         </mat-card-content>
       </mat-card>
       
-      <div class="results-grid">
+      <!-- Top Pagination (matching entries list exactly) -->
+      <div class="pagination-container" 
+           *ngIf="!searchState.loading && !searchState.error && searchState.active && searchState.results.length > 0">
+        <mat-paginator
+          [length]="searchState.results.length"
+          [pageSize]="pageSize"
+          [pageSizeOptions]="[8, 16, 32]"
+          [pageIndex]="currentPage"
+          [showFirstLastButtons]="true"
+          (page)="onPageChange($event)"
+          aria-label="Select page">
+        </mat-paginator>
+      </div>
+      
+      <div class="results-grid"
+           *ngIf="!searchState.loading && !searchState.error && searchState.active && searchState.results.length > 0">
         <div *ngFor="let result of paginatedResults" class="result-container" [attr.data-card-id]="result.id">
           <!-- Main Card View (Fixed Size) -->
           <mat-card class="entry-card" (click)="toggleExpand(result.id); $event.stopPropagation()">
@@ -217,7 +232,7 @@ import { Subscription } from 'rxjs';
         </div>
       </div>
 
-      <!-- Pagination Controls (matching entries list exactly) -->
+      <!-- Bottom Pagination (matching entries list exactly) -->
       <div class="pagination-container" 
            *ngIf="!searchState.loading && !searchState.error && searchState.active && searchState.results.length > 0">
         <mat-paginator
@@ -806,14 +821,29 @@ import { Subscription } from 'rxjs';
     .pagination-container {
       display: flex;
       justify-content: center;
-      margin: 2rem 0;
       padding: 1rem 0;
+      border-top: 1px solid #e0e0e0;
+      background: #fafafa;
+    }
+
+    .pagination-container:first-of-type {
+      border-top: none;
+      border-bottom: 1px solid #e0e0e0;
+      margin-bottom: 1rem;
+    }
+
+    .pagination-container:last-of-type {
+      border-bottom: none;
+      margin-top: 1rem;
+    }
+
+    .pagination-container mat-paginator {
+      background: transparent;
     }
 
     /* Responsive pagination */
     @media (max-width: 768px) {
       .pagination-container {
-        margin: 1.5rem 0;
         padding: 0.75rem 0;
       }
     }
