@@ -334,9 +334,10 @@
   min-width: 300px;
   max-width: 350px;
   /* Force consistent height for all cards */
-  height: 400px;
+  height: 420px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* Ensure card content fills the available space properly */
@@ -345,6 +346,37 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  overflow: hidden;
+  padding-bottom: 8px;
+}
+
+/* Style for tag chips in cards */
+.entry-card mat-chip-set {
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.entry-card mat-chip {
+  font-size: 12px;
+  min-height: 24px;
+  cursor: pointer;
+  margin: 2px;
+}
+
+.entry-card mat-chip:hover {
+  background-color: var(--primary-color, #6200ea);
+  color: white;
+}
+
+.entry-card p {
+  margin-bottom: 8px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .entry-card .mat-mdc-card-actions {

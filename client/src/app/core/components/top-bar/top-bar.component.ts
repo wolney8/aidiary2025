@@ -310,9 +310,11 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
     const currentPath = this.location.path() || '';
     if (!currentPath.includes('/entries')) {
-      this.router.navigate(['/entries']).then(() => this.performSearch(query));
+      // Navigate to entries with search query - let the route handler trigger search
+      this.router.navigate(['/entries'], { queryParams: { search: query } });
     } else {
-      this.performSearch(query);
+      // Already on entries page, just update query param
+      this.router.navigate(['/entries'], { queryParams: { search: query } });
     }
   }
 

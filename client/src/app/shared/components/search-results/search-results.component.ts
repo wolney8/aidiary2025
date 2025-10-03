@@ -866,6 +866,7 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to search state changes and update pagination
     this.searchSubscription = this.results$.subscribe(searchState => {
+      console.log('Search results component received state:', searchState);
       if (searchState.results && searchState.results.length > 0) {
         // Reset to first page when new search results arrive
         // (We'll always reset pagination for new searches to avoid complexity)

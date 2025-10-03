@@ -13,10 +13,11 @@ import { MatNativeDateModule, MAT_DATE_FORMATS, MAT_DATE_LOCALE } from '@angular
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatChipsModule, MatChipInputEvent } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSelectModule } from '@angular/material/select';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { EntriesService } from '../../core/services/entries.service';
 import { AnalysisService } from '../../core/services/analysis.service';
-import { DailyAnalysisResponse, DreamAnalysisResponse } from '../../core/models/entry.model';
+import { DailyAnalysisResponse, DreamAnalysisResponse, MoodOption, AIStyleOption, DreamFieldOptions } from '../../core/models/entry.model';
 
 const UK_DATE_FORMATS = {
   parse: {
@@ -45,7 +46,8 @@ const UK_DATE_FORMATS = {
     MatNativeDateModule,
     MatButtonToggleModule,
     MatChipsModule,
-    MatIconModule
+    MatIconModule,
+    MatSelectModule
   ],
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'en-GB' },
@@ -55,9 +57,9 @@ const UK_DATE_FORMATS = {
     <div class="create-container">
       <mat-card>
         <mat-card-header>
-          <mat-card-title>New Diary Entry</mat-card-title>
+          <mat-card-title>{{ isEditing ? 'Edit' : 'New' }} Diary Entry</mat-card-title>
           <mat-slide-toggle [(ngModel)]="leaveItToAI">
-            Leave it to AI
+            Respond with AI
           </mat-slide-toggle>
         </mat-card-header>
 
@@ -67,6 +69,7 @@ const UK_DATE_FORMATS = {
             [(ngModel)]="selectedType"
             name="entryType"
             aria-label="Entry type toggle"
+            (change)="onTypeChange()"
           >
             <mat-button-toggle value="daily">Daily Entry</mat-button-toggle>
             <mat-button-toggle value="dream">Dream Entry</mat-button-toggle>
@@ -82,13 +85,39 @@ const UK_DATE_FORMATS = {
             <mat-datepicker #picker></mat-datepicker>
           </mat-form-field>
 
+          <!-- AI Style Selection - only show when AI toggle is on -->
+          <mat-form-field appearance="outline" class="full-width" *ngIf="leaveItToAI">
+            <mat-label>AI Response Style</mat-label>
+            <mat-select [(ngModel)]="selectedAIStyle" name="aiStyle">
+              <mat-option *ngFor="let style of aiStyleOptions" [value]="style.value">
+                <div>
+                  <strong>{{ style.label }}</strong>
+                  <br>
+                  <small>{{ style.description }}</small>
+                </div>
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <!-- Mood Selection -->
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>How are you feeling?</mat-label>
+            <mat-select [(ngModel)]="selectedMood" name="mood">
+              <mat-option value="">Not specified</mat-option>
+              <mat-option *ngFor="let mood of moodOptions" [value]="mood.value">
+                {{ mood.emoji }} {{ mood.label }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Title</mat-label>
             <input matInput [(ngModel)]="entryTitle" name="title">
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>{{ selectedType === 'dream' ? 'Describe your dream' : 'Describe your day' }}</mat-label>
+          <!-- Content field only for daily entries -->
+          <mat-form-field appearance="outline" class="full-width" *ngIf="selectedType === 'daily'">
+            <mat-label>Describe your day</mat-label>
             <textarea
               matInput
               [(ngModel)]="content"
@@ -97,6 +126,81 @@ const UK_DATE_FORMATS = {
               placeholder="Share highlights, themes, or key moments..."
             ></textarea>
           </mat-form-field>
+
+          <!-- Dream-specific fields -->
+          <div *ngIf="selectedType === 'dream'" class="dream-fields">
+            <h3>Dream Details (Optional)</h3>
+            
+            <div class="dream-row">
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Cast (Who was in your dream?)</mat-label>
+                <textarea matInput [(ngModel)]="dreamCast" name="dreamCast" rows="2"></textarea>
+              </mat-form-field>
+              
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Location</mat-label>
+                <input matInput [(ngModel)]="dreamLocation" name="dreamLocation" placeholder="Describe the location">
+              </mat-form-field>
+            </div>
+
+            <div class="dream-row">
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Time Period</mat-label>
+                <mat-select [(ngModel)]="dreamPeriod" name="dreamPeriod">
+                  <mat-option value="">Type custom period below...</mat-option>
+                  <mat-option *ngFor="let period of dreamFieldOptions.periods" [value]="period">
+                    {{ period }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Primary Emotion</mat-label>
+                <mat-select [(ngModel)]="dreamEmotion" name="dreamEmotion">
+                  <mat-option value="">Type custom emotion below...</mat-option>
+                  <mat-option *ngFor="let emotion of dreamFieldOptions.emotions" [value]="emotion">
+                    {{ emotion }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+            </div>
+
+            <div class="dream-row" *ngIf="dreamPeriod === '' || dreamEmotion === ''">
+              <mat-form-field appearance="outline" class="half-width" *ngIf="dreamPeriod === ''">
+                <mat-label>Custom Time Period</mat-label>
+                <input matInput [(ngModel)]="dreamPeriod" name="dreamPeriodCustom" placeholder="Describe the time period">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="half-width" *ngIf="dreamEmotion === ''">
+                <mat-label>Custom Emotion</mat-label>
+                <input matInput [(ngModel)]="dreamEmotion" name="dreamEmotionCustom" placeholder="Describe the emotion">
+              </mat-form-field>
+            </div>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Symbols & Imagery</mat-label>
+              <textarea matInput [(ngModel)]="dreamSymbolsAndImagery" name="dreamSymbols" rows="3"
+                        placeholder="Notable symbols, colors, objects, or imagery"></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Personal Insight</mat-label>
+              <textarea matInput [(ngModel)]="dreamInsight" name="dreamInsight" rows="3"
+                        placeholder="What do you think this dream might mean?"></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Actions Taken</mat-label>
+              <textarea matInput [(ngModel)]="dreamAction" name="dreamAction" rows="2"
+                        placeholder="What did you do in the dream?"></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Other Details</mat-label>
+              <textarea matInput [(ngModel)]="dreamOther" name="dreamOther" rows="2"
+                        placeholder="Any other important details"></textarea>
+            </mat-form-field>
+          </div>
 
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>My Tags</mat-label>
@@ -155,6 +259,35 @@ const UK_DATE_FORMATS = {
       margin-bottom: var(--spacing-sm);
     }
 
+    .half-width {
+      width: calc(50% - 8px);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .dream-fields {
+      margin: var(--spacing-md) 0;
+      padding: var(--spacing-md);
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background-color: #fafafa;
+    }
+
+    .dream-fields h3 {
+      margin: 0 0 var(--spacing-md) 0;
+      color: #424242;
+      font-weight: 500;
+    }
+
+    .dream-row {
+      display: flex;
+      gap: var(--spacing-md);
+      align-items: flex-start;
+    }
+
+    .dream-row mat-form-field {
+      flex: 1;
+    }
+
     .entry-type-toggle {
       margin-bottom: var(--spacing-sm);
     }
@@ -204,8 +337,61 @@ export class CreateComponent implements OnInit {
   isSaving = false;
   errorMessage = '';
   maxDate = new Date();
+  isEditing = false;
+  editingId: number | null = null;
+
+  // Enhanced fields for both entry types
+  selectedMood = '';
+  selectedAIStyle = 'friendly';
+
+  // Dream-specific fields matching database schema
+  dreamCast = '';
+  dreamLocation = '';
+  dreamPeriod = '';
+  dreamEmotion = '';
+  dreamPlot = '';
+  dreamSymbolsAndImagery = '';
+  dreamInsight = '';
+  dreamAction = '';
+  dreamOther = '';
+
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
   private initialDate = this.entryDate?.toDateString() ?? '';
+
+  // Mood options for both entry types
+  moodOptions: MoodOption[] = [
+    { emoji: '😊', label: 'Happy', value: 'happy' },
+    { emoji: '😔', label: 'Sad', value: 'sad' },
+    { emoji: '😴', label: 'Tired', value: 'tired' },
+    { emoji: '😰', label: 'Anxious', value: 'anxious' },
+    { emoji: '😡', label: 'Angry', value: 'angry' },
+    { emoji: '🤔', label: 'Thoughtful', value: 'thoughtful' },
+    { emoji: '😌', label: 'Peaceful', value: 'peaceful' },
+    { emoji: '🤗', label: 'Grateful', value: 'grateful' },
+    { emoji: '😕', label: 'Confused', value: 'confused' },
+    { emoji: '💪', label: 'Energetic', value: 'energetic' }
+  ];
+
+  // AI style options for both entry types
+  aiStyleOptions: AIStyleOption[] = [
+    { label: 'Friendly & Supportive', value: 'friendly', description: 'Warm, encouraging responses' },
+    { label: 'Professional & Clinical', value: 'clinical', description: 'Structured, therapeutic approach' },
+    { label: 'Reflective & Deep', value: 'reflective', description: 'Thoughtful, introspective analysis' },
+    { label: 'Brief & Practical', value: 'brief', description: 'Concise, actionable insights' },
+    { label: 'Creative & Symbolic', value: 'creative', description: 'Metaphorical, artistic interpretation' }
+  ];
+
+  // Dream field options with common values
+  dreamFieldOptions: DreamFieldOptions = {
+    emotions: [
+      'Joy', 'Fear', 'Anger', 'Sadness', 'Surprise', 'Disgust', 
+      'Love', 'Anxiety', 'Excitement', 'Confusion', 'Peace', 'Frustration'
+    ],
+    periods: [
+      'Childhood', 'Teenage years', 'Present day', 'Future', 'Past life', 
+      'Medieval times', 'Victorian era', 'Ancient times', 'Dystopian future', 'Timeless'
+    ]
+  };
 
   ngOnInit(): void {
     // Check for pre-populated date and type from query params
@@ -229,6 +415,51 @@ export class CreateComponent implements OnInit {
         this.selectedType = typeParam;
       }
     });
+
+    // Check for id parameter for editing
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.isEditing = true;
+      this.editingId = Number(id);
+      this.loadEntryForEditing(this.editingId);
+    }
+  }
+
+  loadEntryForEditing(id: number): void {
+    // Try loading as daily first
+    this.entriesService.getDailyEntry(id).subscribe({
+      next: entry => {
+        this.populateForm(entry, 'daily');
+      },
+      error: () => {
+        this.entriesService.getDreamEntry(id).subscribe(entry => {
+          this.populateForm(entry, 'dream');
+        });
+      }
+    });
+  }
+
+  populateForm(entry: any, type: 'daily' | 'dream'): void {
+    this.selectedType = type;
+    this.entryDate = new Date(entry.entry_date);
+    this.entryTitle = entry.title || '';
+    this.tags = entry.tags ? entry.tags.split(',').map((t: string) => t.trim()).filter((t: string) => t) : [];
+    this.selectedMood = entry.mood || '';
+    this.selectedAIStyle = entry.ai_style || 'friendly';
+
+    if (type === 'daily') {
+      this.content = entry.user_message || '';
+    } else {
+      this.dreamCast = entry.cast || '';
+      this.dreamLocation = entry.location || '';
+      this.dreamPeriod = entry.period || '';
+      this.dreamEmotion = entry.emotion || '';
+      this.dreamPlot = entry.plot || '';
+      this.dreamSymbolsAndImagery = entry.symbols_and_imagery || '';
+      this.dreamInsight = entry.insight || '';
+      this.dreamAction = entry.action || '';
+      this.dreamOther = entry.other || '';
+    }
   }
 
   saveAsDraft(): void {
@@ -247,7 +478,8 @@ export class CreateComponent implements OnInit {
       return;
     }
 
-    if (!this.content.trim()) {
+    // Content validation - required for daily entries, optional for dreams
+    if (this.selectedType === 'daily' && !this.content.trim()) {
       this.errorMessage = 'Please add some notes so the AI has context.';
       return;
     }
@@ -263,7 +495,9 @@ export class CreateComponent implements OnInit {
         entry_date: entryDate,
         title: trimmedTitle,
         user_message: body,
-        tags
+        tags,
+        mood: this.selectedMood,
+        ai_style: this.selectedAIStyle
       };
 
       this.entriesService.createDailyEntry(payload).subscribe({
@@ -277,11 +511,24 @@ export class CreateComponent implements OnInit {
         error: () => this.handleError('Failed to save your daily entry.')
       });
     } else {
+      // For dreams, use dreamPlot instead of content
+      const dreamPlotContent = this.dreamPlot.trim() || 'Dream entry';
+      
       const payload = {
         entry_date: entryDate,
         title: trimmedTitle,
-        plot: body,
-        tags
+        plot: dreamPlotContent,
+        tags,
+        mood: this.selectedMood,
+        ai_style: this.selectedAIStyle,
+        cast: this.dreamCast.trim(),
+        location: this.dreamLocation.trim(),
+        period: this.dreamPeriod.trim(),
+        emotion: this.dreamEmotion.trim(),
+        symbols_and_imagery: this.dreamSymbolsAndImagery.trim(),
+        insight: this.dreamInsight.trim(),
+        action: this.dreamAction.trim(),
+        other: this.dreamOther.trim()
       };
 
       this.entriesService.createDreamEntry(payload).subscribe({
@@ -307,7 +554,8 @@ export class CreateComponent implements OnInit {
         this.entriesService.updateDailyEntry(entryId, {
           ai_response: dailyAnalysis.ai_response,
           tags: this.tags.length ? this.tags.join(',') : dailyAnalysis.tags,
-          daily_people_names: dailyAnalysis.daily_people_names
+          daily_people_names: dailyAnalysis.daily_people_names,
+          daily_places: dailyAnalysis.daily_places
         }).subscribe({
           next: () => this.finishNavigation(entryId),
           error: () => this.handleError('Saving AI insights failed. Please try again.')
@@ -318,9 +566,13 @@ export class CreateComponent implements OnInit {
   }
 
   private runDreamAnalysis(entryId: number): void {
+    // For dream analysis, use the plot field or combine dream fields
+    const analysisText = this.dreamPlot.trim() || 
+      `Cast: ${this.dreamCast} Location: ${this.dreamLocation} Plot: ${this.dreamPlot} Emotion: ${this.dreamEmotion}`;
+    
     this.analysisService.analyseText({
       mode: 'dream',
-      text: this.content
+      text: analysisText
     }).subscribe({
       next: (analysis) => {
         const dreamAnalysis = analysis as DreamAnalysisResponse;
@@ -329,7 +581,8 @@ export class CreateComponent implements OnInit {
           interpretation: dreamAnalysis.interpretation,
           image_prompt: dreamAnalysis.image_prompt,
           tags: this.tags.length ? this.tags.join(',') : dreamAnalysis.tags,
-          dream_people_names: dreamAnalysis.dream_people_names
+          dream_people_names: dreamAnalysis.dream_people_names,
+          dream_places: dreamAnalysis.dream_places
         }).subscribe({
           next: () => this.finishNavigation(entryId),
           error: () => this.handleError('Saving dream analysis failed. Please try again.')
@@ -379,6 +632,29 @@ export class CreateComponent implements OnInit {
     this.tags = this.tags.filter(t => t !== tag);
   }
 
+  onTypeChange() {
+    // Clear content when switching between types to avoid confusion
+    this.content = '';
+    this.tags = [];
+    
+    // Reset dream-specific fields when switching away from dream type
+    if (this.selectedType !== 'dream') {
+      this.resetDreamFields();
+    }
+  }
+
+  private resetDreamFields() {
+    this.dreamCast = '';
+    this.dreamLocation = '';
+    this.dreamPeriod = '';
+    this.dreamEmotion = '';
+    this.dreamPlot = '';
+    this.dreamSymbolsAndImagery = '';
+    this.dreamInsight = '';
+    this.dreamAction = '';
+    this.dreamOther = '';
+  }
+
   triggerImageUpload(): void {
     this.fileInput?.nativeElement.click();
   }
@@ -405,12 +681,28 @@ export class CreateComponent implements OnInit {
   }
 
   private hasUnsavedChanges(): boolean {
-    return Boolean(
+    const hasBasicChanges = Boolean(
       (this.entryTitle && this.entryTitle.trim()) ||
       (this.content && this.content.trim()) ||
       this.tags.length ||
+      this.selectedMood ||
+      this.selectedAIStyle !== 'friendly' ||
       (this.entryDate && this.entryDate.toDateString() !== this.initialDate)
     );
+
+    const hasDreamChanges = this.selectedType === 'dream' && Boolean(
+      this.dreamCast.trim() ||
+      this.dreamLocation.trim() ||
+      this.dreamPeriod.trim() ||
+      this.dreamEmotion.trim() ||
+      this.dreamPlot.trim() ||
+      this.dreamSymbolsAndImagery.trim() ||
+      this.dreamInsight.trim() ||
+      this.dreamAction.trim() ||
+      this.dreamOther.trim()
+    );
+
+    return hasBasicChanges || hasDreamChanges;
   }
 
   private resetForm(): void {
@@ -423,5 +715,8 @@ export class CreateComponent implements OnInit {
     this.tags = [];
     this.leaveItToAI = false;
     this.selectedType = 'daily';
+    this.selectedMood = '';
+    this.selectedAIStyle = 'friendly';
+    this.resetDreamFields();
   }
 }

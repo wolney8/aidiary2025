@@ -1,12 +1,13 @@
 // Entry detail view with two-column layout
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { EntriesService } from '../../core/services/entries.service';
+import { SearchService } from '../../core/services/search.service';
 
 @Component({
   selector: 'app-detail',
@@ -42,12 +43,49 @@ import { EntriesService } from '../../core/services/entries.service';
         <mat-card>
           <mat-card-header>
             <mat-card-title>{{ getTitle() }}</mat-card-title>
-            <button mat-icon-button>
-              <mat-icon>edit</mat-icon>
-            </button>
           </mat-card-header>
           <mat-card-content>
-            <p>{{ getUserContent() }}</p>
+            <div *ngIf="isDream()">
+              <div class="section" *ngIf="entry.plot">
+                <h4>Plot:</h4>
+                <p>{{ entry.plot }}</p>
+              </div>
+              <div class="section" *ngIf="entry.cast">
+                <h4>Cast:</h4>
+                <p>{{ entry.cast }}</p>
+              </div>
+              <div class="section" *ngIf="entry.location">
+                <h4>Location:</h4>
+                <p>{{ entry.location }}</p>
+              </div>
+              <div class="section" *ngIf="entry.period">
+                <h4>Period:</h4>
+                <p>{{ entry.period }}</p>
+              </div>
+              <div class="section" *ngIf="entry.emotion">
+                <h4>Emotion:</h4>
+                <p>{{ entry.emotion }}</p>
+              </div>
+              <div class="section" *ngIf="entry.symbols_and_imagery">
+                <h4>Symbols and Imagery:</h4>
+                <p>{{ entry.symbols_and_imagery }}</p>
+              </div>
+              <div class="section" *ngIf="entry.insight">
+                <h4>Insight:</h4>
+                <p>{{ entry.insight }}</p>
+              </div>
+              <div class="section" *ngIf="entry.action">
+                <h4>Action:</h4>
+                <p>{{ entry.action }}</p>
+              </div>
+              <div class="section" *ngIf="entry.other">
+                <h4>Other:</h4>
+                <p>{{ entry.other }}</p>
+              </div>
+            </div>
+            <div *ngIf="!isDream()">
+              <p>{{ getUserContent() }}</p>
+            </div>
           </mat-card-content>
         </mat-card>
         
@@ -59,7 +97,19 @@ import { EntriesService } from '../../core/services/entries.service';
             </button>
           </mat-card-header>
           <mat-card-content>
-            <p>{{ getAIContent() }}</p>
+            <div *ngIf="isDream()">
+              <div class="section" *ngIf="entry.summary">
+                <h4>Summary:</h4>
+                <p>{{ entry.summary }}</p>
+              </div>
+              <div class="section" *ngIf="entry.interpretation">
+                <h4>Interpretation:</h4>
+                <p>{{ entry.interpretation }}</p>
+              </div>
+            </div>
+            <div *ngIf="!isDream()">
+              <p>{{ entry.ai_response }}</p>
+            </div>
           </mat-card-content>
         </mat-card>
       </div>
@@ -75,12 +125,37 @@ import { EntriesService } from '../../core/services/entries.service';
         
         <div class="metadata-section">
           <h4>Keywords:</h4>
-          <p>{{ entry.tags }}</p>
+          <mat-chip-listbox>
+            <mat-chip-option *ngFor="let tag of getTagsArray()" 
+                           (click)="searchForTag(tag)"
+                           [class.clickable-chip]="true">
+              {{ tag }}
+            </mat-chip-option>
+          </mat-chip-listbox>
         </div>
         
-        <div class="metadata-section">
-          <h4>People Names and Places:</h4>
-          <p>{{ getPeopleNames() }}</p>
+        <div class="metadata-section" *ngIf="getPeopleArray().length > 0">
+          <h4>People:</h4>
+          <mat-chip-listbox>
+            <mat-chip-option *ngFor="let person of getPeopleArray()" 
+                           (click)="searchForPerson(person)"
+                           [class.clickable-chip]="true">
+              <mat-icon>person</mat-icon>
+              {{ person }}
+            </mat-chip-option>
+          </mat-chip-listbox>
+        </div>
+        
+        <div class="metadata-section" *ngIf="getPlacesArray().length > 0">
+          <h4>Places:</h4>
+          <mat-chip-listbox>
+            <mat-chip-option *ngFor="let place of getPlacesArray()" 
+                           (click)="searchForPlace(place)"
+                           [class.clickable-chip]="true">
+              <mat-icon>place</mat-icon>
+              {{ place }}
+            </mat-chip-option>
+          </mat-chip-listbox>
         </div>
         
         <div class="metadata-section" *ngIf="isDream()">
@@ -122,6 +197,19 @@ import { EntriesService } from '../../core/services/entries.service';
         color: #ccc;
       }
     }
+
+    .section {
+      margin-bottom: var(--spacing-md);
+    }
+
+    .section h4 {
+      margin: 0 0 var(--spacing-xs) 0;
+      font-weight: 500;
+    }
+
+    .section p {
+      margin: 0;
+    }
     
     .detail-columns {
       display: grid;
@@ -144,6 +232,33 @@ import { EntriesService } from '../../core/services/entries.service';
         
         h4 {
           margin-bottom: var(--spacing-sm);
+          color: #424242;
+          font-weight: 500;
+        }
+        
+        mat-chip-listbox {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+        }
+        
+        .clickable-chip {
+          cursor: pointer;
+          transition: all 0.2s ease;
+          
+          &:hover {
+            background-color: #2196f3 !important;
+            color: white !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          }
+          
+          mat-icon {
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+            margin-right: 4px;
+          }
         }
       }
     }
@@ -151,7 +266,9 @@ import { EntriesService } from '../../core/services/entries.service';
 })
 export class DetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private entriesService = inject(EntriesService);
+  private searchService = inject(SearchService);
   
   entry: any;
   entryType: 'daily' | 'dream' = 'daily';
@@ -216,8 +333,34 @@ export class DetailComponent implements OnInit {
     return this.entry.tags ? this.entry.tags.split(',').map((t: string) => t.trim()) : [];
   }
   
+  getTagsArray(): string[] {
+    return this.getTags();
+  }
+  
   getPeopleNames(): string {
     return this.isDream() ? this.entry.dream_people_names || '' : this.entry.daily_people_names || '';
+  }
+  
+  getPeopleArray(): string[] {
+    const peopleStr = this.isDream() ? this.entry.dream_people_names : this.entry.daily_people_names;
+    return peopleStr ? peopleStr.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
+  }
+  
+  getPlacesArray(): string[] {
+    const placesStr = this.isDream() ? this.entry.dream_places : this.entry.daily_places;
+    return placesStr ? placesStr.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
+  }
+  
+  searchForTag(tag: string): void {
+    this.router.navigate(['/entries'], { queryParams: { search: tag } });
+  }
+  
+  searchForPerson(person: string): void {
+    this.router.navigate(['/entries'], { queryParams: { search: person } });
+  }
+  
+  searchForPlace(place: string): void {
+    this.router.navigate(['/entries'], { queryParams: { search: place } });
   }
   
   isDream(): boolean {

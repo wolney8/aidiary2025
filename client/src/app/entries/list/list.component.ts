@@ -6,6 +6,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatChipsModule } from '@angular/material/chips';
 import { ViewToggleComponent } from '../../shared/components/view-toggle/view-toggle.component';
 import { SearchResultsComponent } from '../../shared/components/search-results/search-results.component';
 import { EntriesService } from '../../core/services/entries.service';
@@ -32,6 +33,7 @@ type TimelineMonth = {
     MatIconModule,
     MatButtonModule,
     MatPaginatorModule,
+    MatChipsModule,
     ViewToggleComponent,
     SearchResultsComponent
   ],
@@ -142,6 +144,9 @@ type TimelineMonth = {
                   <mat-icon>pie_chart</mat-icon>
                 </div>
                 <p>{{ getEntrySnippet(entry) }}</p>
+                                <mat-chip-set *ngIf="getTags(entry).length > 0">
+                  <mat-chip *ngFor="let tag of getTags(entry).slice(0,2)" (click)="searchForTag(tag)">{{ tag }}</mat-chip>
+                </mat-chip-set>
               </mat-card-content>
               
               <mat-card-actions>
@@ -219,6 +224,23 @@ export class ListComponent implements OnInit, OnDestroy {
         this.currentView = type;
       } else {
         this.currentView = 'all'; // Default to ALL ENTRIES
+      }
+
+      // Handle search query parameter
+      const searchQuery = params.get('search');
+      if (searchQuery) {
+        // Trigger search when query parameter exists
+        this.searchService.search(searchQuery).subscribe({
+          next: (response) => {
+            console.log('Search completed successfully:', response);
+          },
+          error: (error) => {
+            console.error('Search failed:', error);
+          }
+        });
+      } else {
+        // Clear search when no query parameter
+        this.searchService.clear();
       }
 
       this.loadEntries();
@@ -735,6 +757,15 @@ export class ListComponent implements OnInit, OnDestroy {
       ? this.splitDailyMessage(entry.user_message || '')[1]
       : entry.plot || entry.user_message || '';
     return text.substring(0, 150) + (text.length > 150 ? '...' : '');
+  }
+
+  getTags(entry: any): string[] {
+    return (entry.tags || '').split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag);
+  }
+
+  searchForTag(tag: string): void {
+    // Navigate to entries with search query - the route parameter handler will trigger search
+    this.router.navigate(['/entries'], { queryParams: { search: tag } });
   }
 
   private splitDailyMessage(message: string): [string, string] {
