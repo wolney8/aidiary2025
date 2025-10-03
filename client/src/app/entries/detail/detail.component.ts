@@ -118,9 +118,13 @@ import { SearchService } from '../../core/services/search.service';
       <div class="metadata-bar">
         <div class="metadata-section">
           <h4>My Tags:</h4>
-          <mat-chip-set>
-            <mat-chip *ngFor="let tag of getTags()">{{ tag }}</mat-chip>
-          </mat-chip-set>
+          <mat-chip-listbox>
+            <mat-chip-option *ngFor="let tag of getTags()" 
+                           (click)="searchForTag(tag)"
+                           [class.clickable-chip]="true">
+              {{ tag }}
+            </mat-chip-option>
+          </mat-chip-listbox>
         </div>
         
         <div class="metadata-section">
