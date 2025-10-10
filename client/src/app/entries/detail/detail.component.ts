@@ -42,7 +42,12 @@ import { SearchService } from '../../core/services/search.service';
       <div class="detail-columns">
         <mat-card>
           <mat-card-header>
-            <mat-card-title>{{ getTitle() }}</mat-card-title>
+            <mat-card-title>
+              {{ getTitle() }}
+              <button mat-icon-button (click)="editEntry()" title="Edit Entry" class="edit-button">
+                <mat-icon>edit</mat-icon>
+              </button>
+            </mat-card-title>
           </mat-card-header>
           <mat-card-content>
             <div *ngIf="isDream()">
@@ -202,6 +207,18 @@ import { SearchService } from '../../core/services/search.service';
       }
     }
 
+    .edit-button {
+      float: right;
+      margin-left: auto;
+    }
+
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
     .section {
       margin-bottom: var(--spacing-md);
     }
@@ -264,6 +281,22 @@ import { SearchService } from '../../core/services/search.service';
             margin-right: 4px;
           }
         }
+      }
+      
+      .edit-button {
+        margin-left: auto;
+        color: #666;
+        transition: color 0.2s ease;
+        
+        &:hover {
+          color: #2196f3;
+        }
+      }
+      
+      mat-card-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
       }
     }
   `]
@@ -365,6 +398,18 @@ export class DetailComponent implements OnInit {
   
   searchForPlace(place: string): void {
     this.router.navigate(['/entries'], { queryParams: { search: place } });
+  }
+
+  editEntry(): void {
+    if (!this.entry) return;
+    
+    // Navigate to create/edit page with entry ID for editing
+    this.router.navigate(['/entries/create'], { 
+      queryParams: { 
+        type: this.entryType,
+        id: this.entry.id 
+      } 
+    });
   }
   
   isDream(): boolean {

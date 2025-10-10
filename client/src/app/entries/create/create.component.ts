@@ -231,13 +231,13 @@ const UK_DATE_FORMATS = {
                 Upload Image
               </button>
               <button mat-raised-button color="primary" (click)="saveAsDraft()" [disabled]="isSaving">
-                Save Entry
+                {{ isEditing ? 'Update Entry' : 'Save Entry' }}
               </button>
             </ng-container>
 
             <ng-template #aiActions>
               <button mat-raised-button color="primary" (click)="saveAndAnalyse()" [disabled]="isSaving">
-                Save & Analyse
+                {{ isEditing ? 'Update & Analyse' : 'Save & Analyse' }}
               </button>
             </ng-template>
           </div>
@@ -414,15 +414,15 @@ export class CreateComponent implements OnInit {
       if (typeParam === 'dream' || typeParam === 'daily') {
         this.selectedType = typeParam;
       }
-    });
 
-    // Check for id parameter for editing
-    const id = this.route.snapshot.paramMap.get('id');
-    if (id) {
-      this.isEditing = true;
-      this.editingId = Number(id);
-      this.loadEntryForEditing(this.editingId);
-    }
+      // Check for edit ID parameter
+      const idParam = params.get('id');
+      if (idParam) {
+        this.isEditing = true;
+        this.editingId = Number(idParam);
+        this.loadEntryForEditing(this.editingId);
+      }
+    });
   }
 
   loadEntryForEditing(id: number): void {
@@ -500,16 +500,31 @@ export class CreateComponent implements OnInit {
         ai_style: this.selectedAIStyle
       };
 
-      this.entriesService.createDailyEntry(payload).subscribe({
-        next: (created) => {
-          if (shouldAnalyse) {
-            this.runDailyAnalysis(created.id!);
-          } else {
-            this.finishNavigation(created.id!);
-          }
-        },
-        error: () => this.handleError('Failed to save your daily entry.')
-      });
+      if (this.isEditing && this.editingId) {
+        // Update existing entry
+        this.entriesService.updateDailyEntry(this.editingId, payload).subscribe({
+          next: () => {
+            if (shouldAnalyse) {
+              this.runDailyAnalysis(this.editingId!);
+            } else {
+              this.finishNavigation(this.editingId!);
+            }
+          },
+          error: () => this.handleError('Failed to update your daily entry.')
+        });
+      } else {
+        // Create new entry
+        this.entriesService.createDailyEntry(payload).subscribe({
+          next: (created) => {
+            if (shouldAnalyse) {
+              this.runDailyAnalysis(created.id!);
+            } else {
+              this.finishNavigation(created.id!);
+            }
+          },
+          error: () => this.handleError('Failed to save your daily entry.')
+        });
+      }
     } else {
       // For dreams, use dreamPlot instead of content
       const dreamPlotContent = this.dreamPlot.trim() || 'Dream entry';
@@ -531,16 +546,31 @@ export class CreateComponent implements OnInit {
         other: this.dreamOther.trim()
       };
 
-      this.entriesService.createDreamEntry(payload).subscribe({
-        next: (created) => {
-          if (shouldAnalyse) {
-            this.runDreamAnalysis(created.id!);
-          } else {
-            this.finishNavigation(created.id!);
-          }
-        },
-        error: () => this.handleError('Failed to save your dream entry.')
-      });
+      if (this.isEditing && this.editingId) {
+        // Update existing dream entry
+        this.entriesService.updateDreamEntry(this.editingId, payload).subscribe({
+          next: () => {
+            if (shouldAnalyse) {
+              this.runDreamAnalysis(this.editingId!);
+            } else {
+              this.finishNavigation(this.editingId!);
+            }
+          },
+          error: () => this.handleError('Failed to update your dream entry.')
+        });
+      } else {
+        // Create new dream entry
+        this.entriesService.createDreamEntry(payload).subscribe({
+          next: (created) => {
+            if (shouldAnalyse) {
+              this.runDreamAnalysis(created.id!);
+            } else {
+              this.finishNavigation(created.id!);
+            }
+          },
+          error: () => this.handleError('Failed to save your dream entry.')
+        });
+      }
     }
   }
 

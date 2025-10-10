@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6] - 2025-10-10
+
+### Added
+- **Edit Entry Functionality**: Core edit functionality implementing Milestone 7
+- Edit icons on entry list cards (next to heart icon as per wireframes page 9)
+- Edit icons on entry detail page (right of title as per wireframes page 10)
+- Enhanced CreateComponent to handle both create and edit modes
+- Context-aware button labels ("Update Entry" vs "Save Entry")
+- Edit mode navigation via query parameters (`/entries/create?type=daily&id=123`)
+- CSS styling for edit buttons with hover effects
+
+### Changed
+- **Entry List View**: Added edit icon button next to favourite icon
+- **Entry Detail View**: Added edit icon button next to entry title
+- **Create Component**: Dynamic page titles ("Edit Diary Entry" vs "New Diary Entry")
+- **Button Text**: Context-aware save/update button labels
+- **Navigation**: Edit functionality integrated with existing routing
+
+### Technical Implementation
+- Updated `list.component.ts` with `editEntry()` method
+- Updated `detail.component.ts` with `editEntry()` method  
+- Enhanced `create.component.ts` to handle edit mode via query parameters
+- Modified `persistEntry()` method to call update APIs when editing
+- Added CSS styling for edit buttons in list and detail views
+- Maintained existing API compatibility (PUT endpoints already available)
+
+### UI/UX Improvements
+- Edit icons positioned per wireframe specifications
+- Hover effects for better user interaction feedback
+- Consistent styling across list and detail views
+- Seamless transition between view and edit modes
+
 ## [0.11.5] - 2025-10-10
 
 ### Added
