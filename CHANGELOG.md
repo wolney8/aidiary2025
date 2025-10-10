@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.11.4] - 2025-10-03
+
+### Added
+- Tag pills on entry cards (maximum 2 displayed) with click-to-search functionality
+- Structured display for dream entries in detail view (Plot, Cast, Location, Period, Emotion, Symbols & Imagery, Insight, Action, Other)
+- Global search functionality accessible from any route via top-bar
+- Enhanced search debugging and error handling
+
+### Fixed
+- **CRITICAL**: Search functionality infinite loading issue - search Observable wasn't being subscribed to
+- Card boundary overflow issues with tag pills extending beyond card borders
+- Search accessibility - now works from any page, not just /entries route
+- Tag search functionality in both list and detail views
+- Entry detail view now shows structured sections for dream entries instead of single text block
+
+### Changed
+- Increased entry card height from 400px to 420px to accommodate tag pills
+- Enhanced card CSS with proper overflow controls and text truncation
+- Updated PROJECT_PLAN.md with Edit Entry functionality as Milestone 7
+- Improved AI response display for dreams (Summary and Interpretation sections)
+
+### Technical
+- Added proper Observable subscription to search service calls
+- Enhanced search state management with loading/error handling
+- Improved tag-based navigation with route parameter handling
+- Added debugging infrastructure for search functionality
 - Nothing yet.
 
 ## [AIDIARY v0.11.3] - 2025-09-29

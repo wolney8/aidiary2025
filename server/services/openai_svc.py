@@ -28,12 +28,14 @@ class OpenAIService:
                         1. A supportive and insightful response
                         2. Key themes/tags (comma-separated)
                         3. Names of people mentioned (comma-separated)
+                        4. Places/locations mentioned (comma-separated)
                         
                         Respond in JSON format:
                         {
                             "ai_response": "Your supportive response here",
                             "tags": "tag1,tag2,tag3",
-                            "people_names": "Name1,Name2"
+                            "people_names": "Name1,Name2",
+                            "places": "Place1,Place2"
                         }"""
                     },
                     {
@@ -52,7 +54,8 @@ class OpenAIService:
             return {
                 "ai_response": "Thank you for sharing your thoughts today. Every experience helps us grow and learn.",
                 "tags": "reflection,daily",
-                "people_names": ""
+                "people_names": "",
+                "places": ""
             }
     
     def analyse_dream_entry(self, text: str) -> Dict:
@@ -69,6 +72,7 @@ class OpenAIService:
                         3. An image generation prompt for the dream
                         4. Key themes/tags (comma-separated)
                         5. Names of people in the dream (comma-separated)
+                        6. Places/locations in the dream (comma-separated)
                         
                         Respond in JSON format:
                         {
@@ -76,7 +80,8 @@ class OpenAIService:
                             "interpretation": "Psychological interpretation here",
                             "image_prompt": "Artistic description for image generation",
                             "tags": "tag1,tag2,tag3",
-                            "people_names": "Name1,Name2"
+                            "people_names": "Name1,Name2",
+                            "places": "Place1,Place2"
                         }"""
                     },
                     {
@@ -97,7 +102,8 @@ class OpenAIService:
                 "interpretation": "Dreams often reflect our subconscious thoughts and emotions.",
                 "image_prompt": "Abstract dreamscape with surreal elements",
                 "tags": "dream,subconscious",
-                "people_names": ""
+                "people_names": "",
+                "places": ""
             }
     
     def generate_image(self, prompt: str) -> str:

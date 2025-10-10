@@ -53,6 +53,7 @@ class DailyDiaryEntry(Base):
     user_message = Column(Text)
     ai_response = Column(Text)
     daily_people_names = Column(Text)
+    daily_places = Column(Text)
     tags = Column(Text)
     
     # Relationships
@@ -81,6 +82,7 @@ class DreamDiaryEntry(Base):
     image_prompt = Column(Text)
     image_url = Column(Text)
     dream_people_names = Column(Text)
+    dream_places = Column(Text)
     tags = Column(Text)
     
     # Relationships

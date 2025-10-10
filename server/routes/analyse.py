@@ -28,7 +28,8 @@ def analyse_text():
             return jsonify({
                 'ai_response': result['ai_response'],
                 'tags': result['tags'],
-                'daily_people_names': result['people_names']
+                'daily_people_names': result['people_names'],
+                'daily_places': result['places']
             }), 200
         else:  # dream mode
             result = ai_service.analyse_dream_entry(text)
@@ -37,7 +38,8 @@ def analyse_text():
                 'interpretation': result['interpretation'],
                 'image_prompt': result['image_prompt'],
                 'tags': result['tags'],
-                'dream_people_names': result['people_names']
+                'dream_people_names': result['people_names'],
+                'dream_places': result['places']
             }), 200
             
     except Exception as e:
