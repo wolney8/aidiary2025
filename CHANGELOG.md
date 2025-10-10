@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.5] - 2025-10-10
+
+### Added
+- **VERSION_CONTROL_STRATEGY.md**: Comprehensive branching workflow and code hygiene procedures
+- Rollback procedures for maintaining stable main branch
+- Feature branch workflow with merge protection
+- Code hygiene requirements and emergency procedures
+
+### Changed
+- **Milestone 9**: Renamed from "CBT Self-Esteem Diary Modules" to "Structured Diary Modules"
+- Removed medical references (Melanie Fennell, CBT terminology) for compliance
+- Database table naming: changed `cbt_*` to `structured_*` tables
+- Updated PROJECT_PLAN.md with non-medical structured diary approach
+
+### Development Workflow
+- Established main branch protection strategy
+- Implemented feature branch development workflow
+- Added comprehensive documentation requirements
+- Created emergency rollback procedures
+
 ## [0.11.4] - 2025-10-03
 
 ### Added
