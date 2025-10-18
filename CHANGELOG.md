@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6] - 2025-10-18
+
+### Fixed
+- **Database Path Resolution**: Corrected database path to `server/db/app.db` and removed erroneous root-level database file
+- **Python 3.13 Compatibility**: Replaced SQLAlchemy with sqlite3-based `SimpleDatabaseService` for compatibility
+- **Documentation**: Added database location and path warnings to README.md and ARCHITECTURE.md
+
+### Technical
+- **Database Service**: Implemented `simple_database_service.py` using sqlite3 context manager
+- **Configuration**: Ensured `app.py` correctly resolves database path to `server/db/app.db`
+
+### Added
+- **Milestone 7 Edit Functionality**: Complete entry editing system with wireframe Page 12 compliance
+- **Advanced autosave system**: Session storage with 5-second debounce and visual feedback
+- **Dual save modes**: Floppy disk (session autosave) + Update & View (database persistence)
+- **Custom confirmation modals**: Material Design dialogs replacing browser alerts
+- **Responsive two-column layout**: Entry form + AI response with matched heights
+- **Real-time autosave feedback**: Spinning sync icon → green tick with granular timestamps
+- **Enhanced edit navigation**: Edit icons on entry cards with proper routing
+
+### Changed
+- **Button behaviour**: Autosave no longer disables navigation buttons
+- **Time formatting**: Granular display ("30 seconds ago", "2 minutes ago", etc.)
+- **Modal system**: Custom Angular Material dialogs with session preservation
+- **Layout responsiveness**: Wireframe-compliant spacing and Material Design standards
+
+### Fixed
+- **Autosave logic**: Floppy disk performs session saves, not database persistence
+- **Button lockout**: Users no longer trapped in edit mode after autosave
+- **Visual feedback**: Proper state transitions between saving/saved states
+- **Navigation flow**: Seamless entry editing with exit confirmation
+
+### Technical
+- **Enhanced create.component.ts**: Autosave logic, confirmation dialogs, dual save modes
+- **Wireframe compliance**: Two-column grid layout with hero image expansion
+- **Material Design**: Consistent 8dp spacing, accessible tap targets, proper elevation
+- **Session management**: Robust autosave with change detection and recovery
+
+## [0.11.4] - 2025-10-16
+
+### Added
+- **Wireframe Page 12 Implementation**: Complete advanced edit interface redesign
+- **Two-column edit layout**: Entry form (left) + AI response (right) with matched heights
+- **Enhanced autosave system**: Real-time feedback with persistent timestamps ("Autosaved X minutes ago")
+- **Dual save functionality**: Floppy disk icon (save & stay) + Save & View button
+- **Always-visible hero image section**: Same height as metadata with expand/collapse at bottom-right
+- **Integrated action buttons**: Moved to bottom of metadata section for better UX
+
+### Changed
+- **Template Architecture**: Externalized from inline to separate HTML/SCSS files for maintainability
+- **Save Button Logic**: Floppy disk saves and stays, main button saves and navigates to view
+- **Autosave Feedback**: Relocated under floppy disk with persistent timestamp display
+- **Hero Image Controls**: Always visible with expand_content icon at bottom-right corner
+- **Column Alignment**: Both edit columns maintain consistent height for visual balance
+
+### Technical Implementation
+- Created `create.component.html` and `edit-layout.scss` for modular architecture
+- Enhanced `persistEntry()` method with callback support for flexible navigation
+- Added `saveAndStay()`, `saveAndView()`, `formatAutosaveTime()` methods
+- Implemented `lastAutosaveTime` property with automatic timestamp formatting
+- Updated component styling for responsive two-column layout
+
 ## [0.11.6] - 2025-10-10
 
 ### Added

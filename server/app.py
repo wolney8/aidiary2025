@@ -4,6 +4,7 @@ from flask import Flask, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
+from services.simple_database_service import db_service
 
 # Load environment variables
 load_dotenv()
@@ -75,16 +76,24 @@ def create_app():
     from routes.profile import profile_bp
     from routes.entries import entries_bp
     from routes.analyse import analyse_bp
+    # from routes.import_routes import import_bp  # Temporarily disabled
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
     app.register_blueprint(entries_bp, url_prefix='/api')
     app.register_blueprint(analyse_bp, url_prefix='/api')
+    # app.register_blueprint(import_bp, url_prefix='/api')  # Temporarily disabled
     
     # Health check endpoint
     @app.route('/health')
     def health():
-        return {'status': 'healthy'}, 200
+        # Test database connectivity for cloud migration readiness
+        db_status = 'connected' if db_service.test_connection() else 'disconnected'
+        return {
+            'status': 'healthy',
+            'database': db_status,
+            'database_type': db_service.get_db_type()
+        }, 200
     
     return app
 
