@@ -48,6 +48,7 @@ def client():
                 user_id INTEGER,
                 entry_date DATE,
                 entry_number INTEGER,
+                title TEXT,
                 user_message TEXT,
                 ai_response TEXT,
                 daily_people_names TEXT,
@@ -156,7 +157,8 @@ def test_analyse_daily_entry(mock_openai, client):
     mock_response.choices[0].message.content = json.dumps({
         'ai_response': 'Great reflection!',
         'tags': 'positive,growth',
-        'people_names': 'John,Sarah'
+        'people_names': 'John,Sarah',
+        'places': 'Cafe,Park'
     })
     mock_client.chat.completions.create.return_value = mock_response
     
@@ -174,6 +176,7 @@ def test_analyse_daily_entry(mock_openai, client):
     assert 'ai_response' in data
     assert 'tags' in data
     assert 'daily_people_names' in data
+    assert 'daily_places' in data
 
 def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
