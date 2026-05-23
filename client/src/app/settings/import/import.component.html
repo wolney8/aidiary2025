@@ -1,0 +1,186 @@
+<div class="import-container">
+  <mat-card class="import-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>cloud_upload</mat-icon>
+        Import Entries
+      </mat-card-title>
+      <mat-card-subtitle>
+        Upload Excel or CSV files to bulk import diary entries
+      </mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- Entry Type Selection -->
+      <mat-tab-group
+        [(selectedIndex)]="selectedTabIndex"
+        (selectedIndexChange)="onTabChange($event)"
+      >
+        <mat-tab label="Daily Entries">
+          <div class="tab-content">
+            <p>
+              Import daily diary entries with reflections, activities, and
+              thoughts.
+            </p>
+          </div>
+        </mat-tab>
+        <mat-tab label="Dream Entries">
+          <div class="tab-content">
+            <p>
+              Import dream journal entries with narratives and interpretations.
+            </p>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+
+      <mat-divider class="section-divider"></mat-divider>
+
+      <!-- Template Download Section -->
+      <div class="template-section">
+        <h3>Download Template</h3>
+        <p>
+          Download a template file to ensure your data is formatted correctly:
+        </p>
+
+        <div class="template-buttons">
+          <button
+            *ngIf="selectedTabIndex === 0"
+            mat-raised-button
+            color="primary"
+            (click)="downloadTemplate('daily')"
+            [disabled]="!dailyTemplate"
+          >
+            <mat-icon>download</mat-icon>
+            Daily Entry Template
+          </button>
+
+          <button
+            *ngIf="selectedTabIndex === 1"
+            mat-raised-button
+            color="primary"
+            (click)="downloadTemplate('dream')"
+            [disabled]="!dreamTemplate"
+          >
+            <mat-icon>download</mat-icon>
+            Dream Entry Template
+          </button>
+        </div>
+      </div>
+
+      <mat-divider class="section-divider"></mat-divider>
+
+      <!-- File Upload Section -->
+      <div class="upload-section">
+        <h3>Upload Your File</h3>
+
+        <div class="file-input-container">
+          <input
+            type="file"
+            (change)="onFileSelected($event)"
+            accept=".xlsx,.xls,.csv"
+            #fileInput
+            class="file-input"
+          />
+
+          <button
+            mat-raised-button
+            (click)="fileInput.click()"
+            [disabled]="isUploading"
+          >
+            <mat-icon>attach_file</mat-icon>
+            Choose File
+          </button>
+
+          <span class="file-name" *ngIf="selectedFile">
+            {{ selectedFile.name }} ({{
+              (selectedFile.size / 1024 / 1024).toFixed(2)
+            }}MB)
+          </span>
+        </div>
+
+        <!-- Upload Progress -->
+        <div class="upload-progress" *ngIf="isUploading">
+          <mat-progress-bar
+            mode="determinate"
+            [value]="uploadProgress"
+          ></mat-progress-bar>
+          <p>Uploading... {{ uploadProgress }}%</p>
+        </div>
+
+        <!-- Upload Actions -->
+        <div class="upload-actions" *ngIf="selectedFile && !isUploading">
+          <button mat-raised-button color="primary" (click)="uploadFile()">
+            <mat-icon>cloud_upload</mat-icon>
+            Import Entries
+          </button>
+
+          <button mat-button (click)="clearSelection()">
+            <mat-icon>clear</mat-icon>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- Information Section -->
+      <div class="info-section">
+        <h3>Import Guidelines</h3>
+        <ul class="guidelines-list">
+          <li>
+            <strong>Supported Formats:</strong> Excel (.xlsx, .xls) and CSV
+            (.csv)
+          </li>
+          <li><strong>Maximum File Size:</strong> 10MB</li>
+          <li><strong>Required Columns:</strong> date, type, content</li>
+          <li><strong>Optional Columns:</strong> title, tags</li>
+          <li>
+            <strong>Security:</strong> Files are scanned for malicious content
+          </li>
+          <li>
+            <strong>NLTK Processing:</strong> Automatic extraction of people,
+            places, and emotion tags
+          </li>
+        </ul>
+      </div>
+
+      <mat-divider class="section-divider"></mat-divider>
+
+      <!-- Import History Section -->
+      <div class="history-section">
+        <h3>Import History</h3>
+        <div
+          class="history-content"
+          *ngIf="importHistory.length > 0; else noHistory"
+        >
+          <div class="history-item" *ngFor="let import of importHistory">
+            <div class="history-info">
+              <span class="filename">{{ import.filename }}</span>
+              <span class="import-stats">
+                {{ import.entries_imported }} entries imported
+                <span *ngIf="import.entries_skipped > 0"
+                  >, {{ import.entries_skipped }} skipped</span
+                >
+              </span>
+              <span class="import-date">{{
+                formatImportDate(import.import_date)
+              }}</span>
+            </div>
+            <div class="history-meta">
+              <mat-icon class="entry-type-icon">{{
+                import.entry_type === "daily" ? "today" : "nights_stay"
+              }}</mat-icon>
+              <span class="entry-type">{{ import.entry_type }}</span>
+              <span class="file-size">{{
+                formatFileSize(import.file_size)
+              }}</span>
+            </div>
+          </div>
+        </div>
+        <ng-template #noHistory>
+          <p class="no-history">
+            No imports yet. Upload your first file above to get started.
+          </p>
+        </ng-template>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

@@ -40,7 +40,7 @@ import { AuthService } from '../../services/auth.service';
           <span matListItemTitle>Dream Diary</span>
         </a>
         
-        <a mat-list-item routerLink="/profile" (click)="closeSidenav.emit()">
+        <a mat-list-item routerLink="/settings" (click)="closeSidenav.emit()">
           <mat-icon matListItemIcon>settings</mat-icon>
           <span matListItemTitle>Settings</span>
         </a>
