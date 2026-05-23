@@ -213,7 +213,7 @@ def update_daily_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     # Update allowed fields
-    allowed_fields = ['title', 'user_message', 'ai_response', 'daily_people_names', 'tags']
+    allowed_fields = ['title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places', 'tags']
     updates = []
     values = []
     
@@ -381,7 +381,7 @@ def update_dream_entry(entry_id):
         'title', 'cast', 'location', 'period', 'emotion', 'plot',
         'symbols_and_imagery', 'insight', 'action', 'other',
         'summary', 'interpretation', 'image_prompt', 'image_url',
-        'dream_people_names', 'tags'
+        'dream_people_names', 'dream_places', 'tags'
     ]
     
     updates = []
