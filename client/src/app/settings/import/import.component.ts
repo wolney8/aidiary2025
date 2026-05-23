@@ -27,7 +27,7 @@ import {
     MatDividerModule,
   ],
   templateUrl: "./import.component.html",
-  styleUrl: "./import.component.scss",
+  styleUrls: ["./import.component.scss"],
 })
 export class ImportComponent implements OnInit {
   selectedFile: File | null = null;
