@@ -4,6 +4,61 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from services.openai_svc import OpenAIService
 
+
+def _normalise_people_names(raw: str) -> str:
+    if not raw:
+        return ""
+
+    blocked = {
+        "hopefully",
+        "maybe",
+        "someone",
+        "somebody",
+        "everyone",
+        "everybody",
+        "nobody",
+        "anyone",
+        "anybody",
+        "person",
+        "people",
+        "friend",
+        "friends",
+        "unknown",
+        "none",
+        "na",
+        "n/a",
+    }
+
+    cleaned = []
+    for token in str(raw).split(","):
+        candidate = token.strip()
+        if not candidate:
+            continue
+
+        lower = candidate.lower()
+        if lower in blocked:
+            continue
+
+        if not all(ch.isalpha() or ch in " -'" for ch in candidate):
+            continue
+
+        if len(candidate) < 2:
+            continue
+
+        cleaned.append(candidate)
+
+    # Preserve ordering, drop duplicates.
+    seen = set()
+    ordered = []
+    for item in cleaned:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(item)
+
+    return ",".join(ordered)
+
 analyse_bp = Blueprint('analyse', __name__)
 
 @analyse_bp.route('/analyse', methods=['POST'])
@@ -28,7 +83,7 @@ def analyse_text():
             return jsonify({
                 'ai_response': result['ai_response'],
                 'tags': result['tags'],
-                'daily_people_names': result['people_names'],
+                'daily_people_names': _normalise_people_names(result.get('people_names', '')),
                 'daily_places': result['places']
             }), 200
         else:  # dream mode
@@ -38,7 +93,7 @@ def analyse_text():
                 'interpretation': result['interpretation'],
                 'image_prompt': result['image_prompt'],
                 'tags': result['tags'],
-                'dream_people_names': result['people_names'],
+                'dream_people_names': _normalise_people_names(result.get('people_names', '')),
                 'dream_places': result['places']
             }), 200
             

@@ -157,7 +157,7 @@ def test_analyse_daily_entry(mock_openai, client):
     mock_response.choices[0].message.content = json.dumps({
         'ai_response': 'Great reflection!',
         'tags': 'positive,growth',
-        'people_names': 'John,Sarah',
+        'people_names': 'John,hopefully,Sarah',
         'places': 'Cafe,Park'
     })
     mock_client.chat.completions.create.return_value = mock_response
@@ -273,4 +273,5 @@ def test_update_dream_entry_not_found(client):
         data=json.dumps({'plot': 'Ghost dream'}),
         content_type='application/json'
     )
+    assert response.status_code == 404    )
     assert response.status_code == 404
