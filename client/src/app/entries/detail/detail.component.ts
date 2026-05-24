@@ -5,7 +5,6 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
 import { EntriesService } from '../../core/services/entries.service';
 import { SearchService } from '../../core/services/search.service';
 
@@ -16,26 +15,13 @@ import { SearchService } from '../../core/services/search.service';
     CommonModule,
     MatCardModule,
     MatChipsModule,
-    MatIconModule,
-    MatButtonModule
+    MatIconModule
   ],
   template: `
     <div class="detail-container" *ngIf="entry">
-      <!-- Date navigation -->
+      <!-- Date display -->
       <div class="date-nav">
-        <button mat-icon-button>
-          <mat-icon>chevron_left</mat-icon>
-        </button>
         <h2>{{ entry.entry_date | date:'dd/MM/yyyy' }}</h2>
-        <button mat-icon-button>
-          <mat-icon>chevron_right</mat-icon>
-        </button>
-      </div>
-      
-      <!-- Hero image area -->
-      <div class="hero-image">
-        <mat-icon>image</mat-icon>
-        <button mat-raised-button>Reupload Image</button>
       </div>
       
       <!-- Two-column content -->
@@ -92,9 +78,6 @@ import { SearchService } from '../../core/services/search.service';
         <mat-card>
           <mat-card-header>
             <mat-card-title>AI Response</mat-card-title>
-            <button mat-icon-button>
-              <mat-icon>refresh</mat-icon>
-            </button>
           </mat-card-header>
           <mat-card-content>
             <div *ngIf="isDream()">
@@ -184,22 +167,7 @@ import { SearchService } from '../../core/services/search.service';
     }
     
     .hero-image {
-      height: 300px;
-      background: #f5f5f5;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--spacing-md);
-      margin-bottom: var(--spacing-md);
-      border-radius: 8px;
-      
-      mat-icon {
-        font-size: 64px;
-        width: 64px;
-        height: 64px;
-        color: #ccc;
-      }
+      display: none;
     }
 
     .section {

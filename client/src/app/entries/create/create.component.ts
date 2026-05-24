@@ -1,5 +1,5 @@
 // Create entry with support for daily and dream flows
-import { Component, HostListener, inject, ViewChild, ElementRef, OnInit } from '@angular/core';
+import { Component, HostListener, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -196,6 +196,12 @@ const UK_DATE_FORMATS = {
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Plot / Narrative</mat-label>
+              <textarea matInput [(ngModel)]="dreamPlot" name="dreamPlot" rows="5"
+                        placeholder="Describe what happened in your dream"></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
               <mat-label>Other Details</mat-label>
               <textarea matInput [(ngModel)]="dreamOther" name="dreamOther" rows="2"
                         placeholder="Any other important details"></textarea>
@@ -227,9 +233,6 @@ const UK_DATE_FORMATS = {
             </button>
 
             <ng-container *ngIf="!leaveItToAI; else aiActions">
-              <button mat-stroked-button (click)="triggerImageUpload()" [disabled]="isSaving">
-                Upload Image
-              </button>
               <button mat-raised-button color="primary" (click)="saveAsDraft()" [disabled]="isSaving">
                 Save Entry
               </button>
@@ -243,7 +246,6 @@ const UK_DATE_FORMATS = {
           </div>
 
           <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
-          <input #fileInput type="file" class="hidden" (change)="handleImageUpload($event)" accept="image/*" />
         </mat-card-content>
       </mat-card>
     </div>
@@ -326,7 +328,6 @@ export class CreateComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
-  @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>;
 
   entryDate: Date | null = new Date();
   entryTitle = '';
@@ -500,20 +501,32 @@ export class CreateComponent implements OnInit {
         ai_style: this.selectedAIStyle
       };
 
-      this.entriesService.createDailyEntry(payload).subscribe({
-        next: (created) => {
-          if (shouldAnalyse) {
-            this.runDailyAnalysis(created.id!);
-          } else {
-            this.finishNavigation(created.id!);
-          }
-        },
-        error: () => this.handleError('Failed to save your daily entry.')
-      });
+      if (this.isEditing && this.editingId !== null) {
+        this.entriesService.updateDailyEntry(this.editingId, payload).subscribe({
+          next: () => {
+            if (shouldAnalyse) {
+              this.runDailyAnalysis(this.editingId!);
+            } else {
+              this.finishNavigation(this.editingId!);
+            }
+          },
+          error: () => this.handleError('Failed to update your daily entry.')
+        });
+      } else {
+        this.entriesService.createDailyEntry(payload).subscribe({
+          next: (created) => {
+            if (shouldAnalyse) {
+              this.runDailyAnalysis(created.id!);
+            } else {
+              this.finishNavigation(created.id!);
+            }
+          },
+          error: () => this.handleError('Failed to save your daily entry.')
+        });
+      }
     } else {
-      // For dreams, use dreamPlot instead of content
       const dreamPlotContent = this.dreamPlot.trim() || 'Dream entry';
-      
+
       const payload = {
         entry_date: entryDate,
         title: trimmedTitle,
@@ -531,16 +544,29 @@ export class CreateComponent implements OnInit {
         other: this.dreamOther.trim()
       };
 
-      this.entriesService.createDreamEntry(payload).subscribe({
-        next: (created) => {
-          if (shouldAnalyse) {
-            this.runDreamAnalysis(created.id!);
-          } else {
-            this.finishNavigation(created.id!);
-          }
-        },
-        error: () => this.handleError('Failed to save your dream entry.')
-      });
+      if (this.isEditing && this.editingId !== null) {
+        this.entriesService.updateDreamEntry(this.editingId, payload).subscribe({
+          next: () => {
+            if (shouldAnalyse) {
+              this.runDreamAnalysis(this.editingId!);
+            } else {
+              this.finishNavigation(this.editingId!);
+            }
+          },
+          error: () => this.handleError('Failed to update your dream entry.')
+        });
+      } else {
+        this.entriesService.createDreamEntry(payload).subscribe({
+          next: (created) => {
+            if (shouldAnalyse) {
+              this.runDreamAnalysis(created.id!);
+            } else {
+              this.finishNavigation(created.id!);
+            }
+          },
+          error: () => this.handleError('Failed to save your dream entry.')
+        });
+      }
     }
   }
 
@@ -653,19 +679,6 @@ export class CreateComponent implements OnInit {
     this.dreamInsight = '';
     this.dreamAction = '';
     this.dreamOther = '';
-  }
-
-  triggerImageUpload(): void {
-    this.fileInput?.nativeElement.click();
-  }
-
-  handleImageUpload(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length) {
-      // Placeholder for future upload handling
-      alert('Image upload is not implemented yet.');
-      input.value = '';
-    }
   }
 
   canDeactivate(): boolean {
