@@ -1,0 +1,167 @@
+// Import service — handles template download, file upload, and history retrieval
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpEventType, HttpHeaders } from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+import { AuthService } from './auth.service';
+
+export interface ImportHistoryItem {
+  id: number;
+  imported_at: string;
+  filename: string;
+  total_rows: number;
+  imported_count: number;
+  skipped_count: number;
+  error_count: number;
+  status: 'success' | 'partial' | 'failed';
+  notes?: string;
+}
+
+export interface ImportResult {
+  status: 'success' | 'partial' | 'failed';
+  message: string;
+  imported_count: number;
+  skipped_count: number;
+  error_count: number;
+  errors?: string[];
+  warnings?: string[];
+}
+
+export interface UploadProgress {
+  percent: number;
+  loaded: number;
+  total: number;
+}
+
+@Injectable({ providedIn: 'root' })
+export class ImportService {
+  private http = inject(HttpClient);
+  private authService = inject(AuthService);
+
+  private readonly baseUrl = 'http://localhost:5001/api';
+  private readonly maxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+  private readonly allowedMimeTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel'
+  ];
+  private readonly allowedExtensions = ['.xlsx', '.xls'];
+
+  /** Download the Excel import template. */
+  downloadTemplate(): Observable<Blob> {
+    const headers = this.getAuthHeaders();
+    return this.http
+      .get(`${this.baseUrl}/import/template`, {
+        headers,
+        responseType: 'blob'
+      })
+      .pipe(catchError(err => throwError(() => this.normaliseError(err))));
+  }
+
+  /**
+   * Upload an Excel file and report progress.
+   * Emits UploadProgress objects while uploading, then the final ImportResult.
+   */
+  uploadFile(
+    file: File
+  ): Observable<{ type: 'progress'; progress: UploadProgress } | { type: 'result'; result: ImportResult }> {
+    const headers = this.getAuthHeaders();
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+
+    return this.http
+      .post(`${this.baseUrl}/import/upload`, formData, {
+        headers,
+        reportProgress: true,
+        observe: 'events'
+      })
+      .pipe(
+        map(event => {
+          if (event.type === HttpEventType.UploadProgress) {
+            const total = event.total ?? file.size;
+            const percent = Math.round((event.loaded / total) * 100);
+            return {
+              type: 'progress' as const,
+              progress: { percent, loaded: event.loaded, total }
+            };
+          }
+
+          if (event.type === HttpEventType.Response) {
+            const body = event.body as ImportResult;
+            // Normalise defensive shape — backend may send partial fields
+            const result: ImportResult = {
+              status: body?.status ?? 'failed',
+              message: body?.message ?? 'Upload complete.',
+              imported_count: body?.imported_count ?? 0,
+              skipped_count: body?.skipped_count ?? 0,
+              error_count: body?.error_count ?? 0,
+              errors: body?.errors ?? [],
+              warnings: body?.warnings ?? []
+            };
+            return { type: 'result' as const, result };
+          }
+
+          // Intermediate events (Sent, ResponseHeader, etc.) — skip
+          return null as unknown as never;
+        }),
+        // Filter out null events from intermediate HttpEventTypes
+        map(val => val),
+        catchError(err => throwError(() => this.normaliseError(err)))
+      );
+  }
+
+  /** Fetch the import history for the current user. */
+  getHistory(): Observable<ImportHistoryItem[]> {
+    const headers = this.getAuthHeaders();
+    return this.http
+      .get<ImportHistoryItem[]>(`${this.baseUrl}/import/history`, { headers })
+      .pipe(
+        map(items => (Array.isArray(items) ? items : [])),
+        catchError(err => throwError(() => this.normaliseError(err)))
+      );
+  }
+
+  /** Client-side validation — returns an error string or null if valid. */
+  validateFile(file: File): string | null {
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+    if (!this.allowedExtensions.includes(extension)) {
+      return `Invalid file type. Only Excel files (.xlsx, .xls) are accepted.`;
+    }
+
+    if (!this.allowedMimeTypes.includes(file.type) && file.type !== '') {
+      // Some browsers report empty MIME type for Excel — allow it if extension is correct
+      if (file.type !== '') {
+        return `Invalid file type. Only Excel files (.xlsx, .xls) are accepted.`;
+      }
+    }
+
+    if (file.size > this.maxFileSizeBytes) {
+      const maxMB = this.maxFileSizeBytes / (1024 * 1024);
+      const fileMB = (file.size / (1024 * 1024)).toFixed(1);
+      return `File is too large (${fileMB} MB). Maximum allowed size is ${maxMB} MB.`;
+    }
+
+    if (file.size === 0) {
+      return 'The selected file is empty. Please choose a valid Excel file.';
+    }
+
+    return null;
+  }
+
+  private getAuthHeaders(): HttpHeaders {
+    const token = this.authService.getToken();
+    return new HttpHeaders({ Authorization: `Bearer ${token}` });
+  }
+
+  private normaliseError(err: unknown): Error {
+    if (err instanceof Error) return err;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const httpErr = err as any;
+    const message =
+      httpErr?.error?.message ||
+      httpErr?.error?.error ||
+      httpErr?.message ||
+      'An unexpected error occurred. Please try again.';
+    return new Error(message);
+  }
+}

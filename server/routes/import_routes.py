@@ -1,7 +1,6 @@
 # server/routes/import_routes.py
 # Import blueprint: file upload, history, and template download
 import io
-import os
 import sqlite3
 
 from flask import Blueprint, request, jsonify, send_file, current_app
@@ -14,7 +13,6 @@ from services.import_service import (
     ensure_history_table,
     record_import_history,
     get_import_history,
-    MAX_FILE_SIZE_BYTES,
 )
 
 import_bp = Blueprint('import', __name__)
@@ -36,7 +34,7 @@ def get_db():
 @jwt_required()
 def upload_import():
     """
-    Accept an Excel workbook (.xlsx/.xls), validate it, parse entries,
+    Accept an Excel workbook (.xlsx), validate it, parse entries,
     insert non-duplicate rows, and record the session in import_history.
 
     Multipart form field: ``file``
@@ -88,7 +86,7 @@ def upload_import():
         parsed = parse_excel(file_bytes)
     except ValueError as exc:
         current_app.logger.warning('Excel parse error for user %s: %s', user_id, exc)
-        return jsonify({'status': 'error', 'errors': ['The file could not be parsed. Please ensure it is a valid Excel workbook.']}), 422
+        return jsonify({'status': 'error', 'errors': ['The file could not be parsed. Please ensure it is a valid .xlsx workbook.']}), 422
     except RuntimeError as exc:
         # pandas / openpyxl not installed
         current_app.logger.error('Import dependency missing: %s', exc)
@@ -101,7 +99,7 @@ def upload_import():
         all_warnings = parse_warnings + ['No valid entries found in the uploaded file.']
         conn = get_db()
         ensure_history_table(conn)
-        record_import_history(
+        import_id = record_import_history(
             conn, user_id, filename, file_size,
             {'inserted_daily': 0, 'skipped_daily': 0,
              'inserted_dreams': 0, 'skipped_dreams': 0},
@@ -119,7 +117,7 @@ def upload_import():
                 'duplicate_dates_dreams': [],
             },
             'warnings': all_warnings,
-            'import_id': None,
+            'import_id': import_id,
         }), 200
 
     # --- Insert entries ---

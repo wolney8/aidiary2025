@@ -118,7 +118,8 @@ import { Location } from '@angular/common';
       </div>
 
       <mat-menu #userMenu="matMenu">
-        <button mat-menu-item routerLink="/profile">Settings</button>
+        <button mat-menu-item routerLink="/profile">Profile</button>
+        <button mat-menu-item routerLink="/settings/import">Import Entries</button>
         <button mat-menu-item (click)="logout()">Logout</button>
       </mat-menu>
     </mat-toolbar>

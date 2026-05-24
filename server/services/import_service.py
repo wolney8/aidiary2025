@@ -1,6 +1,7 @@
 # server/services/import_service.py
 # Excel import service: validation, parsing, duplicate handling, history tracking
 import io
+import math
 import re
 import sqlite3
 from datetime import datetime, date, timezone
@@ -9,12 +10,11 @@ from datetime import datetime, date, timezone
 # Constants
 # ---------------------------------------------------------------------------
 
-ALLOWED_EXTENSIONS = {'.xlsx', '.xls'}
+ALLOWED_EXTENSIONS = {'.xlsx'}
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 ALLOWED_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  # .xlsx
-    'application/vnd.ms-excel',  # .xls
-    'application/octet-stream',  # generic binary — accepted but extension checked too
+    'application/octet-stream',  # generic binary used by some clients
 }
 
 # Script-injection patterns to strip from cell values
@@ -35,14 +35,13 @@ def validate_file(filename: str, content_type: str, file_size: int) -> list[str]
     ext = _file_extension(filename)
     if ext not in ALLOWED_EXTENSIONS:
         errors.append(
-            f'Invalid file type "{ext}". Only .xlsx and .xls files are accepted.'
+            f'Invalid file type "{ext}". Only .xlsx files are accepted.'
         )
 
-    # Content-type check (informational — extension is authoritative)
     if content_type and content_type not in ALLOWED_MIME_TYPES:
-        # Only add an error if the extension was also wrong; otherwise warn via
-        # the warnings list in the result, not here.
-        pass
+        errors.append(
+            f'Invalid content type "{content_type}". Please upload an .xlsx file.'
+        )
 
     if file_size > MAX_FILE_SIZE_BYTES:
         limit_mb = MAX_FILE_SIZE_BYTES // (1024 * 1024)
@@ -60,8 +59,6 @@ def _file_extension(filename: str) -> str:
     lower = filename.lower()
     if lower.endswith('.xlsx'):
         return '.xlsx'
-    if lower.endswith('.xls'):
-        return '.xls'
     dot = lower.rfind('.')
     return lower[dot:] if dot != -1 else ''
 
@@ -70,9 +67,23 @@ def _file_extension(filename: str) -> str:
 # Sanitisation
 # ---------------------------------------------------------------------------
 
+def _is_blankish(value) -> bool:
+    """Return True for None/NaN/blank-like spreadsheet values."""
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+
+    text = str(value).strip()
+    if not text:
+        return True
+
+    return text.lower() in {'nan', 'none', '<na>', 'nat'}
+
+
 def _sanitise(value) -> str:
     """Convert cell value to a clean string, removing injection vectors."""
-    if value is None:
+    if _is_blankish(value):
         return ''
     text = str(value).strip()
     return _INJECTION_PATTERNS.sub('', text)
