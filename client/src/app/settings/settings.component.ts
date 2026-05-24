@@ -1,14 +1,14 @@
 // Settings shell — hosts sub-sections such as Import
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
-import { MatListModule } from '@angular/material/list';
-import { MatIconModule } from '@angular/material/icon';
-import { MatCardModule } from '@angular/material/card';
-import { MatDividerModule } from '@angular/material/divider';
+import { Component } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { RouterModule } from "@angular/router";
+import { MatListModule } from "@angular/material/list";
+import { MatIconModule } from "@angular/material/icon";
+import { MatCardModule } from "@angular/material/card";
+import { MatDividerModule } from "@angular/material/divider";
 
 @Component({
-  selector: 'app-settings',
+  selector: "app-settings",
   standalone: true,
   imports: [
     CommonModule,
@@ -16,7 +16,7 @@ import { MatDividerModule } from '@angular/material/divider';
     MatListModule,
     MatIconModule,
     MatCardModule,
-    MatDividerModule
+    MatDividerModule,
   ],
   template: `
     <div class="settings-container" role="main" aria-label="Settings">
@@ -44,42 +44,47 @@ import { MatDividerModule } from '@angular/material/divider';
       </div>
     </div>
   `,
-  styles: [`
-    .settings-container {
-      display: flex;
-      gap: 24px;
-      padding: var(--spacing-md, 16px);
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
-    .settings-nav-card {
-      width: 220px;
-      flex-shrink: 0;
-      align-self: flex-start;
-      border-radius: 12px;
-    }
-
-    .settings-content {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .active-link {
-      background: rgba(123, 63, 242, 0.08) !important;
-      color: #7B3FF2 !important;
-    }
-
-    @media (max-width: 768px) {
+  styles: [
+    `
       .settings-container {
-        flex-direction: column;
-        padding: 8px;
+        display: flex;
+        gap: 24px;
+        padding: var(--spacing-md, 16px);
+        max-width: 1100px;
+        margin: 0 auto;
       }
 
       .settings-nav-card {
-        width: 100%;
+        width: 220px;
+        flex-shrink: 0;
+        align-self: flex-start;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
       }
-    }
-  `]
+
+      .settings-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .active-link {
+        background: rgba(29, 78, 216, 0.08) !important;
+        color: var(--colour-primary) !important;
+        border-radius: var(--radius-sm);
+      }
+
+      @media (max-width: 768px) {
+        .settings-container {
+          flex-direction: column;
+          padding: 8px;
+        }
+
+        .settings-nav-card {
+          width: 100%;
+        }
+      }
+    `,
+  ],
 })
 export class SettingsComponent {}
