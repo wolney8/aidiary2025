@@ -42,7 +42,7 @@ export interface DreamEntry {
 
 // Enhanced analysis interfaces
 export interface AnalysisRequest {
-  mode: 'daily' | 'dream';
+  mode: "daily" | "dream";
   text: string;
   ai_style?: string;
   existing_content?: Partial<DailyEntry | DreamEntry>; // For extracting people/places
@@ -86,7 +86,7 @@ export interface DreamFieldOptions {
 
 // Entry display interfaces
 export interface ParsedEntry {
-  type: 'daily' | 'dream';
+  type: "daily" | "dream";
   entry: DailyEntry | DreamEntry;
   parsedTags: string[];
   parsedPeople: string[];

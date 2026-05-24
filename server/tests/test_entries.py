@@ -177,6 +177,7 @@ def test_analyse_daily_entry(mock_openai, client):
     assert 'tags' in data
     assert 'daily_people_names' in data
     assert 'daily_places' in data
+    assert data['daily_people_names'] == 'John,Sarah'
 
 def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
