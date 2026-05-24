@@ -41,8 +41,13 @@ import { AuthService } from '../../services/auth.service';
         </a>
         
         <a mat-list-item routerLink="/profile" (click)="closeSidenav.emit()">
-          <mat-icon matListItemIcon>settings</mat-icon>
-          <span matListItemTitle>Settings</span>
+          <mat-icon matListItemIcon>person</mat-icon>
+          <span matListItemTitle>Profile</span>
+        </a>
+
+        <a mat-list-item routerLink="/settings/import" (click)="closeSidenav.emit()">
+          <mat-icon matListItemIcon>upload_file</mat-icon>
+          <span matListItemTitle>Import Entries</span>
         </a>
         
         <mat-divider></mat-divider>

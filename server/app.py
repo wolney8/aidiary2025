@@ -75,11 +75,13 @@ def create_app():
     from routes.profile import profile_bp
     from routes.entries import entries_bp
     from routes.analyse import analyse_bp
+    from routes.import_routes import import_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
     app.register_blueprint(entries_bp, url_prefix='/api')
     app.register_blueprint(analyse_bp, url_prefix='/api')
+    app.register_blueprint(import_bp, url_prefix='/api')
     
     # Health check endpoint
     @app.route('/health')
