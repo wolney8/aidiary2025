@@ -17,8 +17,25 @@ ALLOWED_MIME_TYPES = {
     'application/octet-stream',  # generic binary used by some clients
 }
 
+DAILY_IMPORT_HEADERS = ('date', 'title', 'content', 'tags')
+DREAM_IMPORT_HEADERS = (
+    'date',
+    'title',
+    'plot',
+    'cast',
+    'location',
+    'period',
+    'emotion',
+    'symbols_and_imagery',
+    'insight',
+    'action',
+    'other',
+    'tags',
+)
+
 # Script-injection patterns to strip from cell values
 _INJECTION_PATTERNS = re.compile(r'[<>]|javascript:', re.IGNORECASE)
+_FORMULA_PREFIXES = ('=', '+', '-', '@')
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +103,36 @@ def _sanitise(value) -> str:
     if _is_blankish(value):
         return ''
     text = str(value).strip()
+    if text.startswith(_FORMULA_PREFIXES):
+        text = text[1:].lstrip()
     return _INJECTION_PATTERNS.sub('', text)
+
+
+def _normalise_headers(columns) -> list[str]:
+    return [str(column).strip().lower() for column in columns]
+
+
+def _validate_sheet_headers(
+    sheet_name: str,
+    columns: list[str],
+    expected_headers: tuple[str, ...],
+) -> list[str]:
+    warnings: list[str] = []
+    missing = [header for header in expected_headers if header not in columns]
+    unexpected = [column for column in columns if column and column not in expected_headers]
+
+    if missing:
+        warnings.append(
+            f"{sheet_name} sheet: missing columns {', '.join(missing)}. "
+            "Rows missing required data may be skipped."
+        )
+
+    if unexpected:
+        warnings.append(
+            f"{sheet_name} sheet: ignoring unexpected columns {', '.join(unexpected)}."
+        )
+
+    return warnings
 
 
 def _parse_date(value) -> str | None:
@@ -349,8 +395,52 @@ CREATE TABLE IF NOT EXISTS import_history (
 
 
 def ensure_history_table(conn: sqlite3.Connection) -> None:
-    """Create import_history table if it does not already exist."""
+    """Create or repair import_history table for older local databases."""
     conn.execute(IMPORT_HISTORY_DDL)
+
+    columns = {
+        row[1]: row for row in conn.execute('PRAGMA table_info(import_history)').fetchall()
+    }
+
+    if 'imported_at' not in columns:
+        conn.execute("ALTER TABLE import_history ADD COLUMN imported_at TEXT")
+        conn.execute(
+            "UPDATE import_history SET imported_at = COALESCE(imported_at, datetime('now'))"
+        )
+
+    if 'file_size_bytes' not in columns:
+        conn.execute(
+            "ALTER TABLE import_history ADD COLUMN file_size_bytes INTEGER NOT NULL DEFAULT 0"
+        )
+
+    if 'inserted_daily' not in columns:
+        conn.execute(
+            "ALTER TABLE import_history ADD COLUMN inserted_daily INTEGER NOT NULL DEFAULT 0"
+        )
+
+    if 'skipped_daily' not in columns:
+        conn.execute(
+            "ALTER TABLE import_history ADD COLUMN skipped_daily INTEGER NOT NULL DEFAULT 0"
+        )
+
+    if 'inserted_dreams' not in columns:
+        conn.execute(
+            "ALTER TABLE import_history ADD COLUMN inserted_dreams INTEGER NOT NULL DEFAULT 0"
+        )
+
+    if 'skipped_dreams' not in columns:
+        conn.execute(
+            "ALTER TABLE import_history ADD COLUMN skipped_dreams INTEGER NOT NULL DEFAULT 0"
+        )
+
+    if 'warnings' not in columns:
+        conn.execute("ALTER TABLE import_history ADD COLUMN warnings TEXT")
+
+    if 'status' not in columns:
+        conn.execute(
+            "ALTER TABLE import_history ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
+        )
+
     conn.commit()
 
 

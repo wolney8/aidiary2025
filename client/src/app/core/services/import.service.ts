@@ -1,24 +1,23 @@
 // Import service — handles template download, file upload, and history retrieval
-import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpEventType, HttpHeaders } from '@angular/common/http';
-import { Observable, throwError } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
-import { AuthService } from './auth.service';
+import { Injectable, inject } from "@angular/core";
+import { HttpClient, HttpEventType, HttpHeaders } from "@angular/common/http";
+import { Observable, throwError } from "rxjs";
+import { catchError, map } from "rxjs/operators";
+import { AuthService } from "./auth.service";
 
 export interface ImportHistoryItem {
   id: number;
   imported_at: string;
   filename: string;
-  total_rows: number;
   imported_count: number;
   skipped_count: number;
   error_count: number;
-  status: 'success' | 'partial' | 'failed';
+  status: "success" | "partial" | "failed";
   notes?: string;
 }
 
 export interface ImportResult {
-  status: 'success' | 'partial' | 'failed';
+  status: "success" | "partial" | "failed";
   message: string;
   imported_count: number;
   skipped_count: number;
@@ -33,18 +32,18 @@ export interface UploadProgress {
   total: number;
 }
 
-@Injectable({ providedIn: 'root' })
+@Injectable({ providedIn: "root" })
 export class ImportService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
-  private readonly baseUrl = 'http://localhost:5001/api';
+  private readonly baseUrl = "http://localhost:5001/api";
   private readonly maxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
   private readonly allowedMimeTypes = [
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-excel'
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
   ];
-  private readonly allowedExtensions = ['.xlsx', '.xls'];
+  private readonly allowedExtensions = [".xlsx", ".xls"];
 
   /** Download the Excel import template. */
   downloadTemplate(): Observable<Blob> {
@@ -52,9 +51,9 @@ export class ImportService {
     return this.http
       .get(`${this.baseUrl}/import/template`, {
         headers,
-        responseType: 'blob'
+        responseType: "blob",
       })
-      .pipe(catchError(err => throwError(() => this.normaliseError(err))));
+      .pipe(catchError((err) => throwError(() => this.normaliseError(err))));
   }
 
   /**
@@ -62,26 +61,29 @@ export class ImportService {
    * Emits UploadProgress objects while uploading, then the final ImportResult.
    */
   uploadFile(
-    file: File
-  ): Observable<{ type: 'progress'; progress: UploadProgress } | { type: 'result'; result: ImportResult }> {
+    file: File,
+  ): Observable<
+    | { type: "progress"; progress: UploadProgress }
+    | { type: "result"; result: ImportResult }
+  > {
     const headers = this.getAuthHeaders();
     const formData = new FormData();
-    formData.append('file', file, file.name);
+    formData.append("file", file, file.name);
 
     return this.http
       .post(`${this.baseUrl}/import/upload`, formData, {
         headers,
         reportProgress: true,
-        observe: 'events'
+        observe: "events",
       })
       .pipe(
-        map(event => {
+        map((event) => {
           if (event.type === HttpEventType.UploadProgress) {
             const total = event.total ?? file.size;
             const percent = Math.round((event.loaded / total) * 100);
             return {
-              type: 'progress' as const,
-              progress: { percent, loaded: event.loaded, total }
+              type: "progress" as const,
+              progress: { percent, loaded: event.loaded, total },
             };
           }
 
@@ -89,23 +91,23 @@ export class ImportService {
             const body = event.body as ImportResult;
             // Normalise defensive shape — backend may send partial fields
             const result: ImportResult = {
-              status: body?.status ?? 'failed',
-              message: body?.message ?? 'Upload complete.',
+              status: body?.status ?? "failed",
+              message: body?.message ?? "Upload complete.",
               imported_count: body?.imported_count ?? 0,
               skipped_count: body?.skipped_count ?? 0,
               error_count: body?.error_count ?? 0,
               errors: body?.errors ?? [],
-              warnings: body?.warnings ?? []
+              warnings: body?.warnings ?? [],
             };
-            return { type: 'result' as const, result };
+            return { type: "result" as const, result };
           }
 
           // Intermediate events (Sent, ResponseHeader, etc.) — skip
           return null as unknown as never;
         }),
         // Filter out null events from intermediate HttpEventTypes
-        map(val => val),
-        catchError(err => throwError(() => this.normaliseError(err)))
+        map((val) => val),
+        catchError((err) => throwError(() => this.normaliseError(err))),
       );
   }
 
@@ -115,22 +117,22 @@ export class ImportService {
     return this.http
       .get<ImportHistoryItem[]>(`${this.baseUrl}/import/history`, { headers })
       .pipe(
-        map(items => (Array.isArray(items) ? items : [])),
-        catchError(err => throwError(() => this.normaliseError(err)))
+        map((items) => (Array.isArray(items) ? items : [])),
+        catchError((err) => throwError(() => this.normaliseError(err))),
       );
   }
 
   /** Client-side validation — returns an error string or null if valid. */
   validateFile(file: File): string | null {
-    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const extension = "." + file.name.split(".").pop()?.toLowerCase();
 
     if (!this.allowedExtensions.includes(extension)) {
       return `Invalid file type. Only Excel files (.xlsx, .xls) are accepted.`;
     }
 
-    if (!this.allowedMimeTypes.includes(file.type) && file.type !== '') {
+    if (!this.allowedMimeTypes.includes(file.type) && file.type !== "") {
       // Some browsers report empty MIME type for Excel — allow it if extension is correct
-      if (file.type !== '') {
+      if (file.type !== "") {
         return `Invalid file type. Only Excel files (.xlsx, .xls) are accepted.`;
       }
     }
@@ -142,7 +144,7 @@ export class ImportService {
     }
 
     if (file.size === 0) {
-      return 'The selected file is empty. Please choose a valid Excel file.';
+      return "The selected file is empty. Please choose a valid Excel file.";
     }
 
     return null;
@@ -157,11 +159,59 @@ export class ImportService {
     if (err instanceof Error) return err;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const httpErr = err as any;
+
+    if (httpErr?.status === 0) {
+      return new Error(
+        "Cannot reach the backend service (http://localhost:5001). Please confirm the server is running and CORS is configured.",
+      );
+    }
+
     const message =
       httpErr?.error?.message ||
       httpErr?.error?.error ||
       httpErr?.message ||
-      'An unexpected error occurred. Please try again.';
+      "An unexpected error occurred. Please try again.";
     return new Error(message);
+  }
+
+  private normaliseHistoryItem(raw: unknown): ImportHistoryItem | null {
+    if (!raw || typeof raw !== "object") {
+      return null;
+    }
+
+    const item = raw as Record<string, unknown>;
+
+    const insertedDaily = Number(item["inserted_daily"] ?? 0);
+    const insertedDreams = Number(item["inserted_dreams"] ?? 0);
+    const skippedDaily = Number(item["skipped_daily"] ?? 0);
+    const skippedDreams = Number(item["skipped_dreams"] ?? 0);
+
+    const importedCount = Number(
+      item["imported_count"] ?? insertedDaily + insertedDreams,
+    );
+    const skippedCount = Number(
+      item["skipped_count"] ?? skippedDaily + skippedDreams,
+    );
+
+    const rawStatus = String(item["status"] ?? "failed");
+    const status: ImportHistoryItem["status"] =
+      rawStatus === "success"
+        ? "success"
+        : rawStatus === "partial"
+          ? "partial"
+          : rawStatus === "skipped" || rawStatus === "empty"
+            ? "failed"
+            : "failed";
+
+    return {
+      id: Number(item["id"] ?? 0),
+      imported_at: String(item["imported_at"] ?? ""),
+      filename: String(item["filename"] ?? "Unknown file"),
+      imported_count: importedCount,
+      skipped_count: skippedCount,
+      error_count: Number(item["error_count"] ?? 0),
+      status,
+      notes: typeof item["notes"] === "string" ? item["notes"] : undefined,
+    };
   }
 }

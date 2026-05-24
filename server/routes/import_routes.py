@@ -7,6 +7,8 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from services.import_service import (
+    DAILY_IMPORT_HEADERS,
+    DREAM_IMPORT_HEADERS,
     validate_file,
     parse_excel,
     insert_entries,
@@ -233,15 +235,11 @@ def download_template():
     # --- Daily sheet ---
     ws_daily = wb.active
     ws_daily.title = 'Daily'
-    ws_daily.append(['date', 'title', 'content', 'tags'])
+    ws_daily.append(list(DAILY_IMPORT_HEADERS))
 
     # --- Dreams sheet ---
     ws_dreams = wb.create_sheet(title='Dreams')
-    ws_dreams.append([
-        'date', 'title', 'plot', 'cast', 'location',
-        'period', 'emotion', 'symbols_and_imagery',
-        'insight', 'action', 'other', 'tags',
-    ])
+    ws_dreams.append(list(DREAM_IMPORT_HEADERS))
 
     buffer = io.BytesIO()
     wb.save(buffer)

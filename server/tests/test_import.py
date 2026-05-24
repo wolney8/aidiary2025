@@ -10,6 +10,7 @@ import openpyxl
 import pytest
 
 from app import create_app
+from services.import_service import DAILY_IMPORT_HEADERS, DREAM_IMPORT_HEADERS
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +147,18 @@ def _upload(client, token: str, file_bytes: bytes, filename='test.xlsx',
         data={'file': (io.BytesIO(file_bytes), filename, content_type)},
         content_type='multipart/form-data',
     )
+
+
+def _create_legacy_import_history_table(conn: sqlite3.Connection) -> None:
+    conn.executescript('''
+        DROP TABLE IF EXISTS import_history;
+        CREATE TABLE import_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            filename TEXT NOT NULL
+        );
+    ''')
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +507,27 @@ class TestImportHistory:
         data_b = json.loads(resp_b.data)
         assert data_b['history'] == []
 
+    def test_legacy_history_table_is_repaired_on_upload(self, client):
+        token = _register_and_login(client)
+        db_path = os.environ['DB_PATH']
+        conn = sqlite3.connect(db_path)
+        _create_legacy_import_history_table(conn)
+        conn.close()
+
+        file_bytes = _make_xlsx(daily_rows=[['2025-02-02', 'Legacy', 'Body', '']])
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['status'] == 'success'
+
+        history_resp = client.get(
+            '/api/import/history',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        history_data = json.loads(history_resp.data)
+        assert len(history_data['history']) == 1
+        assert history_data['history'][0]['imported_at']
+
 
 # ---------------------------------------------------------------------------
 # Template download
@@ -528,9 +562,7 @@ class TestTemplateDownload:
         wb = openpyxl.load_workbook(io.BytesIO(resp.data))
         ws = wb['Daily']
         headers = [cell.value for cell in ws[1]]
-        assert 'date' in headers
-        assert 'title' in headers
-        assert 'content' in headers
+        assert headers == list(DAILY_IMPORT_HEADERS)
 
     def test_template_has_dreams_headers(self, client):
         token = _register_and_login(client)
@@ -541,8 +573,7 @@ class TestTemplateDownload:
         wb = openpyxl.load_workbook(io.BytesIO(resp.data))
         ws = wb['Dreams']
         headers = [cell.value for cell in ws[1]]
-        assert 'date' in headers
-        assert 'plot' in headers
+        assert headers == list(DREAM_IMPORT_HEADERS)
 
     def test_template_unauthenticated(self, client):
         resp = client.get('/api/import/template')

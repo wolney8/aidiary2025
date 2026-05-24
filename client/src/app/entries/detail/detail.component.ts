@@ -254,11 +254,14 @@ import { EntriesService } from "../../core/services/entries.service";
           <button
             mat-button
             type="button"
-            class="expand-toggle"
+            class="expand-toggle ellipsis-toggle"
             *ngIf="shouldShowToggle(getPeopleArray())"
             (click)="showAllPeople = !showAllPeople"
+            [attr.aria-label]="
+              showAllPeople ? 'Show fewer people' : 'Show more people'
+            "
           >
-            {{ showAllPeople ? "Show less" : "Show more" }}
+            {{ showAllPeople ? "Show less" : "..." }}
           </button>
         </div>
 

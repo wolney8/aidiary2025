@@ -67,9 +67,22 @@ const UK_DATE_FORMATS = {
     <div class="create-container">
       <mat-card>
         <mat-card-header>
+          <button
+            mat-stroked-button
+            type="button"
+            class="header-back"
+            (click)="goBack()"
+            [disabled]="isSaving"
+            aria-label="Go back to entries"
+          >
+            <mat-icon>arrow_back</mat-icon>
+            Back
+          </button>
+
           <mat-card-title
             >{{ isEditing ? "Edit" : "New" }} Diary Entry</mat-card-title
           >
+
           <mat-slide-toggle [(ngModel)]="leaveItToAI">
             Respond with AI
           </mat-slide-toggle>
@@ -435,6 +448,20 @@ const UK_DATE_FORMATS = {
         justify-content: space-between;
         align-items: center;
         margin-bottom: var(--spacing-md);
+        gap: var(--spacing-sm);
+      }
+
+      mat-card-title {
+        margin: 0;
+      }
+
+      .header-back {
+        border-color: var(--colour-border);
+        color: var(--colour-text-secondary);
+      }
+
+      .header-back mat-icon {
+        margin-right: var(--spacing-xs);
       }
 
       mat-card {
@@ -447,6 +474,17 @@ const UK_DATE_FORMATS = {
         color: #b91c1c;
         margin-top: var(--spacing-sm);
       }
+
+      @media (max-width: 768px) {
+        mat-card-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .header-back {
+          align-self: flex-start;
+        }
+      }
     `,
   ],
 })
@@ -455,6 +493,8 @@ export class CreateComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
+
+  backQueryParams: Record<string, string | number> = {};
 
   entryDate: Date | null = new Date();
   entryTitle = "";
@@ -855,10 +895,16 @@ export class CreateComponent implements OnInit {
   }
 
   cancelCreate(): void {
-    if (!this.hasUnsavedChanges() || confirm("Discard this entry?")) {
-      this.resetForm();
-      this.router.navigate(["/entries"]);
+    this.goBack();
+  }
+
+  goBack(): void {
+    if (!this.canLeaveCreateScreen()) {
+      return;
     }
+
+    this.resetForm();
+    this.router.navigate(["/entries"]);
   }
 
   addTag(event: MatChipInputEvent): void {
@@ -897,7 +943,7 @@ export class CreateComponent implements OnInit {
   }
 
   canDeactivate(): boolean {
-    return !this.hasUnsavedChanges() || confirm("Discard your entry?");
+    return this.canLeaveCreateScreen();
   }
 
   @HostListener("window:beforeunload", ["$event"])
@@ -908,6 +954,20 @@ export class CreateComponent implements OnInit {
     }
   }
 
+  private canLeaveCreateScreen(): boolean {
+    return !this.hasUnsavedChanges() || confirm("Discard this entry?");
+  }
+
+  private captureBackQueryParams(): void {
+    const sourceParams = this.route.snapshot.queryParams;
+
+    ["type", "month", "year", "search"].forEach((key) => {
+      if (sourceParams[key] !== undefined && sourceParams[key] !== null) {
+        this.backQueryParams[key] = sourceParams[key];
+      }
+    });
+  }
+
   private hasUnsavedChanges(): boolean {
     const hasBasicChanges = Boolean(
       (this.entryTitle && this.entryTitle.trim()) ||
@@ -915,6 +975,7 @@ export class CreateComponent implements OnInit {
       this.tags.length ||
       this.selectedMood ||
       this.selectedAIStyle !== "friendly" ||
+      this.leaveItToAI ||
       (this.entryDate && this.entryDate.toDateString() !== this.initialDate),
     );
 

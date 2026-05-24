@@ -112,9 +112,23 @@ a:focus-visible,
 
 // Pill toggle styles
 .view-toggle {
+  .mat-button-toggle {
+    border-color: var(--colour-border);
+    color: var(--colour-text-secondary);
+    transition: all 0.2s ease;
+  }
+
+  .mat-button-toggle:hover {
+    background: var(--colour-surface-muted);
+  }
+
   .mat-button-toggle-checked {
-    background-color: #7b3ff2;
-    color: white;
+    background-color: var(--colour-primary);
+    color: #ffffff;
+  }
+
+  .mat-button-toggle-checked:hover {
+    background-color: var(--colour-primary-hover);
   }
 }
 

@@ -62,7 +62,7 @@ type TimelineMonth = {
             <button
               mat-raised-button
               color="primary"
-              routerLink="/entries/create"
+              (click)="navigateToCreateEntry()"
             >
               New Entry
             </button>
