@@ -1,5 +1,5 @@
 // Global styles matching wireframe design
-@use '@angular/material' as mat;
+@use "@angular/material" as mat;
 
 // Custom theme colours
 $primary-palette: (
@@ -8,7 +8,8 @@ $primary-palette: (
   200: #ce93d8,
   300: #ba68c8,
   400: #ab47bc,
-  500: #7B3FF2, // Main purple from wireframes
+  500: #7b3ff2,
+  // Main purple from wireframes
   600: #8e24aa,
   700: #7b1fa2,
   800: #6a1b9a,
@@ -32,27 +33,30 @@ $primary-palette: (
     A200: white,
     A400: white,
     A700: white,
-  )
+  ),
 );
 
 $ai-diary-primary: mat.define-palette($primary-palette, 500);
 $ai-diary-accent: mat.define-palette(mat.$pink-palette, A200);
 $ai-diary-warn: mat.define-palette(mat.$red-palette);
 
-$ai-diary-theme: mat.define-light-theme((
-  color: (
-    primary: $ai-diary-primary,
-    accent: $ai-diary-accent,
-    warn: $ai-diary-warn,
-  ),
-  typography: mat.define-typography-config(),
-  density: 0,
-));
+$ai-diary-theme: mat.define-light-theme(
+  (
+    color: (
+      primary: $ai-diary-primary,
+      accent: $ai-diary-accent,
+      warn: $ai-diary-warn,
+    ),
+    typography: mat.define-typography-config(),
+    density: 0,
+  )
+);
 
 @include mat.all-component-themes($ai-diary-theme);
 
 // Global styles
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   font-family: Roboto, "Helvetica Neue", sans-serif;
@@ -70,18 +74,18 @@ html, body {
 // Card styles matching wireframes
 .entry-card {
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: box-shadow 0.3s;
-  
+
   &:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
   }
 }
 
 // Pill toggle styles
 .view-toggle {
   .mat-button-toggle-checked {
-    background-color: #7B3FF2;
+    background-color: #7b3ff2;
     color: white;
   }
 }
@@ -91,15 +95,15 @@ html, body {
   overflow-x: auto;
   white-space: nowrap;
   padding: var(--spacing-sm) 0;
-  
+
   &::-webkit-scrollbar {
     height: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: #f1f1f1;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: #888;
     border-radius: 3px;
@@ -111,7 +115,7 @@ html, body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-md);
-  
+
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
