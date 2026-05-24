@@ -41,9 +41,9 @@
   align-items: center;
   justify-content: center;
   padding: 1.5rem 0;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--colour-border);
   margin-bottom: 1rem;
-  background: #fafafa;
+  background: var(--colour-surface-muted);
 }
 
 .timeline-months {
@@ -59,7 +59,7 @@
   text-align: center;
   min-width: 100px;
   padding: 0.75rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   transition: all 0.2s ease;
   border: 2px solid transparent;
   position: relative;
@@ -75,14 +75,14 @@
 }
 
 .month-item.current {
-  background: #e3f2fd;
-  border-color: #2196f3;
+  background: #dbeafe;
+  border-color: var(--colour-primary);
   font-weight: 600;
 }
 
 .month-item.selected {
-  background: #2196f3;
-  color: white;
+  background: var(--colour-primary);
+  color: #ffffff;
   font-weight: 600;
   transform: scale(1.05);
 }
@@ -107,8 +107,8 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background: #03a9f4;
-  color: white;
+  background: #0369a1;
+  color: #ffffff;
   border-radius: 50%;
   width: 20px;
   height: 20px;
@@ -121,8 +121,8 @@
 }
 
 .month-item.selected .entry-count-badge {
-  background: rgba(255, 255, 255, 0.9);
-  color: #2196f3;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--colour-primary);
 }
 
 .month-item .year {
@@ -171,17 +171,17 @@
   font-weight: 500 !important;
   padding: 8px 12px !important;
   margin: 0 8px !important;
-  border: 1px solid #ddd !important;
-  border-radius: 4px !important;
-  background: white !important;
-  color: #666 !important;
+  border: 1px solid var(--colour-border) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--colour-surface) !important;
+  color: var(--colour-text-secondary) !important;
   transition: all 0.2s ease !important;
 }
 
 .timeline-nav-button:not([disabled]):hover {
-  background: #f5f5f5 !important;
-  border-color: #999 !important;
-  color: #333 !important;
+  background: var(--colour-surface-muted) !important;
+  border-color: var(--colour-primary) !important;
+  color: var(--colour-text-primary) !important;
   transform: translateY(-1px) !important;
 }
 
@@ -362,11 +362,11 @@
   cursor: pointer;
   margin: 2px;
   background-color: #dbeafe;
-  color: #0f172a;
+  color: var(--colour-text-primary);
 }
 
 .entry-card mat-chip:hover {
-  background-color: #1d4ed8;
+  background-color: var(--colour-primary);
   color: #ffffff;
 }
 

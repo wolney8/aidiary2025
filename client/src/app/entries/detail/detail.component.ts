@@ -333,9 +333,10 @@ import { EntriesService } from "../../core/services/entries.service";
       }
 
       .metadata-bar {
-        background: #f5f5f5;
+        background: var(--colour-surface-muted);
         padding: var(--spacing-md);
-        border-radius: 8px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--colour-border);
       }
 
       .metadata-section {
@@ -344,7 +345,7 @@ import { EntriesService } from "../../core/services/entries.service";
 
       .metadata-section h4 {
         margin-bottom: var(--spacing-sm);
-        color: #1f2937;
+        color: var(--colour-text-primary);
         font-weight: 600;
       }
 
@@ -358,11 +359,11 @@ import { EntriesService } from "../../core/services/entries.service";
         cursor: pointer;
         transition: all 0.2s ease;
         background-color: #dbeafe !important;
-        color: #0f172a !important;
+        color: var(--colour-text-primary) !important;
       }
 
       .clickable-chip:hover {
-        background-color: #1d4ed8 !important;
+        background-color: var(--colour-primary) !important;
         color: #ffffff !important;
       }
 
@@ -380,7 +381,7 @@ import { EntriesService } from "../../core/services/entries.service";
       .ellipsis-toggle {
         min-width: 2.25rem;
         padding: 0 0.5rem;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         font-weight: 600;
       }
     `,
