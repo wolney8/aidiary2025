@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "type": "command",
+        "command": ".github/hooks/scripts/context-snapshot.sh",
+        "timeout": 10
+      }
+    ]
+  }
+}
