@@ -35,6 +35,19 @@ import { EntriesService } from "../../core/services/entries.service";
         </button>
       </div>
 
+      <section class="entry-image-band" aria-label="Entry image">
+        <img
+          *ngIf="getEntryImageUrl()"
+          [src]="getEntryImageUrl()!"
+          alt="Entry image"
+          class="entry-image"
+        />
+        <div class="entry-image-placeholder" *ngIf="!getEntryImageUrl()">
+          <mat-icon>image</mat-icon>
+          <p>No image uploaded for this entry yet.</p>
+        </div>
+      </section>
+
       <div class="detail-columns">
         <mat-card>
           <mat-card-header>
@@ -296,6 +309,42 @@ import { EntriesService } from "../../core/services/entries.service";
         flex: 1;
       }
 
+      .entry-image-band {
+        margin-bottom: var(--spacing-md);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+        overflow: hidden;
+      }
+
+      .entry-image {
+        width: 100%;
+        max-height: 320px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .entry-image-placeholder {
+        min-height: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 0.5rem;
+        color: var(--colour-text-secondary);
+        background: var(--colour-surface-muted);
+      }
+
+      .entry-image-placeholder mat-icon {
+        font-size: 2rem;
+        width: 2rem;
+        height: 2rem;
+      }
+
+      .entry-image-placeholder p {
+        margin: 0;
+      }
+
       .section {
         margin-bottom: var(--spacing-md);
       }
@@ -457,6 +506,20 @@ export class DetailComponent implements OnInit {
     return `Entry for ${this.getFriendlyDate()}`;
   }
 
+  getEntryImageUrl(): string | null {
+    if (!this.isDream()) {
+      return null;
+    }
+
+    const raw = this.entry?.image_url;
+    if (!raw || typeof raw !== "string") {
+      return null;
+    }
+
+    const value = raw.trim();
+    return value.length > 0 ? value : null;
+  }
+
   getUserParagraphs(): string[] {
     const content = this.getUserContent();
     const paragraphs = this.toParagraphs(content);
@@ -561,6 +624,7 @@ export class DetailComponent implements OnInit {
           .split(",")
           .map((person: string) => person.trim())
           .filter((person: string) => person.length > 0)
+          .filter((person: string) => this.isLikelyPersonName(person))
       : [];
   }
 
@@ -591,6 +655,41 @@ export class DetailComponent implements OnInit {
 
   isDream(): boolean {
     return this.entryType === "dream";
+  }
+
+  private isLikelyPersonName(value: string): boolean {
+    const candidate = value.trim();
+    if (!candidate) {
+      return false;
+    }
+
+    const blocked = new Set([
+      "hopefully",
+      "maybe",
+      "someone",
+      "somebody",
+      "everyone",
+      "everybody",
+      "nobody",
+      "anyone",
+      "anybody",
+      "person",
+      "people",
+      "friend",
+      "friends",
+      "unknown",
+      "none",
+      "na",
+      "n/a",
+    ]);
+
+    const lower = candidate.toLowerCase();
+    if (blocked.has(lower)) {
+      return false;
+    }
+
+    // Keep typical person-name characters; drop obvious non-name tokens.
+    return /^[A-Za-z][A-Za-z'\-\s]{1,49}$/.test(candidate);
   }
 
   private captureBackQueryParams(): void {
