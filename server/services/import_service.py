@@ -1,0 +1,409 @@
+# server/services/import_service.py
+# Excel import service: validation, parsing, duplicate handling, history tracking
+import io
+import re
+import sqlite3
+from datetime import datetime, date, timezone
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ALLOWED_EXTENSIONS = {'.xlsx', '.xls'}
+MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+ALLOWED_MIME_TYPES = {
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  # .xlsx
+    'application/vnd.ms-excel',  # .xls
+    'application/octet-stream',  # generic binary — accepted but extension checked too
+}
+
+# Script-injection patterns to strip from cell values
+_INJECTION_PATTERNS = re.compile(r'[<>]|javascript:', re.IGNORECASE)
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers
+# ---------------------------------------------------------------------------
+
+def validate_file(filename: str, content_type: str, file_size: int) -> list[str]:
+    """Return a list of human-readable error strings; empty means valid."""
+    errors: list[str] = []
+    if not filename:
+        errors.append('No filename provided.')
+        return errors
+
+    ext = _file_extension(filename)
+    if ext not in ALLOWED_EXTENSIONS:
+        errors.append(
+            f'Invalid file type "{ext}". Only .xlsx and .xls files are accepted.'
+        )
+
+    # Content-type check (informational — extension is authoritative)
+    if content_type and content_type not in ALLOWED_MIME_TYPES:
+        # Only add an error if the extension was also wrong; otherwise warn via
+        # the warnings list in the result, not here.
+        pass
+
+    if file_size > MAX_FILE_SIZE_BYTES:
+        limit_mb = MAX_FILE_SIZE_BYTES // (1024 * 1024)
+        errors.append(
+            f'File size {file_size / (1024 * 1024):.1f} MB exceeds the {limit_mb} MB limit.'
+        )
+
+    if file_size == 0:
+        errors.append('Uploaded file is empty.')
+
+    return errors
+
+
+def _file_extension(filename: str) -> str:
+    lower = filename.lower()
+    if lower.endswith('.xlsx'):
+        return '.xlsx'
+    if lower.endswith('.xls'):
+        return '.xls'
+    dot = lower.rfind('.')
+    return lower[dot:] if dot != -1 else ''
+
+
+# ---------------------------------------------------------------------------
+# Sanitisation
+# ---------------------------------------------------------------------------
+
+def _sanitise(value) -> str:
+    """Convert cell value to a clean string, removing injection vectors."""
+    if value is None:
+        return ''
+    text = str(value).strip()
+    return _INJECTION_PATTERNS.sub('', text)
+
+
+def _parse_date(value) -> str | None:
+    """Parse various date representations into ISO 'YYYY-MM-DD' string."""
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.strftime('%Y-%m-%d')
+    text = str(value).strip()
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(text, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Excel parsing
+# ---------------------------------------------------------------------------
+
+def parse_excel(file_bytes: bytes) -> dict:
+    """
+    Parse the uploaded Excel workbook.
+
+    Expected sheets (case-insensitive):
+      - 'Daily'  — columns: date, title, content, tags
+      - 'Dreams' — columns: date, title, plot, cast, location, period,
+                             emotion, symbols_and_imagery, insight, action, other, tags
+
+    Returns:
+        {
+          'daily':    [{'entry_date', 'title', 'user_message', 'tags'}, ...],
+          'dreams':   [{'entry_date', 'title', 'plot', ...}, ...],
+          'warnings': [str, ...],   # non-fatal parsing issues
+        }
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise RuntimeError(
+            'pandas is required for Excel import. '
+            'Install it with: pip install pandas openpyxl'
+        )
+
+    warnings: list[str] = []
+    daily_rows: list[dict] = []
+    dream_rows: list[dict] = []
+
+    try:
+        xls = pd.ExcelFile(io.BytesIO(file_bytes), engine='openpyxl')
+    except Exception as exc:
+        raise ValueError(f'Could not open Excel file: {exc}') from exc
+
+    # Build a case-insensitive sheet name map
+    sheet_map = {name.strip().lower(): name for name in xls.sheet_names}
+
+    # --- Daily sheet ---
+    if 'daily' in sheet_map:
+        df = pd.read_excel(xls, sheet_name=sheet_map['daily'], dtype=str)
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        for idx, row in df.iterrows():
+            row_num = idx + 2  # Excel row number (1-indexed header + data)
+            entry_date = _parse_date(row.get('date', ''))
+            if not entry_date:
+                warnings.append(
+                    f'Daily sheet row {row_num}: skipped — invalid or missing date '
+                    f'("{row.get("date", "")}").'
+                )
+                continue
+            daily_rows.append({
+                'entry_date': entry_date,
+                'title': _sanitise(row.get('title', '')),
+                'user_message': _sanitise(row.get('content', row.get('user_message', ''))),
+                'tags': _sanitise(row.get('tags', '')),
+            })
+    else:
+        warnings.append("No 'Daily' sheet found; daily entries not imported.")
+
+    # --- Dreams sheet ---
+    dream_sheet_key = next(
+        (k for k in sheet_map if k in ('dreams', 'dream')), None
+    )
+    if dream_sheet_key:
+        df = pd.read_excel(xls, sheet_name=sheet_map[dream_sheet_key], dtype=str)
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        for idx, row in df.iterrows():
+            row_num = idx + 2
+            entry_date = _parse_date(row.get('date', ''))
+            if not entry_date:
+                warnings.append(
+                    f'Dreams sheet row {row_num}: skipped — invalid or missing date '
+                    f'("{row.get("date", "")}").'
+                )
+                continue
+            dream_rows.append({
+                'entry_date': entry_date,
+                'title': _sanitise(row.get('title', '')),
+                'plot': _sanitise(row.get('plot', '')),
+                'cast': _sanitise(row.get('cast', '')),
+                'location': _sanitise(row.get('location', '')),
+                'period': _sanitise(row.get('period', '')),
+                'emotion': _sanitise(row.get('emotion', '')),
+                'symbols_and_imagery': _sanitise(row.get('symbols_and_imagery', '')),
+                'insight': _sanitise(row.get('insight', '')),
+                'action': _sanitise(row.get('action', '')),
+                'other': _sanitise(row.get('other', '')),
+                'tags': _sanitise(row.get('tags', '')),
+            })
+    else:
+        warnings.append("No 'Dreams' sheet found; dream entries not imported.")
+
+    return {'daily': daily_rows, 'dreams': dream_rows, 'warnings': warnings}
+
+
+# ---------------------------------------------------------------------------
+# Database insertion with duplicate detection
+# ---------------------------------------------------------------------------
+
+def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict:
+    """
+    Insert parsed entries, skipping duplicates (same user_id + entry_date).
+
+    Returns:
+        {
+          'inserted_daily':   int,
+          'skipped_daily':    int,
+          'inserted_dreams':  int,
+          'skipped_dreams':   int,
+          'duplicate_dates_daily':  [str, ...],
+          'duplicate_dates_dreams': [str, ...],
+        }
+    """
+    cursor = conn.cursor()
+
+    # Fetch existing entry dates for this user upfront to minimise round-trips
+    existing_daily = {
+        row[0]
+        for row in cursor.execute(
+            'SELECT DISTINCT entry_date FROM dailydiary_entries WHERE user_id = ?',
+            (user_id,),
+        )
+    }
+    existing_dreams = {
+        row[0]
+        for row in cursor.execute(
+            'SELECT DISTINCT entry_date FROM dreamdiary_entries WHERE user_id = ?',
+            (user_id,),
+        )
+    }
+
+    inserted_daily = 0
+    skipped_daily = 0
+    dup_daily: list[str] = []
+
+    for row in parsed.get('daily', []):
+        entry_date = row['entry_date']
+        if entry_date in existing_daily:
+            skipped_daily += 1
+            dup_daily.append(entry_date)
+            continue
+
+        # Determine next entry_number for this date
+        max_num = cursor.execute(
+            'SELECT MAX(entry_number) FROM dailydiary_entries '
+            'WHERE user_id = ? AND entry_date = ?',
+            (user_id, entry_date),
+        ).fetchone()[0] or 0
+
+        cursor.execute(
+            '''INSERT INTO dailydiary_entries
+               (user_id, entry_date, entry_number, title, user_message, tags)
+               VALUES (?, ?, ?, ?, ?, ?)''',
+            (
+                user_id,
+                entry_date,
+                max_num + 1,
+                row['title'],
+                row['user_message'],
+                row['tags'],
+            ),
+        )
+        existing_daily.add(entry_date)
+        inserted_daily += 1
+
+    inserted_dreams = 0
+    skipped_dreams = 0
+    dup_dreams: list[str] = []
+
+    for row in parsed.get('dreams', []):
+        entry_date = row['entry_date']
+        if entry_date in existing_dreams:
+            skipped_dreams += 1
+            dup_dreams.append(entry_date)
+            continue
+
+        max_num = cursor.execute(
+            'SELECT MAX(entry_number) FROM dreamdiary_entries '
+            'WHERE user_id = ? AND entry_date = ?',
+            (user_id, entry_date),
+        ).fetchone()[0] or 0
+
+        cursor.execute(
+            '''INSERT INTO dreamdiary_entries
+               (user_id, entry_date, entry_number, title, cast, location,
+                period, emotion, plot, symbols_and_imagery, insight, action, other, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                user_id,
+                entry_date,
+                max_num + 1,
+                row['title'],
+                row['cast'],
+                row['location'],
+                row['period'],
+                row['emotion'],
+                row['plot'],
+                row['symbols_and_imagery'],
+                row['insight'],
+                row['action'],
+                row['other'],
+                row['tags'],
+            ),
+        )
+        existing_dreams.add(entry_date)
+        inserted_dreams += 1
+
+    conn.commit()
+
+    return {
+        'inserted_daily': inserted_daily,
+        'skipped_daily': skipped_daily,
+        'inserted_dreams': inserted_dreams,
+        'skipped_dreams': skipped_dreams,
+        'duplicate_dates_daily': dup_daily,
+        'duplicate_dates_dreams': dup_dreams,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Import history
+# ---------------------------------------------------------------------------
+
+IMPORT_HISTORY_DDL = '''
+CREATE TABLE IF NOT EXISTS import_history (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    imported_at     TEXT    NOT NULL,
+    filename        TEXT    NOT NULL,
+    file_size_bytes INTEGER NOT NULL,
+    inserted_daily  INTEGER NOT NULL DEFAULT 0,
+    skipped_daily   INTEGER NOT NULL DEFAULT 0,
+    inserted_dreams INTEGER NOT NULL DEFAULT 0,
+    skipped_dreams  INTEGER NOT NULL DEFAULT 0,
+    warnings        TEXT,
+    status          TEXT    NOT NULL DEFAULT 'success',
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+'''
+
+
+def ensure_history_table(conn: sqlite3.Connection) -> None:
+    """Create import_history table if it does not already exist."""
+    conn.execute(IMPORT_HISTORY_DDL)
+    conn.commit()
+
+
+def record_import_history(
+    conn: sqlite3.Connection,
+    user_id: int,
+    filename: str,
+    file_size: int,
+    result: dict,
+    warnings: list[str],
+    status: str = 'success',
+) -> int:
+    """Insert a row into import_history and return the new id."""
+    import json
+
+    cursor = conn.cursor()
+    cursor.execute(
+        '''INSERT INTO import_history
+           (user_id, imported_at, filename, file_size_bytes,
+            inserted_daily, skipped_daily, inserted_dreams, skipped_dreams,
+            warnings, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (
+            user_id,
+            datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            filename,
+            file_size,
+            result.get('inserted_daily', 0),
+            result.get('skipped_daily', 0),
+            result.get('inserted_dreams', 0),
+            result.get('skipped_dreams', 0),
+            json.dumps(warnings) if warnings else None,
+            status,
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_import_history(conn: sqlite3.Connection, user_id: int) -> list[dict]:
+    """Return all import history rows for a user, most recent first."""
+    import json
+
+    rows = conn.execute(
+        '''SELECT id, imported_at, filename, file_size_bytes,
+                  inserted_daily, skipped_daily, inserted_dreams, skipped_dreams,
+                  warnings, status
+           FROM import_history
+           WHERE user_id = ?
+           ORDER BY imported_at DESC''',
+        (user_id,),
+    ).fetchall()
+
+    history = []
+    for row in rows:
+        record = dict(row)
+        raw_warnings = record.get('warnings')
+        if raw_warnings:
+            try:
+                record['warnings'] = json.loads(raw_warnings)
+            except (ValueError, TypeError):
+                record['warnings'] = [raw_warnings]
+        else:
+            record['warnings'] = []
+        history.append(record)
+
+    return history
