@@ -389,15 +389,15 @@ const UK_DATE_FORMATS = {
       .dream-fields {
         margin: var(--spacing-md) 0;
         padding: var(--spacing-md);
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        background-color: #fafafa;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background-color: var(--colour-surface-muted);
       }
 
       .dream-fields h3 {
         margin: 0 0 var(--spacing-md) 0;
-        color: #424242;
-        font-weight: 500;
+        color: var(--colour-text-primary);
+        font-weight: 600;
       }
 
       .dream-row {
@@ -416,7 +416,7 @@ const UK_DATE_FORMATS = {
 
       .hint {
         margin-bottom: var(--spacing-sm);
-        color: #555;
+        color: var(--colour-text-secondary);
       }
 
       .actions {
@@ -437,8 +437,14 @@ const UK_DATE_FORMATS = {
         margin-bottom: var(--spacing-md);
       }
 
+      mat-card {
+        border-radius: var(--radius-md);
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+      }
+
       .error {
-        color: #c62828;
+        color: #b91c1c;
         margin-top: var(--spacing-sm);
       }
     `,
