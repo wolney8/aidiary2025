@@ -19,6 +19,12 @@ export const routes: Routes = [
     loadComponent: () => import('./entries/create/create.component').then(m => m.CreateComponent)
   },
   {
+    path: 'entries/:id/edit',
+    canActivate: [authGuard],
+    canDeactivate: [pendingChangesGuard],
+    loadComponent: () => import('./entries/create/create.component').then(m => m.CreateComponent)
+  },
+  {
     path: 'entries/:id',
     canActivate: [authGuard],
     loadComponent: () => import('./entries/detail/detail.component').then(m => m.DetailComponent)

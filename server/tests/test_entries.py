@@ -182,3 +182,95 @@ def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
     response = client.get('/api/daily')
     assert response.status_code == 401
+
+
+def test_update_daily_entry_does_not_create_duplicate(client):
+    """PUT /api/daily/:id must update in-place and never create a second row."""
+    token = get_auth_token(client)
+
+    # Create one entry
+    create_resp = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-01', 'user_message': 'Original text'}),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    # Update it via PUT
+    update_resp = client.put(f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'user_message': 'Updated text', 'title': 'Edited Title'}),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    # Confirm the total count is still 1
+    list_resp = client.get('/api/daily',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    entries = json.loads(list_resp.data)
+    assert len(entries) == 1, 'PUT must not create a duplicate row'
+
+    # Confirm the content was actually changed
+    assert entries[0]['user_message'] == 'Updated text'
+    assert entries[0]['title'] == 'Edited Title'
+
+
+def test_update_daily_entry_not_found(client):
+    """PUT for non-existent entry returns 404."""
+    token = get_auth_token(client)
+    response = client.put('/api/daily/999',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'user_message': 'Ghost entry'}),
+        content_type='application/json'
+    )
+    assert response.status_code == 404
+
+
+def test_update_dream_entry_does_not_create_duplicate(client):
+    """PUT /api/dreams/:id must update in-place and never create a second row."""
+    token = get_auth_token(client)
+
+    # Create one dream entry
+    create_resp = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-02',
+            'title': 'Flying Dream',
+            'plot': 'I was flying over the city'
+        }),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    # Update it via PUT
+    update_resp = client.put(f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'plot': 'I was flying over mountains', 'interpretation': 'Freedom'}),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    # Confirm count is still 1
+    list_resp = client.get('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    entries = json.loads(list_resp.data)
+    assert len(entries) == 1, 'PUT must not create a duplicate dream row'
+
+    # Confirm the content was updated
+    assert entries[0]['plot'] == 'I was flying over mountains'
+    assert entries[0]['interpretation'] == 'Freedom'
+
+
+def test_update_dream_entry_not_found(client):
+    """PUT for non-existent dream entry returns 404."""
+    token = get_auth_token(client)
+    response = client.put('/api/dreams/999',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'plot': 'Ghost dream'}),
+        content_type='application/json'
+    )
+    assert response.status_code == 404
