@@ -138,6 +138,30 @@ def _make_xlsx(daily_rows=None, dream_rows=None) -> bytes:
     return buf.getvalue()
 
 
+def _make_xlsx_with_headers(
+    daily_headers,
+    dream_headers,
+    daily_rows=None,
+    dream_rows=None,
+) -> bytes:
+    """Create a workbook with explicit sheet headers for schema-contract tests."""
+    wb = openpyxl.Workbook()
+    ws_daily = wb.active
+    ws_daily.title = 'Daily'
+    ws_daily.append(daily_headers)
+    for row in (daily_rows or []):
+        ws_daily.append(row)
+
+    ws_dreams = wb.create_sheet(title='Dreams')
+    ws_dreams.append(dream_headers)
+    for row in (dream_rows or []):
+        ws_dreams.append(row)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _upload(client, token: str, file_bytes: bytes, filename='test.xlsx',
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
     """POST multipart file to /api/import/upload."""
@@ -406,6 +430,128 @@ class TestMalformedData:
         assert row is not None
         assert '<script>' not in row['title']
         assert 'javascript:' not in row['user_message']
+
+
+# ---------------------------------------------------------------------------
+# Schema contract regression coverage (Issue #39)
+# ---------------------------------------------------------------------------
+
+class TestSchemaContractWarnings:
+    def test_daily_unexpected_column_emits_warning(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=['date', 'title', 'content', 'tags', 'mood_score'],
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[['2025-03-01', 'T', 'Body', 'tag', '9']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        combined = ' '.join(data['warnings']).lower()
+
+        assert 'daily sheet' in combined
+        assert 'unexpected columns' in combined
+        assert 'mood_score' in combined
+
+    def test_daily_missing_required_column_warning(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=['date', 'title', 'tags'],
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[['2025-03-02', 'No content column', 'tag']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        combined = ' '.join(data['warnings']).lower()
+
+        assert 'daily sheet' in combined
+        assert 'missing columns' in combined
+        assert 'content' in combined
+
+    def test_daily_missing_date_leads_to_skipped_rows_zero_inserted(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[[None, 'Missing date', 'Body', 'tag']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        combined = ' '.join(data['warnings']).lower()
+
+        assert data['summary']['inserted_daily'] == 0
+        assert data['summary']['skipped_daily'] == 0
+        assert 'daily sheet row' in combined
+        assert 'invalid or missing date' in combined
+
+    def test_dreams_unexpected_column_emits_warning(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=[*DREAM_IMPORT_HEADERS, 'lucidity_level'],
+            dream_rows=[[
+                '2025-03-03', 'Dream', 'Plot', '', '', '', 'joy', '', '', '', '', '', 'high'
+            ]],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        combined = ' '.join(data['warnings']).lower()
+
+        assert 'dreams sheet' in combined
+        assert 'unexpected columns' in combined
+        assert 'lucidity_level' in combined
+
+    def test_dreams_missing_plot_warning(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=[
+                'date',
+                'title',
+                'cast',
+                'location',
+                'period',
+                'emotion',
+                'symbols_and_imagery',
+                'insight',
+                'action',
+                'other',
+                'tags',
+            ],
+            dream_rows=[['2025-03-04', 'Dream title', '', '', '', '', '', '', '', '', 'tag']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        combined = ' '.join(data['warnings']).lower()
+
+        assert 'dreams sheet' in combined
+        assert 'missing columns' in combined
+        assert 'plot' in combined
+
+    def test_warnings_payload_is_list_of_strings(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=['date', 'title', 'content', 'tags', 'bonus_column'],
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[['2025-03-05', 'Payload shape', 'Body', 'tag', 'extra']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+
+        assert isinstance(data['warnings'], list)
+        assert data['warnings'], 'Expected at least one warning for schema mismatch.'
+        assert all(isinstance(item, str) for item in data['warnings'])
 
 
 # ---------------------------------------------------------------------------

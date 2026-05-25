@@ -218,3 +218,67 @@ Analyse a diary entry and return structured AI insights. Requires `Authorization
 }
 ```
 
+## Excel Import
+
+### 1) POST /api/import/upload schema contract
+
+Accepts a multipart upload with field name `file` containing a `.xlsx` workbook.
+
+Accepted sheet names:
+- Daily: `Daily`
+- Dreams: `Dreams` or `Dream`
+
+Daily sheet column contract:
+- Required: `date`
+- Optional: `title`, `content` (alias: `user_message`), `tags`
+
+Dreams sheet column contract:
+- Required: `date`
+- Optional: `title`, `plot`, `cast`, `location`, `period`, `emotion`, `symbols_and_imagery`, `insight`, `action`, `other`, `tags`
+
+### 2) Warning behaviour
+
+Warnings are returned in `warnings` as an array of strings.
+
+Column warning patterns:
+- Missing columns: `<Sheet> sheet: missing columns <col1>, <col2>. Rows missing required data may be skipped.`
+- Unexpected columns: `<Sheet> sheet: ignoring unexpected columns <col1>, <col2>.`
+
+Row skip warning pattern (invalid or missing date):
+- `Daily sheet row <N>: skipped — invalid or missing date ("<value>").`
+- `Dreams sheet row <N>: skipped — invalid or missing date ("<value>").`
+
+Sheet presence warnings:
+- `No 'Daily' sheet found; daily entries not imported.`
+- `No 'Dreams' sheet found; dream entries not imported.`
+
+### 3) DB write mapping defaults
+
+Daily import writes:
+- `date` -> `dailydiary_entries.entry_date`
+- `title` -> `dailydiary_entries.title`
+- `content` or `user_message` -> `dailydiary_entries.user_message`
+- `tags` -> `dailydiary_entries.tags`
+
+Dream import writes:
+- `date` -> `dreamdiary_entries.entry_date`
+- `title` -> `dreamdiary_entries.title`
+- `plot` -> `dreamdiary_entries.plot`
+- `cast` -> `dreamdiary_entries.cast`
+- `location` -> `dreamdiary_entries.location`
+- `period` -> `dreamdiary_entries.period`
+- `emotion` -> `dreamdiary_entries.emotion`
+- `symbols_and_imagery` -> `dreamdiary_entries.symbols_and_imagery`
+- `insight` -> `dreamdiary_entries.insight`
+- `action` -> `dreamdiary_entries.action`
+- `other` -> `dreamdiary_entries.other`
+- `tags` -> `dreamdiary_entries.tags`
+
+Defaults for non-imported DB fields:
+- Daily: non-imported fields such as `ai_response`, `daily_people_names`, and `daily_places` are not set by import and remain database defaults (typically `NULL` until updated later).
+- Dreams: non-imported fields such as `summary`, `interpretation`, `image_prompt`, `image_url`, and `dream_people_names` are not set by import and remain database defaults (typically `NULL` until updated later).
+
+`entry_number` assignment logic:
+- For each imported row, `entry_number` is set to `MAX(entry_number) + 1` for the same `user_id` and `entry_date` in the target table.
+- Duplicate-date rows for the same user are skipped before insert during import, so newly imported rows are normally inserted as the first entry for that date.
+

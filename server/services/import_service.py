@@ -193,7 +193,10 @@ def parse_excel(file_bytes: bytes) -> dict:
     # --- Daily sheet ---
     if 'daily' in sheet_map:
         df = pd.read_excel(xls, sheet_name=sheet_map['daily'], dtype=str)
-        df.columns = [str(c).strip().lower() for c in df.columns]
+        df.columns = _normalise_headers(df.columns)
+        warnings.extend(
+            _validate_sheet_headers('Daily', df.columns.tolist(), DAILY_IMPORT_HEADERS)
+        )
         for idx, row in df.iterrows():
             row_num = idx + 2  # Excel row number (1-indexed header + data)
             entry_date = _parse_date(row.get('date', ''))
@@ -218,7 +221,10 @@ def parse_excel(file_bytes: bytes) -> dict:
     )
     if dream_sheet_key:
         df = pd.read_excel(xls, sheet_name=sheet_map[dream_sheet_key], dtype=str)
-        df.columns = [str(c).strip().lower() for c in df.columns]
+        df.columns = _normalise_headers(df.columns)
+        warnings.extend(
+            _validate_sheet_headers('Dreams', df.columns.tolist(), DREAM_IMPORT_HEADERS)
+        )
         for idx, row in df.iterrows():
             row_num = idx + 2
             entry_date = _parse_date(row.get('date', ''))
