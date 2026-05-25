@@ -5,6 +5,7 @@ import math
 import re
 import sqlite3
 from datetime import datetime, date, timezone
+from collections import Counter
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -17,7 +18,7 @@ ALLOWED_MIME_TYPES = {
     'application/octet-stream',  # generic binary used by some clients
 }
 
-DAILY_IMPORT_HEADERS = ('date', 'title', 'content', 'tags')
+DAILY_IMPORT_HEADERS = ('date', 'title', 'user_entry', 'ai_response')
 DREAM_IMPORT_HEADERS = (
     'date',
     'title',
@@ -112,6 +113,10 @@ def _normalise_headers(columns) -> list[str]:
     return [str(column).strip().lower() for column in columns]
 
 
+def _normalise_header_set(columns: list[str]) -> set[str]:
+    return {column for column in columns if column}
+
+
 def _validate_sheet_headers(
     sheet_name: str,
     columns: list[str],
@@ -135,6 +140,34 @@ def _validate_sheet_headers(
     return warnings
 
 
+def _validate_daily_headers_strict(columns: list[str]) -> list[str]:
+    expected = set(DAILY_IMPORT_HEADERS)
+    actual = _normalise_header_set(columns)
+    header_counts = Counter(columns)
+    duplicates = [name for name, count in header_counts.items() if name and count > 1]
+
+    if actual == expected and not duplicates:
+        return []
+
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+    details: list[str] = []
+    if missing:
+        details.append(f"missing columns: {', '.join(missing)}")
+    if unexpected:
+        details.append(f"unexpected columns: {', '.join(unexpected)}")
+    if duplicates:
+        details.append(f"duplicate columns: {', '.join(sorted(duplicates))}")
+
+    details_str = '; '.join(details) if details else 'header mismatch'
+    found_headers = ', '.join(columns)
+    return [
+        'Daily sheet headers must exactly match: '
+        + ', '.join(DAILY_IMPORT_HEADERS)
+        + f'. Found: {found_headers}. {details_str}.'
+    ]
+
+
 def _parse_date(value) -> str | None:
     """Parse various date representations into ISO 'YYYY-MM-DD' string."""
     if value is None:
@@ -150,6 +183,91 @@ def _parse_date(value) -> str | None:
     return None
 
 
+def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
+    text = f'{title} {user_message}'.strip()
+    if not text:
+        return {
+            'tags': '',
+            'daily_people_names': '',
+            'daily_places': '',
+        }
+
+    try:
+        from nltk import ne_chunk, pos_tag, word_tokenize
+        from nltk.tree import Tree
+    except Exception:
+        return {
+            'tags': '',
+            'daily_people_names': '',
+            'daily_places': '',
+        }
+
+    tags: list[str] = []
+    people_names: list[str] = []
+    places: list[str] = []
+
+    try:
+        tokens = word_tokenize(text)
+        tagged_tokens = pos_tag(tokens)
+        ner_tree = ne_chunk(tagged_tokens)
+
+        for token, pos in tagged_tokens:
+            token_clean = token.strip().lower()
+            if not token_clean or len(token_clean) < 3:
+                continue
+            if not token_clean.isalpha():
+                continue
+            if pos.startswith('NN') or pos.startswith('JJ'):
+                tags.append(token_clean)
+
+        for node in ner_tree:
+            if not isinstance(node, Tree):
+                continue
+
+            label = node.label()
+            entity = ' '.join(leaf[0] for leaf in node.leaves()).strip()
+            if not entity:
+                continue
+
+            if label == 'PERSON':
+                people_names.append(entity)
+                tags.append(entity.lower().replace(' ', '_'))
+            elif label in {'GPE', 'LOCATION', 'FACILITY'}:
+                places.append(entity)
+                tags.append(entity.lower().replace(' ', '_'))
+    except (LookupError, ValueError, TypeError):
+        return {
+            'tags': '',
+            'daily_people_names': '',
+            'daily_places': '',
+        }
+
+    deduped_tags: list[str] = []
+    seen_tags: set[str] = set()
+    for tag in tags:
+        if tag in seen_tags:
+            continue
+        seen_tags.add(tag)
+        deduped_tags.append(tag)
+
+    def _dedupe_case_insensitive(values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for value in values:
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(value)
+        return ordered
+
+    return {
+        'tags': ','.join(deduped_tags[:20]),
+        'daily_people_names': ','.join(_dedupe_case_insensitive(people_names)[:20]),
+        'daily_places': ','.join(_dedupe_case_insensitive(places)[:20]),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Excel parsing
 # ---------------------------------------------------------------------------
@@ -158,17 +276,18 @@ def parse_excel(file_bytes: bytes) -> dict:
     """
     Parse the uploaded Excel workbook.
 
-    Expected sheets (case-insensitive):
-      - 'Daily'  — columns: date, title, content, tags
+        Expected sheets (case-insensitive):
+            - 'Daily'  — strict columns: date, title, user_entry, ai_response
       - 'Dreams' — columns: date, title, plot, cast, location, period,
                              emotion, symbols_and_imagery, insight, action, other, tags
 
     Returns:
-        {
-          'daily':    [{'entry_date', 'title', 'user_message', 'tags'}, ...],
-          'dreams':   [{'entry_date', 'title', 'plot', ...}, ...],
-          'warnings': [str, ...],   # non-fatal parsing issues
-        }
+                {
+                    'daily':    [{'entry_date', 'title', 'user_message', 'ai_response'}, ...],
+                    'dreams':   [{'entry_date', 'title', 'plot', ...}, ...],
+                    'errors':   [str, ...],   # strict schema violations
+                    'warnings': [str, ...],   # non-fatal parsing issues
+                }
     """
     try:
         import pandas as pd
@@ -179,6 +298,7 @@ def parse_excel(file_bytes: bytes) -> dict:
         )
 
     warnings: list[str] = []
+    errors: list[str] = []
     daily_rows: list[dict] = []
     dream_rows: list[dict] = []
 
@@ -194,24 +314,25 @@ def parse_excel(file_bytes: bytes) -> dict:
     if 'daily' in sheet_map:
         df = pd.read_excel(xls, sheet_name=sheet_map['daily'], dtype=str)
         df.columns = _normalise_headers(df.columns)
-        warnings.extend(
-            _validate_sheet_headers('Daily', df.columns.tolist(), DAILY_IMPORT_HEADERS)
-        )
-        for idx, row in df.iterrows():
-            row_num = idx + 2  # Excel row number (1-indexed header + data)
-            entry_date = _parse_date(row.get('date', ''))
-            if not entry_date:
-                warnings.append(
-                    f'Daily sheet row {row_num}: skipped — invalid or missing date '
-                    f'("{row.get("date", "")}").'
-                )
-                continue
-            daily_rows.append({
-                'entry_date': entry_date,
-                'title': _sanitise(row.get('title', '')),
-                'user_message': _sanitise(row.get('content', row.get('user_message', ''))),
-                'tags': _sanitise(row.get('tags', '')),
-            })
+        daily_header_errors = _validate_daily_headers_strict(df.columns.tolist())
+        if daily_header_errors:
+            errors.extend(daily_header_errors)
+        else:
+            for idx, row in df.iterrows():
+                row_num = idx + 2  # Excel row number (1-indexed header + data)
+                entry_date = _parse_date(row.get('date', ''))
+                if not entry_date:
+                    warnings.append(
+                        f'Daily sheet row {row_num}: skipped — invalid or missing date '
+                        f'("{row.get("date", "")}").'
+                    )
+                    continue
+                daily_rows.append({
+                    'entry_date': entry_date,
+                    'title': _sanitise(row.get('title', '')),
+                    'user_message': _sanitise(row.get('user_entry', row.get('user_message', ''))),
+                    'ai_response': _sanitise(row.get('ai_response', '')),
+                })
     else:
         warnings.append("No 'Daily' sheet found; daily entries not imported.")
 
@@ -251,7 +372,7 @@ def parse_excel(file_bytes: bytes) -> dict:
     else:
         warnings.append("No 'Dreams' sheet found; dream entries not imported.")
 
-    return {'daily': daily_rows, 'dreams': dream_rows, 'warnings': warnings}
+    return {'daily': daily_rows, 'dreams': dream_rows, 'errors': errors, 'warnings': warnings}
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +422,9 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
             dup_daily.append(entry_date)
             continue
 
+        derived_fields = _derive_daily_nltk_fields(row['title'], row['user_message'])
+        ai_response = _sanitise(row.get('ai_response', ''))
+
         # Determine next entry_number for this date
         max_num = cursor.execute(
             'SELECT MAX(entry_number) FROM dailydiary_entries '
@@ -310,15 +434,19 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
         cursor.execute(
             '''INSERT INTO dailydiary_entries
-               (user_id, entry_date, entry_number, title, user_message, tags)
-               VALUES (?, ?, ?, ?, ?, ?)''',
+               (user_id, entry_date, entry_number, title, user_message,
+                ai_response, daily_people_names, daily_places, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 user_id,
                 entry_date,
                 max_num + 1,
                 row['title'],
                 row['user_message'],
-                row['tags'],
+                ai_response,
+                derived_fields['daily_people_names'],
+                derived_fields['daily_places'],
+                derived_fields['tags'],
             ),
         )
         existing_daily.add(entry_date)

@@ -83,7 +83,7 @@ const UK_DATE_FORMATS = {
             >{{ isEditing ? "Edit" : "New" }} Diary Entry</mat-card-title
           >
 
-          <mat-slide-toggle [(ngModel)]="leaveItToAI">
+          <mat-slide-toggle *ngIf="isEditing" [(ngModel)]="leaveItToAI">
             Respond with AI
           </mat-slide-toggle>
         </mat-card-header>
@@ -354,7 +354,7 @@ const UK_DATE_FORMATS = {
               Cancel
             </button>
 
-            <ng-container *ngIf="!leaveItToAI; else aiActions">
+            <ng-container *ngIf="!isEditing || !leaveItToAI; else aiActions">
               <button
                 mat-raised-button
                 color="primary"
@@ -678,10 +678,15 @@ export class CreateComponent implements OnInit {
   }
 
   saveAsDraft(): void {
-    this.persistEntry(this.leaveItToAI);
+    this.persistEntry(this.isEditing && this.leaveItToAI);
   }
 
   saveAndAnalyse(): void {
+    if (!this.isEditing) {
+      this.persistEntry(false);
+      return;
+    }
+
     this.persistEntry(true);
   }
 

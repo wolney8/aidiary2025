@@ -37,7 +37,8 @@ export class ImportService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
-  private readonly baseUrl = "http://localhost:5001/api";
+  private readonly primaryBaseUrl = "http://localhost:5001/api";
+  private readonly fallbackBaseUrl = "http://localhost:500/api";
   private readonly maxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
   private readonly allowedMimeTypes = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -48,12 +49,12 @@ export class ImportService {
   /** Download the Excel import template. */
   downloadTemplate(): Observable<Blob> {
     const headers = this.getAuthHeaders();
-    return this.http
-      .get(`${this.baseUrl}/import/template`, {
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.get(`${baseUrl}/import/template`, {
         headers,
         responseType: "blob",
-      })
-      .pipe(catchError((err) => throwError(() => this.normaliseError(err))));
+      }),
+    );
   }
 
   /**
@@ -70,85 +71,85 @@ export class ImportService {
     const formData = new FormData();
     formData.append("file", file, file.name);
 
-    return this.http
-      .post(`${this.baseUrl}/import/upload`, formData, {
-        headers,
-        reportProgress: true,
-        observe: "events",
-      })
-      .pipe(
-        map((event) => {
-          if (event.type === HttpEventType.UploadProgress) {
-            const total = event.total ?? file.size;
-            const percent = Math.round((event.loaded / total) * 100);
-            return {
-              type: "progress" as const,
-              progress: { percent, loaded: event.loaded, total },
-            };
-          }
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http
+        .post(`${baseUrl}/import/upload`, formData, {
+          headers,
+          reportProgress: true,
+          observe: "events",
+        })
+        .pipe(
+          map((event) => {
+            if (event.type === HttpEventType.UploadProgress) {
+              const total = event.total ?? file.size;
+              const percent = Math.round((event.loaded / total) * 100);
+              return {
+                type: "progress" as const,
+                progress: { percent, loaded: event.loaded, total },
+              };
+            }
 
-          if (event.type === HttpEventType.Response) {
-            const body =
-              event.body && typeof event.body === "object"
-                ? (event.body as Record<string, unknown>)
-                : {};
-            const summary =
-              body["summary"] && typeof body["summary"] === "object"
-                ? (body["summary"] as Record<string, unknown>)
-                : {};
+            if (event.type === HttpEventType.Response) {
+              const body =
+                event.body && typeof event.body === "object"
+                  ? (event.body as Record<string, unknown>)
+                  : {};
+              const summary =
+                body["summary"] && typeof body["summary"] === "object"
+                  ? (body["summary"] as Record<string, unknown>)
+                  : {};
 
-            const insertedDaily = Number(summary["inserted_daily"] ?? 0);
-            const insertedDreams = Number(summary["inserted_dreams"] ?? 0);
-            const skippedDaily = Number(summary["skipped_daily"] ?? 0);
-            const skippedDreams = Number(summary["skipped_dreams"] ?? 0);
+              const insertedDaily = Number(summary["inserted_daily"] ?? 0);
+              const insertedDreams = Number(summary["inserted_dreams"] ?? 0);
+              const skippedDaily = Number(summary["skipped_daily"] ?? 0);
+              const skippedDreams = Number(summary["skipped_dreams"] ?? 0);
 
-            const rawStatus = String(body["status"] ?? "failed");
-            const status = this.mapBackendStatus(rawStatus);
+              const rawStatus = String(body["status"] ?? "failed");
+              const status = this.mapBackendStatus(rawStatus);
 
-            const errors = this.toStringArray(body["errors"]);
-            const warnings = this.toStringArray(body["warnings"]);
+              const errors = this.toStringArray(body["errors"]);
+              const warnings = this.toStringArray(body["warnings"]);
 
-            const message =
-              typeof body["message"] === "string"
-                ? body["message"]
-                : rawStatus === "empty"
-                  ? "No valid entries were found in the uploaded file."
-                  : status === "partial"
-                    ? "Import completed with duplicates skipped."
-                    : "Upload complete.";
+              const message =
+                typeof body["message"] === "string"
+                  ? body["message"]
+                  : rawStatus === "empty"
+                    ? "No valid entries were found in the uploaded file."
+                    : status === "partial"
+                      ? "Import completed with duplicates skipped."
+                      : "Upload complete.";
 
-            // Normalise backend shape into stable frontend ImportResult
-            const result: ImportResult = {
-              status,
-              message,
-              imported_count: Number(
-                body["imported_count"] ?? insertedDaily + insertedDreams,
-              ),
-              skipped_count: Number(
-                body["skipped_count"] ?? skippedDaily + skippedDreams,
-              ),
-              error_count: Number(body["error_count"] ?? errors.length),
-              errors,
-              warnings,
-            };
-            return { type: "result" as const, result };
-          }
+              // Normalise backend shape into stable frontend ImportResult
+              const result: ImportResult = {
+                status,
+                message,
+                imported_count: Number(
+                  body["imported_count"] ?? insertedDaily + insertedDreams,
+                ),
+                skipped_count: Number(
+                  body["skipped_count"] ?? skippedDaily + skippedDreams,
+                ),
+                error_count: Number(body["error_count"] ?? errors.length),
+                errors,
+                warnings,
+              };
+              return { type: "result" as const, result };
+            }
 
-          // Intermediate events (Sent, ResponseHeader, etc.) — skip
-          return null as unknown as never;
-        }),
-        // Filter out null events from intermediate HttpEventTypes
-        map((val) => val),
-        catchError((err) => throwError(() => this.normaliseError(err))),
-      );
+            // Intermediate events (Sent, ResponseHeader, etc.) — skip
+            return null as unknown as never;
+          }),
+          // Filter out null events from intermediate HttpEventTypes
+          map((val) => val),
+        ),
+    );
   }
 
   /** Fetch the import history for the current user. */
   getHistory(): Observable<ImportHistoryItem[]> {
     const headers = this.getAuthHeaders();
-    return this.http
-      .get<unknown>(`${this.baseUrl}/import/history`, { headers })
-      .pipe(
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.get<unknown>(`${baseUrl}/import/history`, { headers }).pipe(
         map((response) => {
           const rawItems = Array.isArray(response)
             ? response
@@ -162,8 +163,8 @@ export class ImportService {
             .map((item) => this.normaliseHistoryItem(item))
             .filter((item): item is ImportHistoryItem => item !== null);
         }),
-        catchError((err) => throwError(() => this.normaliseError(err))),
-      );
+      ),
+    );
   }
 
   /** Client-side validation — returns an error string or null if valid. */
@@ -199,6 +200,30 @@ export class ImportService {
     return new HttpHeaders({ Authorization: `Bearer ${token}` });
   }
 
+  private requestWithPortFallback<T>(
+    requestFactory: (baseUrl: string) => Observable<T>,
+  ): Observable<T> {
+    return requestFactory(this.primaryBaseUrl).pipe(
+      catchError((err) => {
+        if (!this.isConnectionLevelError(err)) {
+          return throwError(() => this.normaliseError(err));
+        }
+
+        return requestFactory(this.fallbackBaseUrl).pipe(
+          catchError((fallbackErr) =>
+            throwError(() => this.normaliseError(fallbackErr)),
+          ),
+        );
+      }),
+    );
+  }
+
+  private isConnectionLevelError(err: unknown): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const httpErr = err as any;
+    return httpErr?.status === 0;
+  }
+
   private normaliseError(err: unknown): Error {
     if (err instanceof Error) return err;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -206,7 +231,7 @@ export class ImportService {
 
     if (httpErr?.status === 0) {
       return new Error(
-        "Cannot reach the backend service (http://localhost:5001). Please confirm the server is running and CORS is configured.",
+        "Cannot reach the backend service on local API endpoints (ports 5001 or 500). Please confirm the server is running and CORS is configured.",
       );
     }
 

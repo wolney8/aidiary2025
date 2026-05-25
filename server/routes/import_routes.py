@@ -94,6 +94,10 @@ def upload_import():
         current_app.logger.error('Import dependency missing: %s', exc)
         return jsonify({'status': 'error', 'errors': ['Excel import is not available on this server.']}), 500
 
+    parse_errors: list[str] = parsed.get('errors', [])
+    if parse_errors:
+        return jsonify({'status': 'error', 'errors': parse_errors}), 422
+
     parse_warnings: list[str] = parsed.get('warnings', [])
 
     # Reject if nothing parseable was found

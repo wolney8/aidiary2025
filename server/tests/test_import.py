@@ -120,7 +120,7 @@ def _make_xlsx(daily_rows=None, dream_rows=None) -> bytes:
     wb = openpyxl.Workbook()
     ws_daily = wb.active
     ws_daily.title = 'Daily'
-    ws_daily.append(['date', 'title', 'content', 'tags'])
+    ws_daily.append(['date', 'title', 'user_entry', 'ai_response'])
     for row in (daily_rows or []):
         ws_daily.append(row)
 
@@ -440,15 +440,15 @@ class TestSchemaContractWarnings:
     def test_daily_unexpected_column_emits_warning(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx_with_headers(
-            daily_headers=['date', 'title', 'content', 'tags', 'mood_score'],
+            daily_headers=['date', 'title', 'user_entry', 'ai_response', 'mood_score'],
             dream_headers=list(DREAM_IMPORT_HEADERS),
-            daily_rows=[['2025-03-01', 'T', 'Body', 'tag', '9']],
+            daily_rows=[['2025-03-01', 'T', 'Body', 'Imported answer', '9']],
         )
 
         resp = _upload(client, token, file_bytes)
-        assert resp.status_code == 200
+        assert resp.status_code == 422
         data = json.loads(resp.data)
-        combined = ' '.join(data['warnings']).lower()
+        combined = ' '.join(data['errors']).lower()
 
         assert 'daily sheet' in combined
         assert 'unexpected columns' in combined
@@ -457,26 +457,26 @@ class TestSchemaContractWarnings:
     def test_daily_missing_required_column_warning(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx_with_headers(
-            daily_headers=['date', 'title', 'tags'],
+            daily_headers=['date', 'title', 'ai_response'],
             dream_headers=list(DREAM_IMPORT_HEADERS),
-            daily_rows=[['2025-03-02', 'No content column', 'tag']],
+            daily_rows=[['2025-03-02', 'No user_entry column', 'Imported answer']],
         )
 
         resp = _upload(client, token, file_bytes)
-        assert resp.status_code == 200
+        assert resp.status_code == 422
         data = json.loads(resp.data)
-        combined = ' '.join(data['warnings']).lower()
+        combined = ' '.join(data['errors']).lower()
 
         assert 'daily sheet' in combined
         assert 'missing columns' in combined
-        assert 'content' in combined
+        assert 'user_entry' in combined
 
     def test_daily_missing_date_leads_to_skipped_rows_zero_inserted(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx_with_headers(
             daily_headers=list(DAILY_IMPORT_HEADERS),
             dream_headers=list(DREAM_IMPORT_HEADERS),
-            daily_rows=[[None, 'Missing date', 'Body', 'tag']],
+            daily_rows=[[None, 'Missing date', 'Body', 'false']],
         )
 
         resp = _upload(client, token, file_bytes)
@@ -540,9 +540,12 @@ class TestSchemaContractWarnings:
     def test_warnings_payload_is_list_of_strings(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx_with_headers(
-            daily_headers=['date', 'title', 'content', 'tags', 'bonus_column'],
-            dream_headers=list(DREAM_IMPORT_HEADERS),
-            daily_rows=[['2025-03-05', 'Payload shape', 'Body', 'tag', 'extra']],
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=[*DREAM_IMPORT_HEADERS, 'bonus_column'],
+            daily_rows=[['2025-03-05', 'Payload shape', 'Body', 'false']],
+            dream_rows=[[
+                '2025-03-05', 'Dream', 'Plot', '', '', '', '', '', '', '', '', '', 'extra'
+            ]],
         )
 
         resp = _upload(client, token, file_bytes)
@@ -552,6 +555,68 @@ class TestSchemaContractWarnings:
         assert isinstance(data['warnings'], list)
         assert data['warnings'], 'Expected at least one warning for schema mismatch.'
         assert all(isinstance(item, str) for item in data['warnings'])
+
+    def test_valid_workbook_with_new_daily_headers_imports_successfully(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[['2025-03-06', 'Valid row', 'Body text', 'false']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['status'] == 'success'
+        assert data['summary']['inserted_daily'] == 1
+
+    def test_ai_response_blank_defaults_empty(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[['2025-03-07', 'No AI', 'Body text', '']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_daily'] == 1
+
+        db_path = os.environ['DB_PATH']
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT ai_response FROM dailydiary_entries WHERE entry_date = '2025-03-07'"
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert (row['ai_response'] or '') == ''
+
+    def test_ai_response_is_imported_directly(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[["2025-03-08", 'Imported AI', 'Body text', 'From spreadsheet']],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_daily'] == 1
+
+        db_path = os.environ['DB_PATH']
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT ai_response FROM dailydiary_entries WHERE entry_date = '2025-03-08'"
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert row['ai_response'] == 'From spreadsheet'
 
 
 # ---------------------------------------------------------------------------

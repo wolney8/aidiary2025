@@ -85,6 +85,16 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
             <strong>Dream</strong> entries with all required columns
             pre-defined.
           </p>
+
+          <div
+            *ngIf="templateDownloadError"
+            class="feedback feedback--error"
+            role="alert"
+            [@fadeSlideIn]
+          >
+            <mat-icon aria-hidden="true">error_outline</mat-icon>
+            <span>{{ templateDownloadError }}</span>
+          </div>
         </mat-card-content>
         <mat-card-actions>
           <button
@@ -696,6 +706,7 @@ export class ImportComponent implements OnInit {
 
   // Template download
   isDownloading = false;
+  templateDownloadError: string | null = null;
 
   // History
   history: ImportHistoryItem[] = [];
@@ -790,6 +801,7 @@ export class ImportComponent implements OnInit {
   }
 
   downloadTemplate(): void {
+    this.templateDownloadError = null;
     this.isDownloading = true;
     this.importService.downloadTemplate().subscribe({
       next: (blob) => {
@@ -800,10 +812,12 @@ export class ImportComponent implements OnInit {
         link.click();
         URL.revokeObjectURL(url);
         this.isDownloading = false;
+        this.templateDownloadError = null;
       },
       error: () => {
         this.isDownloading = false;
-        // Template download failure is non-critical; user can still proceed
+        this.templateDownloadError =
+          "Could not download the import template. Please check that the backend service is running and try again.";
       },
     });
   }
