@@ -88,16 +88,48 @@ export class ImportService {
           }
 
           if (event.type === HttpEventType.Response) {
-            const body = event.body as ImportResult;
-            // Normalise defensive shape — backend may send partial fields
+            const body =
+              event.body && typeof event.body === "object"
+                ? (event.body as Record<string, unknown>)
+                : {};
+            const summary =
+              body["summary"] && typeof body["summary"] === "object"
+                ? (body["summary"] as Record<string, unknown>)
+                : {};
+
+            const insertedDaily = Number(summary["inserted_daily"] ?? 0);
+            const insertedDreams = Number(summary["inserted_dreams"] ?? 0);
+            const skippedDaily = Number(summary["skipped_daily"] ?? 0);
+            const skippedDreams = Number(summary["skipped_dreams"] ?? 0);
+
+            const rawStatus = String(body["status"] ?? "failed");
+            const status = this.mapBackendStatus(rawStatus);
+
+            const errors = this.toStringArray(body["errors"]);
+            const warnings = this.toStringArray(body["warnings"]);
+
+            const message =
+              typeof body["message"] === "string"
+                ? body["message"]
+                : rawStatus === "empty"
+                  ? "No valid entries were found in the uploaded file."
+                  : status === "partial"
+                    ? "Import completed with duplicates skipped."
+                    : "Upload complete.";
+
+            // Normalise backend shape into stable frontend ImportResult
             const result: ImportResult = {
-              status: body?.status ?? "failed",
-              message: body?.message ?? "Upload complete.",
-              imported_count: body?.imported_count ?? 0,
-              skipped_count: body?.skipped_count ?? 0,
-              error_count: body?.error_count ?? 0,
-              errors: body?.errors ?? [],
-              warnings: body?.warnings ?? [],
+              status,
+              message,
+              imported_count: Number(
+                body["imported_count"] ?? insertedDaily + insertedDreams,
+              ),
+              skipped_count: Number(
+                body["skipped_count"] ?? skippedDaily + skippedDreams,
+              ),
+              error_count: Number(body["error_count"] ?? errors.length),
+              errors,
+              warnings,
             };
             return { type: "result" as const, result };
           }
@@ -115,9 +147,21 @@ export class ImportService {
   getHistory(): Observable<ImportHistoryItem[]> {
     const headers = this.getAuthHeaders();
     return this.http
-      .get<ImportHistoryItem[]>(`${this.baseUrl}/import/history`, { headers })
+      .get<unknown>(`${this.baseUrl}/import/history`, { headers })
       .pipe(
-        map((items) => (Array.isArray(items) ? items : [])),
+        map((response) => {
+          const rawItems = Array.isArray(response)
+            ? response
+            : response &&
+                typeof response === "object" &&
+                Array.isArray((response as Record<string, unknown>)["history"])
+              ? ((response as Record<string, unknown>)["history"] as unknown[])
+              : [];
+
+          return rawItems
+            .map((item) => this.normaliseHistoryItem(item))
+            .filter((item): item is ImportHistoryItem => item !== null);
+        }),
         catchError((err) => throwError(() => this.normaliseError(err))),
       );
   }
@@ -194,14 +238,7 @@ export class ImportService {
     );
 
     const rawStatus = String(item["status"] ?? "failed");
-    const status: ImportHistoryItem["status"] =
-      rawStatus === "success"
-        ? "success"
-        : rawStatus === "partial"
-          ? "partial"
-          : rawStatus === "skipped" || rawStatus === "empty"
-            ? "failed"
-            : "failed";
+    const status = this.mapBackendStatus(rawStatus);
 
     return {
       id: Number(item["id"] ?? 0),
@@ -213,5 +250,26 @@ export class ImportService {
       status,
       notes: typeof item["notes"] === "string" ? item["notes"] : undefined,
     };
+  }
+
+  private mapBackendStatus(
+    rawStatus: string,
+  ): ImportHistoryItem["status"] | ImportResult["status"] {
+    if (rawStatus === "success") {
+      return "success";
+    }
+    if (rawStatus === "skipped" || rawStatus === "partial") {
+      return "partial";
+    }
+    if (rawStatus === "empty") {
+      return "failed";
+    }
+    return "failed";
+  }
+
+  private toStringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
   }
 }

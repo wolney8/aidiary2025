@@ -19,9 +19,9 @@ import { trigger, transition, style, animate } from "@angular/animations";
 import { filter } from "rxjs/operators";
 import {
   ImportService,
-  ImportHistoryItem,
-  ImportResult,
-  UploadProgress,
+  type ImportHistoryItem,
+  type ImportResult,
+  type UploadProgress,
 } from "../../core/services/import.service";
 
 type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
@@ -118,7 +118,8 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
             [class.drop-zone--invalid]="!!validationError"
             role="button"
             tabindex="0"
-            aria-label="Click to choose an Excel file for import"
+            aria-label="Choose an Excel file for import"
+            [attr.aria-describedby]="validationError ? validationErrorId : null"
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
             (keydown.space)="triggerFilePicker()"
@@ -149,6 +150,7 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
             *ngIf="validationError"
             class="feedback feedback--error"
             role="alert"
+            [id]="validationErrorId"
             [@fadeSlideIn]
           >
             <mat-icon aria-hidden="true">error_outline</mat-icon>
@@ -364,16 +366,18 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
               <ng-container matColumnDef="status">
                 <th mat-header-cell *matHeaderCellDef scope="col">Status</th>
                 <td mat-cell *matCellDef="let row">
-                  <mat-chip
+                  <span
                     [class]="'status-chip status-chip--' + row.status"
-                    [attr.aria-label]="'Status: ' + row.status"
-                    disabled
+                    role="status"
+                    [attr.aria-label]="
+                      'Import status: ' + statusLabel(row.status)
+                    "
                   >
                     <mat-icon class="chip-icon" aria-hidden="true">{{
                       statusIcon(row.status)
                     }}</mat-icon>
                     {{ statusLabel(row.status) }}
-                  </mat-chip>
+                  </span>
                 </td>
               </ng-container>
 
@@ -682,6 +686,7 @@ export class ImportComponent implements OnInit {
   // File selection state
   selectedFile: File | null = null;
   validationError: string | null = null;
+  readonly validationErrorId = "import-validation-error";
 
   // Upload state
   uploadState: UploadState = "idle";
@@ -762,18 +767,16 @@ export class ImportComponent implements OnInit {
             this.uploadProgress = event.progress;
           } else if (event.type === "result") {
             this.importResult = event.result;
+            const resultStatus = event.result.status;
             // Map backend 'failed' status to local 'error' UI state
-            if (event.result.status === "failed") {
+            if (resultStatus === "failed") {
               this.uploadState = "error";
               this.importErrorMessage =
                 event.result.message || "Import failed.";
             } else {
-              this.uploadState = event.result.status;
+              this.uploadState = resultStatus;
             }
-            if (
-              this.uploadState === "success" ||
-              this.uploadState === "partial"
-            ) {
+            if (this.shouldRefreshHistory(resultStatus)) {
               this.loadHistory();
             }
           }
@@ -834,16 +837,21 @@ export class ImportComponent implements OnInit {
     if (!isoString) return "—";
     try {
       const d = new Date(isoString);
-      return d.toLocaleDateString("en-GB", {
+      return d.toLocaleString("en-GB", {
         day: "2-digit",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        hour12: false,
       });
     } catch {
       return isoString;
     }
+  }
+
+  private shouldRefreshHistory(status: ImportResult["status"]): boolean {
+    return status === "success" || status === "partial";
   }
 
   statusIcon(status: ImportHistoryItem["status"]): string {
