@@ -1,4 +1,5 @@
 # README.md
+
 # AI Diary
 
 Angular + Flask application for daily and dream diary entries with AI analysis.
@@ -6,6 +7,7 @@ Angular + Flask application for daily and dream diary entries with AI analysis.
 ## Quick Start
 
 ### Prerequisites
+
 - Node.js 18+ and npm
 - Python 3.9+
 - SQLite3
@@ -16,10 +18,11 @@ Angular + Flask application for daily and dream diary entries with AI analysis.
 1. Clone the repository
 2. Copy `.env.example` to `.env` and configure
 3. Install dependencies:
+
    ```bash
    # Frontend
    cd client && npm install
-   
+
    # Backend
    cd server
    python -m venv venv
@@ -30,6 +33,7 @@ Angular + Flask application for daily and dream diary entries with AI analysis.
 ### Running the Application
 
 **Frontend (Angular):**
+
 ```bash
 cd client
 npm start
@@ -37,6 +41,7 @@ npm start
 ```
 
 **Backend (Flask):**
+
 ```bash
 cd server
 source venv/bin/activate
@@ -45,6 +50,7 @@ flask --app app.py --debug run -p 5001
 ```
 
 ### Testing
+
 ```bash
 # Backend tests
 cd server && pytest

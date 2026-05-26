@@ -174,7 +174,10 @@ import { EntriesService } from "../../core/services/entries.service";
                   {{ paragraph }}
                 </p>
               </div>
-              <p class="no-response" *ngIf="!entry.summary && !entry.interpretation">
+              <p
+                class="no-response"
+                *ngIf="!entry.summary && !entry.interpretation"
+              >
                 No AI analysis was recorded for this entry.
               </p>
             </div>
