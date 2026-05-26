@@ -175,6 +175,11 @@ def _parse_date(value) -> str | None:
     if isinstance(value, (datetime, date)):
         return value.strftime('%Y-%m-%d')
     text = str(value).strip()
+    # pandas converts Excel date cells to 'YYYY-MM-DD HH:MM:SS' when dtype=str
+    if ' ' in text:
+        text = text.split(' ')[0]
+    if 'T' in text:
+        text = text.split('T')[0]
     for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y'):
         try:
             return datetime.strptime(text, fmt).strftime('%Y-%m-%d')
