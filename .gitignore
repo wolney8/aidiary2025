@@ -43,3 +43,17 @@ server/db/*.sqlite3
 server/db/*.backup_*
 
 client/test-results/
+
+# Database files
+server/db/*.db
+server/db/*.db-shm
+server/db/*.db-wal
+server/app.db
+server/app.db-*
+
+# Virtual environment symlink
+server/.runtime-venv
+
+# Test files
+server/test_*.py
+

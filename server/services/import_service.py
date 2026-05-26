@@ -200,6 +200,7 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
 
     try:
         from nltk import ne_chunk, pos_tag, word_tokenize
+        from nltk.corpus import stopwords
         from nltk.tree import Tree
     except Exception:
         return {
@@ -213,6 +214,26 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
     places: list[str] = []
 
     try:
+        # Load English stopwords for filtering
+        try:
+            stop_words = set(stopwords.words('english'))
+        except LookupError:
+            # If stopwords not downloaded, use a minimal set
+            stop_words = set()
+
+        # Tag blocklist - only meta words we don't want as tags
+        tag_blocklist = {
+            'example', 'diary', 'entry', 'daily', 'dream'
+        }
+        
+        # Entity blocklist - for person/place name filtering
+        entity_blocklist = {
+            'example', 'diary', 'entry', 'daily', 'dream', 'today', 'yesterday',
+            'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'work',
+            'home', 'day', 'week', 'month', 'year', 'time', 'project', 'good',
+            'great', 'nice', 'productive', 'wonderful', 'progress', 'flying'
+        }
+
         tokens = word_tokenize(text)
         tagged_tokens = pos_tag(tokens)
         ner_tree = ne_chunk(tagged_tokens)
@@ -222,6 +243,8 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
             if not token_clean or len(token_clean) < 3:
                 continue
             if not token_clean.isalpha():
+                continue
+            if token_clean in stop_words or token_clean in tag_blocklist:
                 continue
             if pos.startswith('NN') or pos.startswith('JJ'):
                 tags.append(token_clean)
@@ -236,6 +259,27 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
                 continue
 
             if label == 'PERSON':
+                # Filter out obviously wrong person names
+                entity_lower = entity.lower()
+                entity_words = entity_lower.split()
+                
+                # Skip if all words are stopwords or blocklisted
+                if all(word in stop_words or word in entity_blocklist for word in entity_words):
+                    continue
+                
+                # Skip single-word "names" that are common words
+                if len(entity_words) == 1 and (entity_lower in stop_words or entity_lower in entity_blocklist):
+                    continue
+                
+                # Skip all-caps (likely acronyms, not names)
+                if entity.isupper() and len(entity) > 1:
+                    continue
+                
+                # STRICT: Only accept multi-word names (e.g., "John Smith")
+                # Single-word "names" from NLTK are often incorrect
+                if len(entity_words) == 1:
+                    continue
+                
                 people_names.append(entity)
                 tags.append(entity.lower().replace(' ', '_'))
             elif label in {'GPE', 'LOCATION', 'FACILITY'}:
@@ -273,6 +317,163 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
         'tags': ','.join(deduped_tags[:20]),
         'daily_people_names': ','.join(_dedupe_case_insensitive(people_names)[:20]),
         'daily_places': ','.join(_dedupe_case_insensitive(places)[:20]),
+    }
+
+
+def _derive_dream_nltk_fields(row_data: dict[str, str]) -> dict[str, str]:
+    """Extract people, places, and tags from dream entry fields using NLTK NER."""
+    # Combine relevant dream fields for text analysis
+    text_parts = [
+        row_data.get('title', ''),
+        row_data.get('plot', ''),
+        row_data.get('cast', ''),
+        row_data.get('symbols_and_imagery', ''),
+        row_data.get('insight', ''),
+        row_data.get('action', ''),
+        row_data.get('other', ''),
+    ]
+    text = ' '.join(part for part in text_parts if part).strip()
+    
+    if not text:
+        return {
+            'tags': row_data.get('tags', ''),
+            'dream_people_names': '',
+            'dream_places': '',
+        }
+
+    try:
+        from nltk import ne_chunk, pos_tag, word_tokenize
+        from nltk.corpus import stopwords
+        from nltk.tree import Tree
+    except Exception:
+        return {
+            'tags': row_data.get('tags', ''),
+            'dream_people_names': '',
+            'dream_places': '',
+        }
+
+    tags: list[str] = []
+    people_names: list[str] = []
+    places: list[str] = []
+
+    try:
+        # Load English stopwords
+        try:
+            stop_words = set(stopwords.words('english'))
+        except LookupError:
+            stop_words = set()
+
+        # Tag blocklist - only meta/junk words we don't want as tags
+        tag_blocklist = {
+            'image', 'generated', 'prompt', 'example', 'unknown',
+            'dream', 'lucid', 'vivid', 'nightmare'
+        }
+        
+        # Entity blocklist - broader list for person/place name filtering
+        entity_blocklist = {
+            'dream', 'flying', 'image', 'generated', 'prompt', 'lucid', 'vivid',
+            'nightmare', 'sleep', 'wake', 'asleep', 'awake', 'night', 'morning',
+            'example', 'unknown', 'people', 'person', 'someone', 'somebody',
+            # Abstract nouns and emotions
+            'freedom', 'joy', 'fear', 'love', 'hope', 'peace', 'happiness',
+            'sadness', 'anger', 'excitement', 'wonder', 'surprise',
+            # Common dream elements that NLTK mistakes for names
+            'wings', 'clouds', 'mountains', 'ocean', 'sky', 'water', 'light',
+            'darkness', 'shadow', 'time', 'space', 'world', 'life', 'death',
+            # Meta words
+            'present', 'past', 'future', 'day', 'week', 'month', 'year'
+        }
+
+        tokens = word_tokenize(text)
+        tagged_tokens = pos_tag(tokens)
+        ner_tree = ne_chunk(tagged_tokens)
+
+        for token, pos in tagged_tokens:
+            token_clean = token.strip().lower()
+            if not token_clean or len(token_clean) < 3:
+                continue
+            if not token_clean.isalpha():
+                continue
+            if token_clean in stop_words or token_clean in tag_blocklist:
+                continue
+            if pos.startswith('NN') or pos.startswith('JJ'):
+                tags.append(token_clean)
+
+        for node in ner_tree:
+            if not isinstance(node, Tree):
+                continue
+
+            label = node.label()
+            entity = ' '.join(leaf[0] for leaf in node.leaves()).strip()
+            if not entity:
+                continue
+
+            if label == 'PERSON':
+                entity_lower = entity.lower()
+                entity_words = entity_lower.split()
+                
+                # Skip filtered entities
+                if all(word in stop_words or word in entity_blocklist for word in entity_words):
+                    continue
+                if len(entity_words) == 1 and (entity_lower in stop_words or entity_lower in entity_blocklist):
+                    continue
+                if entity.isupper() and len(entity) > 1:
+                    continue
+                
+                # STRICT: Only accept multi-word names (e.g., "John Smith")
+                # Single-word "names" from NLTK are often incorrect in dream text
+                if len(entity_words) == 1:
+                    continue
+                
+                people_names.append(entity)
+                tags.append(entity.lower().replace(' ', '_'))
+            elif label in {'GPE', 'LOCATION', 'FACILITY'}:
+                places.append(entity)
+                tags.append(entity.lower().replace(' ', '_'))
+    except (LookupError, ValueError, TypeError):
+        return {
+            'tags': row_data.get('tags', ''),
+            'dream_people_names': '',
+            'dream_places': '',
+        }
+    except Exception as _nltk_exc:  # noqa: BLE001
+        logging.getLogger(__name__).debug('Dream NLTK enrichment failed: %s', _nltk_exc)
+
+    deduped_tags: list[str] = []
+    seen_tags: set[str] = set()
+    
+    # Include original tags from Excel sheet first
+    if row_data.get('tags'):
+        for tag in row_data['tags'].split(','):
+            tag_clean = tag.strip().lower()
+            if tag_clean and tag_clean not in seen_tags and tag_clean not in tag_blocklist:
+                # Filter out "image generated with prompt" pattern
+                if 'image' not in tag_clean and 'generated' not in tag_clean and 'prompt' not in tag_clean:
+                    seen_tags.add(tag_clean)
+                    deduped_tags.append(tag_clean)
+    
+    # Add derived tags
+    for tag in tags:
+        if tag in seen_tags or tag in tag_blocklist:
+            continue
+        seen_tags.add(tag)
+        deduped_tags.append(tag)
+
+    def _dedupe_case_insensitive(values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for value in values:
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(value)
+        return ordered
+
+    return {
+        'tags': ','.join(deduped_tags[:20]),
+        'dream_people_names': ','.join(_dedupe_case_insensitive(people_names)[:20]),
+        'dream_places': ','.join(_dedupe_case_insensitive(places)[:20]),
     }
 
 
@@ -363,7 +564,9 @@ def parse_excel(file_bytes: bytes) -> dict:
                     f'("{row.get("date", "")}").'
                 )
                 continue
-            dream_rows.append({
+            
+            # Build row data with sanitised values
+            row_data = {
                 'entry_date': entry_date,
                 'title': _sanitise(row.get('title', '')),
                 'plot': _sanitise(row.get('plot', '')),
@@ -376,7 +579,13 @@ def parse_excel(file_bytes: bytes) -> dict:
                 'action': _sanitise(row.get('action', '')),
                 'other': _sanitise(row.get('other', '')),
                 'tags': _sanitise(row.get('tags', '')),
-            })
+            }
+            
+            # Derive NLTK enrichment for dreams
+            enriched = _derive_dream_nltk_fields(row_data)
+            row_data.update(enriched)
+            
+            dream_rows.append(row_data)
     else:
         warnings.append("No 'Dreams' sheet found; dream entries not imported.")
 
@@ -479,9 +688,10 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
         cursor.execute(
             '''INSERT INTO dreamdiary_entries
-               (user_id, entry_date, entry_number, title, cast, location,
-                period, emotion, plot, symbols_and_imagery, insight, action, other, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               (user_id, entry_date, entry_number, title, "cast", location,
+                period, emotion, plot, symbols_and_imagery, insight, action, other,
+                tags, dream_people_names, dream_places)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 user_id,
                 entry_date,
@@ -497,6 +707,8 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
                 row['action'],
                 row['other'],
                 row['tags'],
+                row.get('dream_people_names', ''),
+                row.get('dream_places', ''),
             ),
         )
         existing_dreams.add(entry_date)
@@ -515,17 +727,18 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
 
 def backfill_nltk_enrichment(conn: sqlite3.Connection, logger=None) -> None:
-    """Re-enrich daily entries that have empty NLTK fields (e.g. imported before NLTK data was available)."""
+    """Re-enrich daily and dream entries that have empty NLTK fields."""
     try:
-        rows = conn.execute(
+        # Backfill daily entries
+        daily_rows = conn.execute(
             '''SELECT id, title, user_message FROM dailydiary_entries
                WHERE (tags IS NULL OR tags = '')
                AND (daily_people_names IS NULL OR daily_people_names = '')
                AND (daily_places IS NULL OR daily_places = '')'''
         ).fetchall()
 
-        updated = 0
-        for row in rows:
+        updated_daily = 0
+        for row in daily_rows:
             derived = _derive_daily_nltk_fields(row[1] or '', row[2] or '')
             if any(derived.values()):
                 conn.execute(
@@ -534,12 +747,49 @@ def backfill_nltk_enrichment(conn: sqlite3.Connection, logger=None) -> None:
                        WHERE id = ?''',
                     (derived['tags'], derived['daily_people_names'], derived['daily_places'], row[0]),
                 )
-                updated += 1
+                updated_daily += 1
 
-        if updated:
+        # Backfill dream entries
+        dream_rows = conn.execute(
+            '''SELECT id, title, "cast", location, period, emotion, plot,
+                      symbols_and_imagery, insight, action, other, tags
+               FROM dreamdiary_entries
+               WHERE (dream_people_names IS NULL OR dream_people_names = '')
+               AND (dream_places IS NULL OR dream_places = '')'''
+        ).fetchall()
+
+        updated_dreams = 0
+        for row in dream_rows:
+            row_data = {
+                'title': row[1] or '',
+                'cast': row[2] or '',
+                'location': row[3] or '',
+                'period': row[4] or '',
+                'emotion': row[5] or '',
+                'plot': row[6] or '',
+                'symbols_and_imagery': row[7] or '',
+                'insight': row[8] or '',
+                'action': row[9] or '',
+                'other': row[10] or '',
+                'tags': row[11] or '',
+            }
+            derived = _derive_dream_nltk_fields(row_data)
+            if derived.get('dream_people_names') or derived.get('dream_places'):
+                conn.execute(
+                    '''UPDATE dreamdiary_entries
+                       SET tags = ?, dream_people_names = ?, dream_places = ?
+                       WHERE id = ?''',
+                    (derived['tags'], derived['dream_people_names'], derived['dream_places'], row[0]),
+                )
+                updated_dreams += 1
+
+        if updated_daily or updated_dreams:
             conn.commit()
             if logger:
-                logger.info('NLTK backfill: enriched %d daily entries', updated)
+                if updated_daily:
+                    logger.info('NLTK backfill: enriched %d daily entries', updated_daily)
+                if updated_dreams:
+                    logger.info('NLTK backfill: enriched %d dream entries', updated_dreams)
     except Exception as exc:
         if logger:
             logger.warning('NLTK backfill skipped: %s', exc)
