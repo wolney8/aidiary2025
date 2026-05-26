@@ -52,6 +52,7 @@ def client():
                 user_message TEXT,
                 ai_response TEXT,
                 daily_people_names TEXT,
+                daily_places TEXT,
                 tags TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
@@ -274,5 +275,4 @@ def test_update_dream_entry_not_found(client):
         data=json.dumps({'plot': 'Ghost dream'}),
         content_type='application/json'
     )
-    assert response.status_code == 404    )
     assert response.status_code == 404

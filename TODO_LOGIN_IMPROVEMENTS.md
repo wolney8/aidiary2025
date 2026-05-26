@@ -1,10 +1,12 @@
 # Login Improvements TODOs
 
 ## ✅ Task 1: Login Error Messaging (COMPLETED)
+
 **Status**: COMPLETED
 **Description**: Add error message display to login form when username/password is invalid.
 
 **Implementation Details**:
+
 - ✅ Added `errorMessage` and `isLoading` properties to LoginComponent
 - ✅ Updated template to display error messages with red styling and error icon
 - ✅ Enhanced error handling in `onSubmit()` method with specific messages:
@@ -15,16 +17,19 @@
 - ✅ Added input validation for empty username/password fields
 
 **Files Modified**:
+
 - `client/src/app/auth/login/login.component.ts`
 
 ---
 
 ## 🔄 Task 2: Logout Timer with Warning Modal (TODO)
+
 **Status**: NOT STARTED
 **Priority**: Medium
 **Description**: Design and implement logout timer functionality for security (disabled in dev).
 
 **Requirements**:
+
 - Create a configurable inactivity timer
 - Show modal warning: "You've been inactive for <X time>, you will be automatically logged out in <X dynamic countdown>"
 - Include buttons: "Stay logged in" and "Log out"
@@ -32,6 +37,7 @@
 - Should track user activity (mouse moves, clicks, keyboard input)
 
 **Implementation Plan**:
+
 1. **Create Inactivity Service** (`src/app/core/services/inactivity.service.ts`)
    - Track user activity with HostListener for document events
    - Configurable timeout settings
@@ -55,12 +61,14 @@
    - Handle modal responses appropriately
 
 **Files to Create/Modify**:
+
 - `client/src/app/core/services/inactivity.service.ts` (new)
 - `client/src/app/shared/components/inactivity-warning/inactivity-warning.component.ts` (new)
 - `client/src/app/app.component.ts` (modify)
 - `client/src/environments/environment.ts` (modify)
 
 **Testing Requirements**:
+
 - Test with different timeout values
 - Verify dev mode disabling works
 - Test modal interactions
@@ -70,6 +78,7 @@
 ---
 
 ## 📋 Next Steps
+
 1. **HANDOFF TO USER**: Test Task 1 (Login Error Messaging)
    - Try logging in with incorrect credentials
    - Verify error message appears correctly
@@ -83,6 +92,7 @@
 ---
 
 ## ⚠️ Development Notes
+
 - **Testing Required**: All changes require user testing before proceeding
 - **Server/Client Restart**: May be needed after significant changes
 - **Focus**: Avoid tangents, stay on track with deliverables

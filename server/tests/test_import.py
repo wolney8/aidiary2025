@@ -331,6 +331,65 @@ class TestSuccessfulImport:
         assert isinstance(data['warnings'], list)
 
 
+class TestImportIntegration:
+    def test_imported_daily_entries_readable(self, client):
+        token = _register_and_login(client)
+        target_date = '2025-04-01'
+        target_title = 'Imported Daily Smoke'
+        file_bytes = _make_xlsx(
+            daily_rows=[[target_date, target_title, 'Imported body text', 'Imported AI text']]
+        )
+
+        import_resp = _upload(client, token, file_bytes)
+        assert import_resp.status_code == 200
+
+        list_resp = client.get(
+            '/api/daily',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        assert list_resp.status_code == 200
+        entries = json.loads(list_resp.data)
+        assert any(
+            entry.get('entry_date') == target_date or entry.get('title') == target_title
+            for entry in entries
+        )
+
+    def test_imported_dreams_entries_readable(self, client):
+        token = _register_and_login(client)
+        target_date = '2025-04-02'
+        target_title = 'Imported Dream Smoke'
+        file_bytes = _make_xlsx(
+            dream_rows=[[
+                target_date,
+                target_title,
+                'I was exploring a forest',
+                'Guide',
+                'Forest',
+                'Unknown',
+                'curious',
+                'trees',
+                'stay grounded',
+                'journal',
+                'none',
+                'smoke',
+            ]]
+        )
+
+        import_resp = _upload(client, token, file_bytes)
+        assert import_resp.status_code == 200
+
+        list_resp = client.get(
+            '/api/dreams',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        assert list_resp.status_code == 200
+        entries = json.loads(list_resp.data)
+        assert any(
+            entry.get('entry_date') == target_date or entry.get('title') == target_title
+            for entry in entries
+        )
+
+
 # ---------------------------------------------------------------------------
 # Duplicate handling
 # ---------------------------------------------------------------------------

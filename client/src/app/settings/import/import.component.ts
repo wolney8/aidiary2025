@@ -1,63 +1,70 @@
 // Import component — full UX journey: template download → file selection → upload → result feedback
-import {
-  Component,
-  ElementRef,
-  OnInit,
-  ViewChild,
-  inject,
-} from "@angular/core";
+
+import { animate, style, transition, trigger } from "@angular/animations";
 import { CommonModule } from "@angular/common";
-import { MatCardModule } from "@angular/material/card";
+import {
+	Component,
+	type ElementRef,
+	inject,
+	type OnInit,
+	ViewChild,
+} from "@angular/core";
 import { MatButtonModule } from "@angular/material/button";
+import { MatCardModule } from "@angular/material/card";
+import { MatChipsModule } from "@angular/material/chips";
+import { MatDividerModule } from "@angular/material/divider";
 import { MatIconModule } from "@angular/material/icon";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { MatTableModule } from "@angular/material/table";
-import { MatChipsModule } from "@angular/material/chips";
 import { MatTooltipModule } from "@angular/material/tooltip";
-import { MatDividerModule } from "@angular/material/divider";
-import { trigger, transition, style, animate } from "@angular/animations";
 import { filter } from "rxjs/operators";
 import {
-  ImportService,
-  type ImportHistoryItem,
-  type ImportResult,
-  type UploadProgress,
+	type ImportHistoryItem,
+	type ImportResult,
+	ImportService,
+	type UploadProgress,
 } from "../../core/services/import.service";
 
-type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
+type UploadState =
+	| "idle"
+	| "uploading"
+	| "success"
+	| "partial"
+	| "empty"
+	| "error";
 
 @Component({
-  selector: "app-import",
-  standalone: true,
-  imports: [
-    CommonModule,
-    MatCardModule,
-    MatButtonModule,
-    MatIconModule,
-    MatProgressBarModule,
-    MatTableModule,
-    MatChipsModule,
-    MatTooltipModule,
-    MatDividerModule,
-  ],
-  animations: [
-    trigger("fadeSlideIn", [
-      transition(":enter", [
-        style({ opacity: 0, transform: "translateY(-8px)" }),
-        animate(
-          "250ms cubic-bezier(0.4,0,0.2,1)",
-          style({ opacity: 1, transform: "translateY(0)" }),
-        ),
-      ]),
-      transition(":leave", [
-        animate(
-          "180ms cubic-bezier(0.4,0,1,1)",
-          style({ opacity: 0, transform: "translateY(-8px)" }),
-        ),
-      ]),
-    ]),
-  ],
-  template: `
+	selector: "app-import",
+	standalone: true,
+	imports: [
+		CommonModule,
+		MatCardModule,
+		MatButtonModule,
+		MatIconModule,
+		MatProgressBarModule,
+		MatTableModule,
+		MatChipsModule,
+		MatTooltipModule,
+		MatDividerModule,
+	],
+	animations: [
+		trigger("fadeSlideIn", [
+			transition(":enter", [
+				style({ opacity: 0, transform: "translateY(-8px)" }),
+				animate(
+					"250ms cubic-bezier(0.4,0,0.2,1)",
+					style({ opacity: 1, transform: "translateY(0)" }),
+				),
+			]),
+			transition(":leave", [
+				animate(
+					"180ms cubic-bezier(0.4,0,1,1)",
+					style({ opacity: 0, transform: "translateY(-8px)" }),
+				),
+			]),
+		]),
+	],
+	template: `
     <!-- Hidden file input -->
     <input
       #fileInput
@@ -126,6 +133,7 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
             class="drop-zone"
             [class.drop-zone--has-file]="selectedFile && !validationError"
             [class.drop-zone--invalid]="!!validationError"
+            [class.drop-zone--dragging]="isDragging"
             role="button"
             tabindex="0"
             aria-label="Choose an Excel file for import"
@@ -133,6 +141,9 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
             (keydown.space)="triggerFilePicker()"
+            (dragover)="onDragOver($event)"
+            (dragleave)="onDragLeave()"
+            (drop)="onDrop($event)"
           >
             <mat-icon class="drop-icon" aria-hidden="true">
               {{ selectedFile && !validationError ? "task" : "upload_file" }}
@@ -203,6 +214,12 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
                 {{ importResult!.imported_count }} entries imported,
                 {{ importResult!.skipped_count }} skipped.
               </p>
+              <p *ngIf="shouldShowTypeBreakdown(importResult!)">
+                Daily: {{ importResult!.inserted_daily ?? 0 }} inserted,
+                {{ importResult!.skipped_daily ?? 0 }} skipped — Dreams:
+                {{ importResult!.inserted_dreams ?? 0 }} inserted,
+                {{ importResult!.skipped_dreams ?? 0 }} skipped
+              </p>
               <p
                 *ngIf="importResult!.warnings && importResult!.warnings!.length"
               >
@@ -228,6 +245,12 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
                 {{ importResult!.skipped_count }} skipped,
                 {{ importResult!.error_count }} rows had errors.
               </p>
+              <p *ngIf="shouldShowTypeBreakdown(importResult!)">
+                Daily: {{ importResult!.inserted_daily ?? 0 }} inserted,
+                {{ importResult!.skipped_daily ?? 0 }} skipped — Dreams:
+                {{ importResult!.inserted_dreams ?? 0 }} inserted,
+                {{ importResult!.skipped_dreams ?? 0 }} skipped
+              </p>
               <ul
                 *ngIf="importResult!.errors && importResult!.errors!.length"
                 class="error-list"
@@ -249,6 +272,24 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
             <div class="feedback-body">
               <p class="feedback-title">Import failed</p>
               <p>{{ importErrorMessage }}</p>
+            </div>
+          </div>
+
+          <!-- Result feedback — empty file -->
+          <div
+            *ngIf="uploadState === 'empty'"
+            class="feedback feedback--info"
+            role="status"
+            aria-live="polite"
+            [@fadeSlideIn]
+          >
+            <mat-icon aria-hidden="true">info</mat-icon>
+            <div class="feedback-body">
+              <p class="feedback-title">No entries found</p>
+              <p>
+                No entries were found in this file. Please check the file has
+                data rows.
+              </p>
             </div>
           </div>
         </mat-card-content>
@@ -329,6 +370,7 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
           <div
             *ngIf="!historyLoading && !historyError && history.length > 0"
             class="table-wrapper"
+            aria-live="polite"
           >
             <table
               mat-table
@@ -364,12 +406,6 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
               <ng-container matColumnDef="skipped_count">
                 <th mat-header-cell *matHeaderCellDef scope="col">Skipped</th>
                 <td mat-cell *matCellDef="let row">{{ row.skipped_count }}</td>
-              </ng-container>
-
-              <!-- Errors column -->
-              <ng-container matColumnDef="error_count">
-                <th mat-header-cell *matHeaderCellDef scope="col">Errors</th>
-                <td mat-cell *matCellDef="let row">{{ row.error_count }}</td>
               </ng-container>
 
               <!-- Status column -->
@@ -411,8 +447,8 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
       </mat-card>
     </div>
   `,
-  styles: [
-    `
+	styles: [
+		`
       .sr-only {
         position: absolute;
         width: 1px;
@@ -489,6 +525,11 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
       .drop-zone--invalid {
         border-color: #c62828;
         background-color: rgba(198, 40, 40, 0.04);
+      }
+
+      .drop-zone--dragging {
+        border-color: #1565c0;
+        background-color: rgba(21, 101, 192, 0.08);
       }
 
       .drop-icon {
@@ -568,6 +609,11 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
       .feedback--error {
         background: #ffebee;
         color: #b71c1c;
+      }
+
+      .feedback--info {
+        background: #e3f2fd;
+        color: #0d47a1;
       }
 
       .feedback-body {
@@ -680,209 +726,244 @@ type UploadState = "idle" | "uploading" | "success" | "partial" | "error";
         color: #b71c1c;
       }
 
+      .status-chip--empty {
+        background: #e3f2fd;
+        color: #0d47a1;
+      }
+
       @media (max-width: 600px) {
         .import-container {
           padding: 8px;
         }
       }
     `,
-  ],
+	],
 })
 export class ImportComponent implements OnInit {
-  @ViewChild("fileInput") fileInputRef!: ElementRef<HTMLInputElement>;
+	@ViewChild("fileInput") fileInputRef!: ElementRef<HTMLInputElement>;
 
-  private importService = inject(ImportService);
+	private importService = inject(ImportService);
 
-  // File selection state
-  selectedFile: File | null = null;
-  validationError: string | null = null;
-  readonly validationErrorId = "import-validation-error";
+	// File selection state
+	selectedFile: File | null = null;
+	isDragging = false;
+	validationError: string | null = null;
+	readonly validationErrorId = "import-validation-error";
 
-  // Upload state
-  uploadState: UploadState = "idle";
-  uploadProgress: UploadProgress = { percent: 0, loaded: 0, total: 0 };
-  importResult: ImportResult | null = null;
-  importErrorMessage = "";
+	// Upload state
+	uploadState: UploadState = "idle";
+	uploadProgress: UploadProgress = { percent: 0, loaded: 0, total: 0 };
+	importResult: ImportResult | null = null;
+	importErrorMessage = "";
 
-  // Template download
-  isDownloading = false;
-  templateDownloadError: string | null = null;
+	// Template download
+	isDownloading = false;
+	templateDownloadError: string | null = null;
 
-  // History
-  history: ImportHistoryItem[] = [];
-  historyLoading = false;
-  historyError: string | null = null;
-  readonly historyColumns = [
-    "imported_at",
-    "filename",
-    "imported_count",
-    "skipped_count",
-    "error_count",
-    "status",
-  ];
+	// History
+	history: ImportHistoryItem[] = [];
+	historyLoading = false;
+	historyError: string | null = null;
+	readonly historyColumns = [
+		"imported_at",
+		"filename",
+		"imported_count",
+		"skipped_count",
+		"status",
+	];
 
-  ngOnInit(): void {
-    this.loadHistory();
-  }
+	ngOnInit(): void {
+		this.loadHistory();
+	}
 
-  triggerFilePicker(): void {
-    this.fileInputRef.nativeElement.click();
-  }
+	triggerFilePicker(): void {
+		this.fileInputRef.nativeElement.click();
+	}
 
-  onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
+	onFileSelected(event: Event): void {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
 
-    // Reset input so re-selecting the same file fires the event again
-    input.value = "";
+		// Reset input so re-selecting the same file fires the event again
+		input.value = "";
 
-    if (!file) return;
+		if (!file) return;
+		this.applySelectedFile(file);
+	}
 
-    this.selectedFile = file;
-    this.validationError = this.importService.validateFile(file);
+	onDragOver(event: DragEvent): void {
+		event.preventDefault();
+		this.isDragging = true;
+	}
 
-    // Reset any previous result when a new file is chosen
-    this.uploadState = "idle";
-    this.importResult = null;
-    this.importErrorMessage = "";
-  }
+	onDragLeave(): void {
+		this.isDragging = false;
+	}
 
-  clearSelection(): void {
-    this.selectedFile = null;
-    this.validationError = null;
-    this.uploadState = "idle";
-    this.importResult = null;
-    this.importErrorMessage = "";
-    this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
-  }
+	onDrop(event: DragEvent): void {
+		event.preventDefault();
+		this.isDragging = false;
+		const file = event.dataTransfer?.files?.[0] ?? null;
+		if (!file) return;
+		this.applySelectedFile(file);
+	}
 
-  uploadFile(): void {
-    if (!this.selectedFile || this.validationError) return;
+	clearSelection(): void {
+		this.selectedFile = null;
+		this.isDragging = false;
+		this.validationError = null;
+		this.uploadState = "idle";
+		this.importResult = null;
+		this.importErrorMessage = "";
+		this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
+	}
 
-    this.uploadState = "uploading";
-    this.uploadProgress = {
-      percent: 0,
-      loaded: 0,
-      total: this.selectedFile.size,
-    };
-    this.importResult = null;
-    this.importErrorMessage = "";
+	uploadFile(): void {
+		if (!this.selectedFile || this.validationError) return;
 
-    this.importService
-      .uploadFile(this.selectedFile)
-      .pipe(filter((event) => event !== null && event !== undefined))
-      .subscribe({
-        next: (event) => {
-          if (!event) return;
-          if (event.type === "progress") {
-            this.uploadProgress = event.progress;
-          } else if (event.type === "result") {
-            this.importResult = event.result;
-            const resultStatus = event.result.status;
-            // Map backend 'failed' status to local 'error' UI state
-            if (resultStatus === "failed") {
-              this.uploadState = "error";
-              this.importErrorMessage =
-                event.result.message || "Import failed.";
-            } else {
-              this.uploadState = resultStatus;
-            }
-            if (this.shouldRefreshHistory(resultStatus)) {
-              this.loadHistory();
-            }
-          }
-        },
-        error: (err: Error) => {
-          this.uploadState = "error";
-          this.importErrorMessage =
-            err.message || "Upload failed. Please try again.";
-        },
-      });
-  }
+		this.uploadState = "uploading";
+		this.uploadProgress = {
+			percent: 0,
+			loaded: 0,
+			total: this.selectedFile.size,
+		};
+		this.importResult = null;
+		this.importErrorMessage = "";
 
-  downloadTemplate(): void {
-    this.templateDownloadError = null;
-    this.isDownloading = true;
-    this.importService.downloadTemplate().subscribe({
-      next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "ai_diary_import_template.xlsx";
-        link.click();
-        URL.revokeObjectURL(url);
-        this.isDownloading = false;
-        this.templateDownloadError = null;
-      },
-      error: () => {
-        this.isDownloading = false;
-        this.templateDownloadError =
-          "Could not download the import template. Please check that the backend service is running and try again.";
-      },
-    });
-  }
+		this.importService
+			.uploadFile(this.selectedFile)
+			.pipe(filter((event) => event !== null && event !== undefined))
+			.subscribe({
+				next: (event) => {
+					if (!event) return;
+					if (event.type === "progress") {
+						this.uploadProgress = event.progress;
+					} else if (event.type === "result") {
+						this.importResult = event.result;
+						const resultStatus = event.result.status;
+						// Map backend 'failed' status to local 'error' UI state
+						if (resultStatus === "failed") {
+							this.uploadState = "error";
+							this.importErrorMessage =
+								event.result.message || "Import failed.";
+						} else {
+							this.uploadState = resultStatus;
+						}
+						if (this.shouldRefreshHistory(resultStatus)) {
+							this.loadHistory();
+						}
+					}
+				},
+				error: (err: Error) => {
+					this.uploadState = "error";
+					this.importErrorMessage =
+						err.message || "Upload failed. Please try again.";
+				},
+			});
+	}
 
-  loadHistory(): void {
-    this.historyLoading = true;
-    this.historyError = null;
+	downloadTemplate(): void {
+		this.templateDownloadError = null;
+		this.isDownloading = true;
+		this.importService.downloadTemplate().subscribe({
+			next: (blob) => {
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement("a");
+				link.href = url;
+				link.download = "ai_diary_import_template.xlsx";
+				link.click();
+				URL.revokeObjectURL(url);
+				this.isDownloading = false;
+				this.templateDownloadError = null;
+			},
+			error: () => {
+				this.isDownloading = false;
+				this.templateDownloadError =
+					"Could not download the import template. Please check that the backend service is running and try again.";
+			},
+		});
+	}
 
-    this.importService.getHistory().subscribe({
-      next: (items) => {
-        this.history = items;
-        this.historyLoading = false;
-      },
-      error: (err: Error) => {
-        this.historyError = err.message || "Unable to load import history.";
-        this.historyLoading = false;
-      },
-    });
-  }
+	loadHistory(): void {
+		this.historyLoading = true;
+		this.historyError = null;
 
-  // ── Formatting helpers ──
+		this.importService.getHistory().subscribe({
+			next: (items) => {
+				this.history = items;
+				this.historyLoading = false;
+			},
+			error: (err: Error) => {
+				this.historyError = err.message || "Unable to load import history.";
+				this.historyLoading = false;
+			},
+		});
+	}
 
-  formatFileSize(bytes: number): string {
-    if (bytes === 0) return "0 B";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
+	// ── Formatting helpers ──
 
-  formatDate(isoString: string): string {
-    if (!isoString) return "—";
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-    } catch {
-      return isoString;
-    }
-  }
+	formatFileSize(bytes: number): string {
+		if (bytes === 0) return "0 B";
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
 
-  private shouldRefreshHistory(status: ImportResult["status"]): boolean {
-    return status === "success" || status === "partial";
-  }
+	formatDate(isoString: string): string {
+		if (!isoString) return "—";
+		try {
+			const d = new Date(isoString);
+			return d.toLocaleString("en-GB", {
+				day: "2-digit",
+				month: "short",
+				year: "numeric",
+				hour: "2-digit",
+				minute: "2-digit",
+				hour12: false,
+			});
+		} catch {
+			return isoString;
+		}
+	}
 
-  statusIcon(status: ImportHistoryItem["status"]): string {
-    const icons: Record<ImportHistoryItem["status"], string> = {
-      success: "check_circle",
-      partial: "warning_amber",
-      failed: "cancel",
-    };
-    return icons[status] ?? "help_outline";
-  }
+	private shouldRefreshHistory(status: ImportResult["status"]): boolean {
+		return status === "success" || status === "partial" || status === "empty";
+	}
 
-  statusLabel(status: ImportHistoryItem["status"]): string {
-    const labels: Record<ImportHistoryItem["status"], string> = {
-      success: "Success",
-      partial: "Partial",
-      failed: "Failed",
-    };
-    return labels[status] ?? status;
-  }
+	statusIcon(status: ImportHistoryItem["status"]): string {
+		const icons: Record<ImportHistoryItem["status"], string> = {
+			success: "check_circle",
+			partial: "warning_amber",
+			failed: "cancel",
+			empty: "info",
+		};
+		return icons[status] ?? "help_outline";
+	}
+
+	statusLabel(status: ImportHistoryItem["status"]): string {
+		const labels: Record<ImportHistoryItem["status"], string> = {
+			success: "Success",
+			partial: "Partial",
+			failed: "Failed",
+			empty: "Empty",
+		};
+		return labels[status] ?? status;
+	}
+
+	shouldShowTypeBreakdown(result: ImportResult): boolean {
+		const hasSplitData =
+			result.inserted_daily !== undefined ||
+			result.inserted_dreams !== undefined;
+		return hasSplitData && result.imported_count > 0;
+	}
+
+	private applySelectedFile(file: File): void {
+		this.selectedFile = file;
+		this.validationError = this.importService.validateFile(file);
+
+		// Reset any previous result when a new file is chosen
+		this.uploadState = "idle";
+		this.importResult = null;
+		this.importErrorMessage = "";
+	}
 }
