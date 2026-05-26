@@ -26,13 +26,22 @@ import { EntriesService } from "../../core/services/entries.service";
           Back
         </button>
         <h2>{{ getFriendlyDate() }}</h2>
-        <button
-          mat-raised-button
-          color="primary"
-          [routerLink]="['/entries', entry.id, 'edit']"
-        >
-          Edit Entry
-        </button>
+        <div class="action-buttons">
+          <button
+            mat-raised-button
+            color="primary"
+            [routerLink]="['/entries', entry.id, 'edit']"
+          >
+            Edit Entry
+          </button>
+          <button
+            mat-stroked-button
+            color="warn"
+            (click)="deleteEntry()"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
       <section class="entry-image-band" aria-label="Entry image">
@@ -321,6 +330,11 @@ import { EntriesService } from "../../core/services/entries.service";
         flex: 1;
       }
 
+      .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+      }
+
       .entry-image-band {
         margin-bottom: var(--spacing-md);
         border-radius: var(--radius-md);
@@ -497,6 +511,29 @@ export class DetailComponent implements OnInit {
     }
 
     this.router.navigate(["/entries"]);
+  }
+
+  deleteEntry(): void {
+    const entryType = this.isDream() ? 'dream' : 'daily';
+    const confirmed = confirm(
+      `Are you sure you want to delete this ${entryType} entry? This action cannot be undone.`
+    );
+
+    if (confirmed && this.entry) {
+      const deleteObservable = this.isDream()
+        ? this.entriesService.deleteDreamEntry(this.entry.id)
+        : this.entriesService.deleteDailyEntry(this.entry.id);
+
+      deleteObservable.subscribe({
+        next: () => {
+          this.router.navigate(['/entries']);
+        },
+        error: (error) => {
+          console.error('Failed to delete entry:', error);
+          alert('Failed to delete entry. Please try again.');
+        }
+      });
+    }
   }
 
   getFriendlyDate(): string {
