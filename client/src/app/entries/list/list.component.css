@@ -398,3 +398,21 @@
   height: 48px;
   color: #ccc;
 }
+
+/* Edit and action buttons */
+.entry-card mat-card-actions button[mat-icon-button] {
+  color: #666;
+  transition: color 0.2s ease;
+}
+
+.entry-card mat-card-actions button[mat-icon-button]:hover {
+  color: #2196f3;
+}
+
+.entry-card mat-card-actions button[mat-icon-button][title*="Edit"] {
+  margin-left: 4px;
+}
+
+.entry-card mat-card-actions button[mat-icon-button][title*="Edit"]:hover {
+  color: #ff9800;
+}

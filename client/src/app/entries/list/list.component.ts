@@ -153,11 +153,11 @@ type TimelineMonth = {
                 <a mat-button color="primary" [routerLink]="['/entries', entry.id]">
                   VIEW ENTRY
                 </a>
-                <button mat-icon-button>
+                <button mat-icon-button title="Favourite (coming soon)">
                   <mat-icon>favorite_border</mat-icon>
                 </button>
-                <button mat-icon-button>
-                  <mat-icon>share</mat-icon>
+                <button mat-icon-button (click)="editEntry(entry)" title="Edit Entry">
+                  <mat-icon>edit</mat-icon>
                 </button>
               </mat-card-actions>
             </mat-card>
@@ -793,6 +793,17 @@ export class ListComponent implements OnInit, OnDestroy {
       });
     }
     return months;
+  }
+
+  editEntry(entry: DailyEntry | DreamEntry): void {
+    // Navigate to create/edit page with entry ID for editing
+    const entryType = 'user_message' in entry ? 'daily' : 'dream';
+    this.router.navigate(['/entries/create'], { 
+      queryParams: { 
+        type: entryType,
+        id: entry.id 
+      } 
+    });
   }
 
   ngOnDestroy(): void {

@@ -37,3 +37,9 @@
 ## Constraints
 - **Do not** change table/column names in `app.db`
 - Use British English for UI and comments
+
+## Database
+- Location: `server/db/app.db` (SQLite)
+- Schema: Existing tables - do not modify column names or structure
+- Configuration: Set via `DB_PATH` environment variable or defaults to `server/db/app.db`
+- **Critical:** Never create new database files or change paths without explicit approval

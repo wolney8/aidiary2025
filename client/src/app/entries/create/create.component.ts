@@ -1,5 +1,4 @@
-// Create entry with support for daily and dream flows
-import { Component, HostListener, inject, ViewChild, ElementRef, OnInit } from '@angular/core';
+import { Component, HostListener, inject, ViewChild, ElementRef, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -14,9 +13,12 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatChipsModule, MatChipInputEvent } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
+import { MatDialog } from '@angular/material/dialog';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
+import { debounceTime, Subject, takeUntil } from 'rxjs';
 import { EntriesService } from '../../core/services/entries.service';
 import { AnalysisService } from '../../core/services/analysis.service';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { DailyAnalysisResponse, DreamAnalysisResponse, MoodOption, AIStyleOption, DreamFieldOptions } from '../../core/models/entry.model';
 
 const UK_DATE_FORMATS = {
@@ -53,280 +55,19 @@ const UK_DATE_FORMATS = {
     { provide: MAT_DATE_LOCALE, useValue: 'en-GB' },
     { provide: MAT_DATE_FORMATS, useValue: UK_DATE_FORMATS }
   ],
-  template: `
-    <div class="create-container">
-      <mat-card>
-        <mat-card-header>
-          <mat-card-title>{{ isEditing ? 'Edit' : 'New' }} Diary Entry</mat-card-title>
-          <mat-slide-toggle [(ngModel)]="leaveItToAI">
-            Respond with AI
-          </mat-slide-toggle>
-        </mat-card-header>
-
-        <mat-card-content>
-          <mat-button-toggle-group
-            class="entry-type-toggle"
-            [(ngModel)]="selectedType"
-            name="entryType"
-            aria-label="Entry type toggle"
-            (change)="onTypeChange()"
-          >
-            <mat-button-toggle value="daily">Daily Entry</mat-button-toggle>
-            <mat-button-toggle value="dream">Dream Entry</mat-button-toggle>
-          </mat-button-toggle-group>
-          <p class="hint" *ngIf="leaveItToAI">
-            We'll run an AI analysis straight after saving this entry.
-          </p>
-
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Date</mat-label>
-            <input matInput [matDatepicker]="picker" [(ngModel)]="entryDate" name="entry_date" [max]="maxDate">
-            <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
-            <mat-datepicker #picker></mat-datepicker>
-          </mat-form-field>
-
-          <!-- AI Style Selection - only show when AI toggle is on -->
-          <mat-form-field appearance="outline" class="full-width" *ngIf="leaveItToAI">
-            <mat-label>AI Response Style</mat-label>
-            <mat-select [(ngModel)]="selectedAIStyle" name="aiStyle">
-              <mat-option *ngFor="let style of aiStyleOptions" [value]="style.value">
-                <div>
-                  <strong>{{ style.label }}</strong>
-                  <br>
-                  <small>{{ style.description }}</small>
-                </div>
-              </mat-option>
-            </mat-select>
-          </mat-form-field>
-
-          <!-- Mood Selection -->
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>How are you feeling?</mat-label>
-            <mat-select [(ngModel)]="selectedMood" name="mood">
-              <mat-option value="">Not specified</mat-option>
-              <mat-option *ngFor="let mood of moodOptions" [value]="mood.value">
-                {{ mood.emoji }} {{ mood.label }}
-              </mat-option>
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Title</mat-label>
-            <input matInput [(ngModel)]="entryTitle" name="title">
-          </mat-form-field>
-
-          <!-- Content field only for daily entries -->
-          <mat-form-field appearance="outline" class="full-width" *ngIf="selectedType === 'daily'">
-            <mat-label>Describe your day</mat-label>
-            <textarea
-              matInput
-              [(ngModel)]="content"
-              name="content"
-              rows="10"
-              placeholder="Share highlights, themes, or key moments..."
-            ></textarea>
-          </mat-form-field>
-
-          <!-- Dream-specific fields -->
-          <div *ngIf="selectedType === 'dream'" class="dream-fields">
-            <h3>Dream Details (Optional)</h3>
-            
-            <div class="dream-row">
-              <mat-form-field appearance="outline" class="half-width">
-                <mat-label>Cast (Who was in your dream?)</mat-label>
-                <textarea matInput [(ngModel)]="dreamCast" name="dreamCast" rows="2"></textarea>
-              </mat-form-field>
-              
-              <mat-form-field appearance="outline" class="half-width">
-                <mat-label>Location</mat-label>
-                <input matInput [(ngModel)]="dreamLocation" name="dreamLocation" placeholder="Describe the location">
-              </mat-form-field>
-            </div>
-
-            <div class="dream-row">
-              <mat-form-field appearance="outline" class="half-width">
-                <mat-label>Time Period</mat-label>
-                <mat-select [(ngModel)]="dreamPeriod" name="dreamPeriod">
-                  <mat-option value="">Type custom period below...</mat-option>
-                  <mat-option *ngFor="let period of dreamFieldOptions.periods" [value]="period">
-                    {{ period }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" class="half-width">
-                <mat-label>Primary Emotion</mat-label>
-                <mat-select [(ngModel)]="dreamEmotion" name="dreamEmotion">
-                  <mat-option value="">Type custom emotion below...</mat-option>
-                  <mat-option *ngFor="let emotion of dreamFieldOptions.emotions" [value]="emotion">
-                    {{ emotion }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-            </div>
-
-            <div class="dream-row" *ngIf="dreamPeriod === '' || dreamEmotion === ''">
-              <mat-form-field appearance="outline" class="half-width" *ngIf="dreamPeriod === ''">
-                <mat-label>Custom Time Period</mat-label>
-                <input matInput [(ngModel)]="dreamPeriod" name="dreamPeriodCustom" placeholder="Describe the time period">
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" class="half-width" *ngIf="dreamEmotion === ''">
-                <mat-label>Custom Emotion</mat-label>
-                <input matInput [(ngModel)]="dreamEmotion" name="dreamEmotionCustom" placeholder="Describe the emotion">
-              </mat-form-field>
-            </div>
-
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Symbols & Imagery</mat-label>
-              <textarea matInput [(ngModel)]="dreamSymbolsAndImagery" name="dreamSymbols" rows="3"
-                        placeholder="Notable symbols, colors, objects, or imagery"></textarea>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Personal Insight</mat-label>
-              <textarea matInput [(ngModel)]="dreamInsight" name="dreamInsight" rows="3"
-                        placeholder="What do you think this dream might mean?"></textarea>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Actions Taken</mat-label>
-              <textarea matInput [(ngModel)]="dreamAction" name="dreamAction" rows="2"
-                        placeholder="What did you do in the dream?"></textarea>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Other Details</mat-label>
-              <textarea matInput [(ngModel)]="dreamOther" name="dreamOther" rows="2"
-                        placeholder="Any other important details"></textarea>
-            </mat-form-field>
-          </div>
-
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>My Tags</mat-label>
-            <mat-chip-grid #chipGrid>
-              <mat-chip-row *ngFor="let tag of tags" (removed)="removeTag(tag)">
-                {{ tag }}
-                <button matChipRemove type="button">
-                  <mat-icon>cancel</mat-icon>
-                </button>
-              </mat-chip-row>
-              <input
-                placeholder="Type and press enter"
-                [matChipInputFor]="chipGrid"
-                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
-                [matChipInputAddOnBlur]="true"
-                (matChipInputTokenEnd)="addTag($event)"
-              />
-            </mat-chip-grid>
-          </mat-form-field>
-
-          <div class="actions">
-            <button mat-stroked-button color="warn" (click)="cancelCreate()" [disabled]="isSaving">
-              Cancel
-            </button>
-
-            <ng-container *ngIf="!leaveItToAI; else aiActions">
-              <button mat-stroked-button (click)="triggerImageUpload()" [disabled]="isSaving">
-                Upload Image
-              </button>
-              <button mat-raised-button color="primary" (click)="saveAsDraft()" [disabled]="isSaving">
-                Save Entry
-              </button>
-            </ng-container>
-
-            <ng-template #aiActions>
-              <button mat-raised-button color="primary" (click)="saveAndAnalyse()" [disabled]="isSaving">
-                Save & Analyse
-              </button>
-            </ng-template>
-          </div>
-
-          <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
-          <input #fileInput type="file" class="hidden" (change)="handleImageUpload($event)" accept="image/*" />
-        </mat-card-content>
-      </mat-card>
-    </div>
-  `,
-  styles: [`
-    .create-container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    .full-width {
-      width: 100%;
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .half-width {
-      width: calc(50% - 8px);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .dream-fields {
-      margin: var(--spacing-md) 0;
-      padding: var(--spacing-md);
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      background-color: #fafafa;
-    }
-
-    .dream-fields h3 {
-      margin: 0 0 var(--spacing-md) 0;
-      color: #424242;
-      font-weight: 500;
-    }
-
-    .dream-row {
-      display: flex;
-      gap: var(--spacing-md);
-      align-items: flex-start;
-    }
-
-    .dream-row mat-form-field {
-      flex: 1;
-    }
-
-    .entry-type-toggle {
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .hint {
-      margin-bottom: var(--spacing-sm);
-      color: #555;
-    }
-
-    .actions {
-      display: flex;
-      gap: var(--spacing-sm);
-      justify-content: flex-end;
-      margin-top: var(--spacing-sm);
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    mat-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: var(--spacing-md);
-    }
-
-    .error {
-      color: #c62828;
-      margin-top: var(--spacing-sm);
-    }
-  `]
+  templateUrl: './create.component.html',
+  styleUrls: ['./create.component.scss', './edit-layout.scss'],
 })
-export class CreateComponent implements OnInit {
+export class CreateComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
+  private dialog = inject(MatDialog);
   @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>;
+
+  private destroy$ = new Subject<void>();
+  private autosaveSubject = new Subject<void>();
 
   entryDate: Date | null = new Date();
   entryTitle = '';
@@ -355,8 +96,18 @@ export class CreateComponent implements OnInit {
   dreamAction = '';
   dreamOther = '';
 
+  // New properties for wireframe layout
+  autosaveStatus: 'idle' | 'saving' | 'saved' | 'error' = 'idle';
+  heroImageUrl = '';
+  heroImageExpanded = false; // Changed from heroImageCollapsed
+  hasAIResponse = false;
+  aiResponseData: any = null;
+  lastAutosaveTime: Date | null = null;
+  hasAutosavedChanges = false;
+
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
   private initialDate = this.entryDate?.toDateString() ?? '';
+  private originalFormState: any = null;
 
   // Mood options for both entry types
   moodOptions: MoodOption[] = [
@@ -394,6 +145,25 @@ export class CreateComponent implements OnInit {
   };
 
   ngOnInit(): void {
+    // Set up autosave with debounce
+    this.autosaveSubject
+      .pipe(
+        debounceTime(5000), // 5 second delay
+        takeUntil(this.destroy$)
+      )
+      .subscribe(() => {
+        if (this.isEditing && this.hasUnsavedChanges()) {
+          this.performAutosave();
+        }
+      });
+
+    // Update time display every 10 seconds
+    setInterval(() => {
+      if (this.lastAutosaveTime) {
+        // Trigger change detection for time updates
+      }
+    }, 10000);
+
     // Check for pre-populated date and type from query params
     this.route.queryParamMap.subscribe(params => {
       const dateParam = params.get('date');
@@ -414,15 +184,23 @@ export class CreateComponent implements OnInit {
       if (typeParam === 'dream' || typeParam === 'daily') {
         this.selectedType = typeParam;
       }
+
+      // Check for edit ID parameter
+      const idParam = params.get('id');
+      if (idParam) {
+        this.isEditing = true;
+        this.editingId = Number(idParam);
+        this.loadEntryForEditing(this.editingId);
+      }
     });
 
-    // Check for id parameter for editing
-    const id = this.route.snapshot.paramMap.get('id');
-    if (id) {
-      this.isEditing = true;
-      this.editingId = Number(id);
-      this.loadEntryForEditing(this.editingId);
-    }
+    // Store initial form state after loading
+    setTimeout(() => this.storeOriginalFormState(), 100);
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadEntryForEditing(id: number): void {
@@ -447,6 +225,17 @@ export class CreateComponent implements OnInit {
     this.selectedMood = entry.mood || '';
     this.selectedAIStyle = entry.ai_style || 'friendly';
 
+    // Check if there's AI response data
+    if (entry.ai_analysis || entry.ai_interpretation) {
+      this.hasAIResponse = true;
+      this.aiResponseData = {
+        analysis: entry.ai_analysis,
+        interpretation: entry.ai_interpretation,
+        keywords: entry.ai_keywords ? entry.ai_keywords.split(',').map((k: string) => k.trim()).filter((k: string) => k) : [],
+        people: entry.ai_people ? entry.ai_people.split(',').map((p: string) => p.trim()).filter((p: string) => p) : []
+      };
+    }
+
     if (type === 'daily') {
       this.content = entry.user_message || '';
     } else {
@@ -470,7 +259,7 @@ export class CreateComponent implements OnInit {
     this.persistEntry(true);
   }
 
-  private persistEntry(shouldAnalyse: boolean): void {
+  private persistEntry(shouldAnalyse: boolean, callback?: () => void): void {
     this.errorMessage = '';
 
     if (!this.entryDate) {
@@ -500,16 +289,35 @@ export class CreateComponent implements OnInit {
         ai_style: this.selectedAIStyle
       };
 
-      this.entriesService.createDailyEntry(payload).subscribe({
-        next: (created) => {
-          if (shouldAnalyse) {
-            this.runDailyAnalysis(created.id!);
-          } else {
-            this.finishNavigation(created.id!);
-          }
-        },
-        error: () => this.handleError('Failed to save your daily entry.')
-      });
+      if (this.isEditing && this.editingId) {
+        // Update existing entry
+        this.entriesService.updateDailyEntry(this.editingId, payload).subscribe({
+          next: () => {
+            if (callback) {
+              callback();
+            } else if (shouldAnalyse) {
+              this.runDailyAnalysis(this.editingId!);
+            } else {
+              this.finishNavigation(this.editingId!);
+            }
+          },
+          error: () => this.handleError('Failed to update your daily entry.')
+        });
+      } else {
+        // Create new entry
+        this.entriesService.createDailyEntry(payload).subscribe({
+          next: (created) => {
+            if (callback) {
+              callback();
+            } else if (shouldAnalyse) {
+              this.runDailyAnalysis(created.id!);
+            } else {
+              this.finishNavigation(created.id!);
+            }
+          },
+          error: () => this.handleError('Failed to save your daily entry.')
+        });
+      }
     } else {
       // For dreams, use dreamPlot instead of content
       const dreamPlotContent = this.dreamPlot.trim() || 'Dream entry';
@@ -531,16 +339,35 @@ export class CreateComponent implements OnInit {
         other: this.dreamOther.trim()
       };
 
-      this.entriesService.createDreamEntry(payload).subscribe({
-        next: (created) => {
-          if (shouldAnalyse) {
-            this.runDreamAnalysis(created.id!);
-          } else {
-            this.finishNavigation(created.id!);
-          }
-        },
-        error: () => this.handleError('Failed to save your dream entry.')
-      });
+      if (this.isEditing && this.editingId) {
+        // Update existing dream entry
+        this.entriesService.updateDreamEntry(this.editingId, payload).subscribe({
+          next: () => {
+            if (callback) {
+              callback();
+            } else if (shouldAnalyse) {
+              this.runDreamAnalysis(this.editingId!);
+            } else {
+              this.finishNavigation(this.editingId!);
+            }
+          },
+          error: () => this.handleError('Failed to update your dream entry.')
+        });
+      } else {
+        // Create new dream entry
+        this.entriesService.createDreamEntry(payload).subscribe({
+          next: (created) => {
+            if (callback) {
+              callback();
+            } else if (shouldAnalyse) {
+              this.runDreamAnalysis(created.id!);
+            } else {
+              this.finishNavigation(created.id!);
+            }
+          },
+          error: () => this.handleError('Failed to save your dream entry.')
+        });
+      }
     }
   }
 
@@ -614,22 +441,69 @@ export class CreateComponent implements OnInit {
   }
 
   cancelCreate(): void {
-    if (!this.hasUnsavedChanges() || confirm('Discard this entry?')) {
-      this.resetForm();
+    if (!this.hasUnsavedChanges() && !this.hasAutosavedChanges) {
+      // No changes, navigate back immediately
       this.router.navigate(['/entries']);
+      return;
     }
+
+    // Show confirmation dialog for unsaved changes
+    const dialogData: ConfirmDialogData = {
+      title: 'Unsaved Changes',
+      message: 'You have unsaved changes that are stored in your session. What would you like to do?',
+      confirmText: 'Save & Leave',
+      cancelText: 'Keep Editing',
+      hasUnsavedChanges: true
+    };
+
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      width: '400px',
+      maxWidth: '90vw',
+      data: dialogData,
+      disableClose: true,
+      autoFocus: false,
+      restoreFocus: false,
+      panelClass: 'custom-dialog-container'
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result === 'save') {
+        // Save and then navigate
+        this.persistEntry(false, () => {
+          this.router.navigate(['/entries']);
+        });
+      } else if (result === false) {
+        // Continue editing - do nothing, stay on page
+        return;
+      }
+      // If result is true (confirm without save), just navigate
+      if (result === true) {
+        this.clearAutosaveData();
+        this.router.navigate(['/entries']);
+      }
+    });
   }
 
   addTag(event: MatChipInputEvent): void {
     const value = (event.value || '').trim();
     if (value && !this.tags.includes(value)) {
       this.tags.push(value);
+      if (this.isEditing) {
+        this.onContentChange();
+      }
     }
     event.chipInput?.clear();
   }
 
-  removeTag(tag: string): void {
-    this.tags = this.tags.filter(t => t !== tag);
+  removeTag(tag: string | number): void {
+    if (typeof tag === 'string') {
+      this.tags = this.tags.filter(t => t !== tag);
+    } else {
+      this.tags.splice(tag, 1);
+    }
+    if (this.isEditing) {
+      this.onContentChange();
+    }
   }
 
   onTypeChange() {
@@ -669,40 +543,55 @@ export class CreateComponent implements OnInit {
   }
 
   canDeactivate(): boolean {
-    return !this.hasUnsavedChanges() || confirm('Discard your entry?');
+    // Always return true - we handle confirmations via our modal in cancelCreate()
+    return true;
   }
 
   @HostListener('window:beforeunload', ['$event'])
   handleBeforeUnload(event: BeforeUnloadEvent): void {
-    if (this.hasUnsavedChanges()) {
-      event.preventDefault();
-      event.returnValue = '';
-    }
+    // Completely disable browser warning - we handle this with our modal
+    // Don't set event.returnValue or call preventDefault
+    return;
   }
 
   private hasUnsavedChanges(): boolean {
-    const hasBasicChanges = Boolean(
-      (this.entryTitle && this.entryTitle.trim()) ||
-      (this.content && this.content.trim()) ||
-      this.tags.length ||
-      this.selectedMood ||
-      this.selectedAIStyle !== 'friendly' ||
-      (this.entryDate && this.entryDate.toDateString() !== this.initialDate)
-    );
+    if (!this.originalFormState) {
+      // If no original state, check if any content exists
+      const hasBasicChanges = Boolean(
+        (this.entryTitle && this.entryTitle.trim()) ||
+        (this.content && this.content.trim()) ||
+        this.tags.length ||
+        this.selectedMood ||
+        this.selectedAIStyle !== 'friendly' ||
+        (this.entryDate && this.entryDate.toDateString() !== this.initialDate)
+      );
 
-    const hasDreamChanges = this.selectedType === 'dream' && Boolean(
-      this.dreamCast.trim() ||
-      this.dreamLocation.trim() ||
-      this.dreamPeriod.trim() ||
-      this.dreamEmotion.trim() ||
-      this.dreamPlot.trim() ||
-      this.dreamSymbolsAndImagery.trim() ||
-      this.dreamInsight.trim() ||
-      this.dreamAction.trim() ||
-      this.dreamOther.trim()
-    );
+      const hasDreamChanges = this.selectedType === 'dream' && Boolean(
+        this.dreamCast.trim() ||
+        this.dreamLocation.trim() ||
+        this.dreamPeriod.trim() ||
+        this.dreamEmotion.trim() ||
+        this.dreamPlot.trim() ||
+        this.dreamSymbolsAndImagery.trim() ||
+        this.dreamInsight.trim() ||
+        this.dreamAction.trim() ||
+        this.dreamOther.trim()
+      );
 
-    return hasBasicChanges || hasDreamChanges;
+      return hasBasicChanges || hasDreamChanges;
+    }
+
+    // Compare current state with original for edit mode
+    return (
+      this.entryTitle !== this.originalFormState.entryTitle ||
+      this.content !== this.originalFormState.content ||
+      this.dreamCast !== this.originalFormState.dreamCast ||
+      this.dreamLocation !== this.originalFormState.dreamLocation ||
+      this.dreamEmotion !== this.originalFormState.dreamEmotion ||
+      this.dreamPlot !== this.originalFormState.dreamPlot ||
+      this.selectedMood !== this.originalFormState.selectedMood ||
+      JSON.stringify(this.tags) !== JSON.stringify(this.originalFormState.tags)
+    );
   }
 
   private resetForm(): void {
@@ -718,5 +607,132 @@ export class CreateComponent implements OnInit {
     this.selectedMood = '';
     this.selectedAIStyle = 'friendly';
     this.resetDreamFields();
+  }
+
+  // New methods for wireframe functionality
+  onContentChange(): void {
+    if (this.isEditing) {
+      this.autosaveSubject.next(); // Trigger autosave timer
+    }
+  }
+
+  private storeOriginalFormState(): void {
+    this.originalFormState = {
+      entryTitle: this.entryTitle,
+      content: this.content,
+      dreamCast: this.dreamCast,
+      dreamLocation: this.dreamLocation,
+      dreamEmotion: this.dreamEmotion,
+      dreamPlot: this.dreamPlot,
+      tags: [...this.tags],
+      selectedMood: this.selectedMood
+    };
+  }
+
+  private performAutosave(): void {
+    // Don't set isSaving - this is just a session save, not a real save
+    this.autosaveStatus = 'saving';
+    
+    // Create a temporary save (in-memory or session storage)
+    const currentState = {
+      entryTitle: this.entryTitle,
+      content: this.content,
+      dreamCast: this.dreamCast,
+      dreamLocation: this.dreamLocation,
+      dreamEmotion: this.dreamEmotion,
+      dreamPlot: this.dreamPlot,
+      tags: [...this.tags],
+      selectedMood: this.selectedMood,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Store in session storage for persistence across page refreshes
+    sessionStorage.setItem(`autosave_${this.editingId}`, JSON.stringify(currentState));
+    
+    setTimeout(() => {
+      this.autosaveStatus = 'saved';
+      this.lastAutosaveTime = new Date();
+      this.hasAutosavedChanges = true;
+    }, 500); // Faster feedback
+  }
+
+  toggleHeroImageSection(): void {
+    this.heroImageExpanded = !this.heroImageExpanded;
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: Event): void {
+    // Close hero image if clicking outside and it's expanded
+    if (this.heroImageExpanded) {
+      const target = event.target as HTMLElement;
+      const heroSection = document.querySelector('.hero-image-section');
+      
+      if (heroSection && !heroSection.contains(target)) {
+        this.heroImageExpanded = false;
+      }
+    }
+  }
+
+  getCurrentAIResponse(): string {
+    if (!this.aiResponseData) return '';
+    
+    if (this.selectedType === 'daily') {
+      return this.aiResponseData.analysis || '';
+    } else {
+      return this.aiResponseData.interpretation || '';
+    }
+  }
+
+  getAIKeywords(): string[] {
+    if (!this.aiResponseData) return [];
+    return this.aiResponseData.keywords || [];
+  }
+
+  getAIPeople(): string[] {
+    if (!this.aiResponseData) return [];
+    return this.aiResponseData.people || [];
+  }
+
+  regenerateAIResponse(): void {
+    if (!this.hasAIResponse || !this.editingId) return;
+    
+        
+    // Implement AI response regeneration
+    console.log('Regenerating AI response for entry:', this.editingId);
+  }
+
+  saveAndStay(): void {
+    // Manual autosave - doesn't confirm changes, just saves to session
+    this.performAutosave();
+  }
+
+  saveAndView(): void {
+    // Actually save to database and navigate to view entry page
+    if (this.isEditing && this.editingId) {
+      // This will set isSaving and disable buttons during actual save
+      this.persistEntry(false, () => {
+        this.clearAutosaveData();
+        this.router.navigate(['/entries', this.editingId]);
+      });
+    }
+  }
+
+  private clearAutosaveData(): void {
+    if (this.editingId) {
+      sessionStorage.removeItem(`autosave_${this.editingId}`);
+    }
+    this.hasAutosavedChanges = false;
+    this.autosaveStatus = 'idle';
+  }
+
+  formatAutosaveTime(): string {
+    if (!this.lastAutosaveTime) return '';
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - this.lastAutosaveTime.getTime()) / 1000);
+    
+    if (diff < 10) return 'just now';
+    if (diff < 60) return `${diff} seconds ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} minute${Math.floor(diff / 60) !== 1 ? 's' : ''} ago`;
+    return `${Math.floor(diff / 3600)} hour${Math.floor(diff / 3600) !== 1 ? 's' : ''} ago`;
   }
 }
