@@ -532,6 +532,28 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
     """Create or repair import_history table for older local databases."""
     conn.execute(IMPORT_HISTORY_DDL)
 
+    table_info_rows = conn.execute('PRAGMA table_info(import_history)').fetchall()
+    EXPECTED_COLUMNS = {
+        'id',
+        'user_id',
+        'imported_at',
+        'filename',
+        'file_size_bytes',
+        'inserted_daily',
+        'skipped_daily',
+        'inserted_dreams',
+        'skipped_dreams',
+        'warnings',
+        'status',
+    }
+
+    for row in table_info_rows:
+        col_name = row[1]
+        if col_name in EXPECTED_COLUMNS:
+            continue
+        if row[3] == 1 and row[4] is None:
+            conn.execute(f'ALTER TABLE import_history DROP COLUMN {col_name}')
+
     columns = {
         row[1]: row for row in conn.execute('PRAGMA table_info(import_history)').fetchall()
     }
