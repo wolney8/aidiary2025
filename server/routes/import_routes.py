@@ -23,8 +23,9 @@ import_bp = Blueprint('import', __name__)
 def get_db():
     """Get database connection."""
     db_path = current_app.config['DATABASE_PATH']
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')
     return conn
 
 

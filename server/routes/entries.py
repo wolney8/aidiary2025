@@ -13,8 +13,9 @@ def get_db():
     """Get database connection."""
     db_path = current_app.config['DATABASE_PATH']
     current_app.logger.debug('Entries get_db connecting to %s', db_path)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')
     return conn
 
 

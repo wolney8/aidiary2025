@@ -55,6 +55,11 @@ def create_app():
         app.logger.warning('422 Unprocessable: %s', getattr(err, 'description', err))
         return {'msg': 'Unprocessable Entity'}, 422
 
+    @app.errorhandler(500)
+    def _handle_500(err):
+        app.logger.error('500 Internal Server Error: %s', err)
+        return {'msg': 'Internal Server Error'}, 500
+
     @app.before_request
     def _log_jwt_presence():
         # Log presence of Authorization header for debugging; don't attempt
