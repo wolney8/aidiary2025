@@ -8,6 +8,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
+def _ensure_nltk_data() -> None:
+    """Download NLTK corpora required for keyword/NER enrichment, if not already present."""
+    try:
+        import nltk
+        for _corpus in [
+            'punkt', 'punkt_tab',
+            'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng',
+            'maxent_ne_chunker', 'maxent_ne_chunker_tab',
+            'words',
+        ]:
+            nltk.download(_corpus, quiet=True)
+    except Exception:
+        pass
+
 def create_app():
     """Create and configure Flask application."""
     app = Flask(__name__)
@@ -92,6 +107,17 @@ def create_app():
     @app.route('/health')
     def health():
         return {'status': 'healthy'}, 200
+
+    # Download NLTK data and backfill any entries that were imported before data was available
+    _ensure_nltk_data()
+    try:
+        import sqlite3 as _sqlite3
+        from services.import_service import backfill_nltk_enrichment
+        with _sqlite3.connect(app.config['DATABASE_PATH'], timeout=10) as _bfconn:
+            _bfconn.execute('PRAGMA journal_mode=WAL')
+            backfill_nltk_enrichment(_bfconn, app.logger)
+    except Exception as _bf_exc:
+        app.logger.warning('Startup NLTK backfill skipped: %s', _bf_exc)
     
     return app
 

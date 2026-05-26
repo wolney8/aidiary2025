@@ -1,6 +1,7 @@
 # server/services/import_service.py
 # Excel import service: validation, parsing, duplicate handling, history tracking
 import io
+import logging
 import math
 import re
 import sqlite3
@@ -246,6 +247,8 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
             'daily_people_names': '',
             'daily_places': '',
         }
+    except Exception as _nltk_exc:  # noqa: BLE001
+        logging.getLogger(__name__).debug('NLTK enrichment failed: %s', _nltk_exc)
 
     deduped_tags: list[str] = []
     seen_tags: set[str] = set()
@@ -509,6 +512,37 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
         'duplicate_dates_daily': dup_daily,
         'duplicate_dates_dreams': dup_dreams,
     }
+
+
+def backfill_nltk_enrichment(conn: sqlite3.Connection, logger=None) -> None:
+    """Re-enrich daily entries that have empty NLTK fields (e.g. imported before NLTK data was available)."""
+    try:
+        rows = conn.execute(
+            '''SELECT id, title, user_message FROM dailydiary_entries
+               WHERE (tags IS NULL OR tags = '')
+               AND (daily_people_names IS NULL OR daily_people_names = '')
+               AND (daily_places IS NULL OR daily_places = '')'''
+        ).fetchall()
+
+        updated = 0
+        for row in rows:
+            derived = _derive_daily_nltk_fields(row[1] or '', row[2] or '')
+            if any(derived.values()):
+                conn.execute(
+                    '''UPDATE dailydiary_entries
+                       SET tags = ?, daily_people_names = ?, daily_places = ?
+                       WHERE id = ?''',
+                    (derived['tags'], derived['daily_people_names'], derived['daily_places'], row[0]),
+                )
+                updated += 1
+
+        if updated:
+            conn.commit()
+            if logger:
+                logger.info('NLTK backfill: enriched %d daily entries', updated)
+    except Exception as exc:
+        if logger:
+            logger.warning('NLTK backfill skipped: %s', exc)
 
 
 # ---------------------------------------------------------------------------

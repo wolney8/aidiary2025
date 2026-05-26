@@ -174,6 +174,9 @@ import { EntriesService } from "../../core/services/entries.service";
                   {{ paragraph }}
                 </p>
               </div>
+              <p class="no-response" *ngIf="!entry.summary && !entry.interpretation">
+                No AI analysis was recorded for this entry.
+              </p>
             </div>
             <div *ngIf="!isDream()">
               <p
@@ -181,6 +184,9 @@ import { EntriesService } from "../../core/services/entries.service";
                 *ngFor="let paragraph of getAIParagraphs()"
               >
                 {{ paragraph }}
+              </p>
+              <p class="no-response" *ngIf="getAIParagraphs().length === 0">
+                No AI response was recorded for this entry.
               </p>
             </div>
           </mat-card-content>
@@ -435,6 +441,12 @@ import { EntriesService } from "../../core/services/entries.service";
         padding: 0 0.5rem;
         border-radius: var(--radius-pill);
         font-weight: 600;
+      }
+
+      .no-response {
+        color: var(--colour-text-secondary);
+        font-style: italic;
+        margin: 0;
       }
     `,
   ],
