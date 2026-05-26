@@ -538,9 +538,18 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
 
     if 'imported_at' not in columns:
         conn.execute("ALTER TABLE import_history ADD COLUMN imported_at TEXT")
-        conn.execute(
-            "UPDATE import_history SET imported_at = COALESCE(imported_at, datetime('now'))"
-        )
+        if 'import_date' in columns:
+            conn.execute(
+                "UPDATE import_history SET imported_at = COALESCE(import_date, datetime('now'))"
+            )
+        else:
+            conn.execute(
+                "UPDATE import_history SET imported_at = datetime('now')"
+            )
+
+    # Drop the legacy 'import_date' column now that 'imported_at' exists
+    if 'import_date' in columns:
+        conn.execute('ALTER TABLE import_history DROP COLUMN import_date')
 
     if 'file_size_bytes' not in columns:
         conn.execute(
