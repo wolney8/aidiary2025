@@ -34,11 +34,7 @@ import { EntriesService } from "../../core/services/entries.service";
           >
             Edit Entry
           </button>
-          <button
-            mat-stroked-button
-            color="warn"
-            (click)="deleteEntry()"
-          >
+          <button mat-stroked-button color="warn" (click)="deleteEntry()">
             Delete
           </button>
         </div>
@@ -228,30 +224,6 @@ import { EntriesService } from "../../core/services/entries.service";
             "
           >
             {{ showAllTags ? "Show less" : "..." }}
-          </button>
-        </div>
-
-        <div class="metadata-section">
-          <h4>Keywords:</h4>
-          <mat-chip-listbox>
-            <mat-chip-option
-              *ngFor="
-                let tag of getVisibleItems(getTagsArray(), showAllKeywords)
-              "
-              (click)="searchForTag(tag)"
-              [class.clickable-chip]="true"
-            >
-              {{ tag }}
-            </mat-chip-option>
-          </mat-chip-listbox>
-          <button
-            mat-button
-            type="button"
-            class="expand-toggle"
-            *ngIf="shouldShowToggle(getTagsArray())"
-            (click)="showAllKeywords = !showAllKeywords"
-          >
-            {{ showAllKeywords ? "Show less" : "Show more" }}
           </button>
         </div>
 
@@ -480,7 +452,6 @@ export class DetailComponent implements OnInit {
   backQueryParams: Record<string, string | number> = {};
 
   showAllTags = false;
-  showAllKeywords = false;
   showAllPeople = false;
 
   ngOnInit(): void {
@@ -514,9 +485,9 @@ export class DetailComponent implements OnInit {
   }
 
   deleteEntry(): void {
-    const entryType = this.isDream() ? 'dream' : 'daily';
+    const entryType = this.isDream() ? "dream" : "daily";
     const confirmed = confirm(
-      `Are you sure you want to delete this ${entryType} entry? This action cannot be undone.`
+      `Are you sure you want to delete this ${entryType} entry? This action cannot be undone.`,
     );
 
     if (confirmed && this.entry) {
@@ -526,12 +497,12 @@ export class DetailComponent implements OnInit {
 
       deleteObservable.subscribe({
         next: () => {
-          this.router.navigate(['/entries']);
+          this.router.navigate(["/entries"]);
         },
         error: (error) => {
-          console.error('Failed to delete entry:', error);
-          alert('Failed to delete entry. Please try again.');
-        }
+          console.error("Failed to delete entry:", error);
+          alert("Failed to delete entry. Please try again.");
+        },
       });
     }
   }
@@ -665,10 +636,6 @@ export class DetailComponent implements OnInit {
       : [];
   }
 
-  getTagsArray(): string[] {
-    return this.getTags();
-  }
-
   getPeopleArray(): string[] {
     const peopleStr = this.isDream()
       ? this.entry?.dream_people_names
@@ -679,7 +646,6 @@ export class DetailComponent implements OnInit {
           .split(",")
           .map((person: string) => person.trim())
           .filter((person: string) => person.length > 0)
-          .filter((person: string) => this.isLikelyPersonName(person))
       : [];
   }
 
@@ -710,41 +676,6 @@ export class DetailComponent implements OnInit {
 
   isDream(): boolean {
     return this.entryType === "dream";
-  }
-
-  private isLikelyPersonName(value: string): boolean {
-    const candidate = value.trim();
-    if (!candidate) {
-      return false;
-    }
-
-    const blocked = new Set([
-      "hopefully",
-      "maybe",
-      "someone",
-      "somebody",
-      "everyone",
-      "everybody",
-      "nobody",
-      "anyone",
-      "anybody",
-      "person",
-      "people",
-      "friend",
-      "friends",
-      "unknown",
-      "none",
-      "na",
-      "n/a",
-    ]);
-
-    const lower = candidate.toLowerCase();
-    if (blocked.has(lower)) {
-      return false;
-    }
-
-    // Keep typical person-name characters; drop obvious non-name tokens.
-    return /^[A-Za-z][A-Za-z'\-\s]{1,49}$/.test(candidate);
   }
 
   private captureBackQueryParams(): void {

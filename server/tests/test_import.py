@@ -848,3 +848,226 @@ class TestTemplateDownload:
     def test_template_unauthenticated(self, client):
         resp = client.get('/api/import/template')
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Export download
+# ---------------------------------------------------------------------------
+
+class TestExportDownload:
+    @staticmethod
+    def _seed_export_rows(db_path: str, username: str = 'importer') -> None:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()['id']
+
+        conn.execute(
+            """
+            INSERT INTO dailydiary_entries
+            (user_id, entry_date, entry_number, title, user_message, ai_response, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, '2026-01-10', 1, 'Daily one', 'Body text', 'AI text', 'tag1,tag2'),
+        )
+        conn.execute(
+            """
+            INSERT INTO dailydiary_entries
+            (user_id, entry_date, entry_number, title, user_message, ai_response, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, '2026-01-20', 2, 'Daily two', 'Body two', 'AI two', 'tag3'),
+        )
+
+        conn.execute(
+            """
+            INSERT INTO dreamdiary_entries
+            (user_id, entry_date, entry_number, title, cast, location, period,
+             emotion, plot, symbols_and_imagery, insight, action, other, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                '2026-01-11',
+                1,
+                'Dream one',
+                'Alex',
+                'Forest',
+                'Present day',
+                'Joy',
+                'Flying over trees',
+                'Birds and wind',
+                'Need freedom',
+                'Kept flying',
+                'None',
+                'dream,flight',
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO dreamdiary_entries
+            (user_id, entry_date, entry_number, title, cast, location, period,
+             emotion, plot, symbols_and_imagery, insight, action, other, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                '2026-01-21',
+                2,
+                'Dream two',
+                'Sam',
+                'Beach',
+                'Future',
+                'Calm',
+                'Walking on water',
+                'Moonlight',
+                'Trust myself',
+                'Kept walking',
+                'None',
+                'dream,water',
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_export_unauthenticated(self, client):
+        resp = client.get('/api/import/export')
+        assert resp.status_code == 401
+
+    def test_export_returns_xlsx_with_expected_sheets_and_headers(self, client):
+        token = _register_and_login(client)
+
+        db_path = os.environ['DB_PATH']
+        self._seed_export_rows(db_path)
+
+        resp = client.get(
+            '/api/import/export',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        assert 'spreadsheet' in resp.content_type or 'octet-stream' in resp.content_type
+
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        assert 'Daily' in wb.sheetnames
+        assert 'Dreams' in wb.sheetnames
+
+        daily_ws = wb['Daily']
+        dream_ws = wb['Dreams']
+
+        daily_headers = [cell.value for cell in daily_ws[1]]
+        dream_headers = [cell.value for cell in dream_ws[1]]
+        assert daily_headers == list(DAILY_IMPORT_HEADERS)
+        assert dream_headers == list(DREAM_IMPORT_HEADERS)
+
+        assert daily_ws.max_row == 3
+        assert dream_ws.max_row == 3
+
+        assert daily_ws.cell(2, 1).value == '2026-01-10'
+        assert daily_ws.cell(2, 2).value == 'Daily one'
+        assert daily_ws.cell(2, 3).value == 'Body text'
+        assert daily_ws.cell(2, 4).value == 'AI text'
+
+        assert dream_ws.cell(2, 1).value == '2026-01-11'
+        assert dream_ws.cell(2, 2).value == 'Dream one'
+        assert dream_ws.cell(2, 3).value == 'Flying over trees'
+        assert dream_ws.cell(2, 4).value == 'Alex'
+        assert dream_ws.cell(2, 5).value == 'Forest'
+        assert dream_ws.cell(2, 12).value == 'dream,flight'
+
+    def test_export_daily_only(self, client):
+        token = _register_and_login(client)
+        self._seed_export_rows(os.environ['DB_PATH'])
+
+        resp = client.get(
+            '/api/import/export?include_daily=true&include_dreams=false',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        assert wb.sheetnames == ['Daily']
+
+        ws = wb['Daily']
+        headers = [cell.value for cell in ws[1]]
+        assert headers == list(DAILY_IMPORT_HEADERS)
+        assert ws.max_row == 3
+
+    def test_export_dreams_only(self, client):
+        token = _register_and_login(client)
+        self._seed_export_rows(os.environ['DB_PATH'])
+
+        resp = client.get(
+            '/api/import/export?include_daily=false&include_dreams=true',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        assert wb.sheetnames == ['Dreams']
+
+        ws = wb['Dreams']
+        headers = [cell.value for cell in ws[1]]
+        assert headers == list(DREAM_IMPORT_HEADERS)
+        assert ws.max_row == 3
+
+    def test_export_date_range_filter(self, client):
+        token = _register_and_login(client)
+        self._seed_export_rows(os.environ['DB_PATH'])
+
+        resp = client.get(
+            '/api/import/export?from_date=2026-01-11&to_date=2026-01-20',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+
+        daily_ws = wb['Daily']
+        dream_ws = wb['Dreams']
+
+        assert daily_ws.max_row == 2
+        assert daily_ws.cell(2, 1).value == '2026-01-20'
+        assert dream_ws.max_row == 2
+        assert dream_ws.cell(2, 1).value == '2026-01-11'
+
+    def test_export_invalid_date_format(self, client):
+        token = _register_and_login(client)
+
+        resp = client.get(
+            '/api/import/export?from_date=2026/01/10',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert data['status'] == 'error'
+        assert 'from_date' in data['errors'][0]
+
+    def test_export_from_date_after_to_date(self, client):
+        token = _register_and_login(client)
+
+        resp = client.get(
+            '/api/import/export?from_date=2026-01-20&to_date=2026-01-10',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert data['status'] == 'error'
+        assert 'cannot be after' in data['errors'][0]
+
+    def test_export_no_types_selected(self, client):
+        token = _register_and_login(client)
+
+        resp = client.get(
+            '/api/import/export?include_daily=false&include_dreams=false',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 400
+        data = json.loads(resp.data)
+        assert data['status'] == 'error'
+        assert 'At least one export type' in data['errors'][0]

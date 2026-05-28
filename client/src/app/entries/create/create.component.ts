@@ -344,6 +344,50 @@ const UK_DATE_FORMATS = {
             </mat-chip-grid>
           </mat-form-field>
 
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>People</mat-label>
+            <mat-chip-grid #peopleChipGrid>
+              <mat-chip-row
+                *ngFor="let person of peopleNames"
+                (removed)="removePeopleName(person)"
+              >
+                {{ person }}
+                <button matChipRemove type="button">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+              <input
+                placeholder="Type and press enter"
+                [matChipInputFor]="peopleChipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                [matChipInputAddOnBlur]="true"
+                (matChipInputTokenEnd)="addPeopleName($event)"
+              />
+            </mat-chip-grid>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Places</mat-label>
+            <mat-chip-grid #placesChipGrid>
+              <mat-chip-row
+                *ngFor="let place of places"
+                (removed)="removePlace(place)"
+              >
+                {{ place }}
+                <button matChipRemove type="button">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+              <input
+                placeholder="Type and press enter"
+                [matChipInputFor]="placesChipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                [matChipInputAddOnBlur]="true"
+                (matChipInputTokenEnd)="addPlace($event)"
+              />
+            </mat-chip-grid>
+          </mat-form-field>
+
           <div class="actions">
             <button
               mat-stroked-button
@@ -500,6 +544,8 @@ export class CreateComponent implements OnInit {
   entryTitle = "";
   content = "";
   tags: string[] = [];
+  peopleNames: string[] = [];
+  places: string[] = [];
   leaveItToAI = false;
   selectedType: "daily" | "dream" = "daily";
   isSaving = false;
@@ -664,6 +710,18 @@ export class CreateComponent implements OnInit {
 
     if (type === "daily") {
       this.content = entry.user_message || "";
+      this.peopleNames = entry.daily_people_names
+        ? entry.daily_people_names
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
+      this.places = entry.daily_places
+        ? entry.daily_places
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
     } else {
       this.dreamCast = entry.cast || "";
       this.dreamLocation = entry.location || "";
@@ -674,6 +732,18 @@ export class CreateComponent implements OnInit {
       this.dreamInsight = entry.insight || "";
       this.dreamAction = entry.action || "";
       this.dreamOther = entry.other || "";
+      this.peopleNames = entry.dream_people_names
+        ? entry.dream_people_names
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
+      this.places = entry.dream_places
+        ? entry.dream_places
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
     }
   }
 
@@ -718,12 +788,16 @@ export class CreateComponent implements OnInit {
         tags,
         mood: this.selectedMood,
         ai_style: this.selectedAIStyle,
+        daily_people_names: this.peopleNames.join(","),
+        daily_places: this.places.join(","),
       };
 
       const updatePayload = {
         title: trimmedTitle,
         user_message: body,
         tags,
+        daily_people_names: this.peopleNames.join(","),
+        daily_places: this.places.join(","),
       };
 
       if (this.isEditing && this.editingId !== null) {
@@ -769,6 +843,8 @@ export class CreateComponent implements OnInit {
         insight: this.dreamInsight.trim(),
         action: this.dreamAction.trim(),
         other: this.dreamOther.trim(),
+        dream_people_names: this.peopleNames.join(","),
+        dream_places: this.places.join(","),
       };
 
       const updatePayload = {
@@ -783,6 +859,8 @@ export class CreateComponent implements OnInit {
         insight: this.dreamInsight.trim(),
         action: this.dreamAction.trim(),
         other: this.dreamOther.trim(),
+        dream_people_names: this.peopleNames.join(","),
+        dream_places: this.places.join(","),
       };
 
       if (this.isEditing && this.editingId !== null) {
@@ -826,8 +904,12 @@ export class CreateComponent implements OnInit {
             .updateDailyEntry(entryId, {
               ai_response: dailyAnalysis.ai_response,
               tags: this.tags.length ? this.tags.join(",") : dailyAnalysis.tags,
-              daily_people_names: dailyAnalysis.daily_people_names,
-              daily_places: dailyAnalysis.daily_places,
+              daily_people_names: this.peopleNames.length
+                ? this.peopleNames.join(",")
+                : dailyAnalysis.daily_people_names,
+              daily_places: this.places.length
+                ? this.places.join(",")
+                : dailyAnalysis.daily_places,
             })
             .subscribe({
               next: () => this.finishNavigation(entryId),
@@ -862,8 +944,12 @@ export class CreateComponent implements OnInit {
               interpretation: dreamAnalysis.interpretation,
               image_prompt: dreamAnalysis.image_prompt,
               tags: this.tags.length ? this.tags.join(",") : dreamAnalysis.tags,
-              dream_people_names: dreamAnalysis.dream_people_names,
-              dream_places: dreamAnalysis.dream_places,
+              dream_people_names: this.peopleNames.length
+                ? this.peopleNames.join(",")
+                : dreamAnalysis.dream_people_names,
+              dream_places: this.places.length
+                ? this.places.join(",")
+                : dreamAnalysis.dream_places,
             })
             .subscribe({
               next: () => this.finishNavigation(entryId),
@@ -908,26 +994,46 @@ export class CreateComponent implements OnInit {
       return;
     }
 
+    if (this.isEditing && this.editingId !== null) {
+      this.resetForm();
+      this.router.navigate(["/entries", this.editingId]);
+      return;
+    }
+
     this.resetForm();
     this.router.navigate(["/entries"]);
   }
 
   addTag(event: MatChipInputEvent): void {
-    const value = (event.value || "").trim();
-    if (value && !this.tags.includes(value)) {
-      this.tags.push(value);
-    }
-    event.chipInput?.clear();
+    this.addChipValue(this.tags, event);
   }
 
   removeTag(tag: string): void {
     this.tags = this.tags.filter((t) => t !== tag);
   }
 
+  addPeopleName(event: MatChipInputEvent): void {
+    this.addChipValue(this.peopleNames, event);
+  }
+
+  removePeopleName(person: string): void {
+    this.peopleNames = this.peopleNames.filter((p) => p !== person);
+  }
+
+  addPlace(event: MatChipInputEvent): void {
+    this.addChipValue(this.places, event);
+  }
+
+  removePlace(place: string): void {
+    this.places = this.places.filter((p) => p !== place);
+  }
+
   onTypeChange() {
     // Clear content when switching between types to avoid confusion
     this.content = "";
     this.tags = [];
+    this.peopleNames = [];
+    this.places = [];
 
     // Reset dream-specific fields when switching away from dream type
     if (this.selectedType !== "dream") {
@@ -959,6 +1065,14 @@ export class CreateComponent implements OnInit {
     }
   }
 
+  private addChipValue(target: string[], event: MatChipInputEvent): void {
+    const value = (event.value || "").trim();
+    if (value && !target.includes(value)) {
+      target.push(value);
+    }
+    event.chipInput?.clear();
+  }
+
   private canLeaveCreateScreen(): boolean {
     return !this.hasUnsavedChanges() || confirm("Discard this entry?");
   }
@@ -978,6 +1092,8 @@ export class CreateComponent implements OnInit {
       (this.entryTitle && this.entryTitle.trim()) ||
       (this.content && this.content.trim()) ||
       this.tags.length ||
+      this.peopleNames.length ||
+      this.places.length ||
       this.selectedMood ||
       this.selectedAIStyle !== "friendly" ||
       this.leaveItToAI ||
@@ -1009,6 +1125,8 @@ export class CreateComponent implements OnInit {
     this.entryTitle = "";
     this.content = "";
     this.tags = [];
+    this.peopleNames = [];
+    this.places = [];
     this.leaveItToAI = false;
     this.selectedType = "daily";
     this.selectedMood = "";

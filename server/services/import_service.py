@@ -275,11 +275,6 @@ def _derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
                 if entity.isupper() and len(entity) > 1:
                     continue
                 
-                # STRICT: Only accept multi-word names (e.g., "John Smith")
-                # Single-word "names" from NLTK are often incorrect
-                if len(entity_words) == 1:
-                    continue
-                
                 people_names.append(entity)
                 tags.append(entity.lower().replace(' ', '_'))
             elif label in {'GPE', 'LOCATION', 'FACILITY'}:
@@ -418,11 +413,6 @@ def _derive_dream_nltk_fields(row_data: dict[str, str]) -> dict[str, str]:
                 if len(entity_words) == 1 and (entity_lower in stop_words or entity_lower in entity_blocklist):
                     continue
                 if entity.isupper() and len(entity) > 1:
-                    continue
-                
-                # STRICT: Only accept multi-word names (e.g., "John Smith")
-                # Single-word "names" from NLTK are often incorrect in dream text
-                if len(entity_words) == 1:
                     continue
                 
                 people_names.append(entity)

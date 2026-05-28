@@ -1,20 +1,20 @@
 // Root component with shell layout
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterOutlet } from '@angular/router';
-import { TopBarComponent } from './core/components/top-bar/top-bar.component';
-import { SideNavComponent } from './core/components/side-nav/side-nav.component';
-import { MatSidenavModule } from '@angular/material/sidenav';
+import { Component } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { RouterOutlet } from "@angular/router";
+import { TopBarComponent } from "./core/components/top-bar/top-bar.component";
+import { SideNavComponent } from "./core/components/side-nav/side-nav.component";
+import { MatSidenavModule } from "@angular/material/sidenav";
 
 @Component({
-  selector: 'app-root',
+  selector: "app-root",
   standalone: true,
   imports: [
     CommonModule,
     RouterOutlet,
     TopBarComponent,
     SideNavComponent,
-    MatSidenavModule
+    MatSidenavModule,
   ],
   template: `
     <mat-sidenav-container class="app-container">
@@ -30,18 +30,20 @@ import { MatSidenavModule } from '@angular/material/sidenav';
       </mat-sidenav-content>
     </mat-sidenav-container>
   `,
-  styles: [`
-    .app-container {
-      height: 100vh;
-    }
+  styles: [
+    `
+      .app-container {
+        height: 100vh;
+      }
 
-    .main-content {
-      padding: var(--spacing-md);
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-  `]
+      .main-content {
+        padding: var(--spacing-md);
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+    `,
+  ],
 })
 export class AppComponent {
-  title = 'AI Diary';
+  title = "AI Diary";
 }

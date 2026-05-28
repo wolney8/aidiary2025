@@ -359,3 +359,51 @@ Defaults for non-imported DB fields:
 
 - For each imported row, `entry_number` is set to `MAX(entry_number) + 1` for the same `user_id` and `entry_date` in the target table.
 - Duplicate-date rows for the same user are skipped before insert during import, so newly imported rows are normally inserted as the first entry for that date.
+
+## Excel Export
+
+### 1) GET /api/import/export
+
+Downloads an `.xlsx` workbook for the authenticated user.
+
+Auth required: JWT Bearer token (`Authorization: Bearer <token>`).
+
+Query params (all optional):
+
+- `from_date` (format: `YYYY-MM-DD`) - include entries on/after this date
+- `to_date` (format: `YYYY-MM-DD`) - include entries on/before this date
+- `include_daily` (`true`/`false`, default `true`) - include Daily entries
+- `include_dreams` (`true`/`false`, default `true`) - include Dream entries
+
+Validation rules:
+
+- If `from_date` or `to_date` is invalid format -> `400`
+- If `from_date > to_date` -> `400`
+- If `include_daily=false` and `include_dreams=false` -> `400`
+
+Default behaviour:
+
+- No query params means full export of both Daily and Dreams data.
+
+Response:
+
+- `200` with attachment content type:
+  - `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- Download filename:
+  - default: `aidiary_export_<timestamp>.xlsx`
+  - filtered: `aidiary_export_filtered_<timestamp>.xlsx`
+
+Workbook shape:
+
+- Includes only selected sheet types (`Daily` and/or `Dreams`).
+- Each included sheet always starts with standard import-template headers.
+- Date filtering uses inclusive boundaries for both `from_date` and `to_date`.
+
+Error response (400):
+
+```json
+{
+  "status": "error",
+  "errors": ["from_date cannot be after to_date."]
+}
+```

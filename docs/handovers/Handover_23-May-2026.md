@@ -1,4 +1,4 @@
-Ran terminal command:  git log --oneline -30
+Ran terminal command: git log --oneline -30
 
 Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/CHANGELOG.md#1-1), lines 1 to 100
 
@@ -26,7 +26,7 @@ Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/se
 
 Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/docs/LESSONS_LEARNED_v0.11.4.md)
 
-Ran terminal command:  git branch -a && echo "---" && git status
+Ran terminal command: git branch -a && echo "---" && git status
 
 Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/BACKUP_ROLLBACK_PLAN.md)
 
@@ -36,9 +36,9 @@ Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/cl
 
 Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/server/routes/import_routes.py#1-1), lines 1 to 100
 
-Now I have enough to compile the full picture. Let me write the handover document.  
+Now I have enough to compile the full picture. Let me write the handover document.
 
-Ran terminal command:  git log --oneline feature/milestone-7-edit-entry..main 2>/dev/null; echo "---DIFF---"; git diff --stat main..feature/milestone-7-edit-entry 2>/dev/null | head -20; echo "---IMPORTS---"; ls server/db/
+Ran terminal command: git log --oneline feature/milestone-7-edit-entry..main 2>/dev/null; echo "---DIFF---"; git diff --stat main..feature/milestone-7-edit-entry 2>/dev/null | head -20; echo "---IMPORTS---"; ls server/db/
 
 Read [](file:///Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/client/package.json)
 
@@ -63,19 +63,22 @@ Now I have the full picture. Let me produce the comprehensive review and handove
 ## 2. Git / Branch State
 
 ### Branches
-| Branch | State |
-|---|---|
-| `main` | Behind — last stable push was `v0.11.5`; edit feature commits exist locally but not merged |
-| `feature/milestone-7-edit-entry` | Finished but **never merged to main** — contains 11 changed files (autosave service, confirm-dialog, create component redesign) |
-| `feature/milestone-10-excel-import` | **Active HEAD** — partially committed; has 8 **unstaged modified files** + 1 untracked file |
+
+| Branch                              | State                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                              | Behind — last stable push was `v0.11.5`; edit feature commits exist locally but not merged                                      |
+| `feature/milestone-7-edit-entry`    | Finished but **never merged to main** — contains 11 changed files (autosave service, confirm-dialog, create component redesign) |
+| `feature/milestone-10-excel-import` | **Active HEAD** — partially committed; has 8 **unstaged modified files** + 1 untracked file                                     |
 
 ### HEAD Commit (current working branch)
+
 ```
 54805b7  feature/milestone-10-excel-import
 "Implement Excel import system foundation - adapt routes to sqlite3, add import tracking"
 ```
 
 ### Uncommitted / Unstaged Changes (working tree is dirty)
+
 - app.routes.ts — settings/import route added
 - side-nav.component.ts
 - top-bar.component.ts
@@ -93,29 +96,32 @@ Now I have the full picture. Let me produce the comprehensive review and handove
 ## 3. Milestones — Completed vs Outstanding
 
 ### ✅ Completed
-| Milestone | Version | Notes |
-|---|---|---|
-| M1 — Repo hygiene | v0.10.x | README, CHANGELOG, docs/, .env.example |
-| M2 — Backend scaffold | v0.10.x | auth, profile, entries, analyse routes; JWT; OpenAI |
-| M3 — Frontend shell | v0.10.x | TopBar, SideNav, routing, auth guard |
-| M4 — Daily & Dream CRUD + list grid + timeline | v0.11.0–v0.11.1 | Timeline navigation with animations |
-| M5 — AI analysis wired to DB columns | v0.11.x | ai_response, tags, people_names, image_prompt |
-| M6 — Polish (loading, error states) | v0.11.2–v0.11.4 | Search system, skeleton cards, error handling |
-| M6.5 — Entry Title System | v0.11.0 | DB migration (163 entries), title column, API + frontend update |
-| M7 — Edit Entry | v0.11.6 | Autosave, dual save modes, confirm dialogs, two-column layout — **committed but on unmerged branch** |
+
+| Milestone                                      | Version         | Notes                                                                                                |
+| ---------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------- |
+| M1 — Repo hygiene                              | v0.10.x         | README, CHANGELOG, docs/, .env.example                                                               |
+| M2 — Backend scaffold                          | v0.10.x         | auth, profile, entries, analyse routes; JWT; OpenAI                                                  |
+| M3 — Frontend shell                            | v0.10.x         | TopBar, SideNav, routing, auth guard                                                                 |
+| M4 — Daily & Dream CRUD + list grid + timeline | v0.11.0–v0.11.1 | Timeline navigation with animations                                                                  |
+| M5 — AI analysis wired to DB columns           | v0.11.x         | ai_response, tags, people_names, image_prompt                                                        |
+| M6 — Polish (loading, error states)            | v0.11.2–v0.11.4 | Search system, skeleton cards, error handling                                                        |
+| M6.5 — Entry Title System                      | v0.11.0         | DB migration (163 entries), title column, API + frontend update                                      |
+| M7 — Edit Entry                                | v0.11.6         | Autosave, dual save modes, confirm dialogs, two-column layout — **committed but on unmerged branch** |
 
 ### 🔄 In Progress
-| Milestone | Branch | Status |
-|---|---|---|
+
+| Milestone                 | Branch                              | Status                                                                                           |
+| ------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
 | M10 — Excel Import System | `feature/milestone-10-excel-import` | Backend routes + service started; frontend components partially built; **unstaged, uncommitted** |
 
 ### ❌ Not Started
-| Milestone | Notes |
-|---|---|
-| M8 — Cloud DB Migration | SQLite → Supabase/PlanetScale; requirements.txt has psycopg2 + pymysql stubs but nothing implemented |
-| M9 — CBT Structured Diary Modules | Melanie Fennell–based worksheets; requires new `cbt_*` schema tables |
-| Entry Title Step 5 | "Standardise new entry format" — validation, enforcement (ENTRY_TITLE_MIGRATION_TODOS.md) |
-| Logout Inactivity Timer | Configurable modal warning + auto-logout service (TODO_LOGIN_IMPROVEMENTS.md) |
+
+| Milestone                         | Notes                                                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| M8 — Cloud DB Migration           | SQLite → Supabase/PlanetScale; requirements.txt has psycopg2 + pymysql stubs but nothing implemented |
+| M9 — CBT Structured Diary Modules | Melanie Fennell–based worksheets; requires new `cbt_*` schema tables                                 |
+| Entry Title Step 5                | "Standardise new entry format" — validation, enforcement (ENTRY_TITLE_MIGRATION_TODOS.md)            |
+| Logout Inactivity Timer           | Configurable modal warning + auto-logout service (TODO_LOGIN_IMPROVEMENTS.md)                        |
 
 ---
 
@@ -141,15 +147,16 @@ The feature touches both frontend (new Settings > Import page, routing, nav upda
 
 > **For the Designer agent — these are the authoritative design references:**
 
-| Document | Path | Purpose |
-|---|---|---|
-| **Wireframes mapping** | WIREFRAMES.md | Describes all screens: TopBar, timeline scroller, card grid, detail view (two-column), search results, side-nav, colour palette |
-| **Architecture** | ARCHITECTURE.md | Component tree, data flow, module structure |
-| **Project Plan** | PROJECT_PLAN.md | Milestones, constraints, non-negotiables |
-| **Copilot Instructions** | COPILOT-INSTRUCTIONS.md | Tone, output format, UX standards, Material Design rules |
-| **API spec** | API.md | Route payloads mapped to DB schema |
+| Document                 | Path                    | Purpose                                                                                                                         |
+| ------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Wireframes mapping**   | WIREFRAMES.md           | Describes all screens: TopBar, timeline scroller, card grid, detail view (two-column), search results, side-nav, colour palette |
+| **Architecture**         | ARCHITECTURE.md         | Component tree, data flow, module structure                                                                                     |
+| **Project Plan**         | PROJECT_PLAN.md         | Milestones, constraints, non-negotiables                                                                                        |
+| **Copilot Instructions** | COPILOT-INSTRUCTIONS.md | Tone, output format, UX standards, Material Design rules                                                                        |
+| **API spec**             | API.md                  | Route payloads mapped to DB schema                                                                                              |
 
 **Visual theme non-negotiables (from WIREFRAMES.md and COPILOT-INSTRUCTIONS.md):**
+
 - Primary accent: Purple `#7B3FF2`
 - Material Design components; 8dp spacing grid; tap targets ≥ 48dp
 - Card shadows, rounded corners, 16px gutters, 24px vertical spacing
@@ -163,44 +170,47 @@ The feature touches both frontend (new Settings > Import page, routing, nav upda
 ## 6. Known Issues & Codebase Health Concerns
 
 ### Critical / Blocking
-| Issue | Detail |
-|---|---|
-| **M7 never merged** | `feature/milestone-7-edit-entry` has full edit functionality (autosave, confirm dialogs, two-column layout) and is **never merged to main**. Main branch is missing ~769 lines of feature work. |
-| **Dirty working tree** | 8 modified + 1 untracked file for M10 Excel import, uncommitted. Risky state if branches are switched. |
-| **package.json version mismatch** | package.json says `0.11.3`; app version string says `v0.11.6`. These are out of sync. |
+
+| Issue                             | Detail                                                                                                                                                                                          |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M7 never merged**               | `feature/milestone-7-edit-entry` has full edit functionality (autosave, confirm dialogs, two-column layout) and is **never merged to main**. Main branch is missing ~769 lines of feature work. |
+| **Dirty working tree**            | 8 modified + 1 untracked file for M10 Excel import, uncommitted. Risky state if branches are switched.                                                                                          |
+| **package.json version mismatch** | package.json says `0.11.3`; app version string says `v0.11.6`. These are out of sync.                                                                                                           |
 
 ### Code Quality / Technical Debt
-| Issue | Detail |
-|---|---|
-| **SQLAlchemy still in requirements.txt** | The app migrated from SQLAlchemy to direct `sqlite3` in v0.11.6 for Python 3.13 compatibility (`simple_database_service.py`). However `SQLAlchemy==2.0.23` is still listed in requirements.txt and `db/models.py` still exists with SQLAlchemy model definitions — potentially confusing/unused. |
-| **Duplicate Milestone 10 entry in PROJECT_PLAN.md** | PROJECT_PLAN.md has the Excel Import milestone listed twice and also has garbled/concatenated text — the file appears to have been edited poorly. Needs a cleanup pass. |
-| **Backup file in routes/** | entries.py.backup_step3_20250923_142243 is a raw backup file sitting alongside production code. Should be removed. |
-| **Migration scripts in server/db/** | `step1_add_title_column.py`, `step2_populate_titles.py`, `step3_prepare_api_updates.py`, `step3_test_api.py`, `step3_test_commands.txt`, `step4_create_test_guide.py`, `test_server_after_step1.py`, `verify_database.py` — all one-time migration artefacts still committed to the db folder. |
-| **Root-level doc files** | BACKUP_ROLLBACK_PLAN.md, SESSION_SUMMARY_v0.11.1.md, ENTRY_TITLE_MIGRATION_TODOS.md, STEP4_FRONTEND_TEST_GUIDE.md are loose in the project root. Should live in docs or be archived. |
-| **Scripts in docs/** | database_setup_script.py and migration_add_places_fields.py are Python scripts placed inside the docs folder. |
-| **Two database services** | Both `database_service.py` (SQLAlchemy-based) and `simple_database_service.py` (sqlite3-based) exist in services. Only the simple version is used. The old one should be removed or clearly marked deprecated. |
+
+| Issue                                               | Detail                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **SQLAlchemy still in requirements.txt**            | The app migrated from SQLAlchemy to direct `sqlite3` in v0.11.6 for Python 3.13 compatibility (`simple_database_service.py`). However `SQLAlchemy==2.0.23` is still listed in requirements.txt and `db/models.py` still exists with SQLAlchemy model definitions — potentially confusing/unused. |
+| **Duplicate Milestone 10 entry in PROJECT_PLAN.md** | PROJECT_PLAN.md has the Excel Import milestone listed twice and also has garbled/concatenated text — the file appears to have been edited poorly. Needs a cleanup pass.                                                                                                                          |
+| **Backup file in routes/**                          | entries.py.backup_step3_20250923_142243 is a raw backup file sitting alongside production code. Should be removed.                                                                                                                                                                               |
+| **Migration scripts in server/db/**                 | `step1_add_title_column.py`, `step2_populate_titles.py`, `step3_prepare_api_updates.py`, `step3_test_api.py`, `step3_test_commands.txt`, `step4_create_test_guide.py`, `test_server_after_step1.py`, `verify_database.py` — all one-time migration artefacts still committed to the db folder.   |
+| **Root-level doc files**                            | BACKUP_ROLLBACK_PLAN.md, SESSION_SUMMARY_v0.11.1.md, ENTRY_TITLE_MIGRATION_TODOS.md, STEP4_FRONTEND_TEST_GUIDE.md are loose in the project root. Should live in docs or be archived.                                                                                                             |
+| **Scripts in docs/**                                | database_setup_script.py and migration_add_places_fields.py are Python scripts placed inside the docs folder.                                                                                                                                                                                    |
+| **Two database services**                           | Both `database_service.py` (SQLAlchemy-based) and `simple_database_service.py` (sqlite3-based) exist in services. Only the simple version is used. The old one should be removed or clearly marked deprecated.                                                                                   |
 
 ### Outstanding TODOs
-| Item | File |
-|---|---|
-| Entry title Step 5: enforce title/content format, add validation | ENTRY_TITLE_MIGRATION_TODOS.md |
-| Logout inactivity timer + warning modal | TODO_LOGIN_IMPROVEMENTS.md |
-| Dream entry title support | Implied by title migration — only `dailydiary_entries` was migrated |
+
+| Item                                                             | File                                                                |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Entry title Step 5: enforce title/content format, add validation | ENTRY_TITLE_MIGRATION_TODOS.md                                      |
+| Logout inactivity timer + warning modal                          | TODO_LOGIN_IMPROVEMENTS.md                                          |
+| Dream entry title support                                        | Implied by title migration — only `dailydiary_entries` was migrated |
 
 ---
 
 ## 7. Tech Stack & Upgrade Candidates
 
-| Component | Current | Notes |
-|---|---|---|
-| **Angular** | `^17.0.0` | Angular 19 is current stable. Major upgrades needed (standalone API changes, new control flow syntax). Not urgent but falling behind. |
-| **OpenAI SDK** | `openai==1.6.1` | v1.6.1 is from late 2023. The 1.x API is stable but has had many additions. No breaking changes expected within 1.x but should be bumped to latest 1.x. |
-| **SQLAlchemy** | `2.0.23` in requirements — **unused** | Should be removed from requirements to avoid install confusion and potential security surface. |
-| **psycopg2-binary / pymysql** | In requirements — **unused** | Cloud DB stubs for M8. Fine to keep but annotate clearly. |
-| **Python** | 3.13 | Caused the SQLAlchemy migration. sqlite3 approach works but the codebase has inconsistency between old models.py and new service. |
-| **Flask** | `3.0.0` | Reasonably current. Flask 3.1 exists. Low priority. |
-| **TypeScript** | `~5.2.0` | TypeScript 5.5+ is available with new features. Angular 17 pins this, so upgrade should follow Angular upgrade. |
-| **pandas / openpyxl** | `2.1.4 / 3.1.2` | Required for Excel import (M10). Pandas may not be installed in the current venv — the import service has a graceful fallback noting it needs manual install. |
+| Component                     | Current                               | Notes                                                                                                                                                         |
+| ----------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Angular**                   | `^17.0.0`                             | Angular 19 is current stable. Major upgrades needed (standalone API changes, new control flow syntax). Not urgent but falling behind.                         |
+| **OpenAI SDK**                | `openai==1.6.1`                       | v1.6.1 is from late 2023. The 1.x API is stable but has had many additions. No breaking changes expected within 1.x but should be bumped to latest 1.x.       |
+| **SQLAlchemy**                | `2.0.23` in requirements — **unused** | Should be removed from requirements to avoid install confusion and potential security surface.                                                                |
+| **psycopg2-binary / pymysql** | In requirements — **unused**          | Cloud DB stubs for M8. Fine to keep but annotate clearly.                                                                                                     |
+| **Python**                    | 3.13                                  | Caused the SQLAlchemy migration. sqlite3 approach works but the codebase has inconsistency between old models.py and new service.                             |
+| **Flask**                     | `3.0.0`                               | Reasonably current. Flask 3.1 exists. Low priority.                                                                                                           |
+| **TypeScript**                | `~5.2.0`                              | TypeScript 5.5+ is available with new features. Angular 17 pins this, so upgrade should follow Angular upgrade.                                               |
+| **pandas / openpyxl**         | `2.1.4 / 3.1.2`                       | Required for Excel import (M10). Pandas may not be installed in the current venv — the import service has a graceful fallback noting it needs manual install. |
 
 ---
 

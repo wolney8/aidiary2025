@@ -1,7 +1,8 @@
 # server/routes/import_routes.py
-# Import blueprint: file upload, history, and template download
+# Import blueprint: file upload, history, template download, and data export
 import io
 import sqlite3
+from datetime import datetime
 
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -255,4 +256,185 @@ def download_template():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True,
         download_name='aidiary_import_template.xlsx',
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/import/export
+# ---------------------------------------------------------------------------
+
+@import_bp.route('/import/export', methods=['GET'])
+@jwt_required()
+def export_entries():
+    """Export the authenticated user's entries into an Excel workbook."""
+    user_id = int(get_jwt_identity())
+
+    from_date_raw = request.args.get('from_date')
+    to_date_raw = request.args.get('to_date')
+
+    include_daily_raw = request.args.get('include_daily', 'true')
+    include_dreams_raw = request.args.get('include_dreams', 'true')
+
+    include_daily = str(include_daily_raw).strip().lower() != 'false'
+    include_dreams = str(include_dreams_raw).strip().lower() != 'false'
+
+    if not include_daily and not include_dreams:
+        return jsonify({
+            'status': 'error',
+            'errors': ['At least one export type must be selected.'],
+        }), 400
+
+    from_date = None
+    to_date = None
+
+    if from_date_raw:
+        try:
+            from_date = datetime.strptime(from_date_raw, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'status': 'error',
+                'errors': ['from_date must be in YYYY-MM-DD format.'],
+            }), 400
+
+    if to_date_raw:
+        try:
+            to_date = datetime.strptime(to_date_raw, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'status': 'error',
+                'errors': ['to_date must be in YYYY-MM-DD format.'],
+            }), 400
+
+    if from_date and to_date and from_date > to_date:
+        return jsonify({
+            'status': 'error',
+            'errors': ['from_date cannot be after to_date.'],
+        }), 400
+
+    try:
+        import openpyxl
+    except ImportError:
+        return jsonify({
+            'status': 'error',
+            'errors': ['openpyxl is not installed on the server.'],
+        }), 500
+
+    conn = get_db()
+
+    daily_rows = []
+    dream_rows = []
+
+    if include_daily:
+        daily_query = '''
+            SELECT entry_date, title, user_message, ai_response
+            FROM dailydiary_entries
+            WHERE user_id = ?
+        '''
+        daily_params = [user_id]
+
+        if from_date:
+            daily_query += ' AND entry_date >= ?'
+            daily_params.append(from_date.isoformat())
+
+        if to_date:
+            daily_query += ' AND entry_date <= ?'
+            daily_params.append(to_date.isoformat())
+
+        daily_query += ' ORDER BY entry_date ASC, entry_number ASC'
+        daily_rows = conn.execute(daily_query, tuple(daily_params)).fetchall()
+
+    if include_dreams:
+        dream_query = '''
+            SELECT entry_date, title, plot, "cast", location, period,
+                   emotion, symbols_and_imagery, insight, action, other, tags
+            FROM dreamdiary_entries
+            WHERE user_id = ?
+        '''
+        dream_params = [user_id]
+
+        if from_date:
+            dream_query += ' AND entry_date >= ?'
+            dream_params.append(from_date.isoformat())
+
+        if to_date:
+            dream_query += ' AND entry_date <= ?'
+            dream_params.append(to_date.isoformat())
+
+        dream_query += ' ORDER BY entry_date ASC, entry_number ASC'
+        dream_rows = conn.execute(dream_query, tuple(dream_params)).fetchall()
+
+    conn.close()
+
+    wb = openpyxl.Workbook()
+
+    if include_daily:
+        ws_daily = wb.active
+        ws_daily.title = 'Daily'
+        ws_daily.append(list(DAILY_IMPORT_HEADERS))
+        for row in daily_rows:
+            ws_daily.append([
+                row['entry_date'] or '',
+                row['title'] or '',
+                row['user_message'] or '',
+                row['ai_response'] or '',
+            ])
+
+        if include_dreams:
+            ws_dreams = wb.create_sheet(title='Dreams')
+            ws_dreams.append(list(DREAM_IMPORT_HEADERS))
+            for row in dream_rows:
+                ws_dreams.append([
+                    row['entry_date'] or '',
+                    row['title'] or '',
+                    row['plot'] or '',
+                    row['cast'] or '',
+                    row['location'] or '',
+                    row['period'] or '',
+                    row['emotion'] or '',
+                    row['symbols_and_imagery'] or '',
+                    row['insight'] or '',
+                    row['action'] or '',
+                    row['other'] or '',
+                    row['tags'] or '',
+                ])
+    else:
+        ws_dreams = wb.active
+        ws_dreams.title = 'Dreams'
+        ws_dreams.append(list(DREAM_IMPORT_HEADERS))
+        for row in dream_rows:
+            ws_dreams.append([
+                row['entry_date'] or '',
+                row['title'] or '',
+                row['plot'] or '',
+                row['cast'] or '',
+                row['location'] or '',
+                row['period'] or '',
+                row['emotion'] or '',
+                row['symbols_and_imagery'] or '',
+                row['insight'] or '',
+                row['action'] or '',
+                row['other'] or '',
+                row['tags'] or '',
+            ])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    has_filters = (
+        from_date is not None
+        or to_date is not None
+        or not include_daily
+        or not include_dreams
+    )
+    filename = f'aidiary_export_{stamp}.xlsx'
+    if has_filters:
+        filename = f'aidiary_export_filtered_{stamp}.xlsx'
+
+    return send_file(
+        buffer,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename,
     )

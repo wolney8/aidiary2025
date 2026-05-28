@@ -3,11 +3,11 @@
 import { animate, style, transition, trigger } from "@angular/animations";
 import { CommonModule } from "@angular/common";
 import {
-	Component,
-	type ElementRef,
-	inject,
-	type OnInit,
-	ViewChild,
+  Component,
+  type ElementRef,
+  inject,
+  type OnInit,
+  ViewChild,
 } from "@angular/core";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
@@ -19,52 +19,52 @@ import { MatTableModule } from "@angular/material/table";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { filter } from "rxjs/operators";
 import {
-	type ImportHistoryItem,
-	type ImportResult,
-	ImportService,
-	type UploadProgress,
+  type ImportHistoryItem,
+  type ImportResult,
+  ImportService,
+  type UploadProgress,
 } from "../../core/services/import.service";
 
 type UploadState =
-	| "idle"
-	| "uploading"
-	| "success"
-	| "partial"
-	| "empty"
-	| "error";
+  | "idle"
+  | "uploading"
+  | "success"
+  | "partial"
+  | "empty"
+  | "error";
 
 @Component({
-	selector: "app-import",
-	standalone: true,
-	imports: [
-		CommonModule,
-		MatCardModule,
-		MatButtonModule,
-		MatIconModule,
-		MatProgressBarModule,
-		MatTableModule,
-		MatChipsModule,
-		MatTooltipModule,
-		MatDividerModule,
-	],
-	animations: [
-		trigger("fadeSlideIn", [
-			transition(":enter", [
-				style({ opacity: 0, transform: "translateY(-8px)" }),
-				animate(
-					"250ms cubic-bezier(0.4,0,0.2,1)",
-					style({ opacity: 1, transform: "translateY(0)" }),
-				),
-			]),
-			transition(":leave", [
-				animate(
-					"180ms cubic-bezier(0.4,0,1,1)",
-					style({ opacity: 0, transform: "translateY(-8px)" }),
-				),
-			]),
-		]),
-	],
-	template: `
+  selector: "app-import",
+  standalone: true,
+  imports: [
+    CommonModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatProgressBarModule,
+    MatTableModule,
+    MatChipsModule,
+    MatTooltipModule,
+    MatDividerModule,
+  ],
+  animations: [
+    trigger("fadeSlideIn", [
+      transition(":enter", [
+        style({ opacity: 0, transform: "translateY(-8px)" }),
+        animate(
+          "250ms cubic-bezier(0.4,0,0.2,1)",
+          style({ opacity: 1, transform: "translateY(0)" }),
+        ),
+      ]),
+      transition(":leave", [
+        animate(
+          "180ms cubic-bezier(0.4,0,1,1)",
+          style({ opacity: 0, transform: "translateY(-8px)" }),
+        ),
+      ]),
+    ]),
+  ],
+  template: `
     <!-- Hidden file input -->
     <input
       #fileInput
@@ -447,8 +447,8 @@ type UploadState =
       </mat-card>
     </div>
   `,
-	styles: [
-		`
+  styles: [
+    `
       .sr-only {
         position: absolute;
         width: 1px;
@@ -737,233 +737,233 @@ type UploadState =
         }
       }
     `,
-	],
+  ],
 })
 export class ImportComponent implements OnInit {
-	@ViewChild("fileInput") fileInputRef!: ElementRef<HTMLInputElement>;
+  @ViewChild("fileInput") fileInputRef!: ElementRef<HTMLInputElement>;
 
-	private importService = inject(ImportService);
+  private importService = inject(ImportService);
 
-	// File selection state
-	selectedFile: File | null = null;
-	isDragging = false;
-	validationError: string | null = null;
-	readonly validationErrorId = "import-validation-error";
+  // File selection state
+  selectedFile: File | null = null;
+  isDragging = false;
+  validationError: string | null = null;
+  readonly validationErrorId = "import-validation-error";
 
-	// Upload state
-	uploadState: UploadState = "idle";
-	uploadProgress: UploadProgress = { percent: 0, loaded: 0, total: 0 };
-	importResult: ImportResult | null = null;
-	importErrorMessage = "";
+  // Upload state
+  uploadState: UploadState = "idle";
+  uploadProgress: UploadProgress = { percent: 0, loaded: 0, total: 0 };
+  importResult: ImportResult | null = null;
+  importErrorMessage = "";
 
-	// Template download
-	isDownloading = false;
-	templateDownloadError: string | null = null;
+  // Template download
+  isDownloading = false;
+  templateDownloadError: string | null = null;
 
-	// History
-	history: ImportHistoryItem[] = [];
-	historyLoading = false;
-	historyError: string | null = null;
-	readonly historyColumns = [
-		"imported_at",
-		"filename",
-		"imported_count",
-		"skipped_count",
-		"status",
-	];
+  // History
+  history: ImportHistoryItem[] = [];
+  historyLoading = false;
+  historyError: string | null = null;
+  readonly historyColumns = [
+    "imported_at",
+    "filename",
+    "imported_count",
+    "skipped_count",
+    "status",
+  ];
 
-	ngOnInit(): void {
-		this.loadHistory();
-	}
+  ngOnInit(): void {
+    this.loadHistory();
+  }
 
-	triggerFilePicker(): void {
-		this.fileInputRef.nativeElement.click();
-	}
+  triggerFilePicker(): void {
+    this.fileInputRef.nativeElement.click();
+  }
 
-	onFileSelected(event: Event): void {
-		const input = event.target as HTMLInputElement;
-		const file = input.files?.[0] ?? null;
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
 
-		// Reset input so re-selecting the same file fires the event again
-		input.value = "";
+    // Reset input so re-selecting the same file fires the event again
+    input.value = "";
 
-		if (!file) return;
-		this.applySelectedFile(file);
-	}
+    if (!file) return;
+    this.applySelectedFile(file);
+  }
 
-	onDragOver(event: DragEvent): void {
-		event.preventDefault();
-		this.isDragging = true;
-	}
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = true;
+  }
 
-	onDragLeave(): void {
-		this.isDragging = false;
-	}
+  onDragLeave(): void {
+    this.isDragging = false;
+  }
 
-	onDrop(event: DragEvent): void {
-		event.preventDefault();
-		this.isDragging = false;
-		const file = event.dataTransfer?.files?.[0] ?? null;
-		if (!file) return;
-		this.applySelectedFile(file);
-	}
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = false;
+    const file = event.dataTransfer?.files?.[0] ?? null;
+    if (!file) return;
+    this.applySelectedFile(file);
+  }
 
-	clearSelection(): void {
-		this.selectedFile = null;
-		this.isDragging = false;
-		this.validationError = null;
-		this.uploadState = "idle";
-		this.importResult = null;
-		this.importErrorMessage = "";
-		this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
-	}
+  clearSelection(): void {
+    this.selectedFile = null;
+    this.isDragging = false;
+    this.validationError = null;
+    this.uploadState = "idle";
+    this.importResult = null;
+    this.importErrorMessage = "";
+    this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
+  }
 
-	uploadFile(): void {
-		if (!this.selectedFile || this.validationError) return;
+  uploadFile(): void {
+    if (!this.selectedFile || this.validationError) return;
 
-		this.uploadState = "uploading";
-		this.uploadProgress = {
-			percent: 0,
-			loaded: 0,
-			total: this.selectedFile.size,
-		};
-		this.importResult = null;
-		this.importErrorMessage = "";
+    this.uploadState = "uploading";
+    this.uploadProgress = {
+      percent: 0,
+      loaded: 0,
+      total: this.selectedFile.size,
+    };
+    this.importResult = null;
+    this.importErrorMessage = "";
 
-		this.importService
-			.uploadFile(this.selectedFile)
-			.pipe(filter((event) => event !== null && event !== undefined))
-			.subscribe({
-				next: (event) => {
-					if (!event) return;
-					if (event.type === "progress") {
-						this.uploadProgress = event.progress;
-					} else if (event.type === "result") {
-						this.importResult = event.result;
-						const resultStatus = event.result.status;
-						// Map backend 'failed' status to local 'error' UI state
-						if (resultStatus === "failed") {
-							this.uploadState = "error";
-							this.importErrorMessage =
-								event.result.message || "Import failed.";
-						} else {
-							this.uploadState = resultStatus;
-						}
-						if (this.shouldRefreshHistory(resultStatus)) {
-							this.loadHistory();
-						}
-					}
-				},
-				error: (err: Error) => {
-					this.uploadState = "error";
-					this.importErrorMessage =
-						err.message || "Upload failed. Please try again.";
-				},
-			});
-	}
+    this.importService
+      .uploadFile(this.selectedFile)
+      .pipe(filter((event) => event !== null && event !== undefined))
+      .subscribe({
+        next: (event) => {
+          if (!event) return;
+          if (event.type === "progress") {
+            this.uploadProgress = event.progress;
+          } else if (event.type === "result") {
+            this.importResult = event.result;
+            const resultStatus = event.result.status;
+            // Map backend 'failed' status to local 'error' UI state
+            if (resultStatus === "failed") {
+              this.uploadState = "error";
+              this.importErrorMessage =
+                event.result.message || "Import failed.";
+            } else {
+              this.uploadState = resultStatus;
+            }
+            if (this.shouldRefreshHistory(resultStatus)) {
+              this.loadHistory();
+            }
+          }
+        },
+        error: (err: Error) => {
+          this.uploadState = "error";
+          this.importErrorMessage =
+            err.message || "Upload failed. Please try again.";
+        },
+      });
+  }
 
-	downloadTemplate(): void {
-		this.templateDownloadError = null;
-		this.isDownloading = true;
-		this.importService.downloadTemplate().subscribe({
-			next: (blob) => {
-				const url = URL.createObjectURL(blob);
-				const link = document.createElement("a");
-				link.href = url;
-				link.download = "ai_diary_import_template.xlsx";
-				link.click();
-				URL.revokeObjectURL(url);
-				this.isDownloading = false;
-				this.templateDownloadError = null;
-			},
-			error: () => {
-				this.isDownloading = false;
-				this.templateDownloadError =
-					"Could not download the import template. Please check that the backend service is running and try again.";
-			},
-		});
-	}
+  downloadTemplate(): void {
+    this.templateDownloadError = null;
+    this.isDownloading = true;
+    this.importService.downloadTemplate().subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "ai_diary_import_template.xlsx";
+        link.click();
+        URL.revokeObjectURL(url);
+        this.isDownloading = false;
+        this.templateDownloadError = null;
+      },
+      error: () => {
+        this.isDownloading = false;
+        this.templateDownloadError =
+          "Could not download the import template. Please check that the backend service is running and try again.";
+      },
+    });
+  }
 
-	loadHistory(): void {
-		this.historyLoading = true;
-		this.historyError = null;
+  loadHistory(): void {
+    this.historyLoading = true;
+    this.historyError = null;
 
-		this.importService.getHistory().subscribe({
-			next: (items) => {
-				this.history = items;
-				this.historyLoading = false;
-			},
-			error: (err: Error) => {
-				this.historyError = err.message || "Unable to load import history.";
-				this.historyLoading = false;
-			},
-		});
-	}
+    this.importService.getHistory().subscribe({
+      next: (items) => {
+        this.history = items;
+        this.historyLoading = false;
+      },
+      error: (err: Error) => {
+        this.historyError = err.message || "Unable to load import history.";
+        this.historyLoading = false;
+      },
+    });
+  }
 
-	// ── Formatting helpers ──
+  // ── Formatting helpers ──
 
-	formatFileSize(bytes: number): string {
-		if (bytes === 0) return "0 B";
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	}
+  formatFileSize(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
-	formatDate(isoString: string): string {
-		if (!isoString) return "—";
-		try {
-			const d = new Date(isoString);
-			return d.toLocaleString("en-GB", {
-				day: "2-digit",
-				month: "short",
-				year: "numeric",
-				hour: "2-digit",
-				minute: "2-digit",
-				hour12: false,
-			});
-		} catch {
-			return isoString;
-		}
-	}
+  formatDate(isoString: string): string {
+    if (!isoString) return "—";
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    } catch {
+      return isoString;
+    }
+  }
 
-	private shouldRefreshHistory(status: ImportResult["status"]): boolean {
-		return status === "success" || status === "partial" || status === "empty";
-	}
+  private shouldRefreshHistory(status: ImportResult["status"]): boolean {
+    return status === "success" || status === "partial" || status === "empty";
+  }
 
-	statusIcon(status: ImportHistoryItem["status"]): string {
-		const icons: Record<ImportHistoryItem["status"], string> = {
-			success: "check_circle",
-			partial: "warning_amber",
-			failed: "cancel",
-			empty: "info",
-		};
-		return icons[status] ?? "help_outline";
-	}
+  statusIcon(status: ImportHistoryItem["status"]): string {
+    const icons: Record<ImportHistoryItem["status"], string> = {
+      success: "check_circle",
+      partial: "warning_amber",
+      failed: "cancel",
+      empty: "info",
+    };
+    return icons[status] ?? "help_outline";
+  }
 
-	statusLabel(status: ImportHistoryItem["status"]): string {
-		const labels: Record<ImportHistoryItem["status"], string> = {
-			success: "Success",
-			partial: "Partial",
-			failed: "Failed",
-			empty: "Empty",
-		};
-		return labels[status] ?? status;
-	}
+  statusLabel(status: ImportHistoryItem["status"]): string {
+    const labels: Record<ImportHistoryItem["status"], string> = {
+      success: "Success",
+      partial: "Partial",
+      failed: "Failed",
+      empty: "Empty",
+    };
+    return labels[status] ?? status;
+  }
 
-	shouldShowTypeBreakdown(result: ImportResult): boolean {
-		const hasSplitData =
-			result.inserted_daily !== undefined ||
-			result.inserted_dreams !== undefined;
-		return hasSplitData && result.imported_count > 0;
-	}
+  shouldShowTypeBreakdown(result: ImportResult): boolean {
+    const hasSplitData =
+      result.inserted_daily !== undefined ||
+      result.inserted_dreams !== undefined;
+    return hasSplitData && result.imported_count > 0;
+  }
 
-	private applySelectedFile(file: File): void {
-		this.selectedFile = file;
-		this.validationError = this.importService.validateFile(file);
+  private applySelectedFile(file: File): void {
+    this.selectedFile = file;
+    this.validationError = this.importService.validateFile(file);
 
-		// Reset any previous result when a new file is chosen
-		this.uploadState = "idle";
-		this.importResult = null;
-		this.importErrorMessage = "";
-	}
+    // Reset any previous result when a new file is chosen
+    this.uploadState = "idle";
+    this.importResult = null;
+    this.importErrorMessage = "";
+  }
 }

@@ -175,9 +175,7 @@ import { Location } from "@angular/common";
 
       <mat-menu #userMenu="matMenu">
         <button mat-menu-item routerLink="/profile">Profile</button>
-        <button mat-menu-item routerLink="/settings/import">
-          Import Entries
-        </button>
+        <button mat-menu-item routerLink="/settings">Settings</button>
         <button mat-menu-item (click)="logout()">Logout</button>
       </mat-menu>
     </mat-toolbar>
@@ -189,7 +187,7 @@ import { Location } from "@angular/common";
       }
       .logo {
         background: var(--colour-secondary);
-        color: #ffffff;
+        color: var(--colour-surface);
         padding: 8px 16px;
         border-radius: var(--radius-pill);
         font-weight: 700;
@@ -290,11 +288,15 @@ import { Location } from "@angular/common";
         align-items: center;
         padding: 12px 16px;
         cursor: pointer;
-        border-bottom: 1px solid #e2e8f0;
+        border-bottom: 1px solid var(--colour-border);
         transition: background-color 0.2s ease;
       }
 
       .search-history-item:hover {
+        background-color: var(--colour-surface-muted);
+      }
+
+      .search-history-item:focus-within {
         background-color: var(--colour-surface-muted);
       }
 
@@ -303,7 +305,7 @@ import { Location } from "@angular/common";
       }
 
       .history-icon {
-        color: #64748b;
+        color: var(--colour-text-secondary);
         font-size: 20px;
         width: 20px;
         height: 20px;
@@ -320,9 +322,9 @@ import { Location } from "@angular/common";
       }
 
       .search-history-dropdown .highlight-match {
-        color: #d73502 !important;
+        color: var(--colour-accent) !important;
         font-weight: 600 !important;
-        background: rgba(215, 53, 2, 0.15) !important;
+        background: var(--colour-surface-muted) !important;
         padding: 1px 2px !important;
         border-radius: 2px !important;
         display: inline !important;
@@ -331,7 +333,7 @@ import { Location } from "@angular/common";
       .history-remove {
         background: none;
         border: none;
-        color: #64748b;
+        color: var(--colour-text-secondary);
         cursor: pointer;
         padding: 4px;
         border-radius: var(--radius-sm);
@@ -345,7 +347,19 @@ import { Location } from "@angular/common";
         opacity: 1;
       }
 
+      .search-history-item:focus-within .history-remove,
+      .history-remove:focus-visible {
+        opacity: 1;
+      }
+
       .history-remove:hover {
+        background-color: var(--colour-surface-muted);
+        color: var(--colour-text-primary);
+      }
+
+      .history-remove:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
         background-color: var(--colour-surface-muted);
         color: var(--colour-text-primary);
       }
@@ -361,13 +375,13 @@ import { Location } from "@angular/common";
         align-items: center;
         justify-content: center;
         padding: 24px 16px;
-        color: #999;
+        color: var(--colour-text-secondary);
         font-size: 14px;
         gap: 8px;
       }
 
       .empty-icon {
-        color: #ccc;
+        color: var(--colour-border);
         font-size: 24px;
         width: 24px;
         height: 24px;

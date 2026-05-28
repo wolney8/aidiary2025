@@ -178,9 +178,18 @@ def create_daily_entry():
     
     cursor.execute('''
         INSERT INTO dailydiary_entries 
-        (user_id, entry_date, entry_number, title, user_message, tags)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (user_id, entry_date, entry_number, title, user_message, data.get('tags', '')))
+        (user_id, entry_date, entry_number, title, user_message, tags, daily_people_names, daily_places)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        user_id,
+        entry_date,
+        entry_number,
+        title,
+        user_message,
+        data.get('tags', ''),
+        data.get('daily_people_names', ''),
+        data.get('daily_places', ''),
+    ))
     
     conn.commit()
     entry_id = cursor.lastrowid
@@ -330,8 +339,9 @@ def create_dream_entry():
     cursor.execute('''
         INSERT INTO dreamdiary_entries 
         (user_id, entry_date, entry_number, title, cast, location, 
-         period, emotion, plot, symbols_and_imagery, insight, action, other, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         period, emotion, plot, symbols_and_imagery, insight, action, other, tags,
+         dream_people_names, dream_places)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id, entry_date, entry_number,
         data.get('title', ''),
@@ -344,7 +354,9 @@ def create_dream_entry():
         data.get('insight', ''),
         data.get('action', ''),
         data.get('other', ''),
-        data.get('tags', '')
+        data.get('tags', ''),
+        data.get('dream_people_names', ''),
+        data.get('dream_places', ''),
     ))
     
     conn.commit()
