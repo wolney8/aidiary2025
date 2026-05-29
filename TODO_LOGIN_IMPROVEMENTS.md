@@ -22,72 +22,35 @@
 
 ---
 
-## 🔄 Task 2: Logout Timer with Warning Modal (TODO)
+## ✅ Task 2: Logout Timer with Warning Modal (IMPLEMENTED - PENDING VALIDATION)
 
-**Status**: NOT STARTED
+**Status**: IMPLEMENTED (manual validation pending)
 **Priority**: Medium
-**Description**: Design and implement logout timer functionality for security (disabled in dev).
+**Description**: Logout timer functionality is implemented in code and covered by unit tests (disabled in dev).
 
-**Requirements**:
+**Implemented**:
 
-- Create a configurable inactivity timer
-- Show modal warning: "You've been inactive for <X time>, you will be automatically logged out in <X dynamic countdown>"
-- Include buttons: "Stay logged in" and "Log out"
-- Must be configurable and disabled during development
-- Should track user activity (mouse moves, clicks, keyboard input)
-
-**Implementation Plan**:
-
-1. **Create Inactivity Service** (`src/app/core/services/inactivity.service.ts`)
-   - Track user activity with HostListener for document events
-   - Configurable timeout settings
-   - Observable for inactivity warnings
-   - Dev mode detection
-
-2. **Create Warning Modal Component** (`src/app/shared/components/inactivity-warning/`)
-   - Angular Material Dialog
-   - Countdown timer display
-   - "Stay logged in" and "Log out" buttons
-   - Auto-logout when countdown reaches zero
-
-3. **Configuration Service Updates**
-   - Add inactivity settings to app config
-   - Environment-based enabling/disabling
-   - Configurable timeout durations
-
-4. **Integration Points**:
-   - Add to main app component or auth guard
-   - Subscribe to inactivity service in TopBar component
-   - Handle modal responses appropriately
-
-**Files to Create/Modify**:
-
-- `client/src/app/core/services/inactivity.service.ts` (new)
-- `client/src/app/shared/components/inactivity-warning/inactivity-warning.component.ts` (new)
-- `client/src/app/app.component.ts` (modify)
-- `client/src/environments/environment.ts` (modify)
-
-**Testing Requirements**:
-
-- Test with different timeout values
-- Verify dev mode disabling works
-- Test modal interactions
-- Verify actual logout functionality
-- Test activity tracking accuracy
+- ✅ Inactivity service with configurable timeout and activity tracking
+- ✅ Warning modal with countdown and "Stay logged in" / "Log out" actions
+- ✅ App-level integration for timer lifecycle and logout flow
+- ✅ Cross-tab sync for inactivity/logout state
+- ✅ Unit tests added for service/component and integration behaviour
 
 ---
 
 ## 📋 Next Steps
 
-1. **HANDOFF TO USER**: Test Task 1 (Login Error Messaging)
-   - Try logging in with incorrect credentials
-   - Verify error message appears correctly
-   - Test loading states
-   - Verify successful login still works
+1. **Manual validation for Task 2 (required)**
+   - Confirm inactivity timer starts/resets correctly with user activity
+   - Confirm warning modal appears with correct dynamic countdown
+   - Confirm "Stay logged in" keeps session active and closes modal
+   - Confirm "Log out" (and countdown expiry) logs user out correctly
+   - Confirm cross-tab behaviour stays in sync across multiple open tabs
+   - Confirm dev mode keeps timer disabled as configured
 
-2. **After Testing Task 1**: Proceed with Task 2 implementation if needed
-
-3. **Continue with other deliverables** once login improvements are completed
+2. **Closure**
+   - Mark Task 2 as COMPLETED after manual validation passes
+   - Continue with remaining deliverables
 
 ---
 
