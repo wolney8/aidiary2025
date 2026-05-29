@@ -18,6 +18,7 @@ describe("AppComponent inactivity integration", () => {
   let currentUserSubject: BehaviorSubject<User | null>;
   let authServiceMock: {
     currentUser$: Subject<User | null>;
+    isAuthenticated: any;
     logout: any;
   };
   let inactivityServiceMock: {
@@ -41,6 +42,9 @@ describe("AppComponent inactivity integration", () => {
 
     authServiceMock = {
       currentUser$: currentUserSubject,
+      isAuthenticated: jasmine
+        .createSpy("isAuthenticated")
+        .and.returnValue(false),
       logout: jasmine.createSpy("logout"),
     };
 
@@ -97,6 +101,32 @@ describe("AppComponent inactivity integration", () => {
     warningStateSubject.next(true);
 
     expect(dialogMock.open).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets isAuthenticated false when user is null", () => {
+    authServiceMock.isAuthenticated.and.returnValue(true);
+
+    currentUserSubject.next(null);
+
+    expect(fixture.componentInstance.isAuthenticated).toBeFalse();
+  });
+
+  it("sets isAuthenticated true when user exists and isAuthenticated() true", () => {
+    const user: User = { id: 1, username: "tester" };
+    authServiceMock.isAuthenticated.and.returnValue(true);
+
+    currentUserSubject.next(user);
+
+    expect(fixture.componentInstance.isAuthenticated).toBeTrue();
+  });
+
+  it("does not set true when user exists but isAuthenticated() false", () => {
+    const user: User = { id: 1, username: "tester" };
+    authServiceMock.isAuthenticated.and.returnValue(false);
+
+    currentUserSubject.next(user);
+
+    expect(fixture.componentInstance.isAuthenticated).toBeFalse();
   });
 
   it("stay action resets timer", () => {
