@@ -132,7 +132,7 @@ export class AppComponent {
         this.warningDialogRef = undefined;
 
         if (result === "stay") {
-          this.inactivityService.resetTimer();
+          this.inactivityService.resetTimer(true);
           return;
         }
 

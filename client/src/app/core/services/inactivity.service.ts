@@ -5,6 +5,10 @@ import { BehaviorSubject, Subject } from "rxjs";
   providedIn: "root",
 })
 export class InactivityService implements OnDestroy {
+  private readonly authTokenStorageKey = "ai_diary_token";
+  private readonly authUserStorageKey = "ai_diary_user";
+  private readonly stayAliveSyncStorageKey = "ai_diary_inactivity_stay_alive";
+
   private readonly trackedEvents = [
     "mousemove",
     "mousedown",
@@ -45,7 +49,7 @@ export class InactivityService implements OnDestroy {
       this.attachListeners();
     }
 
-    this.resetTimer();
+    this.resetTimer(false);
   }
 
   stopTracking(): void {
@@ -60,9 +64,13 @@ export class InactivityService implements OnDestroy {
     this.countdownSecondsSubject.next(this.warningSeconds);
   }
 
-  resetTimer(): void {
+  resetTimer(shouldSyncAcrossTabs = false): void {
     if (!this.trackingEnabled) {
       return;
+    }
+
+    if (shouldSyncAcrossTabs) {
+      this.publishStayAliveSync();
     }
 
     this.clearTimers();
@@ -113,7 +121,23 @@ export class InactivityService implements OnDestroy {
       return;
     }
 
-    this.resetTimer();
+    this.resetTimer(false);
+  };
+
+  private onStorageEvent = (event: StorageEvent): void => {
+    if (!this.trackingEnabled) {
+      return;
+    }
+
+    if (this.isRemoteLogoutEvent(event)) {
+      this.stopTracking();
+      this.expiredSubject.next();
+      return;
+    }
+
+    if (this.isStayAliveSyncEvent(event)) {
+      this.resetTimer(false);
+    }
   };
 
   private attachListeners(): void {
@@ -122,12 +146,36 @@ export class InactivityService implements OnDestroy {
         passive: true,
       });
     }
+
+    window.addEventListener("storage", this.onStorageEvent);
   }
 
   private detachListeners(): void {
     for (const eventName of this.trackedEvents) {
       window.removeEventListener(eventName, this.onUserActivity);
     }
+
+    window.removeEventListener("storage", this.onStorageEvent);
+  }
+
+  private publishStayAliveSync(): void {
+    localStorage.setItem(
+      this.stayAliveSyncStorageKey,
+      `${Date.now()}-${Math.random()}`,
+    );
+  }
+
+  private isRemoteLogoutEvent(event: StorageEvent): boolean {
+    return (
+      (event.key === this.authTokenStorageKey ||
+        event.key === this.authUserStorageKey) &&
+      event.newValue === null &&
+      event.oldValue !== null
+    );
+  }
+
+  private isStayAliveSyncEvent(event: StorageEvent): boolean {
+    return event.key === this.stayAliveSyncStorageKey && !!event.newValue;
   }
 
   private clearTimers(): void {

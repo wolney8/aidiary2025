@@ -115,7 +115,7 @@ describe("AppComponent inactivity integration", () => {
     warningStateSubject.next(true);
     closeResult$.next("stay");
 
-    expect(inactivityServiceMock.resetTimer).toHaveBeenCalled();
+    expect(inactivityServiceMock.resetTimer).toHaveBeenCalledWith(true);
   });
 
   it("logout action calls AuthService.logout", () => {
