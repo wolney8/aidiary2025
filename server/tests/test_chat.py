@@ -40,6 +40,20 @@ def client():
             )
             '''
         )
+        conn.execute(
+            '''
+            CREATE TABLE chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                token_count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+            '''
+        )
         conn.commit()
         conn.close()
 
@@ -177,3 +191,28 @@ def test_chat_user_isolation_by_token(client):
     data_a = json.loads(history_a.data)
     assert len(data_a['messages']) == 2
     assert data_a['messages'][0]['message'] == 'User A secret'
+
+
+def test_chat_returns_503_when_storage_not_initialised(client):
+    token = _register_and_get_token(client, 'chat_missing_table_user')
+    conversation_id = str(uuid4())
+
+    db_path = client.application.config['DATABASE_PATH']
+
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.execute('DROP TABLE chat_messages')
+    conn.commit()
+    conn.close()
+
+    send_response = client.post(
+        '/api/chat/message',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'conversation_id': conversation_id, 'message': 'Hello'}),
+        content_type='application/json',
+    )
+
+    assert send_response.status_code == 503
+    data = json.loads(send_response.data)
+    assert data['error'] == 'chat storage not initialised'
