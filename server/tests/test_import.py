@@ -69,6 +69,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             image_prompt TEXT,
             image_url TEXT,
             dream_people_names TEXT,
+            dream_places TEXT,
             tags TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
@@ -885,8 +886,8 @@ class TestExportDownload:
             """
             INSERT INTO dreamdiary_entries
             (user_id, entry_date, entry_number, title, cast, location, period,
-             emotion, plot, symbols_and_imagery, insight, action, other, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             emotion, plot, symbols_and_imagery, insight, action, other, dream_places, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -902,6 +903,7 @@ class TestExportDownload:
                 'Need freedom',
                 'Kept flying',
                 'None',
+                'Forest',
                 'dream,flight',
             ),
         )
@@ -909,8 +911,8 @@ class TestExportDownload:
             """
             INSERT INTO dreamdiary_entries
             (user_id, entry_date, entry_number, title, cast, location, period,
-             emotion, plot, symbols_and_imagery, insight, action, other, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             emotion, plot, symbols_and_imagery, insight, action, other, dream_places, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -926,6 +928,7 @@ class TestExportDownload:
                 'Trust myself',
                 'Kept walking',
                 'None',
+                'Beach',
                 'dream,water',
             ),
         )
