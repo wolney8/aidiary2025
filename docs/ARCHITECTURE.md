@@ -22,6 +22,12 @@
 - `db/models.py` : SQLAlchemy models mirroring **existing** schema
 - `tests/` : pytest with temp DB; OpenAI mocked
 
+### chat_messages table (Phase 5)
+
+- `chat_messages` stores persistent AI companion conversation history by user and conversation thread.
+- Key fields: `user_id`, `conversation_id`, `role`, `content`, `created_at`, `token_count`.
+- Indexed by `(user_id, conversation_id, created_at)` for ordered per-conversation retrieval.
+
 ## Data Flow (Daily)
 
 1. UI create → POST `/api/daily` → row inserted
