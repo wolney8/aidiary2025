@@ -2,9 +2,12 @@
 # OpenAI service for AI analysis
 import os
 import json
-from typing import Dict, List
-import openai
+import logging
+from typing import Dict, Generator
 from openai import OpenAI
+
+
+logger = logging.getLogger(__name__)
 
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
@@ -49,7 +52,7 @@ class OpenAIService:
             result = json.loads(response.choices[0].message.content)
             return result
             
-        except Exception as e:
+        except Exception:
             # Return default response on error
             return {
                 "ai_response": "Thank you for sharing your thoughts today. Every experience helps us grow and learn.",
@@ -95,7 +98,7 @@ class OpenAIService:
             result = json.loads(response.choices[0].message.content)
             return result
             
-        except Exception as e:
+        except Exception:
             # Return default response on error
             return {
                 "summary": "A dream experience to explore further.",
@@ -111,3 +114,29 @@ class OpenAIService:
         # This would call DALL-E API in production
         # For now, return placeholder URL
         return "https://via.placeholder.com/512x512.png?text=Dream+Image"
+
+    def chat_companion(
+        self,
+        messages: list[dict],
+        system_prompt: str,
+        max_tokens: int = 1024,
+    ) -> Generator[str, None, None]:
+        """Stream assistant response chunks for chat companion conversations."""
+        chat_model = os.getenv('CHAT_MODEL', 'gpt-4o-mini')
+        request_messages = [{'role': 'system', 'content': system_prompt}, *messages]
+
+        try:
+            stream = self.client.chat.completions.create(
+                model=chat_model,
+                messages=request_messages,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+
+            for chunk in stream:
+                delta_text = chunk.choices[0].delta.content
+                if delta_text:
+                    yield delta_text
+        except Exception:
+            logger.exception('OpenAI chat companion streaming failed')
+            yield ''
