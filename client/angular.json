@@ -55,11 +55,11 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "browserTarget": "ai-diary:build:development"
+            "buildTarget": "ai-diary:build:development"
           },
           "configurations": {
             "production": {
-              "browserTarget": "ai-diary:build:production"
+              "buildTarget": "ai-diary:build:production"
             }
           }
         },
