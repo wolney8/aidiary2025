@@ -1,0 +1,7 @@
+Further tests, separate from smoke checks
+
+- Full frontend build after the UI sweep settles.
+- Login and register flows in a fresh browser session.
+- Entry create, edit, delete, search, and import/export on real data.
+- Backend pytest with a clean database and current migrations.
+- Responsive layout and accessibility pass on the touched screens.
