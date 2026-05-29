@@ -8,11 +8,14 @@ import { AuthService } from "../services/auth.service";
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
+  const isAuthRequest = /\/(login|register)(\?|$)/.test(req.url);
+
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401) {
-        authService.logout();
+      if (error.status === 401 && !isAuthRequest) {
+        authService.handleSessionExpired();
       }
+
       return throwError(() => error);
     }),
   );

@@ -1,5 +1,5 @@
 // Login component
-import { Component, inject } from "@angular/core";
+import { Component, OnInit, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router, RouterModule } from "@angular/router";
@@ -31,6 +31,11 @@ import { AuthService } from "../../core/services/auth.service";
         </mat-card-header>
 
         <mat-card-content>
+          <div *ngIf="sessionInfoMessage" class="info-message">
+            <mat-icon>info</mat-icon>
+            <span>{{ sessionInfoMessage }}</span>
+          </div>
+
           <!-- Error Message Display -->
           <div *ngIf="errorMessage" class="error-message">
             <mat-icon>error</mat-icon>
@@ -115,7 +120,26 @@ import { AuthService } from "../../core/services/auth.service";
         font-size: 14px;
       }
 
+      .info-message {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background-color: #e3f2fd;
+        border: 1px solid #64b5f6;
+        border-radius: 4px;
+        color: #0d47a1;
+        font-size: 14px;
+      }
+
       .error-message mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .info-message mat-icon {
         font-size: 20px;
         width: 20px;
         height: 20px;
@@ -123,7 +147,7 @@ import { AuthService } from "../../core/services/auth.service";
     `,
   ],
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   private authService = inject(AuthService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -134,7 +158,16 @@ export class LoginComponent {
   };
 
   errorMessage = "";
+  sessionInfoMessage = "";
   isLoading = false;
+
+  ngOnInit(): void {
+    const reason = this.route.snapshot.queryParamMap.get("reason");
+    if (reason === "session-expired") {
+      this.sessionInfoMessage =
+        "Your session has expired. Please log in again to continue.";
+    }
+  }
 
   onSubmit(): void {
     if (!this.credentials.username || !this.credentials.password) {

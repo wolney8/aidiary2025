@@ -53,10 +53,28 @@ export class AuthService {
   }
 
   logout(): void {
+    this.clearSession();
+    this.router.navigate(["/login"]);
+  }
+
+  handleSessionExpired(): void {
+    this.clearSession();
+
+    const currentPath = this.router.url.split("?")[0];
+    if (currentPath === "/login" || currentPath === "/register") {
+      return;
+    }
+
+    this.router.navigate(["/login"], {
+      queryParams: { reason: "session-expired" },
+      replaceUrl: true,
+    });
+  }
+
+  private clearSession(): void {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.userKey);
     this.currentUserSubject.next(null);
-    this.router.navigate(["/login"]);
   }
 
   getToken(): string | null {

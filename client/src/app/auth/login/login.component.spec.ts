@@ -91,4 +91,22 @@ describe("LoginComponent returnUrl navigation", () => {
       replaceUrl: true,
     });
   });
+
+  it("shows session-expired message when reason query param is present", () => {
+    queryParams = { reason: "session-expired" };
+
+    fixture.detectChanges();
+
+    expect(component.sessionInfoMessage).toBe(
+      "Your session has expired. Please log in again to continue.",
+    );
+  });
+
+  it("does not show session-expired message when reason query param is absent", () => {
+    queryParams = {};
+
+    fixture.detectChanges();
+
+    expect(component.sessionInfoMessage).toBe("");
+  });
 });
