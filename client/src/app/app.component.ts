@@ -28,18 +28,26 @@ import { environment as environmentProd } from "../environments/environment.prod
     MatSidenavModule,
   ],
   template: `
-    <mat-sidenav-container class="app-container">
-      <mat-sidenav #sidenav mode="over" position="start">
-        <app-side-nav (closeSidenav)="sidenav.close()"></app-side-nav>
-      </mat-sidenav>
+    <ng-container *ngIf="isAuthenticated; else publicLayout">
+      <mat-sidenav-container class="app-container">
+        <mat-sidenav #sidenav mode="over" position="start">
+          <app-side-nav (closeSidenav)="sidenav.close()"></app-side-nav>
+        </mat-sidenav>
 
-      <mat-sidenav-content>
-        <app-top-bar (toggleSidenav)="sidenav.toggle()"></app-top-bar>
-        <main class="main-content">
-          <router-outlet></router-outlet>
-        </main>
-      </mat-sidenav-content>
-    </mat-sidenav-container>
+        <mat-sidenav-content>
+          <app-top-bar (toggleSidenav)="sidenav.toggle()"></app-top-bar>
+          <main class="main-content">
+            <router-outlet></router-outlet>
+          </main>
+        </mat-sidenav-content>
+      </mat-sidenav-container>
+    </ng-container>
+
+    <ng-template #publicLayout>
+      <main class="main-content public-main-content">
+        <router-outlet></router-outlet>
+      </main>
+    </ng-template>
   `,
   styles: [
     `
@@ -51,6 +59,11 @@ import { environment as environmentProd } from "../environments/environment.prod
         padding: var(--spacing-md);
         max-width: 1400px;
         margin: 0 auto;
+      }
+
+      .public-main-content {
+        max-width: none;
+        padding: 0;
       }
     `,
   ],
@@ -70,11 +83,14 @@ export class AppComponent {
   >;
 
   title = "AI Diary";
+  isAuthenticated = this.authService.isAuthenticated();
 
   constructor() {
     this.authService.currentUser$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((user) => {
+        this.isAuthenticated = !!user && this.authService.isAuthenticated();
+
         if (user && this.inactivityConfig.enabled) {
           this.inactivityService.startTracking(
             this.inactivityConfig.timeoutSeconds,
