@@ -1,7 +1,9 @@
 import os
 from unittest.mock import MagicMock, patch
+import pytest
 
 from services.openai_svc import (
+    AnalysisRateLimitError,
     DEFAULT_OPENAI_MAX_RETRIES,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
     OpenAIService,
@@ -179,6 +181,38 @@ def test_analyse_daily_entry_falls_back_on_missing_required_keys(mock_openai):
         'people_names': '',
         'places': '',
     }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_raises_rate_limit_error_for_quota_failures(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_client.chat.completions.create.side_effect = RuntimeError('insufficient_quota')
+
+    service = OpenAIService()
+
+    with pytest.raises(AnalysisRateLimitError):
+        service.analyse_daily_entry('Daily text')
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_raises_rate_limit_error_for_429_status(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    class FakeRateLimitError(Exception):
+        status_code = 429
+
+    mock_client.chat.completions.create.side_effect = FakeRateLimitError('Too many requests')
+
+    service = OpenAIService()
+
+    with pytest.raises(AnalysisRateLimitError):
+        service.analyse_dream_entry('Dream text')
 
 
 @patch('services.openai_svc.OpenAI')

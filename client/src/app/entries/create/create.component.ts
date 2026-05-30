@@ -2,6 +2,7 @@
 import { Component, HostListener, inject, OnInit } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
+import { HttpErrorResponse } from "@angular/common/http";
 import { Router, ActivatedRoute } from "@angular/router";
 import { MatCardModule } from "@angular/material/card";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -83,7 +84,7 @@ const UK_DATE_FORMATS = {
             >{{ isEditing ? "Edit" : "New" }} Diary Entry</mat-card-title
           >
 
-          <mat-slide-toggle *ngIf="isEditing" [(ngModel)]="leaveItToAI">
+          <mat-slide-toggle [(ngModel)]="leaveItToAI">
             Respond with AI
           </mat-slide-toggle>
         </mat-card-header>
@@ -398,7 +399,7 @@ const UK_DATE_FORMATS = {
               Cancel
             </button>
 
-            <ng-container *ngIf="!isEditing || !leaveItToAI; else aiActions">
+            <ng-container *ngIf="!leaveItToAI; else aiActions">
               <button
                 mat-raised-button
                 color="primary"
@@ -752,11 +753,6 @@ export class CreateComponent implements OnInit {
   }
 
   saveAndAnalyse(): void {
-    if (!this.isEditing) {
-      this.persistEntry(false);
-      return;
-    }
-
     this.persistEntry(true);
   }
 
@@ -916,7 +912,14 @@ export class CreateComponent implements OnInit {
               error: () => this.finishNavigation(entryId),
             });
         },
-        error: () => this.finishNavigation(entryId),
+        error: (error) => {
+          if (this.isRateLimitAnalysisError(error)) {
+            this.finishNavigation(entryId, "ai-rate-limit");
+            return;
+          }
+
+          this.finishNavigation(entryId);
+        },
       });
   }
 
@@ -952,14 +955,42 @@ export class CreateComponent implements OnInit {
               error: () => this.finishNavigation(entryId),
             });
         },
-        error: () => this.finishNavigation(entryId),
+        error: (error) => {
+          if (this.isRateLimitAnalysisError(error)) {
+            this.finishNavigation(entryId, "ai-rate-limit");
+            return;
+          }
+
+          this.finishNavigation(entryId);
+        },
       });
   }
 
-  private finishNavigation(entryId: number): void {
+  private finishNavigation(entryId: number, analysisWarning?: string): void {
     this.isSaving = false;
     this.resetForm();
-    this.router.navigate(["/entries", entryId]);
+
+    const queryParams = analysisWarning ? { analysisWarning } : undefined;
+
+    this.router.navigate(["/entries", entryId], { queryParams });
+  }
+
+  private isRateLimitAnalysisError(error: unknown): boolean {
+    if (!(error instanceof HttpErrorResponse)) {
+      return false;
+    }
+
+    if (error.status === 429) {
+      return true;
+    }
+
+    const serialised = JSON.stringify(error.error ?? "").toLowerCase();
+    return (
+      serialised.includes("quota") ||
+      serialised.includes("rate limit") ||
+      serialised.includes("too many requests") ||
+      serialised.includes("insufficient_quota")
+    );
   }
 
   private handleError(message: string): void {

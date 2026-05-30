@@ -21,6 +21,10 @@ import { EntriesService } from "../../core/services/entries.service";
   ],
   template: `
     <div class="detail-container" *ngIf="entry">
+      <div class="analysis-warning" *ngIf="analysisWarningMessage" role="alert">
+        {{ analysisWarningMessage }}
+      </div>
+
       <div class="date-nav">
         <button mat-stroked-button type="button" (click)="goBack()">
           Back
@@ -296,6 +300,15 @@ import { EntriesService } from "../../core/services/entries.service";
         margin-bottom: var(--spacing-md);
       }
 
+      .analysis-warning {
+        margin-bottom: var(--spacing-md);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid #f59e0b;
+        background: #fffbeb;
+        color: #92400e;
+        border-radius: var(--radius-md);
+      }
+
       .date-nav h2 {
         margin: 0;
         text-align: center;
@@ -450,6 +463,7 @@ export class DetailComponent implements OnInit {
   entry: any;
   entryType: "daily" | "dream" = "daily";
   backQueryParams: Record<string, string | number> = {};
+  analysisWarningMessage = "";
 
   showAllTags = false;
   showAllPeople = false;
@@ -457,6 +471,7 @@ export class DetailComponent implements OnInit {
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get("id"));
     this.captureBackQueryParams();
+    this.captureAnalysisWarning();
 
     // Try loading as daily first, then dream if not found
     this.entriesService.getDailyEntry(id).subscribe({
@@ -686,6 +701,19 @@ export class DetailComponent implements OnInit {
         this.backQueryParams[key] = sourceParams[key];
       }
     });
+  }
+
+  private captureAnalysisWarning(): void {
+    const warningCode =
+      this.route.snapshot.queryParamMap.get("analysisWarning");
+
+    if (warningCode === "ai-rate-limit") {
+      this.analysisWarningMessage =
+        "Your entry was saved, but AI analysis is currently rate-limited. Please try analysing again later.";
+      return;
+    }
+
+    this.analysisWarningMessage = "";
   }
 
   private getOrdinalSuffix(day: number): string {

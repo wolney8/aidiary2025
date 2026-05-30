@@ -7,6 +7,7 @@ import tempfile
 import os
 from unittest.mock import patch, MagicMock
 from routes.analyse import ANALYSE_TEXT_MAX_LENGTH
+from services.openai_svc import AnalysisRateLimitError
 
 @pytest.fixture
 def client():
@@ -236,6 +237,27 @@ def test_analyse_returns_500_when_service_raises(_, client):
     assert response.status_code == 500
     data = json.loads(response.data)
     assert data == {'error': 'Analysis failed'}
+
+
+@patch('routes.analyse.OpenAIService')
+def test_analyse_returns_429_when_service_is_rate_limited(mock_service_cls, client):
+    """Rate-limit and quota failures should surface as HTTP 429."""
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.side_effect = AnalysisRateLimitError('AI analysis rate-limited')
+    mock_service_cls.return_value = mock_service
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'A valid entry text'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 429
+    data = json.loads(response.data)
+    assert data['code'] == 'rate_limited'
+    assert 'rate-limited' in data['error']
 
 
 @patch('services.openai_svc.OpenAI')

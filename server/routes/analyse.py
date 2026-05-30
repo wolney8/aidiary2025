@@ -2,7 +2,7 @@
 # AI analysis endpoint
 from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required
-from services.openai_svc import OpenAIService
+from services.openai_svc import OpenAIService, AnalysisRateLimitError
 
 
 def _normalise_people_names(raw: str) -> str:
@@ -108,6 +108,11 @@ def analyse_text():
                 'dream_places': result['places']
             }), 200
             
+    except AnalysisRateLimitError:
+        return jsonify({
+            'error': 'AI analysis is temporarily rate-limited. Please try again later.',
+            'code': 'rate_limited',
+        }), 429
     except Exception:
         current_app.logger.exception('Analysis failed')
         return jsonify({'error': 'Analysis failed'}), 500

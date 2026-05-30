@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 
+
+class AnalysisRateLimitError(Exception):
+    """Raised when upstream AI analysis fails due to quota or rate limiting."""
+
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
 
@@ -109,6 +113,29 @@ class OpenAIService:
             normalised[key] = str(value)
 
         return normalised
+
+    @staticmethod
+    def _is_rate_limit_like_error(exc: Exception) -> bool:
+        status_code = getattr(exc, 'status_code', None)
+        if status_code == 429:
+            return True
+
+        class_name = exc.__class__.__name__.lower()
+        message = str(exc).lower()
+
+        if 'ratelimit' in class_name or 'rate_limit' in class_name or 'rate limit' in class_name:
+            return True
+
+        return any(
+            token in message
+            for token in (
+                'rate limit',
+                'too many requests',
+                'insufficient_quota',
+                'quota',
+                'request limit',
+            )
+        )
     
     def analyse_daily_entry(self, text: str) -> Dict:
         """Analyse daily diary entry and extract insights."""
@@ -152,7 +179,11 @@ class OpenAIService:
 
             return result
 
-        except Exception:
+        except Exception as exc:
+            if self._is_rate_limit_like_error(exc):
+                logger.warning('Daily analysis hit AI rate limit/quota: %s', exc)
+                raise AnalysisRateLimitError('AI analysis rate-limited') from exc
+
             logger.exception('Daily analysis failed')
             return self._daily_fallback()
     
@@ -202,7 +233,11 @@ class OpenAIService:
 
             return result
 
-        except Exception:
+        except Exception as exc:
+            if self._is_rate_limit_like_error(exc):
+                logger.warning('Dream analysis hit AI rate limit/quota: %s', exc)
+                raise AnalysisRateLimitError('AI analysis rate-limited') from exc
+
             logger.exception('Dream analysis failed')
             return self._dream_fallback()
     
