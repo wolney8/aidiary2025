@@ -81,6 +81,7 @@ def client():
                 image_prompt TEXT,
                 image_url TEXT,
                 dream_people_names TEXT,
+                dream_places TEXT,
                 tags TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
