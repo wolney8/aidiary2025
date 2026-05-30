@@ -45,6 +45,17 @@ def _format_date_strings(date_obj):
     ]
 
 
+def _normalise_entry_date(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').strftime('%Y-%m-%d')
+        except ValueError:
+            return None
+    return None
+
+
 def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
     if not source:
         return None
@@ -214,7 +225,7 @@ def update_daily_entry(entry_id):
     
     # Check ownership
     entry = cursor.execute(
-        'SELECT id FROM dailydiary_entries WHERE id = ? AND user_id = ?',
+        'SELECT id, entry_date FROM dailydiary_entries WHERE id = ? AND user_id = ?',
         (entry_id, user_id)
     ).fetchone()
     
@@ -223,9 +234,31 @@ def update_daily_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     # Update allowed fields
-    allowed_fields = ['title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places', 'tags']
+    allowed_fields = [
+        'title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places',
+        'tags', 'mood', 'ai_style'
+    ]
     updates = []
     values = []
+
+    if 'entry_date' in data:
+        parsed_entry_date = _normalise_entry_date(data.get('entry_date'))
+        if not parsed_entry_date:
+            conn.close()
+            return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+
+        updates.append('entry_date = ?')
+        values.append(parsed_entry_date)
+
+        if parsed_entry_date != entry['entry_date']:
+            max_entry = cursor.execute('''
+                SELECT MAX(entry_number) as max_num
+                FROM dailydiary_entries
+                WHERE user_id = ? AND entry_date = ?
+            ''', (user_id, parsed_entry_date)).fetchone()
+            entry_number = (max_entry['max_num'] or 0) + 1
+            updates.append('entry_number = ?')
+            values.append(entry_number)
     
     for field in allowed_fields:
         if field in data:
@@ -381,7 +414,7 @@ def update_dream_entry(entry_id):
     
     # Check ownership
     entry = cursor.execute(
-        'SELECT id FROM dreamdiary_entries WHERE id = ? AND user_id = ?',
+        'SELECT id, entry_date FROM dreamdiary_entries WHERE id = ? AND user_id = ?',
         (entry_id, user_id)
     ).fetchone()
     
@@ -394,11 +427,30 @@ def update_dream_entry(entry_id):
         'title', 'cast', 'location', 'period', 'emotion', 'plot',
         'symbols_and_imagery', 'insight', 'action', 'other',
         'summary', 'interpretation', 'image_prompt', 'image_url',
-        'dream_people_names', 'dream_places', 'tags'
+        'dream_people_names', 'dream_places', 'tags', 'mood', 'ai_style'
     ]
     
     updates = []
     values = []
+
+    if 'entry_date' in data:
+        parsed_entry_date = _normalise_entry_date(data.get('entry_date'))
+        if not parsed_entry_date:
+            conn.close()
+            return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+
+        updates.append('entry_date = ?')
+        values.append(parsed_entry_date)
+
+        if parsed_entry_date != entry['entry_date']:
+            max_entry = cursor.execute('''
+                SELECT MAX(entry_number) as max_num
+                FROM dreamdiary_entries
+                WHERE user_id = ? AND entry_date = ?
+            ''', (user_id, parsed_entry_date)).fetchone()
+            entry_number = (max_entry['max_num'] or 0) + 1
+            updates.append('entry_number = ?')
+            values.append(entry_number)
     
     for field in allowed_fields:
         if field in data:

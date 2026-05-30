@@ -113,7 +113,6 @@ const UK_DATE_FORMATS = {
               [(ngModel)]="entryDate"
               name="entry_date"
               [max]="maxDate"
-              [disabled]="isEditing"
             />
             <mat-datepicker-toggle
               matIconSuffix
@@ -150,11 +149,7 @@ const UK_DATE_FORMATS = {
           <!-- Mood Selection -->
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>How are you feeling?</mat-label>
-            <mat-select
-              [(ngModel)]="selectedMood"
-              name="mood"
-              [disabled]="isEditing"
-            >
+            <mat-select [(ngModel)]="selectedMood" name="mood">
               <mat-option value="">Not specified</mat-option>
               <mat-option *ngFor="let mood of moodOptions" [value]="mood.value">
                 {{ mood.emoji }} {{ mood.label }}
@@ -789,9 +784,12 @@ export class CreateComponent implements OnInit {
       };
 
       const updatePayload = {
+        entry_date: entryDate,
         title: trimmedTitle,
         user_message: body,
         tags,
+        mood: this.selectedMood,
+        ai_style: this.selectedAIStyle,
         daily_people_names: this.peopleNames.join(","),
         daily_places: this.places.join(","),
       };
@@ -844,9 +842,12 @@ export class CreateComponent implements OnInit {
       };
 
       const updatePayload = {
+        entry_date: entryDate,
         title: trimmedTitle,
         plot: dreamPlotContent,
         tags,
+        mood: this.selectedMood,
+        ai_style: this.selectedAIStyle,
         cast: this.dreamCast.trim(),
         location: this.dreamLocation.trim(),
         period: this.dreamPeriod.trim(),

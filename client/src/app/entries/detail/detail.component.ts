@@ -528,11 +528,15 @@ export class DetailComponent implements OnInit {
     }
 
     const date = new Date(this.entry.entry_date);
-    const day = date.getDate();
-    const month = date.toLocaleString("en-GB", { month: "long" });
-    const year = date.getFullYear();
+    if (Number.isNaN(date.getTime())) {
+      return "Entry";
+    }
 
-    return `${day}${this.getOrdinalSuffix(day)} of ${month} ${year}`;
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
   }
 
   getTitle(): string {
@@ -714,25 +718,6 @@ export class DetailComponent implements OnInit {
     }
 
     this.analysisWarningMessage = "";
-  }
-
-  private getOrdinalSuffix(day: number): string {
-    if (day >= 11 && day <= 13) {
-      return "th";
-    }
-
-    const remainder = day % 10;
-    if (remainder === 1) {
-      return "st";
-    }
-    if (remainder === 2) {
-      return "nd";
-    }
-    if (remainder === 3) {
-      return "rd";
-    }
-
-    return "th";
   }
 
   private splitDailyMessage(message: string): [string, string] {

@@ -56,6 +56,8 @@ def client():
                 daily_people_names TEXT,
                 daily_places TEXT,
                 tags TEXT,
+                mood TEXT,
+                ai_style TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         ''')
@@ -84,6 +86,8 @@ def client():
                 dream_people_names TEXT,
                 dream_places TEXT,
                 tags TEXT,
+                mood TEXT,
+                ai_style TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         ''')
@@ -475,3 +479,154 @@ def test_update_dream_entry_not_found(client):
         content_type='application/json'
     )
     assert response.status_code == 404
+
+
+def test_update_daily_entry_updates_date_mood_and_ai_style(client):
+    """PUT /api/daily/:id should accept date, mood and ai_style updates."""
+    token = get_auth_token(client)
+
+    create_resp = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-03',
+            'user_message': 'Original text',
+            'mood': 'happy',
+            'ai_style': 'friendly'
+        }),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    # Move to a date where an entry already exists so numbering must increment.
+    other_resp = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-04',
+            'user_message': 'Existing target date entry'
+        }),
+        content_type='application/json'
+    )
+    assert other_resp.status_code == 201
+
+    update_resp = client.put(f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-04',
+            'mood': 'thoughtful',
+            'ai_style': 'reflective',
+            'user_message': 'Updated text'
+        }),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    list_resp = client.get('/api/daily', headers={'Authorization': f'Bearer {token}'})
+    entries = json.loads(list_resp.data)
+    updated = next(entry for entry in entries if entry['id'] == entry_id)
+
+    assert updated['entry_date'] == '2024-03-04'
+    assert updated['mood'] == 'thoughtful'
+    assert updated['ai_style'] == 'reflective'
+    assert updated['entry_number'] == 2
+
+
+def test_update_dream_entry_updates_date_mood_and_ai_style(client):
+    """PUT /api/dreams/:id should accept date, mood and ai_style updates."""
+    token = get_auth_token(client)
+
+    create_resp = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-05',
+            'title': 'Original dream',
+            'plot': 'I crossed a bridge',
+            'mood': 'peaceful',
+            'ai_style': 'creative'
+        }),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    other_resp = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-06',
+            'title': 'Target date dream',
+            'plot': 'Another dream'
+        }),
+        content_type='application/json'
+    )
+    assert other_resp.status_code == 201
+
+    update_resp = client.put(f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-06',
+            'mood': 'anxious',
+            'ai_style': 'brief',
+            'plot': 'Updated dream plot'
+        }),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    list_resp = client.get('/api/dreams', headers={'Authorization': f'Bearer {token}'})
+    entries = json.loads(list_resp.data)
+    updated = next(entry for entry in entries if entry['id'] == entry_id)
+
+    assert updated['entry_date'] == '2024-03-06'
+    assert updated['mood'] == 'anxious'
+    assert updated['ai_style'] == 'brief'
+    assert updated['entry_number'] == 2
+
+
+def test_update_daily_entry_rejects_invalid_entry_date(client):
+    """PUT /api/daily/:id should return 400 for invalid date format."""
+    token = get_auth_token(client)
+
+    create_resp = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-07', 'user_message': 'Valid entry'}),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '07/03/2024'}),
+        content_type='application/json'
+    )
+
+    assert update_resp.status_code == 400
+    data = json.loads(update_resp.data)
+    assert data['error'] == 'Invalid entry_date format. Use YYYY-MM-DD'
+
+
+def test_update_dream_entry_rejects_invalid_entry_date(client):
+    """PUT /api/dreams/:id should return 400 for invalid date format."""
+    token = get_auth_token(client)
+
+    create_resp = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-08',
+            'title': 'Valid dream',
+            'plot': 'Valid plot'
+        }),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024/03/08'}),
+        content_type='application/json'
+    )
+
+    assert update_resp.status_code == 400
+    data = json.loads(update_resp.data)
+    assert data['error'] == 'Invalid entry_date format. Use YYYY-MM-DD'

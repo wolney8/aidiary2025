@@ -66,6 +66,8 @@ describe("CreateComponent save reliability", () => {
     component.selectedType = "daily";
     component.entryDate = new Date("2026-05-30T10:00:00.000Z");
     component.content = "A full daily entry";
+    component.selectedMood = "thoughtful";
+    component.selectedAIStyle = "reflective";
     component.isEditing = true;
     component.editingId = 42;
 
@@ -82,6 +84,14 @@ describe("CreateComponent save reliability", () => {
     component.saveAndAnalyse();
 
     expect(entriesServiceMock.updateDailyEntry).toHaveBeenCalledTimes(1);
+    expect(entriesServiceMock.updateDailyEntry).toHaveBeenCalledWith(
+      42,
+      jasmine.objectContaining({
+        entry_date: "2026-05-30",
+        mood: "thoughtful",
+        ai_style: "reflective",
+      }),
+    );
     expect(analysisServiceMock.analyseText).toHaveBeenCalledTimes(1);
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 42], {
       queryParams: undefined,
@@ -130,6 +140,8 @@ describe("CreateComponent save reliability", () => {
     component.selectedType = "dream";
     component.entryDate = new Date("2026-05-30T10:00:00.000Z");
     component.dreamPlot = "I was flying above the sea.";
+    component.selectedMood = "peaceful";
+    component.selectedAIStyle = "creative";
     component.isEditing = true;
     component.editingId = 99;
 
@@ -157,6 +169,14 @@ describe("CreateComponent save reliability", () => {
     component.saveAndAnalyse();
 
     expect(entriesServiceMock.updateDreamEntry).toHaveBeenCalledTimes(2);
+    expect(entriesServiceMock.updateDreamEntry).toHaveBeenCalledWith(
+      99,
+      jasmine.objectContaining({
+        entry_date: "2026-05-30",
+        mood: "peaceful",
+        ai_style: "creative",
+      }),
+    );
     expect(analysisServiceMock.analyseText).toHaveBeenCalledTimes(1);
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 99], {
       queryParams: undefined,
