@@ -1,10 +1,12 @@
 import os
+import json
 from unittest.mock import MagicMock, patch
 import pytest
 
 from services.openai_svc import (
     AnalysisRateLimitError,
     DEFAULT_OPENAI_MAX_RETRIES,
+    DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
     OpenAIService,
 )
@@ -111,6 +113,59 @@ def test_openai_service_invalid_or_negative_retry_uses_default(mock_openai):
 
 
 @patch('services.openai_svc.OpenAI')
+def test_openai_service_uses_valid_output_token_cap_env_value(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_MAX_OUTPUT_TOKENS': '321',
+        },
+        clear=False,
+    ):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = (
+            '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+        )
+        mock_client.chat.completions.create.return_value = mock_response
+
+        service = OpenAIService()
+        service.analyse_daily_entry('Daily text')
+
+        assert service.max_output_tokens == 321
+        assert mock_client.chat.completions.create.call_args.kwargs['max_tokens'] == 321
+
+
+@patch('services.openai_svc.OpenAI')
+def test_openai_service_invalid_output_token_cap_uses_default(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_MAX_OUTPUT_TOKENS': 'invalid',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+        service_with_invalid = OpenAIService()
+        assert service_with_invalid.max_output_tokens == DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_MAX_OUTPUT_TOKENS': '0',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+        service_with_zero = OpenAIService()
+        assert service_with_zero.max_output_tokens == DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry_fallback_behaviour_unchanged_when_env_invalid(mock_openai):
     with patch.dict(
         os.environ,
@@ -195,6 +250,72 @@ def test_analyse_daily_entry_raises_rate_limit_error_for_quota_failures(mock_ope
 
     with pytest.raises(AnalysisRateLimitError):
         service.analyse_daily_entry('Daily text')
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_includes_recent_context_in_user_message(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'Great reflection!',
+            'tags': 'positive,growth',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry(
+        'Current daily text',
+        recent_context='[1] date=2026-05-29 entry=1\nPrevious entry text',
+    )
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    user_message = call_kwargs['messages'][1]['content']
+    assert 'Entry to analyse:' in user_message
+    assert 'Current daily text' in user_message
+    assert 'Recent context:' in user_message
+    assert 'Previous entry text' in user_message
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_includes_recent_context_in_user_message(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'A dream summary',
+            'interpretation': 'A dream interpretation',
+            'image_prompt': 'A dream image prompt',
+            'tags': 'dream,night',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_dream_entry(
+        'Current dream text',
+        recent_context='[1] date=2026-05-28 entry=2\nPrevious dream text',
+    )
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    user_message = call_kwargs['messages'][1]['content']
+    assert 'Entry to analyse:' in user_message
+    assert 'Current dream text' in user_message
+    assert 'Recent context:' in user_message
+    assert 'Previous dream text' in user_message
 
 
 @patch('services.openai_svc.OpenAI')

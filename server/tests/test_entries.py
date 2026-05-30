@@ -312,6 +312,55 @@ def test_analyse_daily_entry(mock_openai, client):
     assert data['daily_people_names'] == 'John,Sarah'
 
 
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_passes_recent_context_without_contract_change(mock_service_cls, client):
+    """Analyse should pass bounded recent context to service without changing response shape."""
+    token = get_auth_token(client)
+
+    first_entry_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2026-05-28', 'user_message': 'Earlier daily entry'}),
+        content_type='application/json'
+    )
+    assert first_entry_response.status_code == 201
+
+    second_entry_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2026-05-29', 'user_message': 'Most recent daily entry'}),
+        content_type='application/json'
+    )
+    assert second_entry_response.status_code == 201
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Context-aware response',
+        'tags': 'context,analysis',
+        'people_names': 'Alex',
+        'places': 'Library',
+    }
+    mock_service_cls.return_value = mock_service
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'Current analysis text'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert set(data.keys()) == {'ai_response', 'tags', 'daily_people_names', 'daily_places'}
+    assert data['ai_response'] == 'Context-aware response'
+    assert data['tags'] == 'context,analysis'
+    assert data['daily_people_names'] == 'Alex'
+    assert data['daily_places'] == 'Library'
+
+    assert mock_service.analyse_daily_entry.call_args.args[0] == 'Current analysis text'
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert recent_context is not None
+    assert 'Most recent daily entry' in recent_context
+    assert 'Earlier daily entry' in recent_context
+
+
 @patch('services.openai_svc.OpenAI')
 def test_analyse_dream_entry_success_keys_present(mock_openai, client):
     """Dream mode returns all expected structured keys."""

@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
+DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
 
 
 class AnalysisRateLimitError(Exception):
@@ -56,6 +57,24 @@ class OpenAIService:
             return default
 
         return parsed
+
+    @staticmethod
+    def _parse_positive_int_env(var_name: str, default: int) -> int:
+        raw_value = os.getenv(var_name)
+        if raw_value is None:
+            return default
+
+        try:
+            parsed = int(raw_value)
+        except (TypeError, ValueError):
+            logger.warning('Invalid %s value; using default %s', var_name, default)
+            return default
+
+        if parsed <= 0:
+            logger.warning('Non-positive %s value; using default %s', var_name, default)
+            return default
+
+        return parsed
     
     def __init__(self):
         """Initialise OpenAI client."""
@@ -70,7 +89,23 @@ class OpenAIService:
             'OPENAI_MAX_RETRIES',
             DEFAULT_OPENAI_MAX_RETRIES,
         )
+        self.max_output_tokens = self._parse_positive_int_env(
+            'OPENAI_MAX_OUTPUT_TOKENS',
+            DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
+        )
         self.client = OpenAI(api_key=api_key, max_retries=self.max_retries)
+
+    @staticmethod
+    def _build_analysis_user_content(text: str, recent_context: str | None) -> str:
+        if not recent_context:
+            return text
+
+        return (
+            'Entry to analyse:\n'
+            f'{text}\n\n'
+            'Recent context:\n'
+            f'{recent_context}'
+        )
 
     @staticmethod
     def _daily_fallback() -> Dict:
@@ -137,9 +172,10 @@ class OpenAIService:
             )
         )
     
-    def analyse_daily_entry(self, text: str) -> Dict:
+    def analyse_daily_entry(self, text: str, recent_context: str | None = None) -> Dict:
         """Analyse daily diary entry and extract insights."""
         try:
+            user_content = self._build_analysis_user_content(text, recent_context)
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -161,10 +197,11 @@ class OpenAIService:
                     },
                     {
                         "role": "user",
-                        "content": text
+                        "content": user_content
                     }
                 ],
                 temperature=0.7,
+                max_tokens=self.max_output_tokens,
                 timeout=self.request_timeout_seconds,
             )
 
@@ -187,9 +224,10 @@ class OpenAIService:
             logger.exception('Daily analysis failed')
             return self._daily_fallback()
     
-    def analyse_dream_entry(self, text: str) -> Dict:
+    def analyse_dream_entry(self, text: str, recent_context: str | None = None) -> Dict:
         """Analyse dream diary entry and provide interpretation."""
         try:
+            user_content = self._build_analysis_user_content(text, recent_context)
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -215,10 +253,11 @@ class OpenAIService:
                     },
                     {
                         "role": "user",
-                        "content": text
+                        "content": user_content
                     }
                 ],
                 temperature=0.7,
+                max_tokens=self.max_output_tokens,
                 timeout=self.request_timeout_seconds,
             )
 
