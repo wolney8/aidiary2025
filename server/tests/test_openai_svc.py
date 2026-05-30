@@ -1,7 +1,140 @@
 import os
 from unittest.mock import MagicMock, patch
 
-from services.openai_svc import OpenAIService
+from services.openai_svc import (
+    DEFAULT_OPENAI_MAX_RETRIES,
+    DEFAULT_OPENAI_TIMEOUT_SECONDS,
+    OpenAIService,
+)
+
+
+@patch('services.openai_svc.OpenAI')
+def test_openai_service_uses_valid_timeout_env_value(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_TIMEOUT_SECONDS': '12.5',
+        },
+        clear=False,
+    ):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = (
+            '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+        )
+        mock_client.chat.completions.create.return_value = mock_response
+
+        service = OpenAIService()
+        service.analyse_daily_entry('Daily text')
+
+        assert service.request_timeout_seconds == 12.5
+        assert mock_client.chat.completions.create.call_args.kwargs['timeout'] == 12.5
+
+
+@patch('services.openai_svc.OpenAI')
+def test_openai_service_invalid_or_negative_timeout_uses_default(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_TIMEOUT_SECONDS': 'not-a-number',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+        service_with_invalid = OpenAIService()
+        assert service_with_invalid.request_timeout_seconds == DEFAULT_OPENAI_TIMEOUT_SECONDS
+
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_TIMEOUT_SECONDS': '-10',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+        service_with_negative = OpenAIService()
+        assert service_with_negative.request_timeout_seconds == DEFAULT_OPENAI_TIMEOUT_SECONDS
+
+
+@patch('services.openai_svc.OpenAI')
+def test_openai_service_uses_valid_retry_env_value(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_MAX_RETRIES': '4',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+
+        service = OpenAIService()
+
+        assert service.max_retries == 4
+        assert mock_openai.call_args.kwargs['max_retries'] == 4
+
+
+@patch('services.openai_svc.OpenAI')
+def test_openai_service_invalid_or_negative_retry_uses_default(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_MAX_RETRIES': 'invalid',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+        service_with_invalid = OpenAIService()
+        assert service_with_invalid.max_retries == DEFAULT_OPENAI_MAX_RETRIES
+        assert mock_openai.call_args.kwargs['max_retries'] == DEFAULT_OPENAI_MAX_RETRIES
+
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_MAX_RETRIES': '-1',
+        },
+        clear=False,
+    ):
+        mock_openai.return_value = MagicMock()
+        service_with_negative = OpenAIService()
+        assert service_with_negative.max_retries == DEFAULT_OPENAI_MAX_RETRIES
+        assert mock_openai.call_args.kwargs['max_retries'] == DEFAULT_OPENAI_MAX_RETRIES
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_fallback_behaviour_unchanged_when_env_invalid(mock_openai):
+    with patch.dict(
+        os.environ,
+        {
+            'OPENAI_API_KEY': 'test-key',
+            'OPENAI_TIMEOUT_SECONDS': '-1',
+            'OPENAI_MAX_RETRIES': '-2',
+        },
+        clear=False,
+    ):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = 'not-json'
+        mock_client.chat.completions.create.return_value = mock_response
+
+        service = OpenAIService()
+        result = service.analyse_daily_entry('Daily text')
+
+        assert result == {
+            'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
+            'tags': 'reflection,daily',
+            'people_names': '',
+            'places': '',
+        }
 
 
 @patch('services.openai_svc.OpenAI')

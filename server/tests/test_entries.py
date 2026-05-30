@@ -182,6 +182,92 @@ def test_analyse_daily_entry(mock_openai, client):
     assert data['daily_people_names'] == 'John,Sarah'
 
 
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_success_keys_present(mock_openai, client):
+    """Dream mode returns all expected structured keys."""
+    token = get_auth_token(client)
+
+    # Mock OpenAI response
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'summary': 'I was flying over a city.',
+        'interpretation': 'A desire for freedom and perspective.',
+        'image_prompt': 'Surreal skyline beneath a moonlit sky',
+        'tags': 'freedom,exploration',
+        'people_names': 'Alex,hopefully,Sam',
+        'places': 'City,Rooftop'
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'dream',
+            'text': 'I dreamed I was flying above rooftops with Alex and Sam.'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert 'summary' in data
+    assert 'interpretation' in data
+    assert 'image_prompt' in data
+    assert 'tags' in data
+    assert 'dream_people_names' in data
+    assert 'dream_places' in data
+    assert data['dream_people_names'] == 'Alex,Sam'
+
+
+@patch('routes.analyse.OpenAIService', side_effect=Exception('boom'))
+def test_analyse_returns_500_when_service_raises(_, client):
+    """Unhandled analysis service exceptions map to a stable API error contract."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'A valid entry text'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 500
+    data = json.loads(response.data)
+    assert data == {'error': 'Analysis failed'}
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_accepts_text_at_exact_max_length(mock_openai, client):
+    """Text exactly at ANALYSE_TEXT_MAX_LENGTH is accepted."""
+    token = get_auth_token(client)
+
+    # Mock OpenAI response
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'ai_response': 'Length accepted',
+        'tags': 'boundary,test',
+        'people_names': '',
+        'places': ''
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'a' * ANALYSE_TEXT_MAX_LENGTH
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert 'ai_response' in data
+
+
 def test_analyse_rejects_missing_json_body(client):
     """Analyse endpoint requires JSON body object."""
     token = get_auth_token(client)

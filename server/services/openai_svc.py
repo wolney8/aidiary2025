@@ -1,8 +1,9 @@
 # server/services/openai_svc.py
 # OpenAI service for AI analysis
-import os
 import json
 import logging
+import math
+import os
 from typing import Dict, Generator
 from openai import OpenAI
 
@@ -11,26 +12,61 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
+DEFAULT_OPENAI_MAX_RETRIES = 2
 
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
+
+    @staticmethod
+    def _parse_positive_float_env(var_name: str, default: float) -> float:
+        raw_value = os.getenv(var_name)
+        if raw_value is None:
+            return default
+
+        try:
+            parsed = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning('Invalid %s value; using default %s seconds', var_name, default)
+            return default
+
+        if not math.isfinite(parsed) or parsed <= 0:
+            logger.warning('Non-finite or non-positive %s value; using default %s seconds', var_name, default)
+            return default
+
+        return parsed
+
+    @staticmethod
+    def _parse_non_negative_int_env(var_name: str, default: int) -> int:
+        raw_value = os.getenv(var_name)
+        if raw_value is None:
+            return default
+
+        try:
+            parsed = int(raw_value)
+        except (TypeError, ValueError):
+            logger.warning('Invalid %s value; using default %s', var_name, default)
+            return default
+
+        if parsed < 0:
+            logger.warning('Negative %s value; using default %s', var_name, default)
+            return default
+
+        return parsed
     
     def __init__(self):
         """Initialise OpenAI client."""
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             raise ValueError("OpenAI API key not configured")
-        self.client = OpenAI(api_key=api_key)
-        try:
-            self.request_timeout_seconds = float(
-                os.getenv('OPENAI_TIMEOUT_SECONDS', str(DEFAULT_OPENAI_TIMEOUT_SECONDS))
-            )
-        except (TypeError, ValueError):
-            logger.warning(
-                'Invalid OPENAI_TIMEOUT_SECONDS value; using default %s seconds',
-                DEFAULT_OPENAI_TIMEOUT_SECONDS,
-            )
-            self.request_timeout_seconds = DEFAULT_OPENAI_TIMEOUT_SECONDS
+        self.request_timeout_seconds = self._parse_positive_float_env(
+            'OPENAI_TIMEOUT_SECONDS',
+            DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        )
+        self.max_retries = self._parse_non_negative_int_env(
+            'OPENAI_MAX_RETRIES',
+            DEFAULT_OPENAI_MAX_RETRIES,
+        )
+        self.client = OpenAI(api_key=api_key, max_retries=self.max_retries)
 
     @staticmethod
     def _daily_fallback() -> Dict:
