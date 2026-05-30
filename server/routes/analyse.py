@@ -1,6 +1,6 @@
 # server/routes/analyse.py
 # AI analysis endpoint
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required
 from services.openai_svc import OpenAIService
 
@@ -60,20 +60,31 @@ def _normalise_people_names(raw: str) -> str:
     return ",".join(ordered)
 
 analyse_bp = Blueprint('analyse', __name__)
+ANALYSE_TEXT_MAX_LENGTH = 10000
 
 @analyse_bp.route('/analyse', methods=['POST'])
 @jwt_required()
 def analyse_text():
     """Analyse text using OpenAI and return structured insights."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Request body must be a JSON object'}), 400
+
     mode = data.get('mode', 'daily')  # 'daily' or 'dream'
     text = data.get('text', '')
-    
-    if not text:
-        return jsonify({'error': 'Text is required'}), 400
-    
+
     if mode not in ['daily', 'dream']:
         return jsonify({'error': 'Invalid mode. Use "daily" or "dream"'}), 400
+
+    if not isinstance(text, str):
+        return jsonify({'error': 'Text must be a string'}), 400
+
+    text = text.strip()
+    if not text:
+        return jsonify({'error': 'Text is required'}), 400
+
+    if len(text) > ANALYSE_TEXT_MAX_LENGTH:
+        return jsonify({'error': f'Text exceeds maximum length of {ANALYSE_TEXT_MAX_LENGTH} characters'}), 400
     
     try:
         ai_service = OpenAIService()
@@ -97,6 +108,6 @@ def analyse_text():
                 'dream_places': result['places']
             }), 200
             
-    except Exception as e:
-        print(f"Analysis error: {str(e)}")
+    except Exception:
+        current_app.logger.exception('Analysis failed')
         return jsonify({'error': 'Analysis failed'}), 500

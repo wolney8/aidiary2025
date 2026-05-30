@@ -9,6 +9,9 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
+
+DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
+
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
     
@@ -18,6 +21,58 @@ class OpenAIService:
         if not api_key:
             raise ValueError("OpenAI API key not configured")
         self.client = OpenAI(api_key=api_key)
+        try:
+            self.request_timeout_seconds = float(
+                os.getenv('OPENAI_TIMEOUT_SECONDS', str(DEFAULT_OPENAI_TIMEOUT_SECONDS))
+            )
+        except (TypeError, ValueError):
+            logger.warning(
+                'Invalid OPENAI_TIMEOUT_SECONDS value; using default %s seconds',
+                DEFAULT_OPENAI_TIMEOUT_SECONDS,
+            )
+            self.request_timeout_seconds = DEFAULT_OPENAI_TIMEOUT_SECONDS
+
+    @staticmethod
+    def _daily_fallback() -> Dict:
+        return {
+            "ai_response": "Thank you for sharing your thoughts today. Every experience helps us grow and learn.",
+            "tags": "reflection,daily",
+            "people_names": "",
+            "places": "",
+        }
+
+    @staticmethod
+    def _dream_fallback() -> Dict:
+        return {
+            "summary": "A dream experience to explore further.",
+            "interpretation": "Dreams often reflect our subconscious thoughts and emotions.",
+            "image_prompt": "Abstract dreamscape with surreal elements",
+            "tags": "dream,subconscious",
+            "people_names": "",
+            "places": "",
+        }
+
+    @staticmethod
+    def _extract_valid_json_payload(raw_content: str, required_keys: tuple[str, ...]) -> Dict | None:
+        try:
+            parsed = json.loads(raw_content)
+        except (TypeError, json.JSONDecodeError):
+            return None
+
+        if not isinstance(parsed, dict):
+            return None
+
+        if any(key not in parsed for key in required_keys):
+            return None
+
+        normalised: Dict[str, str] = {}
+        for key in required_keys:
+            value = parsed.get(key)
+            if value is None:
+                return None
+            normalised[key] = str(value)
+
+        return normalised
     
     def analyse_daily_entry(self, text: str) -> Dict:
         """Analyse daily diary entry and extract insights."""
@@ -46,20 +101,24 @@ class OpenAIService:
                         "content": text
                     }
                 ],
-                temperature=0.7
+                temperature=0.7,
+                timeout=self.request_timeout_seconds,
             )
-            
-            result = json.loads(response.choices[0].message.content)
+
+            raw_content = response.choices[0].message.content
+            result = self._extract_valid_json_payload(
+                raw_content,
+                ("ai_response", "tags", "people_names", "places"),
+            )
+            if result is None:
+                logger.warning('Daily analysis returned invalid or incomplete JSON payload')
+                return self._daily_fallback()
+
             return result
-            
+
         except Exception:
-            # Return default response on error
-            return {
-                "ai_response": "Thank you for sharing your thoughts today. Every experience helps us grow and learn.",
-                "tags": "reflection,daily",
-                "people_names": "",
-                "places": ""
-            }
+            logger.exception('Daily analysis failed')
+            return self._daily_fallback()
     
     def analyse_dream_entry(self, text: str) -> Dict:
         """Analyse dream diary entry and provide interpretation."""
@@ -92,22 +151,24 @@ class OpenAIService:
                         "content": text
                     }
                 ],
-                temperature=0.7
+                temperature=0.7,
+                timeout=self.request_timeout_seconds,
             )
-            
-            result = json.loads(response.choices[0].message.content)
+
+            raw_content = response.choices[0].message.content
+            result = self._extract_valid_json_payload(
+                raw_content,
+                ("summary", "interpretation", "image_prompt", "tags", "people_names", "places"),
+            )
+            if result is None:
+                logger.warning('Dream analysis returned invalid or incomplete JSON payload')
+                return self._dream_fallback()
+
             return result
-            
+
         except Exception:
-            # Return default response on error
-            return {
-                "summary": "A dream experience to explore further.",
-                "interpretation": "Dreams often reflect our subconscious thoughts and emotions.",
-                "image_prompt": "Abstract dreamscape with surreal elements",
-                "tags": "dream,subconscious",
-                "people_names": "",
-                "places": ""
-            }
+            logger.exception('Dream analysis failed')
+            return self._dream_fallback()
     
     def generate_image(self, prompt: str) -> str:
         """Generate image from prompt using DALL-E (placeholder)."""

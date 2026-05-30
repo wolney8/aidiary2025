@@ -6,6 +6,7 @@ from app import create_app
 import tempfile
 import os
 from unittest.mock import patch, MagicMock
+from routes.analyse import ANALYSE_TEXT_MAX_LENGTH
 
 @pytest.fixture
 def client():
@@ -179,6 +180,65 @@ def test_analyse_daily_entry(mock_openai, client):
     assert 'daily_people_names' in data
     assert 'daily_places' in data
     assert data['daily_people_names'] == 'John,Sarah'
+
+
+def test_analyse_rejects_missing_json_body(client):
+    """Analyse endpoint requires JSON body object."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Request body must be a JSON object'
+
+
+def test_analyse_rejects_non_string_text(client):
+    """Analyse endpoint requires text to be a string."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 123}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Text must be a string'
+
+
+def test_analyse_rejects_oversized_text(client):
+    """Analyse endpoint enforces maximum text length."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'a' * (ANALYSE_TEXT_MAX_LENGTH + 1)}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == f'Text exceeds maximum length of {ANALYSE_TEXT_MAX_LENGTH} characters'
+
+
+def test_analyse_rejects_invalid_mode(client):
+    """Analyse endpoint only accepts daily or dream modes."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'weekly', 'text': 'Some text'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Invalid mode. Use "daily" or "dream"'
 
 def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
