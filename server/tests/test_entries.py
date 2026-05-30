@@ -211,6 +211,36 @@ def test_analyse_rejects_non_string_text(client):
     assert data['error'] == 'Text must be a string'
 
 
+def test_analyse_rejects_missing_text_key_for_daily_mode(client):
+    """Analyse endpoint requires text key for daily mode payloads."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Text is required'
+
+
+def test_analyse_rejects_whitespace_only_text(client):
+    """Analyse endpoint rejects text that is only whitespace."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': '   \n\t  '}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Text is required'
+
+
 def test_analyse_rejects_oversized_text(client):
     """Analyse endpoint enforces maximum text length."""
     token = get_auth_token(client)
