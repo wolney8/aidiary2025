@@ -5,6 +5,7 @@ import { CreateComponent } from "./create.component";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import {
+  DailyAnalysisResponse,
   DailyEntry,
   DreamAnalysisResponse,
   DreamEntry,
@@ -82,6 +83,40 @@ describe("CreateComponent save reliability", () => {
     expect(entriesServiceMock.updateDailyEntry).toHaveBeenCalledTimes(1);
     expect(analysisServiceMock.analyseText).toHaveBeenCalledTimes(1);
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 42]);
+    expect(component.errorMessage).toBe("");
+    expect(component.isSaving).toBeFalse();
+  });
+
+  it("navigates after successful daily save even when analysis save-back fails", () => {
+    component.selectedType = "daily";
+    component.entryDate = new Date("2026-05-30T10:00:00.000Z");
+    component.content = "A full daily entry";
+    component.isEditing = true;
+    component.editingId = 123;
+
+    const updatedDailyEntry: DailyEntry = {
+      id: 123,
+      entry_date: "2026-05-30",
+    };
+
+    const dailyAnalysis: DailyAnalysisResponse = {
+      ai_response: "analysis",
+      tags: "daily,reflection",
+      daily_people_names: "",
+      daily_places: "",
+    };
+
+    entriesServiceMock.updateDailyEntry.and.returnValues(
+      of(updatedDailyEntry),
+      throwError(() => new Error("save analysis failed")),
+    );
+    analysisServiceMock.analyseText.and.returnValue(of(dailyAnalysis));
+
+    component.saveAndAnalyse();
+
+    expect(entriesServiceMock.updateDailyEntry).toHaveBeenCalledTimes(2);
+    expect(analysisServiceMock.analyseText).toHaveBeenCalledTimes(1);
+    expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 123]);
     expect(component.errorMessage).toBe("");
     expect(component.isSaving).toBeFalse();
   });
