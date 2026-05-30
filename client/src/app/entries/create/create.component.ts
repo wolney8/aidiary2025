@@ -913,14 +913,10 @@ export class CreateComponent implements OnInit {
             })
             .subscribe({
               next: () => this.finishNavigation(entryId),
-              error: () =>
-                this.handleError(
-                  "Saving AI insights failed. Please try again.",
-                ),
+              error: () => this.finishNavigation(entryId),
             });
         },
-        error: () =>
-          this.handleError("AI analysis failed. Please try again later."),
+        error: () => this.finishNavigation(entryId),
       });
   }
 
@@ -953,14 +949,10 @@ export class CreateComponent implements OnInit {
             })
             .subscribe({
               next: () => this.finishNavigation(entryId),
-              error: () =>
-                this.handleError(
-                  "Saving dream analysis failed. Please try again.",
-                ),
+              error: () => this.finishNavigation(entryId),
             });
         },
-        error: () =>
-          this.handleError("AI analysis failed. Please try again later."),
+        error: () => this.finishNavigation(entryId),
       });
   }
 
