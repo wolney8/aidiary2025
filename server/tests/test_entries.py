@@ -100,6 +100,90 @@ def client():
     os.close(db_fd)
     os.unlink(db_path)
 
+
+@pytest.fixture
+def client_schema_without_mood_columns():
+    """Create test client where diary tables start without mood/ai_style columns."""
+    db_fd, db_path = tempfile.mkstemp()
+    os.environ['DB_PATH'] = db_path
+    os.environ['JWT_SECRET'] = 'test-secret'
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+
+    conn.execute('''
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            age INTEGER,
+            sex TEXT,
+            goals TEXT,
+            dailydiary_api_key TEXT,
+            dreamdiary_api_key TEXT,
+            chatgpt_daily_diary_coachname TEXT,
+            chatgpt_dream_diary_coachname TEXT
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE dailydiary_entries (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            entry_date DATE,
+            entry_number INTEGER,
+            title TEXT,
+            user_message TEXT,
+            ai_response TEXT,
+            daily_people_names TEXT,
+            daily_places TEXT,
+            tags TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE dreamdiary_entries (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            entry_date DATE,
+            entry_number INTEGER,
+            title TEXT,
+            cast TEXT,
+            location TEXT,
+            period TEXT,
+            emotion TEXT,
+            plot TEXT,
+            symbols_and_imagery TEXT,
+            insight TEXT,
+            action TEXT,
+            other TEXT,
+            summary TEXT,
+            interpretation TEXT,
+            image_prompt TEXT,
+            image_url TEXT,
+            dream_people_names TEXT,
+            dream_places TEXT,
+            tags TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+    app = create_app()
+    app.config['TESTING'] = True
+
+    with app.test_client() as client:
+        yield client
+
+    os.close(db_fd)
+    os.unlink(db_path)
+
 def get_auth_token(client):
     """Helper to get authentication token."""
     response = client.post('/api/register',
@@ -152,6 +236,46 @@ def test_get_daily_entries(client):
     data = json.loads(response.data)
     assert isinstance(data, list)
     assert len(data) > 0
+
+
+def test_startup_migration_adds_missing_columns_and_daily_update_allows_mood(client_schema_without_mood_columns):
+    """App startup should migrate missing daily mood/ai_style columns and allow PUT updates."""
+    token = get_auth_token(client_schema_without_mood_columns)
+
+    create_resp = client_schema_without_mood_columns.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-09', 'user_message': 'Before migration update'}),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client_schema_without_mood_columns.put(f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mood': 'calm', 'ai_style': 'concise'}),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+
+def test_startup_migration_adds_missing_columns_and_dream_update_allows_mood(client_schema_without_mood_columns):
+    """App startup should migrate missing dream mood/ai_style columns and allow PUT updates."""
+    token = get_auth_token(client_schema_without_mood_columns)
+
+    create_resp = client_schema_without_mood_columns.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-10', 'title': 'Dream', 'plot': 'Plot'}),
+        content_type='application/json'
+    )
+    assert create_resp.status_code == 201
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client_schema_without_mood_columns.put(f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mood': 'curious', 'ai_style': 'minimal'}),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
 
 @patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry(mock_openai, client):
