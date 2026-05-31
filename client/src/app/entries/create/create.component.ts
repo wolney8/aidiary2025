@@ -885,10 +885,15 @@ export class CreateComponent implements OnInit {
   }
 
   private runDailyAnalysis(entryId: number): void {
+    const referenceDate = this.entryDate
+      ? this.serialiseDateAsLocalIso(this.entryDate)
+      : undefined;
+
     this.analysisService
       .analyseText({
         mode: "daily",
         text: this.content,
+        reference_date: referenceDate,
       })
       .subscribe({
         next: (analysis) => {
@@ -925,11 +930,15 @@ export class CreateComponent implements OnInit {
     const analysisText =
       this.dreamPlot.trim() ||
       `Cast: ${this.dreamCast} Location: ${this.dreamLocation} Plot: ${this.dreamPlot} Emotion: ${this.dreamEmotion}`;
+    const referenceDate = this.entryDate
+      ? this.serialiseDateAsLocalIso(this.entryDate)
+      : undefined;
 
     this.analysisService
       .analyseText({
         mode: "dream",
         text: analysisText,
+        reference_date: referenceDate,
       })
       .subscribe({
         next: (analysis) => {

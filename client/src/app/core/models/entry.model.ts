@@ -44,6 +44,7 @@ export interface DreamEntry {
 export interface AnalysisRequest {
   mode: "daily" | "dream";
   text: string;
+  reference_date?: string;
   ai_style?: string;
   existing_content?: Partial<DailyEntry | DreamEntry>; // For extracting people/places
 }

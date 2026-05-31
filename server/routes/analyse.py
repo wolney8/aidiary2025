@@ -2,6 +2,7 @@
 # AI analysis endpoint
 from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import datetime
 import sqlite3
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 
@@ -83,29 +84,133 @@ def _truncate_text(value: str, max_chars: int) -> str:
     return text[:max_chars].rstrip() + '...'
 
 
-def _build_recent_context(user_id: int, mode: str) -> str | None:
+def _validate_reference_date(value: object) -> str | None:
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError('reference_date must be formatted as YYYY-MM-DD')
+
+    candidate = value.strip()
+    if not candidate:
+        return None
+
+    try:
+        datetime.strptime(candidate, '%Y-%m-%d')
+    except ValueError as exc:
+        raise ValueError('reference_date must be formatted as YYYY-MM-DD') from exc
+
+    return candidate
+
+
+def _build_metadata_summary_header(mode: str, text: str, result: dict) -> str:
+    if mode == 'daily':
+        source = result.get('ai_response') or text
+    else:
+        source = result.get('summary') or result.get('interpretation') or text
+    return _truncate_text(str(source or ''), 280)
+
+
+def _persist_analysis_metadata(
+    user_id: int,
+    mode: str,
+    reference_date: str | None,
+    summary_header: str,
+    tags: str,
+    people_names: str,
+    places: str,
+) -> None:
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO entry_ai_metadata (
+                user_id, mode, reference_date, summary_header, tags, people_names, places
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, mode, reference_date, summary_header, tags, people_names, places),
+        )
+        conn.commit()
+    except Exception:
+        current_app.logger.exception('Failed to persist analysis metadata; continuing')
+    finally:
+        conn.close()
+
+
+def _build_recent_context(user_id: int, mode: str, reference_date: str | None = None) -> str | None:
+    conn = get_db()
+
+    metadata_rows = []
+    try:
+        metadata_query = """
+            SELECT reference_date, summary_header
+            FROM entry_ai_metadata
+            WHERE user_id = ?
+              AND mode = ?
+        """
+        metadata_params: list[object] = [user_id, mode]
+
+        if reference_date:
+            metadata_query += " AND (reference_date IS NULL OR reference_date <= ?)"
+            metadata_params.append(reference_date)
+
+        metadata_query += " ORDER BY reference_date DESC, id DESC LIMIT ?"
+        metadata_params.append(RECENT_CONTEXT_MAX_ENTRIES)
+
+        metadata_rows = conn.execute(metadata_query, tuple(metadata_params)).fetchall()
+    except sqlite3.OperationalError:
+        metadata_rows = []
+
+    if metadata_rows:
+        context_chunks: list[str] = []
+        current_chars = 0
+
+        for index, row in enumerate(metadata_rows, start=1):
+            snippet = _truncate_text(row['summary_header'] or '', RECENT_CONTEXT_MAX_ENTRY_CHARS)
+            if not snippet:
+                continue
+
+            header = f"[{index}] ref_date={row['reference_date'] or ''}"
+            section = f"{header}\n{snippet}"
+            projected_chars = current_chars + len(section)
+            if context_chunks:
+                projected_chars += 2
+
+            if projected_chars > RECENT_CONTEXT_MAX_TOTAL_CHARS:
+                break
+
+            context_chunks.append(section)
+            current_chars = projected_chars
+
+        if context_chunks:
+            conn.close()
+            return "\n\n".join(context_chunks)
+
     if mode == 'daily':
         query = """
             SELECT entry_date, entry_number, title, user_message
             FROM dailydiary_entries
             WHERE user_id = ?
+              AND (? IS NULL OR entry_date <= ?)
             ORDER BY entry_date DESC, entry_number DESC, id DESC
             LIMIT ?
         """
         text_key = 'user_message'
+        params = (user_id, reference_date, reference_date, RECENT_CONTEXT_MAX_ENTRIES)
     else:
         query = """
             SELECT entry_date, entry_number, title, plot, summary, interpretation
             FROM dreamdiary_entries
             WHERE user_id = ?
+              AND (? IS NULL OR entry_date <= ?)
             ORDER BY entry_date DESC, entry_number DESC, id DESC
             LIMIT ?
         """
         text_key = 'plot'
+        params = (user_id, reference_date, reference_date, RECENT_CONTEXT_MAX_ENTRIES)
 
-    conn = get_db()
     try:
-        rows = conn.execute(query, (user_id, RECENT_CONTEXT_MAX_ENTRIES)).fetchall()
+        rows = conn.execute(query, params).fetchall()
     finally:
         conn.close()
 
@@ -152,6 +257,7 @@ def analyse_text():
 
     mode = data.get('mode', 'daily')  # 'daily' or 'dream'
     text = data.get('text', '')
+    reference_date_raw = data.get('reference_date')
 
     if mode not in ['daily', 'dream']:
         return jsonify({'error': 'Invalid mode. Use "daily" or "dream"'}), 400
@@ -166,10 +272,16 @@ def analyse_text():
     if len(text) > ANALYSE_TEXT_MAX_LENGTH:
         return jsonify({'error': f'Text exceeds maximum length of {ANALYSE_TEXT_MAX_LENGTH} characters'}), 400
 
+    try:
+        reference_date = _validate_reference_date(reference_date_raw)
+    except ValueError:
+        return jsonify({'error': 'Invalid reference_date format. Use YYYY-MM-DD'}), 400
+
     recent_context = None
+    user_id = None
     try:
         user_id = int(get_jwt_identity())
-        recent_context = _build_recent_context(user_id, mode)
+        recent_context = _build_recent_context(user_id, mode, reference_date)
     except Exception:
         current_app.logger.exception('Recent analysis context lookup failed; continuing without context')
     
@@ -178,6 +290,16 @@ def analyse_text():
         
         if mode == 'daily':
             result = ai_service.analyse_daily_entry(text, recent_context=recent_context)
+            if user_id is not None:
+                _persist_analysis_metadata(
+                    user_id=user_id,
+                    mode=mode,
+                    reference_date=reference_date,
+                    summary_header=_build_metadata_summary_header(mode, text, result),
+                    tags=str(result.get('tags', '')),
+                    people_names=_normalise_people_names(result.get('people_names', '')),
+                    places=str(result.get('places', '')),
+                )
             return jsonify({
                 'ai_response': result['ai_response'],
                 'tags': result['tags'],
@@ -186,6 +308,16 @@ def analyse_text():
             }), 200
         else:  # dream mode
             result = ai_service.analyse_dream_entry(text, recent_context=recent_context)
+            if user_id is not None:
+                _persist_analysis_metadata(
+                    user_id=user_id,
+                    mode=mode,
+                    reference_date=reference_date,
+                    summary_header=_build_metadata_summary_header(mode, text, result),
+                    tags=str(result.get('tags', '')),
+                    people_names=_normalise_people_names(result.get('people_names', '')),
+                    places=str(result.get('places', '')),
+                )
             return jsonify({
                 'summary': result['summary'],
                 'interpretation': result['interpretation'],

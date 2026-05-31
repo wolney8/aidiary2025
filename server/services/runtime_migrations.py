@@ -50,3 +50,36 @@ def ensure_entry_mood_style_columns(
                     log('Runtime migration added column %s.%s', table_name, column_name)
 
     return added_columns
+
+
+def ensure_entry_ai_metadata_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime metadata table exists for AI context headers.
+
+    Returns True when creation check is executed successfully.
+    Safe to run repeatedly (idempotent).
+    """
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entry_ai_metadata (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                reference_date DATE,
+                summary_header TEXT,
+                tags TEXT,
+                people_names TEXT,
+                places TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'entry_ai_metadata')
+
+    return True

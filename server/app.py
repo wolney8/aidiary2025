@@ -4,7 +4,10 @@ from flask import Flask, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
-from services.runtime_migrations import ensure_entry_mood_style_columns
+from services.runtime_migrations import (
+    ensure_entry_ai_metadata_table,
+    ensure_entry_mood_style_columns,
+)
 
 # Load environment variables
 load_dotenv()
@@ -57,6 +60,11 @@ def create_app():
             app.logger.info('Runtime DB migration check: no column changes needed')
     except Exception as migration_exc:
         app.logger.warning('Runtime DB migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_entry_ai_metadata_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime metadata migration skipped due to error: %s', migration_exc)
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')

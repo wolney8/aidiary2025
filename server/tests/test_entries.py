@@ -277,6 +277,19 @@ def test_startup_migration_adds_missing_columns_and_dream_update_allows_mood(cli
     )
     assert update_resp.status_code == 200
 
+
+def test_startup_migration_ensures_entry_ai_metadata_table(client):
+    """App startup should ensure the hidden AI metadata table exists."""
+    import sqlite3
+
+    db_path = client.application.config['DATABASE_PATH']
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entry_ai_metadata'"
+        ).fetchone()
+
+    assert row is not None
+
 @patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry(mock_openai, client):
     """Test AI analysis of daily entry."""
@@ -555,6 +568,51 @@ def test_analyse_rejects_invalid_mode(client):
     assert response.status_code == 400
     data = json.loads(response.data)
     assert data['error'] == 'Invalid mode. Use "daily" or "dream"'
+
+
+def test_analyse_rejects_invalid_reference_date(client):
+    """Analyse endpoint rejects malformed reference_date values."""
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'Valid text', 'reference_date': '31-05-2026'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Invalid reference_date format. Use YYYY-MM-DD'
+
+
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_accepts_valid_reference_date_without_contract_change(mock_service_cls, client):
+    """Valid reference_date should not alter the daily analyse response contract."""
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Date-aware response',
+        'tags': 'dated,analysis',
+        'people_names': 'Alex',
+        'places': 'Library',
+    }
+    mock_service_cls.return_value = mock_service
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Current analysis text',
+            'reference_date': '2026-05-31',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert set(data.keys()) == {'ai_response', 'tags', 'daily_people_names', 'daily_places'}
+    assert data['ai_response'] == 'Date-aware response'
 
 def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
