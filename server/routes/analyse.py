@@ -3,6 +3,7 @@
 from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
+import difflib
 import sqlite3
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 
@@ -84,6 +85,53 @@ def _truncate_text(value: str, max_chars: int) -> str:
     return text[:max_chars].rstrip() + '...'
 
 
+def _compact_csv_hint(raw: object, label: str, max_items: int = 3, max_chars: int = 60) -> str:
+    if not isinstance(raw, str):
+        return ''
+
+    items: list[str] = []
+    seen: set[str] = set()
+    for token in raw.split(','):
+        candidate = token.strip()
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(candidate)
+        if len(items) >= max_items:
+            break
+
+    if not items:
+        return ''
+
+    value = ', '.join(items)
+    value = _truncate_text(value, max_chars)
+    return f"{label}:{value}"
+
+
+def _normalise_header_for_similarity(value: str) -> str:
+    return ' '.join((value or '').strip().lower().split())
+
+
+def _is_highly_similar_header(value: str, existing_values: list[str]) -> bool:
+    normalised = _normalise_header_for_similarity(value)
+    if not normalised:
+        return True
+
+    for existing in existing_values:
+        existing_normalised = _normalise_header_for_similarity(existing)
+        if normalised == existing_normalised:
+            return True
+
+        ratio = difflib.SequenceMatcher(None, normalised, existing_normalised).ratio()
+        if ratio >= 0.93:
+            return True
+
+    return False
+
+
 def _validate_reference_date(value: object) -> str | None:
     if value is None:
         return None
@@ -108,7 +156,17 @@ def _build_metadata_summary_header(mode: str, text: str, result: dict) -> str:
         source = result.get('ai_response') or text
     else:
         source = result.get('summary') or result.get('interpretation') or text
-    return _truncate_text(str(source or ''), 280)
+
+    base = _truncate_text(str(source or ''), 220)
+    hints = [
+        _compact_csv_hint(result.get('tags', ''), 'tags', max_items=3, max_chars=40),
+        _compact_csv_hint(result.get('people_names', ''), 'people', max_items=2, max_chars=36),
+        _compact_csv_hint(result.get('places', ''), 'places', max_items=2, max_chars=36),
+    ]
+    hint_text = ' | '.join(hint for hint in hints if hint)
+    if not hint_text:
+        return _truncate_text(base, 280)
+    return _truncate_text(f"{base} | {hint_text}", 280)
 
 
 def _persist_analysis_metadata(
@@ -151,11 +209,19 @@ def _build_recent_context(user_id: int, mode: str, reference_date: str | None = 
         metadata_params: list[object] = [user_id, mode]
 
         if reference_date:
-            metadata_query += " AND (reference_date IS NULL OR reference_date <= ?)"
+            metadata_query += """
+                ORDER BY
+                    CASE WHEN reference_date IS NULL THEN 1 ELSE 0 END,
+                    ABS(julianday(reference_date) - julianday(?)) ASC,
+                    reference_date DESC,
+                    id DESC
+            """
             metadata_params.append(reference_date)
+        else:
+            metadata_query += " ORDER BY reference_date DESC, id DESC"
 
-        metadata_query += " ORDER BY reference_date DESC, id DESC LIMIT ?"
-        metadata_params.append(RECENT_CONTEXT_MAX_ENTRIES)
+        metadata_query += " LIMIT ?"
+        metadata_params.append(RECENT_CONTEXT_MAX_ENTRIES * 3)
 
         metadata_rows = conn.execute(metadata_query, tuple(metadata_params)).fetchall()
     except sqlite3.OperationalError:
@@ -163,6 +229,7 @@ def _build_recent_context(user_id: int, mode: str, reference_date: str | None = 
 
     if metadata_rows:
         context_chunks: list[str] = []
+        selected_headers: list[str] = []
         current_chars = 0
 
         for index, row in enumerate(metadata_rows, start=1):
@@ -170,7 +237,12 @@ def _build_recent_context(user_id: int, mode: str, reference_date: str | None = 
             if not snippet:
                 continue
 
-            header = f"[{index}] ref_date={row['reference_date'] or ''}"
+            if _is_highly_similar_header(snippet, selected_headers):
+                continue
+
+            selected_headers.append(snippet)
+
+            header = f"[{len(context_chunks) + 1}] ref_date={row['reference_date'] or ''}"
             section = f"{header}\n{snippet}"
             projected_chars = current_chars + len(section)
             if context_chunks:
@@ -181,6 +253,9 @@ def _build_recent_context(user_id: int, mode: str, reference_date: str | None = 
 
             context_chunks.append(section)
             current_chars = projected_chars
+
+            if len(context_chunks) >= RECENT_CONTEXT_MAX_ENTRIES:
+                break
 
         if context_chunks:
             conn.close()

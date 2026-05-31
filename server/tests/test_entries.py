@@ -614,6 +614,113 @@ def test_analyse_daily_entry_accepts_valid_reference_date_without_contract_chang
     assert set(data.keys()) == {'ai_response', 'tags', 'daily_people_names', 'daily_places'}
     assert data['ai_response'] == 'Date-aware response'
 
+
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_recent_context_prefers_metadata_near_reference_date(mock_service_cls, client):
+    """Metadata-backed recent context should prioritise rows nearest to reference_date."""
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service_cls.return_value = mock_service
+
+    def _daily_payload(label: str) -> dict:
+        return {
+            'ai_response': f'Header {label}',
+            'tags': f'tag-{label}',
+            'people_names': '',
+            'places': '',
+        }
+
+    mock_service.analyse_daily_entry.side_effect = [
+        _daily_payload('old'),
+        _daily_payload('near'),
+        _daily_payload('far_future'),
+        _daily_payload('final'),
+    ]
+
+    seed_payloads = [
+        ('2026-05-01', 'seed old'),
+        ('2026-05-15', 'seed near'),
+        ('2026-05-30', 'seed far future'),
+    ]
+    for reference_date, text in seed_payloads:
+        seed_response = client.post('/api/analyse',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({'mode': 'daily', 'text': text, 'reference_date': reference_date}),
+            content_type='application/json'
+        )
+        assert seed_response.status_code == 200
+
+    final_response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'target text', 'reference_date': '2026-05-16'}),
+        content_type='application/json'
+    )
+
+    assert final_response.status_code == 200
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert recent_context is not None
+    assert 'ref_date=2026-05-15' in recent_context
+    assert recent_context.find('ref_date=2026-05-15') < recent_context.find('ref_date=2026-05-30')
+
+
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_recent_context_deduplicates_duplicate_metadata_headers(mock_service_cls, client):
+    """Duplicate metadata summary headers should not dominate recent context."""
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service_cls.return_value = mock_service
+    mock_service.analyse_daily_entry.side_effect = [
+        {
+            'ai_response': 'Repeated metadata header',
+            'tags': 'repeat,stable',
+            'people_names': 'Alex',
+            'places': 'Library',
+        },
+        {
+            'ai_response': 'Repeated metadata header',
+            'tags': 'repeat,stable',
+            'people_names': 'Alex',
+            'places': 'Library',
+        },
+        {
+            'ai_response': 'Distinct metadata header',
+            'tags': 'distinct',
+            'people_names': '',
+            'places': '',
+        },
+        {
+            'ai_response': 'Final response',
+            'tags': 'final',
+            'people_names': '',
+            'places': '',
+        },
+    ]
+
+    for reference_date in ['2026-05-10', '2026-05-11', '2026-05-12']:
+        seed_response = client.post('/api/analyse',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({'mode': 'daily', 'text': 'seed text', 'reference_date': reference_date}),
+            content_type='application/json'
+        )
+        assert seed_response.status_code == 200
+
+    final_response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'current text', 'reference_date': '2026-05-13'}),
+        content_type='application/json'
+    )
+
+    assert final_response.status_code == 200
+    data = json.loads(final_response.data)
+    assert set(data.keys()) == {'ai_response', 'tags', 'daily_people_names', 'daily_places'}
+
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert recent_context is not None
+    assert recent_context.count('Repeated metadata header') == 1
+    assert 'Distinct metadata header' in recent_context
+
 def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
     response = client.get('/api/daily')

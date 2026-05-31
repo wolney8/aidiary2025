@@ -23,6 +23,21 @@ class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
 
     @staticmethod
+    def _log_analysis_outcome(mode: str, outcome: str, level: str = 'info', **fields: object) -> None:
+        payload = {'event': 'analysis_outcome', 'mode': mode, 'outcome': outcome, **fields}
+        message = 'analysis_outcome ' + json.dumps(payload, sort_keys=True)
+
+        if level == 'warning':
+            logger.warning(message)
+            return
+
+        if level == 'exception':
+            logger.exception(message)
+            return
+
+        logger.info(message)
+
+    @staticmethod
     def _parse_positive_float_env(var_name: str, default: float) -> float:
         raw_value = os.getenv(var_name)
         if raw_value is None:
@@ -232,19 +247,29 @@ class OpenAIService:
             )
             if result is None:
                 logger.warning('Daily analysis returned invalid or incomplete JSON payload')
+                self._log_analysis_outcome('daily', 'fallback_invalid_json', level='warning')
                 return fallback
 
             if len(result) < len(fallback):
                 logger.warning('Daily analysis returned partial JSON payload; merging fallback defaults')
+                self._log_analysis_outcome(
+                    'daily',
+                    'success_partial_merge',
+                    parsed_keys=sorted(result.keys()),
+                )
+            else:
+                self._log_analysis_outcome('daily', 'success_full')
 
             return {**fallback, **result}
 
         except Exception as exc:
             if self._is_rate_limit_like_error(exc):
                 logger.warning('Daily analysis hit AI rate limit/quota: %s', exc)
+                self._log_analysis_outcome('daily', 'rate_limited', level='warning')
                 raise AnalysisRateLimitError('AI analysis rate-limited') from exc
 
             logger.exception('Daily analysis failed')
+            self._log_analysis_outcome('daily', 'fallback_exception', level='exception')
             return self._daily_fallback()
     
     def analyse_dream_entry(self, text: str, recent_context: str | None = None) -> Dict:
@@ -292,19 +317,29 @@ class OpenAIService:
             )
             if result is None:
                 logger.warning('Dream analysis returned invalid or incomplete JSON payload')
+                self._log_analysis_outcome('dream', 'fallback_invalid_json', level='warning')
                 return fallback
 
             if len(result) < len(fallback):
                 logger.warning('Dream analysis returned partial JSON payload; merging fallback defaults')
+                self._log_analysis_outcome(
+                    'dream',
+                    'success_partial_merge',
+                    parsed_keys=sorted(result.keys()),
+                )
+            else:
+                self._log_analysis_outcome('dream', 'success_full')
 
             return {**fallback, **result}
 
         except Exception as exc:
             if self._is_rate_limit_like_error(exc):
                 logger.warning('Dream analysis hit AI rate limit/quota: %s', exc)
+                self._log_analysis_outcome('dream', 'rate_limited', level='warning')
                 raise AnalysisRateLimitError('AI analysis rate-limited') from exc
 
             logger.exception('Dream analysis failed')
+            self._log_analysis_outcome('dream', 'fallback_exception', level='exception')
             return self._dream_fallback()
     
     def generate_image(self, prompt: str) -> str:
