@@ -173,6 +173,56 @@ Additional requirements for this retry:
         }
 
     @staticmethod
+    def _normalise_whitespace(value: str) -> str:
+        return ' '.join(str(value).split())
+
+    @staticmethod
+    def _truncate_text(value: str, max_chars: int) -> str:
+        if len(value) <= max_chars:
+            return value
+        return value[: max_chars - 1].rstrip() + '…'
+
+    @staticmethod
+    def _build_contextual_text_snippet(text: str, recent_context: str | None = None) -> str:
+        base_text = OpenAIService._normalise_whitespace(text or '')
+        if not base_text:
+            return ''
+
+        entry_snippet = OpenAIService._truncate_text(base_text, 180)
+
+        if not recent_context:
+            return entry_snippet
+
+        context_text = OpenAIService._normalise_whitespace(recent_context)
+        if not context_text:
+            return entry_snippet
+
+        context_snippet = OpenAIService._truncate_text(context_text, 120)
+        return f'{entry_snippet} | Recent context: {context_snippet}'
+
+    @staticmethod
+    def _daily_contextual_fallback(text: str, recent_context: str | None = None) -> Dict:
+        snippet = OpenAIService._build_contextual_text_snippet(text, recent_context)
+        if snippet:
+            ai_response = (
+                'I could not generate a full analysis right now. '
+                f'From your words: "{snippet}". '
+                'A helpful next step is to note the most important feeling or event in one sentence.'
+            )
+        else:
+            ai_response = (
+                'I could not generate a full analysis right now. '
+                'Please share one concrete feeling or event you want to reflect on.'
+            )
+
+        return {
+            'ai_response': ai_response,
+            'tags': 'reflection,daily',
+            'people_names': '',
+            'places': '',
+        }
+
+    @staticmethod
     def _dream_fallback() -> Dict:
         return {
             "summary": "A dream experience to explore further.",
@@ -181,6 +231,32 @@ Additional requirements for this retry:
             "tags": "dream,subconscious",
             "people_names": "",
             "places": "",
+        }
+
+    @staticmethod
+    def _dream_contextual_fallback(text: str, recent_context: str | None = None) -> Dict:
+        snippet = OpenAIService._build_contextual_text_snippet(text, recent_context)
+
+        if snippet:
+            summary = f'Dream details noted: "{snippet}".'
+            interpretation = (
+                'Based only on your wording, this dream appears emotionally significant and worth exploring further.'
+            )
+            image_prompt = f'Illustrate this dream scene using only these details: {snippet}'
+        else:
+            summary = 'A dream was recorded and is ready for exploration.'
+            interpretation = (
+                'Based on the available text, this dream may reflect important emotions or concerns.'
+            )
+            image_prompt = 'Surreal dream scene with symbolic imagery and soft lighting'
+
+        return {
+            'summary': summary,
+            'interpretation': interpretation,
+            'image_prompt': image_prompt,
+            'tags': 'dream,subconscious',
+            'people_names': '',
+            'places': '',
         }
 
     @staticmethod
@@ -258,6 +334,39 @@ Additional requirements for this retry:
         )
 
     @staticmethod
+    def _is_daily_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict) -> bool:
+        if retry_result is None:
+            return True
+
+        if OpenAIService._is_daily_generic_fallback_like(retry_result, fallback):
+            return True
+
+        initial_text = OpenAIService._normalise_whitespace(initial_result.get('ai_response', ''))
+        retry_text = OpenAIService._normalise_whitespace(retry_result.get('ai_response', ''))
+        return bool(initial_text and retry_text and initial_text == retry_text)
+
+    @staticmethod
+    def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict) -> bool:
+        if retry_result is None:
+            return True
+
+        if OpenAIService._is_dream_generic_trio(retry_result, fallback):
+            return True
+
+        initial_trio = (
+            OpenAIService._normalise_whitespace(initial_result.get('summary', '')),
+            OpenAIService._normalise_whitespace(initial_result.get('interpretation', '')),
+            OpenAIService._normalise_whitespace(initial_result.get('image_prompt', '')),
+        )
+        retry_trio = (
+            OpenAIService._normalise_whitespace(retry_result.get('summary', '')),
+            OpenAIService._normalise_whitespace(retry_result.get('interpretation', '')),
+            OpenAIService._normalise_whitespace(retry_result.get('image_prompt', '')),
+        )
+
+        return all(initial_trio) and initial_trio == retry_trio
+
+    @staticmethod
     def _is_rate_limit_like_error(exc: Exception) -> bool:
         status_code = getattr(exc, 'status_code', None)
         if status_code == 429:
@@ -327,15 +436,19 @@ Additional requirements for this retry:
                     retry_raw_content,
                     ('ai_response', 'tags', 'people_names', 'places'),
                 )
+                retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
 
-                if retry_result is not None:
-                    retry_merged_result = {**fallback, **retry_result}
-                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback):
-                        self._log_analysis_outcome('daily', 'retry_improved_specificity')
-                        return retry_merged_result
+                if not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback):
+                    self._log_analysis_outcome('daily', 'retry_improved_specificity')
+                    return retry_merged_result
 
-                self._log_analysis_outcome('daily', 'retry_not_improved', level='warning')
-                return merged_result
+                contextual_fallback = self._daily_contextual_fallback(text, recent_context)
+                self._log_analysis_outcome(
+                    'daily',
+                    'retry_not_improved_contextual_fallback',
+                    level='warning',
+                )
+                return contextual_fallback
 
             return merged_result
 
@@ -396,15 +509,19 @@ Additional requirements for this retry:
                     retry_raw_content,
                     ('summary', 'interpretation', 'image_prompt', 'tags', 'people_names', 'places'),
                 )
+                retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
 
-                if retry_result is not None:
-                    retry_merged_result = {**fallback, **retry_result}
-                    if not self._is_dream_generic_trio(retry_merged_result, fallback):
-                        self._log_analysis_outcome('dream', 'retry_improved_specificity')
-                        return retry_merged_result
+                if not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback):
+                    self._log_analysis_outcome('dream', 'retry_improved_specificity')
+                    return retry_merged_result
 
-                self._log_analysis_outcome('dream', 'retry_not_improved', level='warning')
-                return merged_result
+                contextual_fallback = self._dream_contextual_fallback(text, recent_context)
+                self._log_analysis_outcome(
+                    'dream',
+                    'retry_not_improved_contextual_fallback',
+                    level='warning',
+                )
+                return contextual_fallback
 
             return merged_result
 
