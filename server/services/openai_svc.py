@@ -22,6 +22,47 @@ class AnalysisRateLimitError(Exception):
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
 
+    DAILY_ANALYSIS_SYSTEM_PROMPT = """You are a supportive diary coach. Analyse the daily diary entry and provide:
+                        1. A supportive and insightful response
+                        2. Key themes/tags (comma-separated)
+                        3. Names of people mentioned (comma-separated)
+                        4. Places/locations mentioned (comma-separated)
+
+                        Respond in JSON format:
+                        {
+                            "ai_response": "Your supportive response here",
+                            "tags": "tag1,tag2,tag3",
+                            "people_names": "Name1,Name2",
+                            "places": "Place1,Place2"
+                        }"""
+
+    DREAM_ANALYSIS_SYSTEM_PROMPT = """You are a dream analyst. Analyse the dream and provide:
+                        1. A concise summary
+                        2. Psychological interpretation
+                        3. An image generation prompt for the dream
+                        4. Key themes/tags (comma-separated)
+                        5. Names of people in the dream (comma-separated)
+                        6. Places/locations in the dream (comma-separated)
+
+                        Respond in JSON format:
+                        {
+                            "summary": "Brief summary here",
+                            "interpretation": "Psychological interpretation here",
+                            "image_prompt": "Artistic description for image generation",
+                            "tags": "tag1,tag2,tag3",
+                            "people_names": "Name1,Name2",
+                            "places": "Place1,Place2"
+                        }"""
+
+    SPECIFICITY_RETRY_INSTRUCTION = """
+
+Additional requirements for this retry:
+- Be specific and concrete about the exact details in the provided entry and recent context.
+- Reference actual events, emotions, people, or places from the text when present.
+- Avoid generic phrases and boilerplate encouragement.
+- Do not return vague or fallback-style wording.
+"""
+
     @staticmethod
     def _log_analysis_outcome(mode: str, outcome: str, level: str = 'info', **fields: object) -> None:
         payload = {'event': 'analysis_outcome', 'mode': mode, 'outcome': outcome, **fields}
@@ -183,6 +224,39 @@ class OpenAIService:
 
         return normalised
 
+    def _create_analysis_completion(self, system_prompt: str, user_content: str):
+        return self.client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": user_content,
+                },
+            ],
+            temperature=0.7,
+            max_tokens=self.max_output_tokens,
+            timeout=self.request_timeout_seconds,
+        )
+
+    @staticmethod
+    def _is_daily_generic_fallback_like(result: Dict, fallback: Dict) -> bool:
+        return (
+            result.get('ai_response') == fallback['ai_response']
+            or result == fallback
+        )
+
+    @staticmethod
+    def _is_dream_generic_trio(result: Dict, fallback: Dict) -> bool:
+        return (
+            result.get('summary') == fallback['summary']
+            and result.get('interpretation') == fallback['interpretation']
+            and result.get('image_prompt') == fallback['image_prompt']
+        )
+
     @staticmethod
     def _is_rate_limit_like_error(exc: Exception) -> bool:
         status_code = getattr(exc, 'status_code', None)
@@ -210,33 +284,9 @@ class OpenAIService:
         """Analyse daily diary entry and extract insights."""
         try:
             user_content = self._build_analysis_user_content(text, recent_context)
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a supportive diary coach. Analyse the daily diary entry and provide:
-                        1. A supportive and insightful response
-                        2. Key themes/tags (comma-separated)
-                        3. Names of people mentioned (comma-separated)
-                        4. Places/locations mentioned (comma-separated)
-                        
-                        Respond in JSON format:
-                        {
-                            "ai_response": "Your supportive response here",
-                            "tags": "tag1,tag2,tag3",
-                            "people_names": "Name1,Name2",
-                            "places": "Place1,Place2"
-                        }"""
-                    },
-                    {
-                        "role": "user",
-                        "content": user_content
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=self.max_output_tokens,
-                timeout=self.request_timeout_seconds,
+            response = self._create_analysis_completion(
+                self.DAILY_ANALYSIS_SYSTEM_PROMPT,
+                user_content,
             )
 
             raw_content = response.choices[0].message.content
@@ -260,7 +310,34 @@ class OpenAIService:
             else:
                 self._log_analysis_outcome('daily', 'success_full')
 
-            return {**fallback, **result}
+            merged_result = {**fallback, **result}
+
+            if self._is_daily_generic_fallback_like(merged_result, fallback):
+                self._log_analysis_outcome(
+                    'daily',
+                    'retry_triggered_generic_output',
+                    fallback_like=True,
+                )
+                retry_response = self._create_analysis_completion(
+                    self.DAILY_ANALYSIS_SYSTEM_PROMPT + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('ai_response', 'tags', 'people_names', 'places'),
+                )
+
+                if retry_result is not None:
+                    retry_merged_result = {**fallback, **retry_result}
+                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback):
+                        self._log_analysis_outcome('daily', 'retry_improved_specificity')
+                        return retry_merged_result
+
+                self._log_analysis_outcome('daily', 'retry_not_improved', level='warning')
+                return merged_result
+
+            return merged_result
 
         except Exception as exc:
             if self._is_rate_limit_like_error(exc):
@@ -276,37 +353,9 @@ class OpenAIService:
         """Analyse dream diary entry and provide interpretation."""
         try:
             user_content = self._build_analysis_user_content(text, recent_context)
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a dream analyst. Analyse the dream and provide:
-                        1. A concise summary
-                        2. Psychological interpretation
-                        3. An image generation prompt for the dream
-                        4. Key themes/tags (comma-separated)
-                        5. Names of people in the dream (comma-separated)
-                        6. Places/locations in the dream (comma-separated)
-                        
-                        Respond in JSON format:
-                        {
-                            "summary": "Brief summary here",
-                            "interpretation": "Psychological interpretation here",
-                            "image_prompt": "Artistic description for image generation",
-                            "tags": "tag1,tag2,tag3",
-                            "people_names": "Name1,Name2",
-                            "places": "Place1,Place2"
-                        }"""
-                    },
-                    {
-                        "role": "user",
-                        "content": user_content
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=self.max_output_tokens,
-                timeout=self.request_timeout_seconds,
+            response = self._create_analysis_completion(
+                self.DREAM_ANALYSIS_SYSTEM_PROMPT,
+                user_content,
             )
 
             raw_content = response.choices[0].message.content
@@ -330,7 +379,34 @@ class OpenAIService:
             else:
                 self._log_analysis_outcome('dream', 'success_full')
 
-            return {**fallback, **result}
+            merged_result = {**fallback, **result}
+
+            if self._is_dream_generic_trio(merged_result, fallback):
+                self._log_analysis_outcome(
+                    'dream',
+                    'retry_triggered_generic_output',
+                    fallback_like=True,
+                )
+                retry_response = self._create_analysis_completion(
+                    self.DREAM_ANALYSIS_SYSTEM_PROMPT + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('summary', 'interpretation', 'image_prompt', 'tags', 'people_names', 'places'),
+                )
+
+                if retry_result is not None:
+                    retry_merged_result = {**fallback, **retry_result}
+                    if not self._is_dream_generic_trio(retry_merged_result, fallback):
+                        self._log_analysis_outcome('dream', 'retry_improved_specificity')
+                        return retry_merged_result
+
+                self._log_analysis_outcome('dream', 'retry_not_improved', level='warning')
+                return merged_result
+
+            return merged_result
 
         except Exception as exc:
             if self._is_rate_limit_like_error(exc):

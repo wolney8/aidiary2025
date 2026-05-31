@@ -305,6 +305,84 @@ def test_analyse_daily_entry_raises_rate_limit_error_for_quota_failures(mock_ope
 
 
 @patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_retries_once_on_generic_fallback_like_response(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
+            'tags': 'reflection,daily',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'You mentioned feeling anxious after the meeting with Alex at the office, and that relief came after your evening walk.',
+            'tags': 'anxiety,work,relief',
+            'people_names': 'Alex',
+            'places': 'office',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text about meeting Alex at the office and walking later')
+
+    assert result == {
+        'ai_response': 'You mentioned feeling anxious after the meeting with Alex at the office, and that relief came after your evening walk.',
+        'tags': 'anxiety,work,relief',
+        'people_names': 'Alex',
+        'places': 'office',
+    }
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_does_not_retry_more_than_once_on_repeated_generic_output(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
+            'tags': 'reflection,daily',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
+            'tags': 'reflection,daily',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text')
+
+    assert result == {
+        'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
+        'tags': 'reflection,daily',
+        'people_names': '',
+        'places': '',
+    }
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry_includes_recent_context_in_user_message(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
@@ -460,6 +538,51 @@ def test_analyse_dream_entry_merges_partial_payload_with_defaults(mock_openai):
         'people_names': '',
         'places': '',
     }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_retries_once_on_generic_fallback_trio(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'A dream experience to explore further.',
+            'interpretation': 'Dreams often reflect our subconscious thoughts and emotions.',
+            'image_prompt': 'Abstract dreamscape with surreal elements',
+            'tags': 'dream,subconscious',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'You were running through your old school corridor and then found a hidden rooftop garden.',
+            'interpretation': 'The school setting and fast pace may reflect pressure to meet old expectations, whilst the rooftop garden suggests a wish for calm and autonomy.',
+            'image_prompt': 'Moonlit old school corridor opening into a hidden rooftop garden with lanterns and mist',
+            'tags': 'school,pressure,relief',
+            'people_names': '',
+            'places': 'old school,rooftop garden',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry('Dream text about old school corridor and hidden rooftop garden')
+
+    assert result == {
+        'summary': 'You were running through your old school corridor and then found a hidden rooftop garden.',
+        'interpretation': 'The school setting and fast pace may reflect pressure to meet old expectations, whilst the rooftop garden suggests a wish for calm and autonomy.',
+        'image_prompt': 'Moonlit old school corridor opening into a hidden rooftop garden with lanterns and mist',
+        'tags': 'school,pressure,relief',
+        'people_names': '',
+        'places': 'old school,rooftop garden',
+    }
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 @patch('services.openai_svc.OpenAI')
