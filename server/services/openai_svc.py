@@ -128,23 +128,42 @@ class OpenAIService:
         }
 
     @staticmethod
-    def _extract_valid_json_payload(raw_content: str, required_keys: tuple[str, ...]) -> Dict | None:
+    def _extract_first_json_object(raw_content: str) -> Dict | None:
+        if not isinstance(raw_content, str):
+            return None
+
+        decoder = json.JSONDecoder()
+
         try:
             parsed = json.loads(raw_content)
+            if isinstance(parsed, dict):
+                return parsed
         except (TypeError, json.JSONDecodeError):
-            return None
+            pass
 
-        if not isinstance(parsed, dict):
-            return None
+        for start_index, char in enumerate(raw_content):
+            if char != '{':
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(raw_content, idx=start_index)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
 
-        if any(key not in parsed for key in required_keys):
+        return None
+
+    @staticmethod
+    def _extract_valid_json_payload(raw_content: str, required_keys: tuple[str, ...]) -> Dict | None:
+        parsed = OpenAIService._extract_first_json_object(raw_content)
+        if parsed is None:
             return None
 
         normalised: Dict[str, str] = {}
         for key in required_keys:
             value = parsed.get(key)
             if value is None:
-                return None
+                continue
             normalised[key] = str(value)
 
         return normalised
@@ -206,15 +225,19 @@ class OpenAIService:
             )
 
             raw_content = response.choices[0].message.content
+            fallback = self._daily_fallback()
             result = self._extract_valid_json_payload(
                 raw_content,
                 ("ai_response", "tags", "people_names", "places"),
             )
             if result is None:
                 logger.warning('Daily analysis returned invalid or incomplete JSON payload')
-                return self._daily_fallback()
+                return fallback
 
-            return result
+            if len(result) < len(fallback):
+                logger.warning('Daily analysis returned partial JSON payload; merging fallback defaults')
+
+            return {**fallback, **result}
 
         except Exception as exc:
             if self._is_rate_limit_like_error(exc):
@@ -262,15 +285,19 @@ class OpenAIService:
             )
 
             raw_content = response.choices[0].message.content
+            fallback = self._dream_fallback()
             result = self._extract_valid_json_payload(
                 raw_content,
                 ("summary", "interpretation", "image_prompt", "tags", "people_names", "places"),
             )
             if result is None:
                 logger.warning('Dream analysis returned invalid or incomplete JSON payload')
-                return self._dream_fallback()
+                return fallback
 
-            return result
+            if len(result) < len(fallback):
+                logger.warning('Dream analysis returned partial JSON payload; merging fallback defaults')
+
+            return {**fallback, **result}
 
         except Exception as exc:
             if self._is_rate_limit_like_error(exc):

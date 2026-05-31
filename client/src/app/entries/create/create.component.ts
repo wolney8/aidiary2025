@@ -128,11 +128,7 @@ const UK_DATE_FORMATS = {
             *ngIf="leaveItToAI"
           >
             <mat-label>AI Response Style</mat-label>
-            <mat-select
-              [(ngModel)]="selectedAIStyle"
-              name="aiStyle"
-              [disabled]="isEditing"
-            >
+            <mat-select [(ngModel)]="selectedAIStyle" name="aiStyle">
               <mat-option
                 *ngFor="let style of aiStyleOptions"
                 [value]="style.value"
@@ -693,7 +689,7 @@ export class CreateComponent implements OnInit {
 
   populateForm(entry: any, type: "daily" | "dream"): void {
     this.selectedType = type;
-    this.entryDate = new Date(entry.entry_date);
+    this.entryDate = this.parseApiDateAsLocal(entry.entry_date) ?? new Date();
     this.entryTitle = entry.title || "";
     this.tags = entry.tags
       ? entry.tags
@@ -766,7 +762,7 @@ export class CreateComponent implements OnInit {
     }
 
     this.isSaving = true;
-    const entryDate = this.entryDate.toISOString().split("T")[0];
+    const entryDate = this.serialiseDateAsLocalIso(this.entryDate);
     const tags = this.tags.join(",");
     const trimmedTitle = this.entryTitle.trim();
     const body = this.content.trim();
@@ -1109,6 +1105,41 @@ export class CreateComponent implements OnInit {
         this.backQueryParams[key] = sourceParams[key];
       }
     });
+  }
+
+  private parseApiDateAsLocal(value: unknown): Date | null {
+    if (typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    const isoDateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+    if (isoDateOnlyMatch) {
+      const year = Number(isoDateOnlyMatch[1]);
+      const monthIndex = Number(isoDateOnlyMatch[2]) - 1;
+      const day = Number(isoDateOnlyMatch[3]);
+      const localDate = new Date(year, monthIndex, day);
+
+      if (
+        localDate.getFullYear() === year &&
+        localDate.getMonth() === monthIndex &&
+        localDate.getDate() === day
+      ) {
+        return localDate;
+      }
+
+      return null;
+    }
+
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private serialiseDateAsLocalIso(value: Date): string {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   private hasUnsavedChanges(): boolean {

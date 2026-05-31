@@ -231,8 +231,60 @@ def test_analyse_daily_entry_falls_back_on_missing_required_keys(mock_openai):
     result = service.analyse_daily_entry('Daily text')
 
     assert result == {
-        'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
-        'tags': 'reflection,daily',
+        'ai_response': 'ok',
+        'tags': 'a,b',
+        'people_names': '',
+        'places': '',
+    }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_parses_wrapped_json_from_markdown_code_fence(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        'Here is the analysis:\n\n'
+        '```json\n'
+        '{"ai_response":"Specific response","tags":"gratitude,reflection","people_names":"","places":"Home"}\n'
+        '```\n'
+        'Hope this helps.'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text')
+
+    assert result == {
+        'ai_response': 'Specific response',
+        'tags': 'gratitude,reflection',
+        'people_names': '',
+        'places': 'Home',
+    }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_merges_partial_payload_with_defaults(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"Personalised guidance","tags":"focus,progress"}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text')
+
+    assert result == {
+        'ai_response': 'Personalised guidance',
+        'tags': 'focus,progress',
         'people_names': '',
         'places': '',
     }
@@ -375,10 +427,36 @@ def test_analyse_dream_entry_falls_back_on_missing_required_keys(mock_openai):
     result = service.analyse_dream_entry('Dream text')
 
     assert result == {
-        'summary': 'A dream experience to explore further.',
+        'summary': 'ok',
         'interpretation': 'Dreams often reflect our subconscious thoughts and emotions.',
         'image_prompt': 'Abstract dreamscape with surreal elements',
-        'tags': 'dream,subconscious',
+        'tags': 'dream',
+        'people_names': '',
+        'places': '',
+    }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_merges_partial_payload_with_defaults(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"summary":"Flying through a city","tags":"freedom,anxiety"}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry('Dream text')
+
+    assert result == {
+        'summary': 'Flying through a city',
+        'interpretation': 'Dreams often reflect our subconscious thoughts and emotions.',
+        'image_prompt': 'Abstract dreamscape with surreal elements',
+        'tags': 'freedom,anxiety',
         'people_names': '',
         'places': '',
     }
