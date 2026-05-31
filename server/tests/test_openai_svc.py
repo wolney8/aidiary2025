@@ -186,12 +186,15 @@ def test_analyse_daily_entry_fallback_behaviour_unchanged_when_env_invalid(mock_
         service = OpenAIService()
         result = service.analyse_daily_entry('Daily text')
 
-        assert result == {
-            'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
-            'tags': 'reflection,daily',
-            'people_names': '',
-            'places': '',
-        }
+        assert set(result.keys()) == {'ai_response', 'tags', 'people_names', 'places'}
+        assert result['ai_response'] != (
+            'Thank you for sharing your thoughts today. Every experience helps us grow and learn.'
+        )
+        assert 'Daily text' in result['ai_response']
+        assert result['tags'] == 'reflection,daily'
+        assert result['people_names'] == ''
+        assert result['places'] == ''
+        assert mock_client.chat.completions.create.call_count == 2
 
 
 @patch('services.openai_svc.OpenAI')
@@ -208,12 +211,15 @@ def test_analyse_daily_entry_falls_back_on_invalid_json(mock_openai):
     service = OpenAIService()
     result = service.analyse_daily_entry('Daily text')
 
-    assert result == {
-        'ai_response': 'Thank you for sharing your thoughts today. Every experience helps us grow and learn.',
-        'tags': 'reflection,daily',
-        'people_names': '',
-        'places': '',
-    }
+    assert set(result.keys()) == {'ai_response', 'tags', 'people_names', 'places'}
+    assert result['ai_response'] != (
+        'Thank you for sharing your thoughts today. Every experience helps us grow and learn.'
+    )
+    assert 'Daily text' in result['ai_response']
+    assert result['tags'] == 'reflection,daily'
+    assert result['people_names'] == ''
+    assert result['places'] == ''
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 @patch('services.openai_svc.OpenAI')
@@ -302,6 +308,27 @@ def test_analyse_daily_entry_raises_rate_limit_error_for_quota_failures(mock_ope
 
     with pytest.raises(AnalysisRateLimitError):
         service.analyse_daily_entry('Daily text')
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_returns_contextual_fallback_for_non_rate_limit_exception(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_client.chat.completions.create.side_effect = RuntimeError('invalid_api_key')
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text about an argument with Sam at the cafe')
+
+    assert set(result.keys()) == {'ai_response', 'tags', 'people_names', 'places'}
+    assert result['ai_response'] != (
+        'Thank you for sharing your thoughts today. Every experience helps us grow and learn.'
+    )
+    assert 'Daily text about an argument with Sam at the cafe' in result['ai_response']
+    assert result['tags'] == 'reflection,daily'
+    assert result['people_names'] == ''
+    assert result['places'] == ''
 
 
 @patch('services.openai_svc.OpenAI')
@@ -469,6 +496,34 @@ def test_analyse_dream_entry_raises_rate_limit_error_for_429_status(mock_openai)
 
 
 @patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_returns_contextual_fallback_for_non_rate_limit_exception(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_client.chat.completions.create.side_effect = RuntimeError('invalid_api_key')
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry('Dream text about a train station with my brother and a bright storm')
+
+    assert set(result.keys()) == {
+        'summary',
+        'interpretation',
+        'image_prompt',
+        'tags',
+        'people_names',
+        'places',
+    }
+    assert result['summary'] != 'A dream experience to explore further.'
+    assert result['interpretation'] != 'Dreams often reflect our subconscious thoughts and emotions.'
+    assert result['image_prompt'] != 'Abstract dreamscape with surreal elements'
+    assert 'Dream text about a train station with my brother and a bright storm' in result['summary']
+    assert result['tags'] == 'dream,subconscious'
+    assert result['people_names'] == ''
+    assert result['places'] == ''
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_dream_entry_falls_back_on_invalid_json(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
@@ -482,14 +537,22 @@ def test_analyse_dream_entry_falls_back_on_invalid_json(mock_openai):
     service = OpenAIService()
     result = service.analyse_dream_entry('Dream text')
 
-    assert result == {
-        'summary': 'A dream experience to explore further.',
-        'interpretation': 'Dreams often reflect our subconscious thoughts and emotions.',
-        'image_prompt': 'Abstract dreamscape with surreal elements',
-        'tags': 'dream,subconscious',
-        'people_names': '',
-        'places': '',
+    assert set(result.keys()) == {
+        'summary',
+        'interpretation',
+        'image_prompt',
+        'tags',
+        'people_names',
+        'places',
     }
+    assert result['summary'] != 'A dream experience to explore further.'
+    assert result['interpretation'] != 'Dreams often reflect our subconscious thoughts and emotions.'
+    assert result['image_prompt'] != 'Abstract dreamscape with surreal elements'
+    assert 'Dream text' in result['summary']
+    assert result['tags'] == 'dream,subconscious'
+    assert result['people_names'] == ''
+    assert result['places'] == ''
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 @patch('services.openai_svc.OpenAI')

@@ -406,8 +406,34 @@ Additional requirements for this retry:
             )
             if result is None:
                 logger.warning('Daily analysis returned invalid or incomplete JSON payload')
-                self._log_analysis_outcome('daily', 'fallback_invalid_json', level='warning')
-                return fallback
+                self._log_analysis_outcome(
+                    'daily',
+                    'retry_triggered_invalid_json',
+                    level='warning',
+                )
+                retry_response = self._create_analysis_completion(
+                    self.DAILY_ANALYSIS_SYSTEM_PROMPT + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('ai_response', 'tags', 'people_names', 'places'),
+                )
+
+                if retry_result is not None:
+                    retry_merged_result = {**fallback, **retry_result}
+                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback):
+                        self._log_analysis_outcome('daily', 'retry_improved_specificity_after_invalid_json')
+                        return retry_merged_result
+
+                contextual_fallback = self._daily_contextual_fallback(text, recent_context)
+                self._log_analysis_outcome(
+                    'daily',
+                    'retry_not_improved_contextual_fallback_after_invalid_json',
+                    level='warning',
+                )
+                return contextual_fallback
 
             if len(result) < len(fallback):
                 logger.warning('Daily analysis returned partial JSON payload; merging fallback defaults')
@@ -460,7 +486,7 @@ Additional requirements for this retry:
 
             logger.exception('Daily analysis failed')
             self._log_analysis_outcome('daily', 'fallback_exception', level='exception')
-            return self._daily_fallback()
+            return self._daily_contextual_fallback(text, recent_context)
     
     def analyse_dream_entry(self, text: str, recent_context: str | None = None) -> Dict:
         """Analyse dream diary entry and provide interpretation."""
@@ -479,8 +505,34 @@ Additional requirements for this retry:
             )
             if result is None:
                 logger.warning('Dream analysis returned invalid or incomplete JSON payload')
-                self._log_analysis_outcome('dream', 'fallback_invalid_json', level='warning')
-                return fallback
+                self._log_analysis_outcome(
+                    'dream',
+                    'retry_triggered_invalid_json',
+                    level='warning',
+                )
+                retry_response = self._create_analysis_completion(
+                    self.DREAM_ANALYSIS_SYSTEM_PROMPT + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('summary', 'interpretation', 'image_prompt', 'tags', 'people_names', 'places'),
+                )
+
+                if retry_result is not None:
+                    retry_merged_result = {**fallback, **retry_result}
+                    if not self._is_dream_generic_trio(retry_merged_result, fallback):
+                        self._log_analysis_outcome('dream', 'retry_improved_specificity_after_invalid_json')
+                        return retry_merged_result
+
+                contextual_fallback = self._dream_contextual_fallback(text, recent_context)
+                self._log_analysis_outcome(
+                    'dream',
+                    'retry_not_improved_contextual_fallback_after_invalid_json',
+                    level='warning',
+                )
+                return contextual_fallback
 
             if len(result) < len(fallback):
                 logger.warning('Dream analysis returned partial JSON payload; merging fallback defaults')
@@ -533,7 +585,7 @@ Additional requirements for this retry:
 
             logger.exception('Dream analysis failed')
             self._log_analysis_outcome('dream', 'fallback_exception', level='exception')
-            return self._dream_fallback()
+            return self._dream_contextual_fallback(text, recent_context)
     
     def generate_image(self, prompt: str) -> str:
         """Generate image from prompt using DALL-E (placeholder)."""
