@@ -1,10 +1,9 @@
 import { Component } from "@angular/core";
-import { CommonModule } from "@angular/common";
+import { CommonModule, Location } from "@angular/common";
 import { Router, RouterModule } from "@angular/router";
 import { MatIconModule } from "@angular/material/icon";
 import { MatCardModule } from "@angular/material/card";
 import { MatButtonModule } from "@angular/material/button";
-import { MatChipsModule } from "@angular/material/chips";
 
 @Component({
   selector: "app-settings",
@@ -15,7 +14,6 @@ import { MatChipsModule } from "@angular/material/chips";
     MatIconModule,
     MatCardModule,
     MatButtonModule,
-    MatChipsModule,
   ],
   template: `
     <div class="settings-shell" role="main" aria-label="Settings">
@@ -61,10 +59,7 @@ import { MatChipsModule } from "@angular/material/chips";
             </mat-card-actions>
           </mat-card>
 
-          <mat-card
-            class="settings-card settings-card--coming-soon"
-            aria-disabled="true"
-          >
+          <mat-card class="settings-card">
             <mat-card-header>
               <mat-icon mat-card-avatar>key</mat-icon>
               <mat-card-title>API Keys</mat-card-title>
@@ -73,19 +68,17 @@ import { MatChipsModule } from "@angular/material/chips";
               >
             </mat-card-header>
             <mat-card-content>
-              <mat-chip-set>
-                <mat-chip>Coming soon</mat-chip>
-              </mat-chip-set>
+              Manage your Daily and Dream diary API keys used for profile-level
+              AI features.
             </mat-card-content>
             <mat-card-actions>
-              <button mat-stroked-button disabled>Coming soon</button>
+              <a mat-flat-button color="primary" routerLink="/settings/api-keys"
+                >Manage Keys</a
+              >
             </mat-card-actions>
           </mat-card>
 
-          <mat-card
-            class="settings-card settings-card--coming-soon"
-            aria-disabled="true"
-          >
+          <mat-card class="settings-card">
             <mat-card-header>
               <mat-icon mat-card-avatar>psychology</mat-icon>
               <mat-card-title>AI Coach Preferences</mat-card-title>
@@ -94,18 +87,31 @@ import { MatChipsModule } from "@angular/material/chips";
               >
             </mat-card-header>
             <mat-card-content>
-              <mat-chip-set>
-                <mat-chip>Coming soon</mat-chip>
-              </mat-chip-set>
+              Set the coach names used for Daily and Dream diary companion
+              prompts.
             </mat-card-content>
             <mat-card-actions>
-              <button mat-stroked-button disabled>Coming soon</button>
+              <a mat-flat-button color="primary" routerLink="/settings/ai-coach"
+                >Edit Preferences</a
+              >
             </mat-card-actions>
           </mat-card>
         </section>
       </ng-container>
 
       <ng-template #childPage>
+        <div class="child-nav">
+          <button
+            mat-stroked-button
+            type="button"
+            class="header-back"
+            (click)="goBack()"
+            aria-label="Go back"
+          >
+            <mat-icon>arrow_back</mat-icon>
+            Back
+          </button>
+        </div>
         <div class="settings-content">
           <router-outlet></router-outlet>
         </div>
@@ -149,8 +155,17 @@ import { MatChipsModule } from "@angular/material/chips";
         color: var(--colour-text-secondary);
       }
 
-      .settings-card--coming-soon {
-        opacity: 0.9;
+      .child-nav {
+        margin-bottom: var(--spacing-md);
+      }
+
+      .header-back {
+        border-color: var(--colour-border);
+        color: var(--colour-text-secondary);
+      }
+
+      .header-back mat-icon {
+        margin-right: var(--spacing-xs);
       }
 
       .settings-content {
@@ -172,13 +187,38 @@ import { MatChipsModule } from "@angular/material/chips";
   ],
 })
 export class SettingsComponent {
-  constructor(private readonly router: Router) {}
+  constructor(
+    private readonly router: Router,
+    private readonly location: Location,
+  ) {}
+
+  goBack(): void {
+    if (this.canGoBack()) {
+      this.location.back();
+      return;
+    }
+
+    this.router.navigateByUrl("/settings");
+  }
 
   isLandingPage(): boolean {
-    return (
-      this.router.url === "/settings" ||
-      this.router.url.startsWith("/settings?") ||
-      this.router.url.startsWith("/settings#")
-    );
+    return this.getCurrentPath() === "/settings";
+  }
+
+  private getCurrentPath(): string {
+    return this.router.url.split("?")[0].split("#")[0];
+  }
+
+  private canGoBack(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    const navigationId = window.history.state?.navigationId;
+    if (typeof navigationId === "number") {
+      return navigationId > 1;
+    }
+
+    return window.history.length > 1;
   }
 }
