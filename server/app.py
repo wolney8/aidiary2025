@@ -4,10 +4,28 @@ from flask import Flask, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
-from services.simple_database_service import db_service
+from services.runtime_migrations import (
+    ensure_entry_ai_metadata_table,
+    ensure_entry_mood_style_columns,
+)
 
 # Load environment variables
 load_dotenv()
+
+
+def _ensure_nltk_data() -> None:
+    """Download NLTK corpora required for keyword/NER enrichment, if not already present."""
+    try:
+        import nltk
+        for _corpus in [
+            'punkt', 'punkt_tab',
+            'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng',
+            'maxent_ne_chunker', 'maxent_ne_chunker_tab',
+            'words',
+        ]:
+            nltk.download(_corpus, quiet=True)
+    except Exception:
+        pass
 
 def create_app():
     """Create and configure Flask application."""
@@ -35,6 +53,18 @@ def create_app():
         app.logger.warning('Database file not found at %s', database_path)
 
     app.config['DATABASE_PATH'] = database_path
+
+    try:
+        added_columns = ensure_entry_mood_style_columns(database_path, app.logger.info)
+        if added_columns == 0:
+            app.logger.info('Runtime DB migration check: no column changes needed')
+    except Exception as migration_exc:
+        app.logger.warning('Runtime DB migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_entry_ai_metadata_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime metadata migration skipped due to error: %s', migration_exc)
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
@@ -56,6 +86,11 @@ def create_app():
         app.logger.warning('422 Unprocessable: %s', getattr(err, 'description', err))
         return {'msg': 'Unprocessable Entity'}, 422
 
+    @app.errorhandler(500)
+    def _handle_500(err):
+        app.logger.error('500 Internal Server Error: %s', err)
+        return {'msg': 'Internal Server Error'}, 500
+
     @app.before_request
     def _log_jwt_presence():
         # Log presence of Authorization header for debugging; don't attempt
@@ -76,24 +111,31 @@ def create_app():
     from routes.profile import profile_bp
     from routes.entries import entries_bp
     from routes.analyse import analyse_bp
-    # from routes.import_routes import import_bp  # Temporarily disabled
+    from routes.import_routes import import_bp
+    from routes.chat import chat_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
     app.register_blueprint(entries_bp, url_prefix='/api')
     app.register_blueprint(analyse_bp, url_prefix='/api')
-    # app.register_blueprint(import_bp, url_prefix='/api')  # Temporarily disabled
+    app.register_blueprint(import_bp, url_prefix='/api')
+    app.register_blueprint(chat_bp, url_prefix='/api')
     
     # Health check endpoint
     @app.route('/health')
     def health():
-        # Test database connectivity for cloud migration readiness
-        db_status = 'connected' if db_service.test_connection() else 'disconnected'
-        return {
-            'status': 'healthy',
-            'database': db_status,
-            'database_type': db_service.get_db_type()
-        }, 200
+        return {'status': 'healthy'}, 200
+
+    # Download NLTK data and backfill any entries that were imported before data was available
+    _ensure_nltk_data()
+    try:
+        import sqlite3 as _sqlite3
+        from services.import_service import backfill_nltk_enrichment
+        with _sqlite3.connect(app.config['DATABASE_PATH'], timeout=10) as _bfconn:
+            _bfconn.execute('PRAGMA journal_mode=WAL')
+            backfill_nltk_enrichment(_bfconn, app.logger)
+    except Exception as _bf_exc:
+        app.logger.warning('Startup NLTK backfill skipped: %s', _bf_exc)
     
     return app
 

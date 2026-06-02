@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/app"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/test.ts",
+    "src/testing-globals.d.ts",
+    "tests/**/*",
+    "playwright.config.ts"
+  ]
+}

@@ -1,5 +1,5 @@
 // Global styles matching wireframe design
-@use '@angular/material' as mat;
+@use "@angular/material" as mat;
 
 // Custom theme colours
 $primary-palette: (
@@ -8,7 +8,8 @@ $primary-palette: (
   200: #ce93d8,
   300: #ba68c8,
   400: #ab47bc,
-  500: #7B3FF2, // Main purple from wireframes
+  500: #7b3ff2,
+  // Main purple from wireframes
   600: #8e24aa,
   700: #7b1fa2,
   800: #6a1b9a,
@@ -32,30 +33,35 @@ $primary-palette: (
     A200: white,
     A400: white,
     A700: white,
-  )
+  ),
 );
 
 $ai-diary-primary: mat.define-palette($primary-palette, 500);
 $ai-diary-accent: mat.define-palette(mat.$pink-palette, A200);
 $ai-diary-warn: mat.define-palette(mat.$red-palette);
 
-$ai-diary-theme: mat.define-light-theme((
-  color: (
-    primary: $ai-diary-primary,
-    accent: $ai-diary-accent,
-    warn: $ai-diary-warn,
-  ),
-  typography: mat.define-typography-config(),
-  density: 0,
-));
+$ai-diary-theme: mat.define-light-theme(
+  (
+    color: (
+      primary: $ai-diary-primary,
+      accent: $ai-diary-accent,
+      warn: $ai-diary-warn,
+    ),
+    typography: mat.define-typography-config(),
+    density: 0,
+  )
+);
 
 @include mat.all-component-themes($ai-diary-theme);
 
 // Global styles
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
-  font-family: Roboto, "Helvetica Neue", sans-serif;
+  font-family: "Source Sans 3", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--colour-background);
+  color: var(--colour-text-primary);
 }
 
 // Spacing variables from wireframes
@@ -65,24 +71,64 @@ html, body {
   --spacing-md: 24px;
   --spacing-lg: 32px;
   --spacing-xl: 48px;
+
+  --colour-primary: #1d4ed8;
+  --colour-primary-hover: #1e40af;
+  --colour-secondary: #0f172a;
+  --colour-accent: #0ea5e9;
+  --colour-background: #f8fafc;
+  --colour-surface: #ffffff;
+  --colour-surface-muted: #f1f5f9;
+  --colour-text-primary: #0f172a;
+  --colour-text-secondary: #334155;
+  --colour-border: #cbd5e1;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --focus-outline: 2px solid #1d4ed8;
+  --focus-offset: 2px;
 }
 
 // Card styles matching wireframes
 .entry-card {
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   transition: box-shadow 0.3s;
-  
+
   &:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
   }
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
 }
 
 // Pill toggle styles
 .view-toggle {
+  .mat-button-toggle {
+    border-color: var(--colour-border);
+    color: var(--colour-text-secondary);
+    transition: all 0.2s ease;
+  }
+
+  .mat-button-toggle:hover {
+    background: var(--colour-surface-muted);
+  }
+
   .mat-button-toggle-checked {
-    background-color: #7B3FF2;
-    color: white;
+    background-color: var(--colour-primary);
+    color: #ffffff;
+  }
+
+  .mat-button-toggle-checked:hover {
+    background-color: var(--colour-primary-hover);
   }
 }
 
@@ -91,15 +137,15 @@ html, body {
   overflow-x: auto;
   white-space: nowrap;
   padding: var(--spacing-sm) 0;
-  
+
   &::-webkit-scrollbar {
     height: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: #f1f1f1;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: #888;
     border-radius: 3px;
@@ -111,7 +157,7 @@ html, body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-md);
-  
+
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
@@ -119,10 +165,11 @@ html, body {
 
 // Metadata bar
 .metadata-bar {
-  background: #f5f5f5;
+  background: var(--colour-surface-muted);
   padding: var(--spacing-sm);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-top: var(--spacing-md);
+  border: 1px solid var(--colour-border);
 }
 
 // Tag chips

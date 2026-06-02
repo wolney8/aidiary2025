@@ -1,7 +1,14 @@
-import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams, HttpHeaders } from '@angular/common/http';
-import { AuthService } from './auth.service';
-import { BehaviorSubject, Observable, tap, catchError, timeout, TimeoutError } from 'rxjs';
+import { Injectable, inject } from "@angular/core";
+import { HttpClient, HttpParams, HttpHeaders } from "@angular/common/http";
+import { AuthService } from "./auth.service";
+import {
+  BehaviorSubject,
+  Observable,
+  tap,
+  catchError,
+  timeout,
+  TimeoutError,
+} from "rxjs";
 
 export interface SearchMatches {
   title?: string;
@@ -14,7 +21,7 @@ export interface SearchMatches {
 
 export interface SearchResult {
   id: number;
-  type: 'daily' | 'dream';
+  type: "daily" | "dream";
   title: string;
   title_highlight: string;
   entry_date: string;
@@ -43,47 +50,50 @@ export interface SearchFilters {
   people: boolean;
 }
 
-@Injectable({ providedIn: 'root' })
+@Injectable({ providedIn: "root" })
 export class SearchService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
-  private apiUrl = 'http://localhost:5001/api/search';
+  private apiUrl = "http://localhost:5001/api/search";
   private resultsSubject = new BehaviorSubject<SearchState>({
-    query: '',
+    query: "",
     filters: [],
-    filters_display: 'All Entries',
+    filters_display: "All Entries",
     results: [],
     active: false,
-    loading: false
+    loading: false,
   });
 
   results$ = this.resultsSubject.asObservable();
-  
+
   // Search History Management (Session Storage)
   private readonly MAX_HISTORY_SIZE = 6;
-  private readonly HISTORY_KEY = 'search-history';
-  private searchHistorySubject = new BehaviorSubject<string[]>(this.loadSearchHistory());
-  
+  private readonly HISTORY_KEY = "search-history";
+  private searchHistorySubject = new BehaviorSubject<string[]>(
+    this.loadSearchHistory(),
+  );
+
   searchHistory$ = this.searchHistorySubject.asObservable();
 
   search(query: string, filters?: SearchFilters): Observable<SearchResponse> {
     if (!query.trim()) {
       this.clear();
-      return new Observable(subscriber => subscriber.complete());
+      return new Observable((subscriber) => subscriber.complete());
     }
 
     const filtersArray: string[] = [];
     if (filters) {
-      if (filters.tags) filtersArray.push('tags');
-      if (filters.date) filtersArray.push('date');
-      if (filters.keywords) filtersArray.push('keywords');
-      if (filters.people) filtersArray.push('people');
+      if (filters.tags) filtersArray.push("tags");
+      if (filters.date) filtersArray.push("date");
+      if (filters.keywords) filtersArray.push("keywords");
+      if (filters.people) filtersArray.push("people");
     }
 
-    const filtersDisplay = filtersArray.length > 0 ? filtersArray.join(', ') : 'All Entries';
+    const filtersDisplay =
+      filtersArray.length > 0 ? filtersArray.join(", ") : "All Entries";
 
     // Immediately set active state so the UI switches to search results (shows loading)
-    console.log('Starting search for:', query.trim(), 'filters:', filtersArray);
+    console.log("Starting search for:", query.trim(), "filters:", filtersArray);
     this.resultsSubject.next({
       ...this.resultsSubject.getValue(),
       query: query.trim(),
@@ -91,70 +101,81 @@ export class SearchService {
       filters_display: filtersDisplay,
       active: true,
       loading: true,
-      error: undefined
+      error: undefined,
     });
-    console.log('Set loading state:', this.resultsSubject.getValue());
+    console.log("Set loading state:", this.resultsSubject.getValue());
 
-    let params = new HttpParams().set('q', query.trim());
+    let params = new HttpParams().set("q", query.trim());
     if (filtersArray.length > 0) {
-      params = params.set('filters', filtersArray.join(','));
+      params = params.set("filters", filtersArray.join(","));
     }
 
-  const token = this.authService.getToken();
-  const headers = token ? new HttpHeaders({ Authorization: `Bearer ${token}` }) : undefined;
+    const token = this.authService.getToken();
+    const headers = token
+      ? new HttpHeaders({ Authorization: `Bearer ${token}` })
+      : undefined;
 
-  return this.http.get<SearchResponse>(this.apiUrl, { params, headers }).pipe(
+    return this.http.get<SearchResponse>(this.apiUrl, { params, headers }).pipe(
       timeout(8000), // 8 second timeout (Google UX standard for search)
-      tap(response => {
-        console.log('Search API Response:', response);
+      tap((response) => {
+        console.log("Search API Response:", response);
         // Add to search history on successful search
         this.addToHistory(query.trim());
-        
-        this.resultsSubject.next({ 
-          ...response, 
+
+        this.resultsSubject.next({
+          ...response,
           active: true,
           loading: false,
-          error: undefined
+          error: undefined,
         });
-        console.log('Updated search state after success:', this.resultsSubject.getValue());
+        console.log(
+          "Updated search state after success:",
+          this.resultsSubject.getValue(),
+        );
       }),
-      catchError(error => {
-        console.error('Search API Error:', error);
+      catchError((error) => {
+        console.error("Search API Error:", error);
         let errorMessage: string;
-        
+
         if (error instanceof TimeoutError) {
-          errorMessage = 'Search request timed out. Please try again.';
+          errorMessage = "Search request timed out. Please try again.";
         } else if (error.status === 0) {
-          errorMessage = 'Network connection error. Please check your internet connection.';
+          errorMessage =
+            "Network connection error. Please check your internet connection.";
         } else if (error.status >= 500) {
-          errorMessage = 'Server error. Please try again in a moment.';
+          errorMessage = "Server error. Please try again in a moment.";
         } else if (error.status === 401) {
-          errorMessage = 'Authentication error. Please refresh and log in again.';
+          errorMessage =
+            "Authentication error. Please refresh and log in again.";
         } else {
-          errorMessage = error.error?.message || 'Search failed. Please try again.';
+          errorMessage =
+            error.error?.message || "Search failed. Please try again.";
         }
-          
+
         this.resultsSubject.next({
           ...this.resultsSubject.getValue(),
           loading: false,
-          error: errorMessage
+          error: errorMessage,
         });
-        console.log('Updated search state after error:', this.resultsSubject.getValue());
-        
+        console.log(
+          "Updated search state after error:",
+          this.resultsSubject.getValue(),
+        );
+
         throw error;
-      })
+      }),
     );
   }
 
   clear(): void {
     this.resultsSubject.next({
-      query: '',
+      query: "",
       filters: [],
-      filters_display: 'All Entries',
+      filters_display: "All Entries",
       results: [],
       active: false,
       loading: false,
-      error: undefined
+      error: undefined,
     });
   }
 
@@ -183,22 +204,27 @@ export class SearchService {
 
   addToHistory(query: string): void {
     if (!query.trim()) return;
-    
+
     const currentHistory = this.loadSearchHistory();
     const trimmedQuery = query.trim();
-    
+
     // Remove if already exists (move to front)
-    const filteredHistory = currentHistory.filter(item => item !== trimmedQuery);
-    
+    const filteredHistory = currentHistory.filter(
+      (item) => item !== trimmedQuery,
+    );
+
     // Add to front and limit size
-    const newHistory = [trimmedQuery, ...filteredHistory].slice(0, this.MAX_HISTORY_SIZE);
-    
+    const newHistory = [trimmedQuery, ...filteredHistory].slice(
+      0,
+      this.MAX_HISTORY_SIZE,
+    );
+
     this.saveSearchHistory(newHistory);
   }
 
   removeFromHistory(query: string): void {
     const currentHistory = this.loadSearchHistory();
-    const newHistory = currentHistory.filter(item => item !== query);
+    const newHistory = currentHistory.filter((item) => item !== query);
     this.saveSearchHistory(newHistory);
   }
 

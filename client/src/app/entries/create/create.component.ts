@@ -1,40 +1,49 @@
-import { Component, HostListener, inject, ViewChild, ElementRef, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Router, ActivatedRoute } from '@angular/router';
-import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import { MatButtonModule } from '@angular/material/button';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule, MAT_DATE_FORMATS, MAT_DATE_LOCALE } from '@angular/material/core';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatChipsModule, MatChipInputEvent } from '@angular/material/chips';
-import { MatIconModule } from '@angular/material/icon';
-import { MatSelectModule } from '@angular/material/select';
-import { MatDialog } from '@angular/material/dialog';
-import { COMMA, ENTER } from '@angular/cdk/keycodes';
-import { debounceTime, Subject, takeUntil } from 'rxjs';
-import { EntriesService } from '../../core/services/entries.service';
-import { AnalysisService } from '../../core/services/analysis.service';
-import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
-import { DailyAnalysisResponse, DreamAnalysisResponse, MoodOption, AIStyleOption, DreamFieldOptions } from '../../core/models/entry.model';
+// Create entry with support for daily and dream flows
+import { Component, HostListener, inject, OnInit } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { FormsModule } from "@angular/forms";
+import { HttpErrorResponse } from "@angular/common/http";
+import { Router, ActivatedRoute } from "@angular/router";
+import { MatCardModule } from "@angular/material/card";
+import { MatFormFieldModule } from "@angular/material/form-field";
+import { MatInputModule } from "@angular/material/input";
+import { MatButtonModule } from "@angular/material/button";
+import { MatSlideToggleModule } from "@angular/material/slide-toggle";
+import { MatDatepickerModule } from "@angular/material/datepicker";
+import {
+  MatNativeDateModule,
+  MAT_DATE_FORMATS,
+  MAT_DATE_LOCALE,
+} from "@angular/material/core";
+import { MatButtonToggleModule } from "@angular/material/button-toggle";
+import { MatChipsModule, MatChipInputEvent } from "@angular/material/chips";
+import { MatIconModule } from "@angular/material/icon";
+import { MatSelectModule } from "@angular/material/select";
+import { COMMA, ENTER } from "@angular/cdk/keycodes";
+import { EntriesService } from "../../core/services/entries.service";
+import { AnalysisService } from "../../core/services/analysis.service";
+import {
+  DailyAnalysisResponse,
+  DreamAnalysisResponse,
+  MoodOption,
+  AIStyleOption,
+  DreamFieldOptions,
+} from "../../core/models/entry.model";
 
 const UK_DATE_FORMATS = {
   parse: {
-    dateInput: 'dd/MM/yyyy'
+    dateInput: "dd/MM/yyyy",
   },
   display: {
-    dateInput: 'dd/MM/yyyy',
-    monthYearLabel: 'MMMM yyyy',
-    dateA11yLabel: 'dd/MM/yyyy',
-    monthYearA11yLabel: 'MMMM yyyy'
-  }
+    dateInput: "dd/MM/yyyy",
+    monthYearLabel: "MMMM yyyy",
+    dateA11yLabel: "dd/MM/yyyy",
+    monthYearA11yLabel: "MMMM yyyy",
+  },
 };
 
 @Component({
-  selector: 'app-create',
+  selector: "app-create",
   standalone: true,
   imports: [
     CommonModule,
@@ -49,129 +58,598 @@ const UK_DATE_FORMATS = {
     MatButtonToggleModule,
     MatChipsModule,
     MatIconModule,
-    MatSelectModule
+    MatSelectModule,
   ],
   providers: [
-    { provide: MAT_DATE_LOCALE, useValue: 'en-GB' },
-    { provide: MAT_DATE_FORMATS, useValue: UK_DATE_FORMATS }
+    { provide: MAT_DATE_LOCALE, useValue: "en-GB" },
+    { provide: MAT_DATE_FORMATS, useValue: UK_DATE_FORMATS },
   ],
-  templateUrl: './create.component.html',
-  styleUrls: ['./create.component.scss', './edit-layout.scss'],
+  template: `
+    <div class="create-container">
+      <mat-card>
+        <mat-card-header>
+          <button
+            mat-stroked-button
+            type="button"
+            class="header-back"
+            (click)="goBack()"
+            [disabled]="isSaving"
+            aria-label="Go back to entries"
+          >
+            <mat-icon>arrow_back</mat-icon>
+            Back
+          </button>
+
+          <mat-card-title
+            >{{ isEditing ? "Edit" : "New" }} Diary Entry</mat-card-title
+          >
+
+          <mat-slide-toggle [(ngModel)]="leaveItToAI">
+            Respond with AI
+          </mat-slide-toggle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <mat-button-toggle-group
+            class="entry-type-toggle"
+            [(ngModel)]="selectedType"
+            name="entryType"
+            [disabled]="isEditing"
+            aria-label="Entry type toggle"
+            (change)="onTypeChange()"
+          >
+            <mat-button-toggle value="daily">Daily Entry</mat-button-toggle>
+            <mat-button-toggle value="dream">Dream Entry</mat-button-toggle>
+          </mat-button-toggle-group>
+          <p class="hint" *ngIf="leaveItToAI">
+            We'll run an AI analysis straight after saving this entry.
+          </p>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Date</mat-label>
+            <input
+              matInput
+              [matDatepicker]="picker"
+              [(ngModel)]="entryDate"
+              name="entry_date"
+              [max]="maxDate"
+            />
+            <mat-datepicker-toggle
+              matIconSuffix
+              [for]="picker"
+            ></mat-datepicker-toggle>
+            <mat-datepicker #picker></mat-datepicker>
+          </mat-form-field>
+
+          <!-- AI Style Selection - only show when AI toggle is on -->
+          <mat-form-field
+            appearance="outline"
+            class="full-width"
+            *ngIf="leaveItToAI"
+          >
+            <mat-label>AI Response Style</mat-label>
+            <mat-select [(ngModel)]="selectedAIStyle" name="aiStyle">
+              <mat-option
+                *ngFor="let style of aiStyleOptions"
+                [value]="style.value"
+              >
+                <div>
+                  <strong>{{ style.label }}</strong>
+                  <br />
+                  <small>{{ style.description }}</small>
+                </div>
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <!-- Mood Selection -->
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>How are you feeling?</mat-label>
+            <mat-select [(ngModel)]="selectedMood" name="mood">
+              <mat-option value="">Not specified</mat-option>
+              <mat-option *ngFor="let mood of moodOptions" [value]="mood.value">
+                {{ mood.emoji }} {{ mood.label }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Title</mat-label>
+            <input matInput [(ngModel)]="entryTitle" name="title" />
+          </mat-form-field>
+
+          <!-- Content field only for daily entries -->
+          <mat-form-field
+            appearance="outline"
+            class="full-width"
+            *ngIf="selectedType === 'daily'"
+          >
+            <mat-label>Describe your day</mat-label>
+            <textarea
+              matInput
+              [(ngModel)]="content"
+              name="content"
+              rows="10"
+              placeholder="Share highlights, themes, or key moments..."
+            ></textarea>
+          </mat-form-field>
+
+          <!-- Dream-specific fields -->
+          <div *ngIf="selectedType === 'dream'" class="dream-fields">
+            <h3>Dream Details (Optional)</h3>
+
+            <div class="dream-row">
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Cast (Who was in your dream?)</mat-label>
+                <textarea
+                  matInput
+                  [(ngModel)]="dreamCast"
+                  name="dreamCast"
+                  rows="2"
+                ></textarea>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Location</mat-label>
+                <input
+                  matInput
+                  [(ngModel)]="dreamLocation"
+                  name="dreamLocation"
+                  placeholder="Describe the location"
+                />
+              </mat-form-field>
+            </div>
+
+            <div class="dream-row">
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Time Period</mat-label>
+                <mat-select [(ngModel)]="dreamPeriod" name="dreamPeriod">
+                  <mat-option value="">Type custom period below...</mat-option>
+                  <mat-option
+                    *ngFor="let period of dreamFieldOptions.periods"
+                    [value]="period"
+                  >
+                    {{ period }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="half-width">
+                <mat-label>Primary Emotion</mat-label>
+                <mat-select [(ngModel)]="dreamEmotion" name="dreamEmotion">
+                  <mat-option value="">Type custom emotion below...</mat-option>
+                  <mat-option
+                    *ngFor="let emotion of dreamFieldOptions.emotions"
+                    [value]="emotion"
+                  >
+                    {{ emotion }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+            </div>
+
+            <div
+              class="dream-row"
+              *ngIf="dreamPeriod === '' || dreamEmotion === ''"
+            >
+              <mat-form-field
+                appearance="outline"
+                class="half-width"
+                *ngIf="dreamPeriod === ''"
+              >
+                <mat-label>Custom Time Period</mat-label>
+                <input
+                  matInput
+                  [(ngModel)]="dreamPeriod"
+                  name="dreamPeriodCustom"
+                  placeholder="Describe the time period"
+                />
+              </mat-form-field>
+
+              <mat-form-field
+                appearance="outline"
+                class="half-width"
+                *ngIf="dreamEmotion === ''"
+              >
+                <mat-label>Custom Emotion</mat-label>
+                <input
+                  matInput
+                  [(ngModel)]="dreamEmotion"
+                  name="dreamEmotionCustom"
+                  placeholder="Describe the emotion"
+                />
+              </mat-form-field>
+            </div>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Symbols & Imagery</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="dreamSymbolsAndImagery"
+                name="dreamSymbols"
+                rows="3"
+                placeholder="Notable symbols, colors, objects, or imagery"
+              ></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Personal Insight</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="dreamInsight"
+                name="dreamInsight"
+                rows="3"
+                placeholder="What do you think this dream might mean?"
+              ></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Actions Taken</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="dreamAction"
+                name="dreamAction"
+                rows="2"
+                placeholder="What did you do in the dream?"
+              ></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Plot / Narrative</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="dreamPlot"
+                name="dreamPlot"
+                rows="5"
+                placeholder="Describe what happened in your dream"
+              ></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Other Details</mat-label>
+              <textarea
+                matInput
+                [(ngModel)]="dreamOther"
+                name="dreamOther"
+                rows="2"
+                placeholder="Any other important details"
+              ></textarea>
+            </mat-form-field>
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>My Tags</mat-label>
+            <mat-chip-grid #chipGrid>
+              <mat-chip-row *ngFor="let tag of tags" (removed)="removeTag(tag)">
+                {{ tag }}
+                <button matChipRemove type="button">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+              <input
+                placeholder="Type and press enter"
+                [matChipInputFor]="chipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                [matChipInputAddOnBlur]="true"
+                (matChipInputTokenEnd)="addTag($event)"
+              />
+            </mat-chip-grid>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>People</mat-label>
+            <mat-chip-grid #peopleChipGrid>
+              <mat-chip-row
+                *ngFor="let person of peopleNames"
+                (removed)="removePeopleName(person)"
+              >
+                {{ person }}
+                <button matChipRemove type="button">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+              <input
+                placeholder="Type and press enter"
+                [matChipInputFor]="peopleChipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                [matChipInputAddOnBlur]="true"
+                (matChipInputTokenEnd)="addPeopleName($event)"
+              />
+            </mat-chip-grid>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Places</mat-label>
+            <mat-chip-grid #placesChipGrid>
+              <mat-chip-row
+                *ngFor="let place of places"
+                (removed)="removePlace(place)"
+              >
+                {{ place }}
+                <button matChipRemove type="button">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+              <input
+                placeholder="Type and press enter"
+                [matChipInputFor]="placesChipGrid"
+                [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+                [matChipInputAddOnBlur]="true"
+                (matChipInputTokenEnd)="addPlace($event)"
+              />
+            </mat-chip-grid>
+          </mat-form-field>
+
+          <div class="actions">
+            <button
+              mat-stroked-button
+              color="warn"
+              (click)="cancelCreate()"
+              [disabled]="isSaving"
+            >
+              Cancel
+            </button>
+
+            <ng-container *ngIf="!leaveItToAI; else aiActions">
+              <button
+                mat-raised-button
+                color="primary"
+                (click)="saveAsDraft()"
+                [disabled]="isSaving"
+              >
+                Save Entry
+              </button>
+            </ng-container>
+
+            <ng-template #aiActions>
+              <button
+                mat-raised-button
+                color="primary"
+                (click)="saveAndAnalyse()"
+                [disabled]="isSaving"
+              >
+                Save & Analyse
+              </button>
+            </ng-template>
+          </div>
+
+          <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  `,
+  styles: [
+    `
+      .create-container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .full-width {
+        width: 100%;
+        margin-bottom: var(--spacing-sm);
+      }
+
+      .half-width {
+        width: calc(50% - 8px);
+        margin-bottom: var(--spacing-sm);
+      }
+
+      .dream-fields {
+        margin: var(--spacing-md) 0;
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background-color: var(--colour-surface-muted);
+      }
+
+      .dream-fields h3 {
+        margin: 0 0 var(--spacing-md) 0;
+        color: var(--colour-text-primary);
+        font-weight: 600;
+      }
+
+      .dream-row {
+        display: flex;
+        gap: var(--spacing-md);
+        align-items: flex-start;
+      }
+
+      .dream-row mat-form-field {
+        flex: 1;
+      }
+
+      .entry-type-toggle {
+        margin-bottom: var(--spacing-sm);
+      }
+
+      .hint {
+        margin-bottom: var(--spacing-sm);
+        color: var(--colour-text-secondary);
+      }
+
+      .actions {
+        display: flex;
+        gap: var(--spacing-sm);
+        justify-content: flex-end;
+        margin-top: var(--spacing-sm);
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      mat-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--spacing-md);
+        gap: var(--spacing-sm);
+      }
+
+      mat-card-title {
+        margin: 0;
+      }
+
+      .header-back {
+        border-color: var(--colour-border);
+        color: var(--colour-text-secondary);
+      }
+
+      .header-back mat-icon {
+        margin-right: var(--spacing-xs);
+      }
+
+      mat-card {
+        border-radius: var(--radius-md);
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+      }
+
+      .error {
+        color: #b91c1c;
+        margin-top: var(--spacing-sm);
+      }
+
+      @media (max-width: 768px) {
+        mat-card-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .header-back {
+          align-self: flex-start;
+        }
+      }
+    `,
+  ],
 })
-export class CreateComponent implements OnInit, OnDestroy {
+export class CreateComponent implements OnInit {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
-  private dialog = inject(MatDialog);
-  @ViewChild('fileInput') fileInput?: ElementRef<HTMLInputElement>;
 
-  private destroy$ = new Subject<void>();
-  private autosaveSubject = new Subject<void>();
+  backQueryParams: Record<string, string | number> = {};
 
   entryDate: Date | null = new Date();
-  entryTitle = '';
-  content = '';
+  entryTitle = "";
+  content = "";
   tags: string[] = [];
+  peopleNames: string[] = [];
+  places: string[] = [];
   leaveItToAI = false;
-  selectedType: 'daily' | 'dream' = 'daily';
+  selectedType: "daily" | "dream" = "daily";
   isSaving = false;
-  errorMessage = '';
+  errorMessage = "";
   maxDate = new Date();
   isEditing = false;
   editingId: number | null = null;
 
   // Enhanced fields for both entry types
-  selectedMood = '';
-  selectedAIStyle = 'friendly';
+  selectedMood = "";
+  selectedAIStyle = "friendly";
 
   // Dream-specific fields matching database schema
-  dreamCast = '';
-  dreamLocation = '';
-  dreamPeriod = '';
-  dreamEmotion = '';
-  dreamPlot = '';
-  dreamSymbolsAndImagery = '';
-  dreamInsight = '';
-  dreamAction = '';
-  dreamOther = '';
-
-  // New properties for wireframe layout
-  autosaveStatus: 'idle' | 'saving' | 'saved' | 'error' = 'idle';
-  heroImageUrl = '';
-  heroImageExpanded = false; // Changed from heroImageCollapsed
-  hasAIResponse = false;
-  aiResponseData: any = null;
-  lastAutosaveTime: Date | null = null;
-  hasAutosavedChanges = false;
+  dreamCast = "";
+  dreamLocation = "";
+  dreamPeriod = "";
+  dreamEmotion = "";
+  dreamPlot = "";
+  dreamSymbolsAndImagery = "";
+  dreamInsight = "";
+  dreamAction = "";
+  dreamOther = "";
 
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
-  private initialDate = this.entryDate?.toDateString() ?? '';
-  private originalFormState: any = null;
+  private initialDate = this.entryDate?.toDateString() ?? "";
 
   // Mood options for both entry types
   moodOptions: MoodOption[] = [
-    { emoji: '😊', label: 'Happy', value: 'happy' },
-    { emoji: '😔', label: 'Sad', value: 'sad' },
-    { emoji: '😴', label: 'Tired', value: 'tired' },
-    { emoji: '😰', label: 'Anxious', value: 'anxious' },
-    { emoji: '😡', label: 'Angry', value: 'angry' },
-    { emoji: '🤔', label: 'Thoughtful', value: 'thoughtful' },
-    { emoji: '😌', label: 'Peaceful', value: 'peaceful' },
-    { emoji: '🤗', label: 'Grateful', value: 'grateful' },
-    { emoji: '😕', label: 'Confused', value: 'confused' },
-    { emoji: '💪', label: 'Energetic', value: 'energetic' }
+    { emoji: "😊", label: "Happy", value: "happy" },
+    { emoji: "😔", label: "Sad", value: "sad" },
+    { emoji: "😴", label: "Tired", value: "tired" },
+    { emoji: "😰", label: "Anxious", value: "anxious" },
+    { emoji: "😡", label: "Angry", value: "angry" },
+    { emoji: "🤔", label: "Thoughtful", value: "thoughtful" },
+    { emoji: "😌", label: "Peaceful", value: "peaceful" },
+    { emoji: "🤗", label: "Grateful", value: "grateful" },
+    { emoji: "😕", label: "Confused", value: "confused" },
+    { emoji: "💪", label: "Energetic", value: "energetic" },
   ];
 
   // AI style options for both entry types
   aiStyleOptions: AIStyleOption[] = [
-    { label: 'Friendly & Supportive', value: 'friendly', description: 'Warm, encouraging responses' },
-    { label: 'Professional & Clinical', value: 'clinical', description: 'Structured, therapeutic approach' },
-    { label: 'Reflective & Deep', value: 'reflective', description: 'Thoughtful, introspective analysis' },
-    { label: 'Brief & Practical', value: 'brief', description: 'Concise, actionable insights' },
-    { label: 'Creative & Symbolic', value: 'creative', description: 'Metaphorical, artistic interpretation' }
+    {
+      label: "Friendly & Supportive",
+      value: "friendly",
+      description: "Warm, encouraging responses",
+    },
+    {
+      label: "Professional & Clinical",
+      value: "clinical",
+      description: "Structured, therapeutic approach",
+    },
+    {
+      label: "Reflective & Deep",
+      value: "reflective",
+      description: "Thoughtful, introspective analysis",
+    },
+    {
+      label: "Brief & Practical",
+      value: "brief",
+      description: "Concise, actionable insights",
+    },
+    {
+      label: "Creative & Symbolic",
+      value: "creative",
+      description: "Metaphorical, artistic interpretation",
+    },
   ];
 
   // Dream field options with common values
   dreamFieldOptions: DreamFieldOptions = {
     emotions: [
-      'Joy', 'Fear', 'Anger', 'Sadness', 'Surprise', 'Disgust', 
-      'Love', 'Anxiety', 'Excitement', 'Confusion', 'Peace', 'Frustration'
+      "Joy",
+      "Fear",
+      "Anger",
+      "Sadness",
+      "Surprise",
+      "Disgust",
+      "Love",
+      "Anxiety",
+      "Excitement",
+      "Confusion",
+      "Peace",
+      "Frustration",
     ],
     periods: [
-      'Childhood', 'Teenage years', 'Present day', 'Future', 'Past life', 
-      'Medieval times', 'Victorian era', 'Ancient times', 'Dystopian future', 'Timeless'
-    ]
+      "Childhood",
+      "Teenage years",
+      "Present day",
+      "Future",
+      "Past life",
+      "Medieval times",
+      "Victorian era",
+      "Ancient times",
+      "Dystopian future",
+      "Timeless",
+    ],
   };
 
   ngOnInit(): void {
-    // Set up autosave with debounce
-    this.autosaveSubject
-      .pipe(
-        debounceTime(5000), // 5 second delay
-        takeUntil(this.destroy$)
-      )
-      .subscribe(() => {
-        if (this.isEditing && this.hasUnsavedChanges()) {
-          this.performAutosave();
-        }
-      });
-
-    // Update time display every 10 seconds
-    setInterval(() => {
-      if (this.lastAutosaveTime) {
-        // Trigger change detection for time updates
-      }
-    }, 10000);
-
     // Check for pre-populated date and type from query params
-    this.route.queryParamMap.subscribe(params => {
-      const dateParam = params.get('date');
+    this.route.queryParamMap.subscribe((params) => {
+      const dateParam = params.get("date");
       if (dateParam) {
         // Parse UK format date DD/MM/YYYY
-        const [day, month, year] = dateParam.split('/');
+        const [day, month, year] = dateParam.split("/");
         if (day && month && year) {
-          const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          const parsedDate = new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+          );
           if (!isNaN(parsedDate.getTime())) {
             this.entryDate = parsedDate;
             this.initialDate = this.entryDate.toDateString();
@@ -180,149 +658,167 @@ export class CreateComponent implements OnInit, OnDestroy {
       }
 
       // Check for entry type parameter
-      const typeParam = params.get('type');
-      if (typeParam === 'dream' || typeParam === 'daily') {
+      const typeParam = params.get("type");
+      if (typeParam === "dream" || typeParam === "daily") {
         this.selectedType = typeParam;
-      }
-
-      // Check for edit ID parameter
-      const idParam = params.get('id');
-      if (idParam) {
-        this.isEditing = true;
-        this.editingId = Number(idParam);
-        this.loadEntryForEditing(this.editingId);
       }
     });
 
-    // Store initial form state after loading
-    setTimeout(() => this.storeOriginalFormState(), 100);
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+    // Check for id parameter for editing
+    const id = this.route.snapshot.paramMap.get("id");
+    if (id) {
+      this.isEditing = true;
+      this.editingId = Number(id);
+      this.loadEntryForEditing(this.editingId);
+    }
   }
 
   loadEntryForEditing(id: number): void {
     // Try loading as daily first
     this.entriesService.getDailyEntry(id).subscribe({
-      next: entry => {
-        this.populateForm(entry, 'daily');
+      next: (entry) => {
+        this.populateForm(entry, "daily");
       },
       error: () => {
-        this.entriesService.getDreamEntry(id).subscribe(entry => {
-          this.populateForm(entry, 'dream');
+        this.entriesService.getDreamEntry(id).subscribe((entry) => {
+          this.populateForm(entry, "dream");
         });
-      }
+      },
     });
   }
 
-  populateForm(entry: any, type: 'daily' | 'dream'): void {
+  populateForm(entry: any, type: "daily" | "dream"): void {
     this.selectedType = type;
-    this.entryDate = new Date(entry.entry_date);
-    this.entryTitle = entry.title || '';
-    this.tags = entry.tags ? entry.tags.split(',').map((t: string) => t.trim()).filter((t: string) => t) : [];
-    this.selectedMood = entry.mood || '';
-    this.selectedAIStyle = entry.ai_style || 'friendly';
+    this.entryDate = this.parseApiDateAsLocal(entry.entry_date) ?? new Date();
+    this.entryTitle = entry.title || "";
+    this.tags = entry.tags
+      ? entry.tags
+          .split(",")
+          .map((t: string) => t.trim())
+          .filter((t: string) => t)
+      : [];
+    this.selectedMood = entry.mood || "";
+    this.selectedAIStyle = entry.ai_style || "friendly";
 
-    // Check if there's AI response data
-    if (entry.ai_analysis || entry.ai_interpretation) {
-      this.hasAIResponse = true;
-      this.aiResponseData = {
-        analysis: entry.ai_analysis,
-        interpretation: entry.ai_interpretation,
-        keywords: entry.ai_keywords ? entry.ai_keywords.split(',').map((k: string) => k.trim()).filter((k: string) => k) : [],
-        people: entry.ai_people ? entry.ai_people.split(',').map((p: string) => p.trim()).filter((p: string) => p) : []
-      };
-    }
-
-    if (type === 'daily') {
-      this.content = entry.user_message || '';
+    if (type === "daily") {
+      this.content = entry.user_message || "";
+      this.peopleNames = entry.daily_people_names
+        ? entry.daily_people_names
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
+      this.places = entry.daily_places
+        ? entry.daily_places
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
     } else {
-      this.dreamCast = entry.cast || '';
-      this.dreamLocation = entry.location || '';
-      this.dreamPeriod = entry.period || '';
-      this.dreamEmotion = entry.emotion || '';
-      this.dreamPlot = entry.plot || '';
-      this.dreamSymbolsAndImagery = entry.symbols_and_imagery || '';
-      this.dreamInsight = entry.insight || '';
-      this.dreamAction = entry.action || '';
-      this.dreamOther = entry.other || '';
+      this.dreamCast = entry.cast || "";
+      this.dreamLocation = entry.location || "";
+      this.dreamPeriod = entry.period || "";
+      this.dreamEmotion = entry.emotion || "";
+      this.dreamPlot = entry.plot || "";
+      this.dreamSymbolsAndImagery = entry.symbols_and_imagery || "";
+      this.dreamInsight = entry.insight || "";
+      this.dreamAction = entry.action || "";
+      this.dreamOther = entry.other || "";
+      this.peopleNames = entry.dream_people_names
+        ? entry.dream_people_names
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
+      this.places = entry.dream_places
+        ? entry.dream_places
+            .split(",")
+            .map((p: string) => p.trim())
+            .filter((p: string) => p)
+        : [];
     }
   }
 
   saveAsDraft(): void {
-    this.persistEntry(this.leaveItToAI);
+    this.persistEntry(this.isEditing && this.leaveItToAI);
   }
 
   saveAndAnalyse(): void {
     this.persistEntry(true);
   }
 
-  private persistEntry(shouldAnalyse: boolean, callback?: () => void): void {
-    this.errorMessage = '';
+  private persistEntry(shouldAnalyse: boolean): void {
+    this.errorMessage = "";
 
     if (!this.entryDate) {
-      this.errorMessage = 'Please select a date for this entry.';
+      this.errorMessage = "Please select a date for this entry.";
       return;
     }
 
     // Content validation - required for daily entries, optional for dreams
-    if (this.selectedType === 'daily' && !this.content.trim()) {
-      this.errorMessage = 'Please add some notes so the AI has context.';
+    if (this.selectedType === "daily" && !this.content.trim()) {
+      this.errorMessage = "Please add some notes so the AI has context.";
       return;
     }
 
     this.isSaving = true;
-    const entryDate = this.entryDate.toISOString().split('T')[0];
-    const tags = this.tags.join(',');
+    const entryDate = this.serialiseDateAsLocalIso(this.entryDate);
+    const tags = this.tags.join(",");
     const trimmedTitle = this.entryTitle.trim();
     const body = this.content.trim();
 
-    if (this.selectedType === 'daily') {
-      const payload = {
+    if (this.selectedType === "daily") {
+      const createPayload = {
         entry_date: entryDate,
         title: trimmedTitle,
         user_message: body,
         tags,
         mood: this.selectedMood,
-        ai_style: this.selectedAIStyle
+        ai_style: this.selectedAIStyle,
+        daily_people_names: this.peopleNames.join(","),
+        daily_places: this.places.join(","),
       };
 
-      if (this.isEditing && this.editingId) {
-        // Update existing entry
-        this.entriesService.updateDailyEntry(this.editingId, payload).subscribe({
-          next: () => {
-            if (callback) {
-              callback();
-            } else if (shouldAnalyse) {
-              this.runDailyAnalysis(this.editingId!);
-            } else {
-              this.finishNavigation(this.editingId!);
-            }
-          },
-          error: () => this.handleError('Failed to update your daily entry.')
-        });
+      const updatePayload = {
+        entry_date: entryDate,
+        title: trimmedTitle,
+        user_message: body,
+        tags,
+        mood: this.selectedMood,
+        ai_style: this.selectedAIStyle,
+        daily_people_names: this.peopleNames.join(","),
+        daily_places: this.places.join(","),
+      };
+
+      if (this.isEditing && this.editingId !== null) {
+        this.entriesService
+          .updateDailyEntry(this.editingId, updatePayload)
+          .subscribe({
+            next: () => {
+              if (shouldAnalyse) {
+                this.runDailyAnalysis(this.editingId!);
+              } else {
+                this.finishNavigation(this.editingId!);
+              }
+            },
+            error: () => this.handleError("Failed to update your daily entry."),
+          });
       } else {
-        // Create new entry
-        this.entriesService.createDailyEntry(payload).subscribe({
+        this.entriesService.createDailyEntry(createPayload).subscribe({
           next: (created) => {
-            if (callback) {
-              callback();
-            } else if (shouldAnalyse) {
+            if (shouldAnalyse) {
               this.runDailyAnalysis(created.id!);
             } else {
               this.finishNavigation(created.id!);
             }
           },
-          error: () => this.handleError('Failed to save your daily entry.')
+          error: () => this.handleError("Failed to save your daily entry."),
         });
       }
     } else {
-      // For dreams, use dreamPlot instead of content
-      const dreamPlotContent = this.dreamPlot.trim() || 'Dream entry';
-      
-      const payload = {
+      const dreamPlotContent = this.dreamPlot.trim() || "Dream entry";
+
+      const createPayload = {
         entry_date: entryDate,
         title: trimmedTitle,
         plot: dreamPlotContent,
@@ -336,93 +832,171 @@ export class CreateComponent implements OnInit, OnDestroy {
         symbols_and_imagery: this.dreamSymbolsAndImagery.trim(),
         insight: this.dreamInsight.trim(),
         action: this.dreamAction.trim(),
-        other: this.dreamOther.trim()
+        other: this.dreamOther.trim(),
+        dream_people_names: this.peopleNames.join(","),
+        dream_places: this.places.join(","),
       };
 
-      if (this.isEditing && this.editingId) {
-        // Update existing dream entry
-        this.entriesService.updateDreamEntry(this.editingId, payload).subscribe({
-          next: () => {
-            if (callback) {
-              callback();
-            } else if (shouldAnalyse) {
-              this.runDreamAnalysis(this.editingId!);
-            } else {
-              this.finishNavigation(this.editingId!);
-            }
-          },
-          error: () => this.handleError('Failed to update your dream entry.')
-        });
+      const updatePayload = {
+        entry_date: entryDate,
+        title: trimmedTitle,
+        plot: dreamPlotContent,
+        tags,
+        mood: this.selectedMood,
+        ai_style: this.selectedAIStyle,
+        cast: this.dreamCast.trim(),
+        location: this.dreamLocation.trim(),
+        period: this.dreamPeriod.trim(),
+        emotion: this.dreamEmotion.trim(),
+        symbols_and_imagery: this.dreamSymbolsAndImagery.trim(),
+        insight: this.dreamInsight.trim(),
+        action: this.dreamAction.trim(),
+        other: this.dreamOther.trim(),
+        dream_people_names: this.peopleNames.join(","),
+        dream_places: this.places.join(","),
+      };
+
+      if (this.isEditing && this.editingId !== null) {
+        this.entriesService
+          .updateDreamEntry(this.editingId, updatePayload)
+          .subscribe({
+            next: () => {
+              if (shouldAnalyse) {
+                this.runDreamAnalysis(this.editingId!);
+              } else {
+                this.finishNavigation(this.editingId!);
+              }
+            },
+            error: () => this.handleError("Failed to update your dream entry."),
+          });
       } else {
-        // Create new dream entry
-        this.entriesService.createDreamEntry(payload).subscribe({
+        this.entriesService.createDreamEntry(createPayload).subscribe({
           next: (created) => {
-            if (callback) {
-              callback();
-            } else if (shouldAnalyse) {
+            if (shouldAnalyse) {
               this.runDreamAnalysis(created.id!);
             } else {
               this.finishNavigation(created.id!);
             }
           },
-          error: () => this.handleError('Failed to save your dream entry.')
+          error: () => this.handleError("Failed to save your dream entry."),
         });
       }
     }
   }
 
   private runDailyAnalysis(entryId: number): void {
-    this.analysisService.analyseText({
-      mode: 'daily',
-      text: this.content
-    }).subscribe({
-      next: (analysis) => {
-        const dailyAnalysis = analysis as DailyAnalysisResponse;
-        this.entriesService.updateDailyEntry(entryId, {
-          ai_response: dailyAnalysis.ai_response,
-          tags: this.tags.length ? this.tags.join(',') : dailyAnalysis.tags,
-          daily_people_names: dailyAnalysis.daily_people_names,
-          daily_places: dailyAnalysis.daily_places
-        }).subscribe({
-          next: () => this.finishNavigation(entryId),
-          error: () => this.handleError('Saving AI insights failed. Please try again.')
-        });
-      },
-      error: () => this.handleError('AI analysis failed. Please try again later.')
-    });
+    const referenceDate = this.entryDate
+      ? this.serialiseDateAsLocalIso(this.entryDate)
+      : undefined;
+
+    this.analysisService
+      .analyseText({
+        mode: "daily",
+        text: this.content,
+        reference_date: referenceDate,
+      })
+      .subscribe({
+        next: (analysis) => {
+          const dailyAnalysis = analysis as DailyAnalysisResponse;
+          this.entriesService
+            .updateDailyEntry(entryId, {
+              ai_response: dailyAnalysis.ai_response,
+              tags: this.tags.length ? this.tags.join(",") : dailyAnalysis.tags,
+              daily_people_names: this.peopleNames.length
+                ? this.peopleNames.join(",")
+                : dailyAnalysis.daily_people_names,
+              daily_places: this.places.length
+                ? this.places.join(",")
+                : dailyAnalysis.daily_places,
+            })
+            .subscribe({
+              next: () => this.finishNavigation(entryId),
+              error: () => this.finishNavigation(entryId),
+            });
+        },
+        error: (error) => {
+          if (this.isRateLimitAnalysisError(error)) {
+            this.finishNavigation(entryId, "ai-rate-limit");
+            return;
+          }
+
+          this.finishNavigation(entryId);
+        },
+      });
   }
 
   private runDreamAnalysis(entryId: number): void {
     // For dream analysis, use the plot field or combine dream fields
-    const analysisText = this.dreamPlot.trim() || 
+    const analysisText =
+      this.dreamPlot.trim() ||
       `Cast: ${this.dreamCast} Location: ${this.dreamLocation} Plot: ${this.dreamPlot} Emotion: ${this.dreamEmotion}`;
-    
-    this.analysisService.analyseText({
-      mode: 'dream',
-      text: analysisText
-    }).subscribe({
-      next: (analysis) => {
-        const dreamAnalysis = analysis as DreamAnalysisResponse;
-        this.entriesService.updateDreamEntry(entryId, {
-          summary: dreamAnalysis.summary,
-          interpretation: dreamAnalysis.interpretation,
-          image_prompt: dreamAnalysis.image_prompt,
-          tags: this.tags.length ? this.tags.join(',') : dreamAnalysis.tags,
-          dream_people_names: dreamAnalysis.dream_people_names,
-          dream_places: dreamAnalysis.dream_places
-        }).subscribe({
-          next: () => this.finishNavigation(entryId),
-          error: () => this.handleError('Saving dream analysis failed. Please try again.')
-        });
-      },
-      error: () => this.handleError('AI analysis failed. Please try again later.')
-    });
+    const referenceDate = this.entryDate
+      ? this.serialiseDateAsLocalIso(this.entryDate)
+      : undefined;
+
+    this.analysisService
+      .analyseText({
+        mode: "dream",
+        text: analysisText,
+        reference_date: referenceDate,
+      })
+      .subscribe({
+        next: (analysis) => {
+          const dreamAnalysis = analysis as DreamAnalysisResponse;
+          this.entriesService
+            .updateDreamEntry(entryId, {
+              summary: dreamAnalysis.summary,
+              interpretation: dreamAnalysis.interpretation,
+              image_prompt: dreamAnalysis.image_prompt,
+              tags: this.tags.length ? this.tags.join(",") : dreamAnalysis.tags,
+              dream_people_names: this.peopleNames.length
+                ? this.peopleNames.join(",")
+                : dreamAnalysis.dream_people_names,
+              dream_places: this.places.length
+                ? this.places.join(",")
+                : dreamAnalysis.dream_places,
+            })
+            .subscribe({
+              next: () => this.finishNavigation(entryId),
+              error: () => this.finishNavigation(entryId),
+            });
+        },
+        error: (error) => {
+          if (this.isRateLimitAnalysisError(error)) {
+            this.finishNavigation(entryId, "ai-rate-limit");
+            return;
+          }
+
+          this.finishNavigation(entryId);
+        },
+      });
   }
 
-  private finishNavigation(entryId: number): void {
+  private finishNavigation(entryId: number, analysisWarning?: string): void {
     this.isSaving = false;
     this.resetForm();
-    this.router.navigate(['/entries', entryId]);
+
+    const queryParams = analysisWarning ? { analysisWarning } : undefined;
+
+    this.router.navigate(["/entries", entryId], { queryParams });
+  }
+
+  private isRateLimitAnalysisError(error: unknown): boolean {
+    if (!(error instanceof HttpErrorResponse)) {
+      return false;
+    }
+
+    if (error.status === 429) {
+      return true;
+    }
+
+    const serialised = JSON.stringify(error.error ?? "").toLowerCase();
+    return (
+      serialised.includes("quota") ||
+      serialised.includes("rate limit") ||
+      serialised.includes("too many requests") ||
+      serialised.includes("insufficient_quota")
+    );
   }
 
   private handleError(message: string): void {
@@ -441,132 +1015,158 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   cancelCreate(): void {
-    if (!this.hasUnsavedChanges() && !this.hasAutosavedChanges) {
-      // No changes, navigate back immediately
-      this.router.navigate(['/entries']);
+    this.goBack();
+  }
+
+  goBack(): void {
+    if (!this.canLeaveCreateScreen()) {
       return;
     }
 
-    // Show confirmation dialog for unsaved changes
-    const dialogData: ConfirmDialogData = {
-      title: 'Unsaved Changes',
-      message: 'You have unsaved changes that are stored in your session. What would you like to do?',
-      confirmText: 'Save & Leave',
-      cancelText: 'Keep Editing',
-      hasUnsavedChanges: true
-    };
+    if (this.isEditing && this.editingId !== null) {
+      this.resetForm();
+      this.router.navigate(["/entries", this.editingId]);
+      return;
+    }
 
-    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
-      width: '400px',
-      maxWidth: '90vw',
-      data: dialogData,
-      disableClose: true,
-      autoFocus: false,
-      restoreFocus: false,
-      panelClass: 'custom-dialog-container'
-    });
-
-    dialogRef.afterClosed().subscribe(result => {
-      if (result === 'save') {
-        // Save and then navigate
-        this.persistEntry(false, () => {
-          this.router.navigate(['/entries']);
-        });
-      } else if (result === false) {
-        // Continue editing - do nothing, stay on page
-        return;
-      }
-      // If result is true (confirm without save), just navigate
-      if (result === true) {
-        this.clearAutosaveData();
-        this.router.navigate(['/entries']);
-      }
-    });
+    this.resetForm();
+    this.router.navigate(["/entries"]);
   }
 
   addTag(event: MatChipInputEvent): void {
-    const value = (event.value || '').trim();
-    if (value && !this.tags.includes(value)) {
-      this.tags.push(value);
-      if (this.isEditing) {
-        this.onContentChange();
-      }
-    }
-    event.chipInput?.clear();
+    this.addChipValue(this.tags, event);
   }
 
-  removeTag(tag: string | number): void {
-    if (typeof tag === 'string') {
-      this.tags = this.tags.filter(t => t !== tag);
-    } else {
-      this.tags.splice(tag, 1);
-    }
-    if (this.isEditing) {
-      this.onContentChange();
-    }
+  removeTag(tag: string): void {
+    this.tags = this.tags.filter((t) => t !== tag);
+  }
+
+  addPeopleName(event: MatChipInputEvent): void {
+    this.addChipValue(this.peopleNames, event);
+  }
+
+  removePeopleName(person: string): void {
+    this.peopleNames = this.peopleNames.filter((p) => p !== person);
+  }
+
+  addPlace(event: MatChipInputEvent): void {
+    this.addChipValue(this.places, event);
+  }
+
+  removePlace(place: string): void {
+    this.places = this.places.filter((p) => p !== place);
   }
 
   onTypeChange() {
     // Clear content when switching between types to avoid confusion
-    this.content = '';
+    this.content = "";
     this.tags = [];
-    
+    this.peopleNames = [];
+    this.places = [];
+
     // Reset dream-specific fields when switching away from dream type
-    if (this.selectedType !== 'dream') {
+    if (this.selectedType !== "dream") {
       this.resetDreamFields();
     }
   }
 
   private resetDreamFields() {
-    this.dreamCast = '';
-    this.dreamLocation = '';
-    this.dreamPeriod = '';
-    this.dreamEmotion = '';
-    this.dreamPlot = '';
-    this.dreamSymbolsAndImagery = '';
-    this.dreamInsight = '';
-    this.dreamAction = '';
-    this.dreamOther = '';
-  }
-
-  triggerImageUpload(): void {
-    this.fileInput?.nativeElement.click();
-  }
-
-  handleImageUpload(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length) {
-      // Placeholder for future upload handling
-      alert('Image upload is not implemented yet.');
-      input.value = '';
-    }
+    this.dreamCast = "";
+    this.dreamLocation = "";
+    this.dreamPeriod = "";
+    this.dreamEmotion = "";
+    this.dreamPlot = "";
+    this.dreamSymbolsAndImagery = "";
+    this.dreamInsight = "";
+    this.dreamAction = "";
+    this.dreamOther = "";
   }
 
   canDeactivate(): boolean {
-    // Always return true - we handle confirmations via our modal in cancelCreate()
-    return true;
+    return this.canLeaveCreateScreen();
   }
 
-  @HostListener('window:beforeunload', ['$event'])
+  @HostListener("window:beforeunload", ["$event"])
   handleBeforeUnload(event: BeforeUnloadEvent): void {
-    // Completely disable browser warning - we handle this with our modal
-    // Don't set event.returnValue or call preventDefault
-    return;
+    if (this.hasUnsavedChanges()) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  }
+
+  private addChipValue(target: string[], event: MatChipInputEvent): void {
+    const value = (event.value || "").trim();
+    if (value && !target.includes(value)) {
+      target.push(value);
+    }
+    event.chipInput?.clear();
+  }
+
+  private canLeaveCreateScreen(): boolean {
+    return !this.hasUnsavedChanges() || confirm("Discard this entry?");
+  }
+
+  private captureBackQueryParams(): void {
+    const sourceParams = this.route.snapshot.queryParams;
+
+    ["type", "month", "year", "search"].forEach((key) => {
+      if (sourceParams[key] !== undefined && sourceParams[key] !== null) {
+        this.backQueryParams[key] = sourceParams[key];
+      }
+    });
+  }
+
+  private parseApiDateAsLocal(value: unknown): Date | null {
+    if (typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    const isoDateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+    if (isoDateOnlyMatch) {
+      const year = Number(isoDateOnlyMatch[1]);
+      const monthIndex = Number(isoDateOnlyMatch[2]) - 1;
+      const day = Number(isoDateOnlyMatch[3]);
+      const localDate = new Date(year, monthIndex, day);
+
+      if (
+        localDate.getFullYear() === year &&
+        localDate.getMonth() === monthIndex &&
+        localDate.getDate() === day
+      ) {
+        return localDate;
+      }
+
+      return null;
+    }
+
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private serialiseDateAsLocalIso(value: Date): string {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   private hasUnsavedChanges(): boolean {
-    if (!this.originalFormState) {
-      // If no original state, check if any content exists
-      const hasBasicChanges = Boolean(
-        (this.entryTitle && this.entryTitle.trim()) ||
-        (this.content && this.content.trim()) ||
-        this.tags.length ||
-        this.selectedMood ||
-        this.selectedAIStyle !== 'friendly' ||
-        (this.entryDate && this.entryDate.toDateString() !== this.initialDate)
-      );
+    const hasBasicChanges = Boolean(
+      (this.entryTitle && this.entryTitle.trim()) ||
+      (this.content && this.content.trim()) ||
+      this.tags.length ||
+      this.peopleNames.length ||
+      this.places.length ||
+      this.selectedMood ||
+      this.selectedAIStyle !== "friendly" ||
+      this.leaveItToAI ||
+      (this.entryDate && this.entryDate.toDateString() !== this.initialDate),
+    );
 
-      const hasDreamChanges = this.selectedType === 'dream' && Boolean(
+    const hasDreamChanges =
+      this.selectedType === "dream" &&
+      Boolean(
         this.dreamCast.trim() ||
         this.dreamLocation.trim() ||
         this.dreamPeriod.trim() ||
@@ -575,164 +1175,26 @@ export class CreateComponent implements OnInit, OnDestroy {
         this.dreamSymbolsAndImagery.trim() ||
         this.dreamInsight.trim() ||
         this.dreamAction.trim() ||
-        this.dreamOther.trim()
+        this.dreamOther.trim(),
       );
 
-      return hasBasicChanges || hasDreamChanges;
-    }
-
-    // Compare current state with original for edit mode
-    return (
-      this.entryTitle !== this.originalFormState.entryTitle ||
-      this.content !== this.originalFormState.content ||
-      this.dreamCast !== this.originalFormState.dreamCast ||
-      this.dreamLocation !== this.originalFormState.dreamLocation ||
-      this.dreamEmotion !== this.originalFormState.dreamEmotion ||
-      this.dreamPlot !== this.originalFormState.dreamPlot ||
-      this.selectedMood !== this.originalFormState.selectedMood ||
-      JSON.stringify(this.tags) !== JSON.stringify(this.originalFormState.tags)
-    );
+    return hasBasicChanges || hasDreamChanges;
   }
 
   private resetForm(): void {
     this.isSaving = false;
-    this.errorMessage = '';
+    this.errorMessage = "";
     this.entryDate = new Date();
     this.initialDate = this.entryDate.toDateString();
-    this.entryTitle = '';
-    this.content = '';
+    this.entryTitle = "";
+    this.content = "";
     this.tags = [];
+    this.peopleNames = [];
+    this.places = [];
     this.leaveItToAI = false;
-    this.selectedType = 'daily';
-    this.selectedMood = '';
-    this.selectedAIStyle = 'friendly';
+    this.selectedType = "daily";
+    this.selectedMood = "";
+    this.selectedAIStyle = "friendly";
     this.resetDreamFields();
-  }
-
-  // New methods for wireframe functionality
-  onContentChange(): void {
-    if (this.isEditing) {
-      this.autosaveSubject.next(); // Trigger autosave timer
-    }
-  }
-
-  private storeOriginalFormState(): void {
-    this.originalFormState = {
-      entryTitle: this.entryTitle,
-      content: this.content,
-      dreamCast: this.dreamCast,
-      dreamLocation: this.dreamLocation,
-      dreamEmotion: this.dreamEmotion,
-      dreamPlot: this.dreamPlot,
-      tags: [...this.tags],
-      selectedMood: this.selectedMood
-    };
-  }
-
-  private performAutosave(): void {
-    // Don't set isSaving - this is just a session save, not a real save
-    this.autosaveStatus = 'saving';
-    
-    // Create a temporary save (in-memory or session storage)
-    const currentState = {
-      entryTitle: this.entryTitle,
-      content: this.content,
-      dreamCast: this.dreamCast,
-      dreamLocation: this.dreamLocation,
-      dreamEmotion: this.dreamEmotion,
-      dreamPlot: this.dreamPlot,
-      tags: [...this.tags],
-      selectedMood: this.selectedMood,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Store in session storage for persistence across page refreshes
-    sessionStorage.setItem(`autosave_${this.editingId}`, JSON.stringify(currentState));
-    
-    setTimeout(() => {
-      this.autosaveStatus = 'saved';
-      this.lastAutosaveTime = new Date();
-      this.hasAutosavedChanges = true;
-    }, 500); // Faster feedback
-  }
-
-  toggleHeroImageSection(): void {
-    this.heroImageExpanded = !this.heroImageExpanded;
-  }
-
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: Event): void {
-    // Close hero image if clicking outside and it's expanded
-    if (this.heroImageExpanded) {
-      const target = event.target as HTMLElement;
-      const heroSection = document.querySelector('.hero-image-section');
-      
-      if (heroSection && !heroSection.contains(target)) {
-        this.heroImageExpanded = false;
-      }
-    }
-  }
-
-  getCurrentAIResponse(): string {
-    if (!this.aiResponseData) return '';
-    
-    if (this.selectedType === 'daily') {
-      return this.aiResponseData.analysis || '';
-    } else {
-      return this.aiResponseData.interpretation || '';
-    }
-  }
-
-  getAIKeywords(): string[] {
-    if (!this.aiResponseData) return [];
-    return this.aiResponseData.keywords || [];
-  }
-
-  getAIPeople(): string[] {
-    if (!this.aiResponseData) return [];
-    return this.aiResponseData.people || [];
-  }
-
-  regenerateAIResponse(): void {
-    if (!this.hasAIResponse || !this.editingId) return;
-    
-        
-    // Implement AI response regeneration
-    console.log('Regenerating AI response for entry:', this.editingId);
-  }
-
-  saveAndStay(): void {
-    // Manual autosave - doesn't confirm changes, just saves to session
-    this.performAutosave();
-  }
-
-  saveAndView(): void {
-    // Actually save to database and navigate to view entry page
-    if (this.isEditing && this.editingId) {
-      // This will set isSaving and disable buttons during actual save
-      this.persistEntry(false, () => {
-        this.clearAutosaveData();
-        this.router.navigate(['/entries', this.editingId]);
-      });
-    }
-  }
-
-  private clearAutosaveData(): void {
-    if (this.editingId) {
-      sessionStorage.removeItem(`autosave_${this.editingId}`);
-    }
-    this.hasAutosavedChanges = false;
-    this.autosaveStatus = 'idle';
-  }
-
-  formatAutosaveTime(): string {
-    if (!this.lastAutosaveTime) return '';
-    const now = new Date();
-    const diff = Math.floor((now.getTime() - this.lastAutosaveTime.getTime()) / 1000);
-    
-    if (diff < 10) return 'just now';
-    if (diff < 60) return `${diff} seconds ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)} minute${Math.floor(diff / 60) !== 1 ? 's' : ''} ago`;
-    return `${Math.floor(diff / 3600)} hour${Math.floor(diff / 3600) !== 1 ? 's' : ''} ago`;
   }
 }

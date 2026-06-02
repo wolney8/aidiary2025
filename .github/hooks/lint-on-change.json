@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": ".github/hooks/scripts/lint-on-change.sh",
+        "timeout": 60
+      }
+    ]
+  }
+}

@@ -6,8 +6,13 @@ __pycache__/
 *.pkl
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
 *.log
 
 # Virtual environments
@@ -34,11 +39,38 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/settings.json
+walkthroughs/
 
 # SQLite databases
 server/db/*.db
+server/db/*.db-journal
+server/db/*.db-shm
+server/db/*.db-wal
 server/db/*.sqlite
+server/db/*.sqlite-journal
+server/db/*.sqlite-shm
+server/db/*.sqlite-wal
 server/db/*.sqlite3
+server/db/*.sqlite3-journal
+server/db/*.sqlite3-shm
+server/db/*.sqlite3-wal
 server/db/*.backup_*
 
 client/test-results/
+
+# Database files
+server/db/*.db
+server/db/*.db-shm
+server/db/*.db-wal
+server/app.db
+server/app.db-*
+server/app.db-shm
+server/app.db-wal
+server/app.db-journal
+
+# Virtual environment symlink
+server/.runtime-venv
+
+# Test files
+server/test_*.py
+
