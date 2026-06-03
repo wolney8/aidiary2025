@@ -214,6 +214,25 @@ def test_create_daily_entry(client):
     assert 'id' in data
     assert data['entry_number'] == 1
 
+def test_create_daily_entry_rejects_future_date(client):
+    """POST /api/daily should reject future dates."""
+    token = get_auth_token(client)
+    future_date = '2999-01-01'
+
+    response = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': future_date,
+            'user_message': 'Future daily entry'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Future entry dates are not allowed'
+
 def test_get_daily_entries(client):
     """Test retrieving daily entries."""
     token = get_auth_token(client)
@@ -942,6 +961,29 @@ def test_update_daily_entry_rejects_invalid_entry_date(client):
     data = json.loads(update_resp.data)
     assert data['error'] == 'Invalid entry_date format. Use YYYY-MM-DD'
 
+def test_update_daily_entry_rejects_future_entry_date(client):
+    """PUT /api/daily/:id should reject future dates."""
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-07', 'user_message': 'Valid entry'}),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2999-01-01'}),
+        content_type='application/json'
+    )
+
+    assert update_resp.status_code == 400
+    data = json.loads(update_resp.data)
+    assert data['error'] == 'Future entry dates are not allowed'
+
 
 def test_update_dream_entry_rejects_invalid_entry_date(client):
     """PUT /api/dreams/:id should return 400 for invalid date format."""
@@ -968,3 +1010,49 @@ def test_update_dream_entry_rejects_invalid_entry_date(client):
     assert update_resp.status_code == 400
     data = json.loads(update_resp.data)
     assert data['error'] == 'Invalid entry_date format. Use YYYY-MM-DD'
+
+def test_create_dream_entry_rejects_future_date(client):
+    """POST /api/dreams should reject future dates."""
+    token = get_auth_token(client)
+
+    response = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2999-01-01',
+            'title': 'Future dream',
+            'plot': 'Dream text'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Future entry dates are not allowed'
+
+def test_update_dream_entry_rejects_future_entry_date(client):
+    """PUT /api/dreams/:id should reject future dates."""
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-08',
+            'title': 'Dream',
+            'plot': 'Valid dream'
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2999-01-01'}),
+        content_type='application/json'
+    )
+
+    assert update_resp.status_code == 400
+    data = json.loads(update_resp.data)
+    assert data['error'] == 'Future entry dates are not allowed'

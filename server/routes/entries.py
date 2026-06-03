@@ -56,6 +56,15 @@ def _normalise_entry_date(value):
     return None
 
 
+def _is_future_entry_date(value: str) -> bool:
+    parsed = _parse_entry_date(value)
+    if not parsed:
+        return False
+
+    today = datetime.now().date()
+    return parsed.date() > today
+
+
 def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
     if not source:
         return None
@@ -171,7 +180,14 @@ def create_daily_entry():
     user_id = int(get_jwt_identity())
     data = request.get_json()
     
-    entry_date = data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
+    entry_date = _normalise_entry_date(
+        data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
+    )
+    if not entry_date:
+        return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+    if _is_future_entry_date(entry_date):
+        return jsonify({'error': 'Future entry dates are not allowed'}), 400
+
     user_message = data.get('user_message', '')
     title = data.get('title', '')
     
@@ -246,6 +262,9 @@ def update_daily_entry(entry_id):
         if not parsed_entry_date:
             conn.close()
             return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+        if _is_future_entry_date(parsed_entry_date):
+            conn.close()
+            return jsonify({'error': 'Future entry dates are not allowed'}), 400
 
         updates.append('entry_date = ?')
         values.append(parsed_entry_date)
@@ -354,7 +373,13 @@ def create_dream_entry():
     user_id = int(get_jwt_identity())
     data = request.get_json()
     
-    entry_date = data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
+    entry_date = _normalise_entry_date(
+        data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
+    )
+    if not entry_date:
+        return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+    if _is_future_entry_date(entry_date):
+        return jsonify({'error': 'Future entry dates are not allowed'}), 400
     
     conn = get_db()
     cursor = conn.cursor()
@@ -438,6 +463,9 @@ def update_dream_entry(entry_id):
         if not parsed_entry_date:
             conn.close()
             return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+        if _is_future_entry_date(parsed_entry_date):
+            conn.close()
+            return jsonify({'error': 'Future entry dates are not allowed'}), 400
 
         updates.append('entry_date = ?')
         values.append(parsed_entry_date)
