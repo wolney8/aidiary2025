@@ -120,3 +120,57 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     assert data["user"]["ai_focus"] == "creative-prompts"
     assert data["user"]["allow_ai_history"] == 0
     assert data["user"]["chatgpt_daily_diary_coachname"] == "Sage"
+
+
+def test_profile_update_rejects_invalid_ai_tone(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"ai_tone": "playful"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data["error"] == "Invalid AI tone"
+
+
+def test_profile_update_trims_display_name_and_timezone(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps(
+            {
+                "display_name": "  Alex  ",
+                "timezone": "  Europe/London  ",
+            }
+        ),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["user"]["display_name"] == "Alex"
+    assert data["user"]["timezone"] == "Europe/London"
+
+
+def test_profile_update_rejects_overlong_pronouns(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"pronouns": "x" * 41}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data["error"] == "Maximum length is 40 characters"
