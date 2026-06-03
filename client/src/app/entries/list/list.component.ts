@@ -1,5 +1,11 @@
 // Entry list with timeline and card grid
-import { Component, OnInit, OnDestroy, inject } from "@angular/core";
+import {
+  Component,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  inject,
+} from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { ActivatedRoute, Router, RouterModule } from "@angular/router";
 import { MatCardModule } from "@angular/material/card";
@@ -26,6 +32,7 @@ type TimelineMonth = {
 type EntryItem = (DailyEntry | DreamEntry) & { type: "daily" | "dream" };
 
 type CalendarStatus = "none" | "daily" | "dream" | "complete";
+type CalendarPreviewType = "daily" | "dream";
 
 type CalendarDay = {
   date: Date;
@@ -35,6 +42,19 @@ type CalendarDay = {
   isFuture: boolean;
   status: CalendarStatus;
   entries: EntryItem[];
+};
+
+type CalendarPreviewState = {
+  dayKey: string;
+  type: CalendarPreviewType;
+  phase: "open" | "closing";
+  direction: "left-to-right" | "right-to-left";
+  entries: EntryItem[];
+  totalCount: number;
+  dateLabel: string;
+  top: number;
+  left: number;
+  placement: "above" | "below";
 };
 
 @Component({
@@ -350,8 +370,9 @@ type CalendarDay = {
                       type="button"
                       class="calendar-entry-icon daily"
                       *ngIf="getEntryCountByType(day, 'daily') > 0"
-                      [attr.aria-label]="'Open daily entries for ' + getCalendarDayDateLabel(day)"
-                      (click)="openCalendarDayByType(day, 'daily', $event)"
+                      [class.preview-active]="isCalendarPreviewActive(day, 'daily')"
+                      [attr.aria-label]="'Preview daily entries for ' + getCalendarDayDateLabel(day)"
+                      (click)="toggleCalendarPreview(day, 'daily', $event)"
                     >
                       <mat-icon>book</mat-icon>
                       <span class="calendar-entry-count">{{ getEntryCountByType(day, 'daily') }}</span>
@@ -360,8 +381,9 @@ type CalendarDay = {
                       type="button"
                       class="calendar-entry-icon dream"
                       *ngIf="getEntryCountByType(day, 'dream') > 0"
-                      [attr.aria-label]="'Open dream entries for ' + getCalendarDayDateLabel(day)"
-                      (click)="openCalendarDayByType(day, 'dreams', $event)"
+                      [class.preview-active]="isCalendarPreviewActive(day, 'dream')"
+                      [attr.aria-label]="'Preview dream entries for ' + getCalendarDayDateLabel(day)"
+                      (click)="toggleCalendarPreview(day, 'dream', $event)"
                     >
                       <mat-icon>nights_stay</mat-icon>
                       <span class="calendar-entry-count">{{ getEntryCountByType(day, 'dream') }}</span>
@@ -374,6 +396,88 @@ type CalendarDay = {
                   </ng-template>
                 </div>
               </div>
+              <section
+                class="calendar-preview-deck"
+                *ngIf="calendarPreview"
+                [class.preview-left-to-right]="getCalendarPreviewDirection() === 'left-to-right'"
+                [class.preview-right-to-left]="getCalendarPreviewDirection() === 'right-to-left'"
+                [class.preview-below]="calendarPreview.placement === 'below'"
+                [class.preview-above]="calendarPreview.placement === 'above'"
+                [class.closing]="calendarPreview.phase === 'closing'"
+                [style.top.px]="calendarPreview.top"
+                [style.left.px]="calendarPreview.left"
+                (click)="$event.stopPropagation()"
+                aria-label="Entry preview deck"
+              >
+                <header class="calendar-preview-header">
+                  <div>
+                    <strong>{{ getCalendarPreviewHeading() }}</strong>
+                    <span>{{ calendarPreview.dateLabel }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="calendar-preview-close"
+                    aria-label="Close preview"
+                    (click)="closeCalendarPreview($event)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </header>
+                <div class="calendar-preview-cards">
+                  <button
+                    type="button"
+                    class="calendar-preview-card"
+                    *ngFor="let entry of getCalendarPreviewEntries(); let previewIndex = index"
+                    [style.--preview-index]="previewIndex"
+                    (click)="openEntryDetail(entry, $event)"
+                  >
+                    <div class="calendar-preview-card-title">
+                      <mat-icon>{{
+                        entry.type === "dream" ? "nights_stay" : "book"
+                      }}</mat-icon>
+                      <span>{{ getEntryTitle(entry) }}</span>
+                    </div>
+                    <div
+                      class="calendar-preview-card-tags"
+                      *ngIf="getTags(entry).length > 0"
+                    >
+                      <span
+                        class="calendar-preview-tag"
+                        *ngFor="let tag of getTags(entry).slice(0, 3)"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                    <div class="calendar-preview-card-copy">
+                      <div class="calendar-preview-copy-block">
+                        <span class="calendar-preview-copy-label">{{
+                          getCalendarPreviewPrimaryLabel(entry)
+                        }}</span>
+                        <p>{{ getCalendarPreviewPrimaryText(entry) }}</p>
+                      </div>
+                      <div
+                        class="calendar-preview-copy-block"
+                        *ngIf="getCalendarPreviewSecondaryText(entry)"
+                      >
+                        <span class="calendar-preview-copy-label">{{
+                          getCalendarPreviewSecondaryLabel(entry)
+                        }}</span>
+                        <p>{{ getCalendarPreviewSecondaryText(entry) }}</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="calendar-preview-card calendar-preview-card-more"
+                    [style.--preview-index]="getCalendarPreviewEntries().length"
+                    (click)="openCalendarPreviewFullView($event)"
+                    [attr.aria-label]="getCalendarPreviewMoreLabel()"
+                  >
+                    <mat-icon>arrow_forward</mat-icon>
+                    <span>{{ getCalendarPreviewMoreLabel() }}</span>
+                  </button>
+                </div>
+              </section>
             </section>
           </ng-template>
         </ng-container>
@@ -417,6 +521,8 @@ export class ListComponent implements OnInit, OnDestroy {
   private hasExplicitMonthSelection = false;
   private pendingMonthSelection: { monthIndex: number; year: number } | null =
     null;
+  calendarPreview: CalendarPreviewState | null = null;
+  private previewCloseTimerId: number | null = null;
 
   exitSearch(): void {
     this.searchService.clear();
@@ -789,6 +895,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   onViewChange(view: string): void {
+    this.closeCalendarPreview();
     this.currentView = view as "all" | "daily" | "dreams";
     this.selectedDay = null;
 
@@ -808,6 +915,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   setDisplayMode(mode: "cards" | "calendar"): void {
+    this.closeCalendarPreview();
     this.displayMode = mode;
     if (mode === "calendar") {
       this.selectedDay = null;
@@ -818,6 +926,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   clearSelectedDay(): void {
+    this.closeCalendarPreview();
     this.selectedDay = null;
     this.displayMode = "calendar";
     this.filterEntries();
@@ -884,7 +993,38 @@ export class ListComponent implements OnInit, OnDestroy {
     return day.entries.filter((entry) => entry.type === type).length;
   }
 
+  getCalendarPreviewEntries(): EntryItem[] {
+    return this.calendarPreview?.entries ?? [];
+  }
+
+  getCalendarPreviewHeading(): string {
+    if (!this.calendarPreview) {
+      return "Entries";
+    }
+
+    const count = this.calendarPreview.totalCount;
+    const typeLabel = this.calendarPreview.type === "daily" ? "Daily" : "Dream";
+    return `${typeLabel} entr${count === 1 ? "y" : "ies"}`;
+  }
+
+  getCalendarPreviewMoreLabel(): string {
+    return "View more";
+  }
+
+  getCalendarPreviewDirection(): "left-to-right" | "right-to-left" {
+    return this.calendarPreview?.direction ?? "left-to-right";
+  }
+
+  isCalendarPreviewActive(day: CalendarDay, type: CalendarPreviewType): boolean {
+    return (
+      this.calendarPreview?.dayKey === this.toDateKey(day.date) &&
+      this.calendarPreview.type === type &&
+      this.calendarPreview.phase === "open"
+    );
+  }
+
   onCalendarDaySelect(day: CalendarDay): void {
+    this.closeCalendarPreview();
     if (!day.isCurrentMonth) {
       return;
     }
@@ -911,18 +1051,67 @@ export class ListComponent implements OnInit, OnDestroy {
     this.onCalendarDaySelect(day);
   }
 
-  openCalendarDayByType(
-    day: CalendarDay,
-    view: "daily" | "dreams",
-    event: Event,
-  ): void {
+  openCalendarPreviewFullView(event: Event): void {
     event.stopPropagation();
-    this.currentView = view;
-    this.selectedDay = this.toDateKey(day.date);
+
+    if (!this.calendarPreview) {
+      return;
+    }
+
+    this.currentView = this.calendarPreview.type === "daily" ? "daily" : "dreams";
+    this.selectedDay = this.calendarPreview.dayKey;
     this.displayMode = "cards";
     this.currentPage = 0;
+    this.closeCalendarPreview(undefined, true);
     this.filterEntries();
     this.updatePaginatedEntries();
+    this.updateListQueryParams();
+  }
+
+  toggleCalendarPreview(
+    day: CalendarDay,
+    type: CalendarPreviewType,
+    event: MouseEvent,
+  ): void {
+    event.stopPropagation();
+
+    if (!day.isCurrentMonth || day.isFuture) {
+      return;
+    }
+
+    const dayKey = this.toDateKey(day.date);
+    const isSamePreview =
+      this.calendarPreview?.dayKey === dayKey && this.calendarPreview.type === type;
+
+    if (isSamePreview && this.calendarPreview?.phase === "open") {
+      this.closeCalendarPreview();
+      return;
+    }
+
+    if (this.previewCloseTimerId) {
+      window.clearTimeout(this.previewCloseTimerId);
+      this.previewCloseTimerId = null;
+    }
+
+    const typedEntries = day.entries.filter((entry) => entry.type === type);
+    const deckEntries = typedEntries.slice(0, 3);
+    const overlayPosition = this.getCalendarPreviewPosition(
+      event.currentTarget as HTMLElement,
+      deckEntries.length,
+    );
+
+    this.calendarPreview = {
+      dayKey,
+      type,
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      entries: deckEntries,
+      totalCount: typedEntries.length,
+      dateLabel: this.getCalendarDayDateLabel(day),
+      top: overlayPosition.top,
+      left: overlayPosition.left,
+      placement: overlayPosition.placement,
+    };
   }
 
   private getCreateTargetDate(): Date {
@@ -1172,6 +1361,38 @@ export class ListComponent implements OnInit, OnDestroy {
     return rawText.replace(/\s+/g, " ").trim();
   }
 
+  getCalendarPreviewPrimaryLabel(entry: EntryItem): string {
+    return entry.type === "dream" ? "Plot" : "User entry";
+  }
+
+  getCalendarPreviewSecondaryLabel(entry: EntryItem): string {
+    return entry.type === "dream" ? "AI interpretation" : "AI response";
+  }
+
+  getCalendarPreviewPrimaryText(entry: EntryItem): string {
+    if (this.isDreamEntry(entry)) {
+      return this.truncatePreviewText(entry.plot || "", 120);
+    }
+
+    const dailyEntry = entry as DailyEntry & { type: "daily" };
+    return this.truncatePreviewText(
+      this.splitDailyMessage(dailyEntry.user_message || "")[1],
+      120,
+    );
+  }
+
+  getCalendarPreviewSecondaryText(entry: EntryItem): string {
+    if (this.isDreamEntry(entry)) {
+      return this.truncatePreviewText(
+        entry.interpretation || entry.summary || "",
+        100,
+      );
+    }
+
+    const dailyEntry = entry as DailyEntry & { type: "daily" };
+    return this.truncatePreviewText(dailyEntry.ai_response || "", 100);
+  }
+
   getTags(entry: any): string[] {
     return (entry.tags || "")
       .split(",")
@@ -1245,6 +1466,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   openEntryDetail(entry: any, event?: Event): void {
+    this.closeCalendarPreview();
     event?.stopPropagation();
     this.router.navigate(["/entries", entry.id], {
       queryParams: this.getDetailContextParams(),
@@ -1380,6 +1602,21 @@ export class ListComponent implements OnInit, OnDestroy {
     return [title, rest.join("\n\n")];
   }
 
+  private truncatePreviewText(text: string, maxLength: number): string {
+    const collapsed = text.replace(/\s+/g, " ").trim();
+    if (collapsed.length <= maxLength) {
+      return collapsed;
+    }
+
+    return `${collapsed.slice(0, maxLength - 1).trimEnd()}…`;
+  }
+
+  private isDreamEntry(
+    entry: EntryItem,
+  ): entry is DreamEntry & { type: "dream" } {
+    return entry.type === "dream";
+  }
+
   private generateTimelineMonths(count = 4): TimelineMonth[] {
     // This method is now replaced by generateAllMonths()
     // Keeping for backward compatibility but not used
@@ -1399,10 +1636,125 @@ export class ListComponent implements OnInit, OnDestroy {
     return months;
   }
 
+  private getPreviewDirectionFromClick(
+    event: MouseEvent,
+  ): "left-to-right" | "right-to-left" {
+    const viewportMidpoint = window.innerWidth / 2;
+    return event.clientX <= viewportMidpoint ? "left-to-right" : "right-to-left";
+  }
+
+  private getCalendarPreviewPosition(
+    anchorElement: HTMLElement,
+    previewCardCount: number,
+  ): { top: number; left: number; placement: "above" | "below" } {
+    const rect = anchorElement.getBoundingClientRect();
+    const cardWidth = window.innerWidth <= 600 ? 200 : 230;
+    const halfCardWidth = Math.round(cardWidth * 0.56);
+    const gap = 14;
+    const horizontalPadding = 28;
+    const deckWidth =
+      previewCardCount * cardWidth +
+      Math.max(0, previewCardCount - 1) * gap +
+      halfCardWidth +
+      gap +
+      horizontalPadding;
+    const estimatedHeight = window.innerWidth <= 600 ? 250 : 290;
+    const viewportPadding = 16;
+
+    const centeredLeft = rect.left + rect.width / 2 - deckWidth / 2;
+    const maxLeft = window.innerWidth - deckWidth - viewportPadding;
+    const left = Math.max(viewportPadding, Math.min(centeredLeft, maxLeft));
+
+    const preferBelow = rect.top < estimatedHeight + viewportPadding;
+    const placement: "above" | "below" = preferBelow ? "below" : "above";
+    const top =
+      placement === "below"
+        ? Math.min(rect.bottom + 12, window.innerHeight - estimatedHeight - viewportPadding)
+        : Math.max(viewportPadding, rect.top - estimatedHeight - 12);
+
+    return { top, left, placement };
+  }
+
+  closeCalendarPreview(event?: Event, immediate = false): void {
+    event?.stopPropagation();
+
+    if (!this.calendarPreview) {
+      return;
+    }
+
+    if (this.previewCloseTimerId) {
+      window.clearTimeout(this.previewCloseTimerId);
+      this.previewCloseTimerId = null;
+    }
+
+    if (immediate) {
+      this.calendarPreview = null;
+      return;
+    }
+
+    this.calendarPreview = {
+      ...this.calendarPreview,
+      phase: "closing",
+    };
+
+    const closingPreviewKey = `${this.calendarPreview.dayKey}:${this.calendarPreview.type}`;
+    this.previewCloseTimerId = window.setTimeout(() => {
+      if (
+        this.calendarPreview &&
+        `${this.calendarPreview.dayKey}:${this.calendarPreview.type}` ===
+          closingPreviewKey
+      ) {
+        this.calendarPreview = null;
+      }
+      this.previewCloseTimerId = null;
+    }, 180);
+  }
+
+  @HostListener("document:click", ["$event"])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (!target || !this.calendarPreview) {
+      return;
+    }
+
+    if (target.closest(".calendar-preview-deck, .calendar-entry-icon")) {
+      return;
+    }
+
+    this.closeCalendarPreview();
+  }
+
+  @HostListener("document:keydown.escape", ["$event"])
+  onEscapeKey(event: KeyboardEvent): void {
+    if (!this.calendarPreview) {
+      return;
+    }
+
+    event.preventDefault();
+    this.closeCalendarPreview();
+  }
+
+  @HostListener("window:scroll")
+  onWindowScroll(): void {
+    if (this.calendarPreview) {
+      this.closeCalendarPreview(undefined, true);
+    }
+  }
+
+  @HostListener("window:resize")
+  onWindowResize(): void {
+    if (this.calendarPreview) {
+      this.closeCalendarPreview(undefined, true);
+    }
+  }
+
   ngOnDestroy(): void {
     // Clean up animation frame to prevent memory leaks
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
+    }
+    if (this.previewCloseTimerId) {
+      window.clearTimeout(this.previewCloseTimerId);
     }
   }
 }
