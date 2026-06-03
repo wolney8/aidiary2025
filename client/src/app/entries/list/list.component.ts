@@ -1115,6 +1115,10 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   private getCreateTargetDate(): Date {
+    if (this.selectedDay) {
+      return new Date(`${this.selectedDay}T12:00:00`);
+    }
+
     // Calculate the appropriate date based on selected month
     let targetDate: Date;
     const today = new Date();

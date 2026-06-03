@@ -20,6 +20,7 @@ import { MatChipsModule, MatChipInputEvent } from "@angular/material/chips";
 import { MatIconModule } from "@angular/material/icon";
 import { MatSelectModule } from "@angular/material/select";
 import { COMMA, ENTER } from "@angular/cdk/keycodes";
+import { MatButtonToggleChange } from "@angular/material/button-toggle";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import {
@@ -96,7 +97,7 @@ const UK_DATE_FORMATS = {
             name="entryType"
             [disabled]="isEditing"
             aria-label="Entry type toggle"
-            (change)="onTypeChange()"
+            (change)="onTypeChange($event)"
           >
             <mat-button-toggle value="daily">Daily Entry</mat-button-toggle>
             <mat-button-toggle value="dream">Dream Entry</mat-button-toggle>
@@ -541,6 +542,7 @@ export class CreateComponent implements OnInit {
   places: string[] = [];
   leaveItToAI = false;
   selectedType: "daily" | "dream" = "daily";
+  private previousSelectedType: "daily" | "dream" = "daily";
   isSaving = false;
   errorMessage = "";
   maxDate = new Date();
@@ -662,6 +664,7 @@ export class CreateComponent implements OnInit {
       const typeParam = params.get("type");
       if (typeParam === "dream" || typeParam === "daily") {
         this.selectedType = typeParam;
+        this.previousSelectedType = typeParam;
       }
     });
 
@@ -690,6 +693,7 @@ export class CreateComponent implements OnInit {
 
   populateForm(entry: any, type: "daily" | "dream"): void {
     this.selectedType = type;
+    this.previousSelectedType = type;
     this.entryDate = this.parseApiDateAsLocal(entry.entry_date) ?? new Date();
     this.entryTitle = entry.title || "";
     this.tags = entry.tags
@@ -1079,17 +1083,32 @@ export class CreateComponent implements OnInit {
     this.places = this.places.filter((p) => p !== place);
   }
 
-  onTypeChange() {
-    // Clear content when switching between types to avoid confusion
-    this.content = "";
-    this.tags = [];
-    this.peopleNames = [];
-    this.places = [];
+  onTypeChange(event: MatButtonToggleChange) {
+    const nextType = event.value as "daily" | "dream";
+    const previousType = this.previousSelectedType;
 
-    // Reset dream-specific fields when switching away from dream type
-    if (this.selectedType !== "dream") {
+    if (nextType === previousType) {
+      return;
+    }
+
+    if (this.hasTypeSpecificContent(previousType)) {
+      const confirmed = confirm(
+        "Switching entry type will clear the current type-specific content. Continue?",
+      );
+
+      if (!confirmed) {
+        this.selectedType = previousType;
+        return;
+      }
+    }
+
+    if (previousType === "daily") {
+      this.content = "";
+    } else {
       this.resetDreamFields();
     }
+
+    this.previousSelectedType = nextType;
   }
 
   private resetDreamFields() {
@@ -1256,6 +1275,24 @@ export class CreateComponent implements OnInit {
     return hasBasicChanges || hasDreamChanges;
   }
 
+  private hasTypeSpecificContent(type: "daily" | "dream"): boolean {
+    if (type === "daily") {
+      return Boolean(this.content.trim());
+    }
+
+    return Boolean(
+      this.dreamCast.trim() ||
+        this.dreamLocation.trim() ||
+        this.dreamPeriod.trim() ||
+        this.dreamEmotion.trim() ||
+        this.dreamPlot.trim() ||
+        this.dreamSymbolsAndImagery.trim() ||
+        this.dreamInsight.trim() ||
+        this.dreamAction.trim() ||
+        this.dreamOther.trim(),
+    );
+  }
+
   private resetForm(): void {
     this.isSaving = false;
     this.errorMessage = "";
@@ -1268,6 +1305,7 @@ export class CreateComponent implements OnInit {
     this.places = [];
     this.leaveItToAI = false;
     this.selectedType = "daily";
+    this.previousSelectedType = "daily";
     this.selectedMood = "";
     this.selectedAIStyle = "friendly";
     this.resetDreamFields();
