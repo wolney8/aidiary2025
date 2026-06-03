@@ -1,7 +1,7 @@
 export const environment = {
   production: false,
   inactivity: {
-    enabled: false,
+    enabled: true,
     timeoutSeconds: 900,
     warningSeconds: 60,
   },

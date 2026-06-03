@@ -83,7 +83,46 @@ def test_register_rejects_short_password(client):
 
     assert response.status_code == 400
     data = json.loads(response.data)
-    assert data['error'] == 'Password must be at least 10 characters'
+    assert data['error'] == 'Password must be between 8 and 12 characters'
+
+def test_register_rejects_password_that_is_only_numbers(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'testuser',
+            'password': '12345678'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Password cannot be only numbers'
+
+def test_register_rejects_password_without_number(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'testuser',
+            'password': 'abcdefgh'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Password must include at least one number'
+
+def test_register_rejects_password_over_max_length(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'testuser',
+            'password': 'abc1234567890'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Password must be between 8 and 12 characters'
 
 def test_register_trims_username(client):
     response = client.post('/api/register',
@@ -97,6 +136,69 @@ def test_register_trims_username(client):
     assert response.status_code == 201
     data = json.loads(response.data)
     assert data['user']['username'] == 'spaceduser'
+
+def test_register_rejects_invalid_username_characters(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'bad user!',
+            'password': 'testpass123'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Username may only contain letters, numbers, dots, underscores, and hyphens'
+
+def test_register_rejects_overlong_names(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'testuser',
+            'password': 'testpass123',
+            'first_name': 'A' * 13
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'First and last name must be 12 characters or fewer'
+
+def test_register_rejects_invalid_name_characters(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'testuser',
+            'password': 'testpass1',
+            'first_name': '<script>'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'First name contains unsupported characters'
+
+def test_register_rejects_duplicate_username(client):
+    first_response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'repeatuser',
+            'password': 'testpass123'
+        }),
+        content_type='application/json'
+    )
+    assert first_response.status_code == 201
+
+    second_response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'repeatuser',
+            'password': 'testpass123'
+        }),
+        content_type='application/json'
+    )
+
+    assert second_response.status_code == 409
+    data = json.loads(second_response.data)
+    assert data['error'] == 'Username already exists'
 
 def test_login_success(client):
     """Test successful login."""

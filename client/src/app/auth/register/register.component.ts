@@ -32,7 +32,14 @@ import { AuthService } from '../../core/services/auth.service';
           <form (ngSubmit)="onSubmit()">
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Username</mat-label>
-              <input matInput [(ngModel)]="formData.username" name="username" required>
+              <input
+                matInput
+                [(ngModel)]="formData.username"
+                name="username"
+                maxlength="32"
+                required
+              >
+              <mat-hint>Use 3-32 letters, numbers, dots, underscores, or hyphens.</mat-hint>
             </mat-form-field>
             
             <mat-form-field appearance="outline" class="full-width">
@@ -42,9 +49,10 @@ import { AuthService } from '../../core/services/auth.service';
                 type="password"
                 [(ngModel)]="formData.password"
                 name="password"
+                maxlength="12"
                 required
               >
-              <mat-hint>Use at least 10 characters.</mat-hint>
+              <mat-hint>Use 8-12 characters with letters and numbers.</mat-hint>
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="full-width">
@@ -60,12 +68,22 @@ import { AuthService } from '../../core/services/auth.service';
             
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>First Name</mat-label>
-              <input matInput [(ngModel)]="formData.first_name" name="first_name">
+              <input
+                matInput
+                [(ngModel)]="formData.first_name"
+                name="first_name"
+                maxlength="12"
+              >
             </mat-form-field>
             
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Last Name</mat-label>
-              <input matInput [(ngModel)]="formData.last_name" name="last_name">
+              <input
+                matInput
+                [(ngModel)]="formData.last_name"
+                name="last_name"
+                maxlength="12"
+              >
             </mat-form-field>
             
             <button
@@ -143,8 +161,13 @@ export class RegisterComponent {
       return;
     }
 
-    if (this.formData.password.length < 10) {
-      this.errorMessage = 'Password must be at least 10 characters.';
+    if (this.formData.password.length < 8 || this.formData.password.length > 12) {
+      this.errorMessage = 'Password must be between 8 and 12 characters.';
+      return;
+    }
+
+    if (!/[A-Za-z]/.test(this.formData.password) || !/[0-9]/.test(this.formData.password)) {
+      this.errorMessage = 'Password must include letters and numbers.';
       return;
     }
 
