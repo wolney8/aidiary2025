@@ -64,7 +64,14 @@ export const routes: Routes = [
       {
         path: "",
         pathMatch: "full",
-        redirectTo: "import",
+        redirectTo: "personalisation",
+      },
+      {
+        path: "personalisation",
+        loadComponent: () =>
+          import("./settings/personalisation/personalisation.component").then(
+            (m) => m.PersonalisationComponent,
+          ),
       },
       {
         path: "import",

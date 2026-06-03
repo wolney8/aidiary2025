@@ -43,17 +43,17 @@ Treat this file as a local orientation note only. GitHub remains the source of t
 - `M8: Cloud DB Migration`
   - 0 closed, 4 open
 - `M11: AI Chat Companion`
-  - 0 closed, 7 open
+  - 0 closed, 8 open
 - `M12: UI/UX Enhancements`
-  - 0 closed, 5 open
+  - 0 closed, 8 open
 - `M13: Release Governance and Repo Hygiene`
-  - 0 closed, 2 open
+  - 0 closed, 3 open
 - `M14: Chat Companion GA and Reliability`
   - 0 closed, 2 open
 - `M15: Settings and Personalisation Completion`
   - 0 closed, 2 open
 - `M16: Integrations and Data Portability`
-  - 0 closed, 2 open
+  - 0 closed, 3 open
 - `M17: Cloud Database Cutover`
   - 0 closed, 2 open
 
@@ -93,6 +93,7 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#43` Chat context retrieval service
 - `#44` Chat API routes
 - `#46` Chat companion UI component
+- `#76` Ensure FAB visibility and mounting in app shell
 - `#47` OpenAI chat service and SSE streaming
 - `#48` DB migration for `chat_messages`
 - `#49` Chat Angular service and interfaces
@@ -108,6 +109,9 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#54` User profile settings: pronouns, display name, AI style
 - `#55` Photo uploads
 - `#64` Finish Settings experience and remove remaining “Coming soon” gaps
+- `#75` All Entries month view: centre cards when fewer than four results
+- `#78` Calendar view for diary adherence, missed days, and daily/dream completion
+- `#79` Diary motivation ideas backlog
 
 ### Settings and personalisation
 
@@ -119,6 +123,7 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#63` Import/sync from Daylio and other diary apps
 - `#70` Integration adapters framework
 - `#74` Import/export parity and data portability contract
+- `#77` Bulk delete all entries with export guard rails and destructive-action warnings
 
 ### Cloud database and operational readiness
 
@@ -130,6 +135,16 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 
 - `#65` Branch lifecycle policy
 - `#67` Milestone closure governance checklist
+- `#80` Registration and authentication security review
+
+## Newly added issues in this cycle
+
+- `#75` addresses a real current UI gap in All Entries month view card centring.
+- `#76` makes chat FAB visibility explicit rather than implicit inside chat UI delivery.
+- `#77` adds destructive bulk-delete safety aligned with export and portability work.
+- `#78` introduces a concrete diary adherence calendar view.
+- `#79` captures wider retention and motivation ideas without forcing immediate implementation.
+- `#80` creates an explicit security review track for registration and authentication.
 
 ## Interpretation
 

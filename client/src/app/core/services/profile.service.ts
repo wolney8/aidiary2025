@@ -1,7 +1,7 @@
 // Service for profile retrieval and updates
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 import { User } from '../models/user.model';
 import { AuthService } from './auth.service';
 
@@ -29,12 +29,16 @@ export class ProfileService {
   getProfile(): Observable<User> {
     return this.http.get<User>(`${this.apiUrl}/profile`, {
       headers: this.buildHeaders()
-    });
+    }).pipe(
+      tap((user) => this.authService.syncCurrentUser(user))
+    );
   }
 
-  updateProfile(payload: Partial<User>): Observable<{ message: string }> {
-    return this.http.put<{ message: string }>(`${this.apiUrl}/profile`, payload, {
+  updateProfile(payload: Partial<User>): Observable<{ message: string; user: User }> {
+    return this.http.put<{ message: string; user: User }>(`${this.apiUrl}/profile`, payload, {
       headers: this.buildHeaders()
-    });
+    }).pipe(
+      tap((response) => this.authService.syncCurrentUser(response.user))
+    );
   }
 }

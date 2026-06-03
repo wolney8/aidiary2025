@@ -11,6 +11,16 @@ _TARGET_COLUMNS: dict[str, tuple[str, ...]] = {
     'dreamdiary_entries': ('mood', 'ai_style'),
 }
 
+_USER_SETTINGS_COLUMNS: dict[str, str] = {
+    'display_name': 'TEXT',
+    'pronouns': 'TEXT',
+    'timezone': "TEXT DEFAULT 'UTC'",
+    'ai_tone': "TEXT DEFAULT 'friendly'",
+    'ai_verbosity': "TEXT DEFAULT 'balanced'",
+    'ai_focus': "TEXT DEFAULT 'reflective'",
+    'allow_ai_history': 'INTEGER DEFAULT 1',
+}
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -83,3 +93,40 @@ def ensure_entry_ai_metadata_table(
         log('Runtime migration ensured table exists: %s', 'entry_ai_metadata')
 
     return True
+
+
+def ensure_user_settings_columns(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> int:
+    """Ensure runtime users table includes settings and personalisation columns."""
+    added_columns = 0
+
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        cursor = conn.cursor()
+
+        table_exists = cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ('users',),
+        ).fetchone()
+        if not table_exists:
+            if log:
+                log('Runtime migration skipped missing table: %s', 'users')
+            return 0
+
+        table_columns = {
+            row[1]
+            for row in cursor.execute('PRAGMA table_info(users)').fetchall()
+        }
+
+        for column_name, column_definition in _USER_SETTINGS_COLUMNS.items():
+            if column_name in table_columns:
+                continue
+            cursor.execute(
+                f'ALTER TABLE users ADD COLUMN {column_name} {column_definition}'
+            )
+            added_columns += 1
+            if log:
+                log('Runtime migration added column %s.%s', 'users', column_name)
+
+    return added_columns

@@ -8,6 +8,13 @@ export interface User {
   age?: number;
   sex?: string;
   goals?: string;
+  display_name?: string;
+  pronouns?: string;
+  timezone?: string;
+  ai_tone?: string;
+  ai_verbosity?: string;
+  ai_focus?: string;
+  allow_ai_history?: boolean;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;

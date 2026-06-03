@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from services.runtime_migrations import (
     ensure_entry_ai_metadata_table,
     ensure_entry_mood_style_columns,
+    ensure_user_settings_columns,
 )
 
 # Load environment variables
@@ -65,6 +66,13 @@ def create_app():
         ensure_entry_ai_metadata_table(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime metadata migration skipped due to error: %s', migration_exc)
+
+    try:
+        added_user_columns = ensure_user_settings_columns(database_path, app.logger.info)
+        if added_user_columns == 0:
+            app.logger.info('Runtime user settings migration check: no column changes needed')
+    except Exception as migration_exc:
+        app.logger.warning('Runtime user settings migration skipped due to error: %s', migration_exc)
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')

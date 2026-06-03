@@ -417,7 +417,10 @@ export class TopBarComponent implements OnInit, OnDestroy {
   protected currentSearchQuery = "";
 
   userName$: Observable<string | null> = this.authService.currentUser$.pipe(
-    map((user) => user?.first_name || user?.username || null),
+    map(
+      (user) =>
+        user?.display_name || user?.first_name || user?.username || null,
+    ),
   );
 
   versionLabel = APP_VERSION;

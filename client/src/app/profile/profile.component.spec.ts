@@ -29,7 +29,14 @@ describe("ProfileComponent", () => {
         id: 1,
         username: "tester",
       } satisfies User),
-    updateProfile: () => of({ message: "ok" }),
+    updateProfile: () =>
+      of({
+        message: "ok",
+        user: {
+          id: 1,
+          username: "tester",
+        } satisfies User,
+      }),
   };
 
   beforeEach(async () => {

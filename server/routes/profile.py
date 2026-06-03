@@ -26,7 +26,9 @@ def get_profile():
     user = cursor.execute('''
         SELECT id, username, first_name, last_name, age, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
-               chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname
+               chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
+               display_name, pronouns, timezone, ai_tone, ai_verbosity,
+               ai_focus, allow_ai_history
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
     
@@ -48,7 +50,9 @@ def update_profile():
     allowed_fields = [
         'first_name', 'last_name', 'age', 'sex', 'goals',
         'dailydiary_api_key', 'dreamdiary_api_key',
-        'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname'
+        'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname',
+        'display_name', 'pronouns', 'timezone', 'ai_tone', 'ai_verbosity',
+        'ai_focus', 'allow_ai_history'
     ]
     
     updates = []
@@ -57,7 +61,10 @@ def update_profile():
     for field in allowed_fields:
         if field in data:
             updates.append(f'{field} = ?')
-            values.append(data[field])
+            value = data[field]
+            if field == 'allow_ai_history':
+                value = 1 if bool(value) else 0
+            values.append(value)
     
     if not updates:
         return jsonify({'error': 'No fields to update'}), 400
@@ -72,8 +79,18 @@ def update_profile():
         SET {', '.join(updates)}
         WHERE id = ?
     ''', values)
-    
+
     conn.commit()
+
+    updated_user = cursor.execute('''
+        SELECT id, username, first_name, last_name, age, sex, goals,
+               dailydiary_api_key, dreamdiary_api_key,
+               chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
+               display_name, pronouns, timezone, ai_tone, ai_verbosity,
+               ai_focus, allow_ai_history
+        FROM users WHERE id = ?
+    ''', (user_id,)).fetchone()
+
     conn.close()
     
-    return jsonify({'message': 'Profile updated'}), 200
+    return jsonify({'message': 'Profile updated', 'user': dict(updated_user)}), 200

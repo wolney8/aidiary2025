@@ -97,45 +97,16 @@ import { User } from "../core/models/user.model";
                   name="goals"
                 ></textarea>
               </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>Daily Diary API Key</mat-label>
-                <input
-                  matInput
-                  [(ngModel)]="profile.dailydiary_api_key"
-                  name="dailydiary_api_key"
-                />
-              </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>Dream Diary API Key</mat-label>
-                <input
-                  matInput
-                  [(ngModel)]="profile.dreamdiary_api_key"
-                  name="dreamdiary_api_key"
-                />
-              </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>Daily Diary Coach Name</mat-label>
-                <input
-                  matInput
-                  [(ngModel)]="profile.chatgpt_daily_diary_coachname"
-                  name="chatgpt_daily_diary_coachname"
-                />
-              </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>Dream Diary Coach Name</mat-label>
-                <input
-                  matInput
-                  [(ngModel)]="profile.chatgpt_dream_diary_coachname"
-                  name="chatgpt_dream_diary_coachname"
-                />
-              </mat-form-field>
             </div>
 
             <div class="actions">
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="openSettings()"
+              >
+                Open Settings
+              </button>
               <button
                 mat-raised-button
                 color="primary"
@@ -187,6 +158,7 @@ import { User } from "../core/models/user.model";
 
       .actions {
         display: flex;
+        gap: var(--spacing-sm);
         justify-content: flex-end;
         margin-top: var(--spacing-md);
       }
@@ -256,6 +228,10 @@ export class ProfileComponent implements OnInit {
         this.saving = false;
       },
     });
+  }
+
+  openSettings(): void {
+    this.router.navigateByUrl("/settings/personalisation");
   }
 
   private canGoBack(): boolean {

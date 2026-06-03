@@ -84,4 +84,9 @@ export class AuthService {
   isAuthenticated(): boolean {
     return !!this.getToken();
   }
+
+  syncCurrentUser(user: User): void {
+    localStorage.setItem(this.userKey, JSON.stringify(user));
+    this.currentUserSubject.next(user);
+  }
 }

@@ -21,10 +21,20 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
     <section class="settings-shell">
       <header class="settings-header">
         <h1>Settings</h1>
-        <p>Manage import and export tools for your diary data.</p>
+        <p>Manage personalisation, AI preferences, and diary data tools.</p>
       </header>
 
       <nav class="settings-nav" aria-label="Settings sections">
+        <a
+          mat-stroked-button
+          routerLink="/settings/personalisation"
+          routerLinkActive="is-active"
+          [routerLinkActiveOptions]="{ exact: true }"
+        >
+          <mat-icon>tune</mat-icon>
+          Personalisation
+        </a>
+
         <a
           mat-stroked-button
           routerLink="/settings/import"
