@@ -17,10 +17,12 @@ htmlcov/
 
 # Virtual environments
 .venv/
+.venv
 venv/
 env/
 ENV/
 server/.venv/
+server/.venv
 
 # Environment files
 .env
@@ -73,4 +75,3 @@ server/.runtime-venv
 
 # Test files
 server/test_*.py
-

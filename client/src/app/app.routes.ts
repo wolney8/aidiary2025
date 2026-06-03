@@ -62,6 +62,11 @@ export const routes: Routes = [
       import("./settings/settings.component").then((m) => m.SettingsComponent),
     children: [
       {
+        path: "",
+        pathMatch: "full",
+        redirectTo: "import",
+      },
+      {
         path: "import",
         loadComponent: () =>
           import("./settings/import/import.component").then(

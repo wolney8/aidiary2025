@@ -45,7 +45,7 @@ npm start
 ```bash
 cd server
 source venv/bin/activate
-flask --app app.py --debug run -p 5001
+python -m flask --app app.py --debug run -p 5001
 # Runs on http://localhost:5001
 ```
 
@@ -53,11 +53,16 @@ flask --app app.py --debug run -p 5001
 
 ```bash
 # Backend tests
-cd server && pytest
+cd server && source venv/bin/activate && pytest
 
 # Frontend tests
 cd client && npm test
 ```
+
+## Local Environment Note
+
+- Use `server/venv` for local backend work in this repository.
+- The checked-in `server/.venv` path may not be runnable on every machine and should not be treated as the default local environment.
 
 ## Architecture
 
