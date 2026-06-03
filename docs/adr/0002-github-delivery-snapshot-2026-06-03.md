@@ -109,6 +109,7 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#54` User profile settings: pronouns, display name, AI style
 - `#55` Photo uploads
 - `#64` Finish Settings experience and remove remaining “Coming soon” gaps
+- `#81` Calendar view floating preview deck
 - `#79` Diary motivation ideas backlog
 
 ### Settings and personalisation
@@ -141,6 +142,7 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#76` makes chat FAB visibility explicit rather than implicit inside chat UI delivery.
 - `#77` adds destructive bulk-delete safety aligned with export and portability work.
 - `#78` introduced a concrete diary adherence calendar view.
+- `#81` extends the calendar view with an in-place preview interaction for day entry icons.
 - `#79` captures wider retention and motivation ideas without forcing immediate implementation.
 - `#80` creates an explicit security review track for registration and authentication.
 
@@ -148,6 +150,7 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 
 - `#75` is implemented on `main` locally via the entries grid centring changes.
 - `#78` is implemented on `main` locally via the calendar adherence view and future-date guard rails.
+- Both issues remain open on GitHub as of 3 June 2026 and still need manual closure or status updates.
 - GitHub issue state and milestone closure still need to be updated manually because local Codex sessions do not have GitHub write access.
 
 ## Interpretation
