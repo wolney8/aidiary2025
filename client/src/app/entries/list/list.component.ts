@@ -166,6 +166,7 @@ type TimelineMonth = {
             class="entries-grid"
             [class.one-entry]="paginatedEntries.length === 1"
             [class.two-entries]="paginatedEntries.length === 2"
+            [class.three-entries]="paginatedEntries.length === 3"
             *ngIf="paginatedEntries.length > 0"
           >
             <mat-card

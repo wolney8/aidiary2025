@@ -72,6 +72,32 @@ def test_register_missing_credentials(client):
     data = json.loads(response.data)
     assert 'error' in data
 
+def test_register_rejects_short_password(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'testuser',
+            'password': 'short'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Password must be at least 10 characters'
+
+def test_register_trims_username(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': '  spaceduser  ',
+            'password': 'testpass123'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 201
+    data = json.loads(response.data)
+    assert data['user']['username'] == 'spaceduser'
+
 def test_login_success(client):
     """Test successful login."""
     # First register a user
@@ -110,3 +136,32 @@ def test_login_invalid_credentials(client):
     assert response.status_code == 401
     data = json.loads(response.data)
     assert 'error' in data
+
+def test_login_migrates_legacy_plaintext_password_to_bcrypt(client):
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    conn.execute("""
+        INSERT INTO users (id, username, password, first_name, last_name)
+        VALUES (?, ?, ?, ?, ?)
+    """, (99, 'legacyuser', 'legacy-pass-123', 'Legacy', 'User'))
+    conn.commit()
+    conn.close()
+
+    response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'legacyuser',
+            'password': 'legacy-pass-123'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    updated_password = conn.execute(
+        'SELECT password FROM users WHERE id = ?',
+        (99,)
+    ).fetchone()[0]
+    conn.close()
+
+    assert updated_password.startswith('$2b$')

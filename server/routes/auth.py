@@ -6,6 +6,25 @@ import sqlite3
 
 auth_bp = Blueprint('auth', __name__)
 
+MIN_PASSWORD_LENGTH = 10
+MAX_USERNAME_LENGTH = 64
+
+
+def _normalise_username(raw: object) -> str:
+    return str(raw or '').strip()
+
+
+def _validate_registration_payload(username: str, password: str) -> str | None:
+    if not username or not password:
+        return 'Username and password required'
+    if len(username) < 3:
+        return 'Username must be at least 3 characters'
+    if len(username) > MAX_USERNAME_LENGTH:
+        return 'Username must be 64 characters or fewer'
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return 'Password must be at least 10 characters'
+    return None
+
 def get_db():
     """Get database connection."""
     db_path = current_app.config['DATABASE_PATH']
@@ -18,13 +37,14 @@ def get_db():
 def register():
     """Register new user with bcrypt password hashing."""
     data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    first_name = data.get('first_name', '')
-    last_name = data.get('last_name', '')
-    
-    if not username or not password:
-        return jsonify({'error': 'Username and password required'}), 400
+    username = _normalise_username(data.get('username'))
+    password = str(data.get('password') or '')
+    first_name = str(data.get('first_name', '')).strip()
+    last_name = str(data.get('last_name', '')).strip()
+
+    validation_error = _validate_registration_payload(username, password)
+    if validation_error:
+        return jsonify({'error': validation_error}), 400
     
     # Hash password with bcrypt
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -63,9 +83,9 @@ def register():
 def login():
     """Authenticate user and return JWT token."""
     data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    
+    username = _normalise_username(data.get('username'))
+    password = str(data.get('password') or '')
+
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
     
@@ -90,6 +110,15 @@ def login():
     else:  # Legacy plaintext (should be migrated)
         if password != stored_password:
             return jsonify({'error': 'Invalid credentials'}), 401
+        # Migrate legacy plaintext password to bcrypt on successful login.
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        conn = get_db()
+        conn.execute(
+            'UPDATE users SET password = ? WHERE id = ?',
+            (password_hash.decode('utf-8'), user['id']),
+        )
+        conn.commit()
+        conn.close()
     
     # Create JWT token
     access_token = create_access_token(identity=str(user['id']))

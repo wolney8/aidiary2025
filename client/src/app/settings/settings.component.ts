@@ -3,7 +3,11 @@ import { Component } from "@angular/core";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import { MatIconModule } from "@angular/material/icon";
-import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
+import {
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from "@angular/router";
 
 @Component({
   selector: "app-settings",
@@ -21,8 +25,44 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
     <section class="settings-shell">
       <header class="settings-header">
         <h1>Settings</h1>
-        <p>Manage personalisation, AI preferences, and diary data tools.</p>
+        <p>Manage your account preferences, AI behaviour, and diary data tools.</p>
       </header>
+
+      <div class="settings-summary">
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <mat-icon>person</mat-icon>
+            <div>
+              <h2>Profile</h2>
+              <p>Biographical details and reflection goals.</p>
+              <a mat-button routerLink="/profile">Open Profile</a>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <mat-icon>tune</mat-icon>
+            <div>
+              <h2>Personalisation</h2>
+              <p>Display name, pronouns, AI style, and coach settings.</p>
+              <a mat-button routerLink="/settings/personalisation"
+                >Open Personalisation</a
+              >
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="summary-card">
+          <mat-card-content>
+            <mat-icon>database</mat-icon>
+            <div>
+              <h2>Data Tools</h2>
+              <p>Import, export, and future portability actions.</p>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
 
       <nav class="settings-nav" aria-label="Settings sections">
         <a
@@ -83,6 +123,38 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
         display: flex;
         flex-wrap: wrap;
         gap: var(--spacing-sm);
+      }
+
+      .settings-summary {
+        display: grid;
+        gap: var(--spacing-sm);
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .summary-card {
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface-muted);
+      }
+
+      .summary-card mat-card-content {
+        display: flex;
+        gap: var(--spacing-sm);
+        align-items: flex-start;
+      }
+
+      .summary-card mat-icon {
+        color: var(--colour-primary);
+        margin-top: 2px;
+      }
+
+      .summary-card h2 {
+        font-size: 1rem;
+        margin: 0 0 var(--spacing-xs);
+      }
+
+      .summary-card p {
+        margin: 0 0 var(--spacing-sm);
+        color: var(--colour-text-secondary);
       }
 
       .settings-nav a.is-active {

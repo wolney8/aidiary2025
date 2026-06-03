@@ -31,109 +31,148 @@ import { User } from "../../core/models/user.model";
       </header>
 
       <form (ngSubmit)="saveSettings()" class="settings-form">
-        <div class="field-grid">
-          <mat-form-field appearance="outline">
-            <mat-label>Display Name</mat-label>
-            <input
-              matInput
-              [(ngModel)]="settings.display_name"
-              name="display_name"
-            />
-          </mat-form-field>
+        <mat-card class="group-card">
+          <mat-card-header>
+            <mat-card-title>Identity</mat-card-title>
+            <mat-card-subtitle>
+              How the app and AI should refer to you.
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content class="field-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>Display Name</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.display_name"
+                name="display_name"
+              />
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Pronouns</mat-label>
-            <input matInput [(ngModel)]="settings.pronouns" name="pronouns" />
-          </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Pronouns</mat-label>
+              <input matInput [(ngModel)]="settings.pronouns" name="pronouns" />
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Timezone</mat-label>
-            <input
-              matInput
-              [(ngModel)]="settings.timezone"
-              name="timezone"
-              placeholder="Europe/London"
-            />
-          </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Timezone</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.timezone"
+                name="timezone"
+                placeholder="Europe/London"
+              />
+            </mat-form-field>
+          </mat-card-content>
+        </mat-card>
 
-          <mat-form-field appearance="outline">
-            <mat-label>AI Tone</mat-label>
-            <mat-select [(ngModel)]="settings.ai_tone" name="ai_tone">
-              <mat-option value="friendly">Friendly</mat-option>
-              <mat-option value="empathetic">Empathetic</mat-option>
-              <mat-option value="analytical">Analytical</mat-option>
-              <mat-option value="formal">Formal</mat-option>
-            </mat-select>
-          </mat-form-field>
+        <mat-card class="group-card">
+          <mat-card-header>
+            <mat-card-title>AI Behaviour</mat-card-title>
+            <mat-card-subtitle>
+              Control tone, depth, and how much context the AI may use.
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content class="field-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>AI Tone</mat-label>
+              <mat-select [(ngModel)]="settings.ai_tone" name="ai_tone">
+                <mat-option value="friendly">Friendly</mat-option>
+                <mat-option value="empathetic">Empathetic</mat-option>
+                <mat-option value="analytical">Analytical</mat-option>
+                <mat-option value="formal">Formal</mat-option>
+              </mat-select>
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>AI Verbosity</mat-label>
-            <mat-select
-              [(ngModel)]="settings.ai_verbosity"
-              name="ai_verbosity"
-            >
-              <mat-option value="concise">Concise</mat-option>
-              <mat-option value="balanced">Balanced</mat-option>
-              <mat-option value="detailed">Detailed</mat-option>
-            </mat-select>
-          </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>AI Verbosity</mat-label>
+              <mat-select
+                [(ngModel)]="settings.ai_verbosity"
+                name="ai_verbosity"
+              >
+                <mat-option value="concise">Concise</mat-option>
+                <mat-option value="balanced">Balanced</mat-option>
+                <mat-option value="detailed">Detailed</mat-option>
+              </mat-select>
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>AI Focus</mat-label>
-            <mat-select [(ngModel)]="settings.ai_focus" name="ai_focus">
-              <mat-option value="reflective">Reflective</mat-option>
-              <mat-option value="emotional-support">Emotional support</mat-option>
-              <mat-option value="practical-advice">Practical advice</mat-option>
-              <mat-option value="creative-prompts">Creative prompts</mat-option>
-            </mat-select>
-          </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>AI Focus</mat-label>
+              <mat-select [(ngModel)]="settings.ai_focus" name="ai_focus">
+                <mat-option value="reflective">Reflective</mat-option>
+                <mat-option value="emotional-support"
+                  >Emotional support</mat-option
+                >
+                <mat-option value="practical-advice"
+                  >Practical advice</mat-option
+                >
+                <mat-option value="creative-prompts">Creative prompts</mat-option>
+              </mat-select>
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Daily Diary Coach Name</mat-label>
-            <input
-              matInput
-              [(ngModel)]="settings.chatgpt_daily_diary_coachname"
-              name="chatgpt_daily_diary_coachname"
-            />
-          </mat-form-field>
+            <div class="checkbox-row">
+              <mat-checkbox
+                [(ngModel)]="settings.allow_ai_history"
+                name="allow_ai_history"
+              >
+                Allow AI to reference past entries
+              </mat-checkbox>
+            </div>
+          </mat-card-content>
+        </mat-card>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Dream Diary Coach Name</mat-label>
-            <input
-              matInput
-              [(ngModel)]="settings.chatgpt_dream_diary_coachname"
-              name="chatgpt_dream_diary_coachname"
-            />
-          </mat-form-field>
+        <mat-card class="group-card">
+          <mat-card-header>
+            <mat-card-title>Coach And API Access</mat-card-title>
+            <mat-card-subtitle>
+              Optional advanced settings for coach naming and per-mode keys.
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content class="field-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>Daily Diary Coach Name</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.chatgpt_daily_diary_coachname"
+                name="chatgpt_daily_diary_coachname"
+              />
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Daily Diary API Key</mat-label>
-            <input
-              matInput
-              [(ngModel)]="settings.dailydiary_api_key"
-              name="dailydiary_api_key"
-            />
-          </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Dream Diary Coach Name</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.chatgpt_dream_diary_coachname"
+                name="chatgpt_dream_diary_coachname"
+              />
+            </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>Dream Diary API Key</mat-label>
-            <input
-              matInput
-              [(ngModel)]="settings.dreamdiary_api_key"
-              name="dreamdiary_api_key"
-            />
-          </mat-form-field>
-        </div>
+            <mat-form-field appearance="outline">
+              <mat-label>Daily Diary API Key</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.dailydiary_api_key"
+                name="dailydiary_api_key"
+              />
+            </mat-form-field>
 
-        <mat-checkbox
-          [(ngModel)]="settings.allow_ai_history"
-          name="allow_ai_history"
-        >
-          Allow AI to reference past entries
-        </mat-checkbox>
+            <mat-form-field appearance="outline">
+              <mat-label>Dream Diary API Key</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.dreamdiary_api_key"
+                name="dreamdiary_api_key"
+              />
+            </mat-form-field>
+          </mat-card-content>
+        </mat-card>
 
         <div class="actions">
-          <button mat-raised-button color="primary" type="submit" [disabled]="saving">
+          <button
+            mat-raised-button
+            color="primary"
+            type="submit"
+            [disabled]="saving"
+          >
             Save Personalisation
           </button>
         </div>
@@ -164,10 +203,20 @@ import { User } from "../../core/models/user.model";
         gap: var(--spacing-md);
       }
 
+      .group-card {
+        border: 1px solid var(--colour-border);
+      }
+
       .field-grid {
         display: grid;
         gap: var(--spacing-md);
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        min-height: 56px;
       }
 
       .actions {

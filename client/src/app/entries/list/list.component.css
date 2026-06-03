@@ -201,7 +201,7 @@
   grid-template-rows: repeat(2, 1fr);
 }
 
-/* Center cards when there are 1-2 entries */
+/* Center cards when there are 1-3 entries */
 .entries-grid:has(.entry-card:nth-child(1):nth-last-child(1)) {
   /* 1 card: center it with fixed width */
   display: flex;
@@ -215,8 +215,17 @@
   gap: 2rem;
 }
 
+.entries-grid:has(.entry-card:nth-child(3):nth-last-child(1)) {
+  /* 3 cards: center them with fixed widths */
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
 .entries-grid:has(.entry-card:nth-child(1):nth-last-child(1)) .entry-card,
-.entries-grid:has(.entry-card:nth-child(2):nth-last-child(1)) .entry-card {
+.entries-grid:has(.entry-card:nth-child(2):nth-last-child(1)) .entry-card,
+.entries-grid:has(.entry-card:nth-child(3):nth-last-child(1)) .entry-card {
   /* Force consistent card width when centered */
   width: 300px;
   max-width: 300px;
@@ -236,8 +245,16 @@
     gap: 2rem;
   }
 
+  .entries-grid.three-entries {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
   .entries-grid.one-entry .entry-card,
-  .entries-grid.two-entries .entry-card {
+  .entries-grid.two-entries .entry-card,
+  .entries-grid.three-entries .entry-card {
     width: 300px;
     max-width: 300px;
     flex-shrink: 0;
