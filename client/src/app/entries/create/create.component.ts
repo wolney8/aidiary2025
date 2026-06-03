@@ -113,6 +113,7 @@ const UK_DATE_FORMATS = {
               [(ngModel)]="entryDate"
               name="entry_date"
               [max]="maxDate"
+              [matDatepickerFilter]="allowPastOrTodayOnly"
             />
             <mat-datepicker-toggle
               matIconSuffix
@@ -532,7 +533,7 @@ export class CreateComponent implements OnInit {
 
   backQueryParams: Record<string, string | number> = {};
 
-  entryDate: Date | null = new Date();
+  entryDate: Date | string | null = new Date();
   entryTitle = "";
   content = "";
   tags: string[] = [];
@@ -562,7 +563,7 @@ export class CreateComponent implements OnInit {
   dreamOther = "";
 
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
-  private initialDate = this.entryDate?.toDateString() ?? "";
+  private initialDate = this.describeEntryDate(this.entryDate);
 
   // Mood options for both entry types
   moodOptions: MoodOption[] = [
@@ -750,10 +751,19 @@ export class CreateComponent implements OnInit {
   private persistEntry(shouldAnalyse: boolean): void {
     this.errorMessage = "";
 
-    if (!this.entryDate) {
+    const normalisedEntryDate = this.coerceEntryDate(this.entryDate);
+
+    if (!normalisedEntryDate) {
       this.errorMessage = "Please select a date for this entry.";
       return;
     }
+
+    if (this.isFutureDate(normalisedEntryDate)) {
+      this.errorMessage = "Entries cannot be created or moved to a future date.";
+      return;
+    }
+
+    this.entryDate = normalisedEntryDate;
 
     // Content validation - required for daily entries, optional for dreams
     if (this.selectedType === "daily" && !this.content.trim()) {
@@ -762,7 +772,7 @@ export class CreateComponent implements OnInit {
     }
 
     this.isSaving = true;
-    const entryDate = this.serialiseDateAsLocalIso(this.entryDate);
+    const entryDate = this.serialiseDateAsLocalIso(normalisedEntryDate);
     const tags = this.tags.join(",");
     const trimmedTitle = this.entryTitle.trim();
     const body = this.content.trim();
@@ -801,7 +811,11 @@ export class CreateComponent implements OnInit {
                 this.finishNavigation(this.editingId!);
               }
             },
-            error: () => this.handleError("Failed to update your daily entry."),
+            error: (error) =>
+              this.handleSaveError(
+                error,
+                "Failed to update your daily entry.",
+              ),
           });
       } else {
         this.entriesService.createDailyEntry(createPayload).subscribe({
@@ -812,7 +826,8 @@ export class CreateComponent implements OnInit {
               this.finishNavigation(created.id!);
             }
           },
-          error: () => this.handleError("Failed to save your daily entry."),
+          error: (error) =>
+            this.handleSaveError(error, "Failed to save your daily entry."),
         });
       }
     } else {
@@ -867,7 +882,11 @@ export class CreateComponent implements OnInit {
                 this.finishNavigation(this.editingId!);
               }
             },
-            error: () => this.handleError("Failed to update your dream entry."),
+            error: (error) =>
+              this.handleSaveError(
+                error,
+                "Failed to update your dream entry.",
+              ),
           });
       } else {
         this.entriesService.createDreamEntry(createPayload).subscribe({
@@ -878,15 +897,17 @@ export class CreateComponent implements OnInit {
               this.finishNavigation(created.id!);
             }
           },
-          error: () => this.handleError("Failed to save your dream entry."),
+          error: (error) =>
+            this.handleSaveError(error, "Failed to save your dream entry."),
         });
       }
     }
   }
 
   private runDailyAnalysis(entryId: number): void {
-    const referenceDate = this.entryDate
-      ? this.serialiseDateAsLocalIso(this.entryDate)
+    const analysisDate = this.coerceEntryDate(this.entryDate);
+    const referenceDate = analysisDate
+      ? this.serialiseDateAsLocalIso(analysisDate)
       : undefined;
 
     this.analysisService
@@ -930,8 +951,9 @@ export class CreateComponent implements OnInit {
     const analysisText =
       this.dreamPlot.trim() ||
       `Cast: ${this.dreamCast} Location: ${this.dreamLocation} Plot: ${this.dreamPlot} Emotion: ${this.dreamEmotion}`;
-    const referenceDate = this.entryDate
-      ? this.serialiseDateAsLocalIso(this.entryDate)
+    const analysisDate = this.coerceEntryDate(this.entryDate);
+    const referenceDate = analysisDate
+      ? this.serialiseDateAsLocalIso(analysisDate)
       : undefined;
 
     this.analysisService
@@ -1144,11 +1166,64 @@ export class CreateComponent implements OnInit {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
+  readonly allowPastOrTodayOnly = (value: Date | null): boolean => {
+    if (!value) {
+      return false;
+    }
+
+    return !this.isFutureDate(value);
+  };
+
   private serialiseDateAsLocalIso(value: Date): string {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, "0");
     const day = String(value.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+  }
+
+  private isFutureDate(value: Date): boolean {
+    const candidate = new Date(
+      value.getFullYear(),
+      value.getMonth(),
+      value.getDate(),
+    );
+    const today = new Date();
+    const todayLocal = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    return candidate.getTime() > todayLocal.getTime();
+  }
+
+  private coerceEntryDate(value: Date | string | null): Date | null {
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === "string") {
+      return this.parseApiDateAsLocal(value);
+    }
+
+    return null;
+  }
+
+  private describeEntryDate(value: Date | string | null): string {
+    const parsed = this.coerceEntryDate(value);
+    return parsed ? parsed.toDateString() : "";
+  }
+
+  private handleSaveError(error: unknown, fallbackMessage: string): void {
+    if (error instanceof HttpErrorResponse) {
+      const apiMessage =
+        typeof error.error?.error === "string" ? error.error.error : "";
+      if (apiMessage) {
+        this.handleError(apiMessage);
+        return;
+      }
+    }
+
+    this.handleError(fallbackMessage);
   }
 
   private hasUnsavedChanges(): boolean {
@@ -1161,7 +1236,7 @@ export class CreateComponent implements OnInit {
       this.selectedMood ||
       this.selectedAIStyle !== "friendly" ||
       this.leaveItToAI ||
-      (this.entryDate && this.entryDate.toDateString() !== this.initialDate),
+      this.describeEntryDate(this.entryDate) !== this.initialDate,
     );
 
     const hasDreamChanges =

@@ -23,6 +23,20 @@ type TimelineMonth = {
   entryCount?: number;
 };
 
+type EntryItem = (DailyEntry | DreamEntry) & { type: "daily" | "dream" };
+
+type CalendarStatus = "none" | "daily" | "dream" | "complete";
+
+type CalendarDay = {
+  date: Date;
+  dayNumber: number;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  isFuture: boolean;
+  status: CalendarStatus;
+  entries: EntryItem[];
+};
+
 @Component({
   selector: "app-list",
   standalone: true,
@@ -55,10 +69,30 @@ type TimelineMonth = {
         <!-- Normal Entries View -->
         <ng-container *ngIf="!searchState.active">
           <div class="list-header">
-            <app-view-toggle
-              [value]="currentView"
-              (viewChange)="onViewChange($event)"
-            ></app-view-toggle>
+            <div class="list-controls">
+              <app-view-toggle
+                [value]="currentView"
+                (viewChange)="onViewChange($event)"
+              ></app-view-toggle>
+              <div class="display-mode-toggle" aria-label="Entries display mode">
+                <button
+                  mat-stroked-button
+                  type="button"
+                  [class.active]="displayMode === 'cards'"
+                  (click)="setDisplayMode('cards')"
+                >
+                  Cards
+                </button>
+                <button
+                  mat-stroked-button
+                  type="button"
+                  [class.active]="displayMode === 'calendar'"
+                  (click)="setDisplayMode('calendar')"
+                >
+                  Calendar
+                </button>
+              </div>
+            </div>
             <button
               mat-raised-button
               color="primary"
@@ -125,126 +159,223 @@ type TimelineMonth = {
             </button>
           </div>
 
-          <!-- Top Pagination -->
-          <div class="pagination-container">
-            <mat-paginator
-              [length]="totalEntries"
-              [pageSize]="pageSize"
-              [pageSizeOptions]="[8, 16, 32]"
-              [pageIndex]="currentPage"
-              [showFirstLastButtons]="true"
-              (page)="onPageChange($event)"
-              aria-label="Select page"
-            >
-            </mat-paginator>
+          <div class="selected-day-banner" *ngIf="selectedDay && displayMode === 'cards'">
+            <div>
+              <strong>{{ getSelectedDayLabel() }}</strong>
+              <span>{{ totalEntries }} matching entr{{ totalEntries === 1 ? 'y' : 'ies' }}</span>
+            </div>
+            <button mat-button type="button" (click)="clearSelectedDay()">
+              Back to calendar
+            </button>
           </div>
 
-          <!-- No entries message -->
-          <div class="no-entries-message" *ngIf="paginatedEntries.length === 0">
-            <mat-card class="no-entries-card">
-              <mat-card-content>
-                <mat-icon class="no-entries-icon">calendar_today</mat-icon>
-                <h3>No entries found</h3>
-                <p>
-                  No entries for this time period. Start documenting your
-                  journey!
-                </p>
-                <button
-                  mat-raised-button
-                  color="primary"
-                  (click)="navigateToCreateEntry()"
-                >
-                  <mat-icon>add</mat-icon>
-                  Add Entry Now
-                </button>
-              </mat-card-content>
-            </mat-card>
-          </div>
+          <ng-container *ngIf="displayMode === 'cards'; else calendarMode">
+            <!-- Top Pagination -->
+            <div class="pagination-container">
+              <mat-paginator
+                [length]="totalEntries"
+                [pageSize]="pageSize"
+                [pageSizeOptions]="[8, 16, 32]"
+                [pageIndex]="currentPage"
+                [showFirstLastButtons]="true"
+                (page)="onPageChange($event)"
+                aria-label="Select page"
+              >
+              </mat-paginator>
+            </div>
 
-          <!-- Entry cards grid -->
-          <div
-            class="entries-grid"
-            [class.one-entry]="paginatedEntries.length === 1"
-            [class.two-entries]="paginatedEntries.length === 2"
-            [class.three-entries]="paginatedEntries.length === 3"
-            *ngIf="paginatedEntries.length > 0"
-          >
-            <mat-card
-              class="entry-card"
-              *ngFor="let entry of paginatedEntries"
-              tabindex="0"
-              role="button"
-              [attr.aria-label]="'Open ' + getEntryTitle(entry)"
-              (click)="openEntryDetail(entry)"
-              (keydown.enter)="openEntryDetail(entry)"
-              (keydown.space)="onCardSpacebar($event, entry)"
-            >
-              <mat-card-header>
-                <mat-icon mat-card-avatar>
-                  {{ entry.type === "dream" ? "nights_stay" : "book" }}
-                </mat-icon>
-                <mat-card-title>{{ getEntryTitle(entry) }}</mat-card-title>
-                <mat-card-subtitle>{{
-                  entry.entry_date | date: "dd/MM/yyyy"
-                }}</mat-card-subtitle>
-              </mat-card-header>
-
-              <mat-card-content>
-                <div class="entry-image-placeholder">
-                  <!-- Chart placeholder matching wireframes -->
-                  <mat-icon>pie_chart</mat-icon>
-                </div>
-                <p class="entry-snippet">{{ getEntrySnippet(entry) }}</p>
-                <mat-chip-set *ngIf="getTags(entry).length > 0">
-                  <mat-chip
-                    *ngFor="let tag of getTags(entry).slice(0, 2)"
-                    (click)="searchForTag(tag)"
-                    >{{ tag }}</mat-chip
+            <!-- No entries message -->
+            <div class="no-entries-message" *ngIf="paginatedEntries.length === 0">
+              <mat-card class="no-entries-card">
+                <mat-card-content>
+                  <mat-icon class="no-entries-icon">calendar_today</mat-icon>
+                  <h3>No entries found</h3>
+                  <p>
+                    No entries for this time period. Start documenting your
+                    journey!
+                  </p>
+                  <button
+                    mat-raised-button
+                    color="primary"
+                    (click)="navigateToCreateEntry()"
                   >
-                </mat-chip-set>
-              </mat-card-content>
+                    <mat-icon>add</mat-icon>
+                    Add Entry Now
+                  </button>
+                </mat-card-content>
+              </mat-card>
+            </div>
 
-              <mat-card-actions>
-                <button
-                  mat-button
-                  color="primary"
-                  (click)="openEntryDetail(entry, $event)"
-                >
-                  VIEW ENTRY
-                </button>
-                <button
-                  mat-icon-button
-                  [disabled]="true"
-                  title="Coming soon"
-                  aria-label="Favourite coming soon"
-                >
-                  <mat-icon>favorite_border</mat-icon>
-                </button>
-                <button
-                  mat-icon-button
-                  [disabled]="true"
-                  title="Coming soon"
-                  aria-label="Share coming soon"
-                >
-                  <mat-icon>share</mat-icon>
-                </button>
-              </mat-card-actions>
-            </mat-card>
-          </div>
-
-          <!-- Bottom Pagination -->
-          <div class="pagination-container">
-            <mat-paginator
-              [length]="totalEntries"
-              [pageSize]="pageSize"
-              [pageSizeOptions]="[8, 16, 32]"
-              [pageIndex]="currentPage"
-              [showFirstLastButtons]="true"
-              (page)="onPageChange($event)"
-              aria-label="Select page"
+            <!-- Entry cards grid -->
+            <div
+              class="entries-grid"
+              [class.one-entry]="paginatedEntries.length === 1"
+              [class.two-entries]="paginatedEntries.length === 2"
+              [class.three-entries]="paginatedEntries.length === 3"
+              *ngIf="paginatedEntries.length > 0"
             >
-            </mat-paginator>
-          </div>
+              <mat-card
+                class="entry-card"
+                *ngFor="let entry of paginatedEntries"
+                tabindex="0"
+                role="button"
+                [attr.aria-label]="'Open ' + getEntryTitle(entry)"
+                (click)="openEntryDetail(entry)"
+                (keydown.enter)="openEntryDetail(entry)"
+                (keydown.space)="onCardSpacebar($event, entry)"
+              >
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>
+                    {{ entry.type === "dream" ? "nights_stay" : "book" }}
+                  </mat-icon>
+                  <mat-card-title>{{ getEntryTitle(entry) }}</mat-card-title>
+                  <mat-card-subtitle>{{
+                    entry.entry_date | date: "dd/MM/yyyy"
+                  }}</mat-card-subtitle>
+                </mat-card-header>
+
+                <mat-card-content>
+                  <div class="entry-image-placeholder">
+                    <!-- Chart placeholder matching wireframes -->
+                    <mat-icon>pie_chart</mat-icon>
+                  </div>
+                  <p class="entry-snippet">{{ getEntrySnippet(entry) }}</p>
+                  <mat-chip-set *ngIf="getTags(entry).length > 0">
+                    <mat-chip
+                      *ngFor="let tag of getTags(entry).slice(0, 2)"
+                      (click)="searchForTag(tag)"
+                      >{{ tag }}</mat-chip
+                    >
+                  </mat-chip-set>
+                </mat-card-content>
+
+                <mat-card-actions>
+                  <button
+                    mat-button
+                    color="primary"
+                    (click)="openEntryDetail(entry, $event)"
+                  >
+                    VIEW ENTRY
+                  </button>
+                  <button
+                    mat-icon-button
+                    [disabled]="true"
+                    title="Coming soon"
+                    aria-label="Favourite coming soon"
+                  >
+                    <mat-icon>favorite_border</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    [disabled]="true"
+                    title="Coming soon"
+                    aria-label="Share coming soon"
+                  >
+                    <mat-icon>share</mat-icon>
+                  </button>
+                </mat-card-actions>
+              </mat-card>
+            </div>
+
+            <!-- Bottom Pagination -->
+            <div class="pagination-container">
+              <mat-paginator
+                [length]="totalEntries"
+                [pageSize]="pageSize"
+                [pageSizeOptions]="[8, 16, 32]"
+                [pageIndex]="currentPage"
+                [showFirstLastButtons]="true"
+                (page)="onPageChange($event)"
+                aria-label="Select page"
+              >
+              </mat-paginator>
+            </div>
+          </ng-container>
+
+          <ng-template #calendarMode>
+            <section class="calendar-shell" aria-label="Diary adherence calendar">
+              <div class="calendar-summary">
+                <div>
+                  <h3>{{ getCalendarHeading() }}</h3>
+                  <p>
+                    Select a day to review entries or create one when a day is
+                    empty.
+                  </p>
+                </div>
+                <div class="calendar-legend" aria-label="Calendar legend">
+                  <span class="legend-item">
+                    <span class="legend-swatch none"></span>
+                    No entries
+                  </span>
+                  <span class="legend-item">
+                    <span class="legend-swatch daily"></span>
+                    Daily only
+                  </span>
+                  <span class="legend-item">
+                    <span class="legend-swatch dream"></span>
+                    Dream only
+                  </span>
+                  <span class="legend-item">
+                    <span class="legend-swatch complete"></span>
+                    Daily and dream
+                  </span>
+                </div>
+              </div>
+
+              <div class="calendar-weekdays" aria-hidden="true">
+                <span *ngFor="let weekday of weekdays">{{ weekday }}</span>
+              </div>
+
+              <div class="calendar-grid">
+                <div
+                  class="calendar-day"
+                  *ngFor="let day of calendarDays"
+                  [class.outside-month]="!day.isCurrentMonth"
+                  [class.unavailable]="day.isFuture"
+                  [class.today]="day.isToday"
+                  [class.has-entries]="day.status !== 'none'"
+                  [class.status-daily]="day.status === 'daily'"
+                  [class.status-dream]="day.status === 'dream'"
+                  [class.status-complete]="day.status === 'complete'"
+                  [attr.role]="day.isCurrentMonth && !day.isFuture ? 'button' : null"
+                  [attr.tabindex]="day.isCurrentMonth && !day.isFuture ? 0 : null"
+                  [attr.aria-label]="getCalendarDayLabel(day)"
+                  (click)="onCalendarDaySelect(day)"
+                  (keydown.enter)="onCalendarDayKeydown($event, day)"
+                  (keydown.space)="onCalendarDayKeydown($event, day)"
+                >
+                  <span class="calendar-day-number">{{ day.dayNumber }}</span>
+                  <div class="calendar-day-icons" *ngIf="day.entries.length > 0; else emptyDayAction">
+                    <button
+                      type="button"
+                      class="calendar-entry-icon daily"
+                      *ngIf="getEntryCountByType(day, 'daily') > 0"
+                      [attr.aria-label]="'Open daily entries for ' + getCalendarDayDateLabel(day)"
+                      (click)="openCalendarDayByType(day, 'daily', $event)"
+                    >
+                      <mat-icon>book</mat-icon>
+                      <span class="calendar-entry-count">{{ getEntryCountByType(day, 'daily') }}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="calendar-entry-icon dream"
+                      *ngIf="getEntryCountByType(day, 'dream') > 0"
+                      [attr.aria-label]="'Open dream entries for ' + getCalendarDayDateLabel(day)"
+                      (click)="openCalendarDayByType(day, 'dreams', $event)"
+                    >
+                      <mat-icon>nights_stay</mat-icon>
+                      <span class="calendar-entry-count">{{ getEntryCountByType(day, 'dream') }}</span>
+                    </button>
+                  </div>
+                  <ng-template #emptyDayAction>
+                    <span class="calendar-day-plus" aria-hidden="true">
+                      <mat-icon>add</mat-icon>
+                    </span>
+                  </ng-template>
+                </div>
+              </div>
+            </section>
+          </ng-template>
         </ng-container>
       </ng-container>
     </div>
@@ -273,12 +404,16 @@ export class ListComponent implements OnInit, OnDestroy {
   currentPage = 0;
   totalEntries = 0;
   paginatedEntries: any[] = [];
+  displayMode: "cards" | "calendar" = "cards";
+  selectedDay: string | null = null;
+  calendarDays: CalendarDay[] = [];
+  readonly weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   // Current data
   currentView: "all" | "daily" | "dreams" = "all";
-  dailyEntries: DailyEntry[] = [];
-  dreamEntries: DreamEntry[] = [];
-  filteredEntries: any[] = [];
+  dailyEntries: EntryItem[] = [];
+  dreamEntries: EntryItem[] = [];
+  filteredEntries: EntryItem[] = [];
   private hasExplicitMonthSelection = false;
   private pendingMonthSelection: { monthIndex: number; year: number } | null =
     null;
@@ -591,6 +726,7 @@ export class ListComponent implements OnInit, OnDestroy {
     if (month.isFuture) return;
 
     this.hasExplicitMonthSelection = true;
+    this.selectedDay = null;
 
     // Update selection state
     this.allMonths.forEach((m) => (m.isSelected = false));
@@ -654,10 +790,12 @@ export class ListComponent implements OnInit, OnDestroy {
 
   onViewChange(view: string): void {
     this.currentView = view as "all" | "daily" | "dreams";
+    this.selectedDay = null;
 
-    // Switching view should always jump to the most recent matching entry month.
-    this.hasExplicitMonthSelection = false;
-    this.autoSelectLatestMonthForView();
+    // Preserve an explicitly selected month when switching filters.
+    if (!this.hasExplicitMonthSelection) {
+      this.autoSelectLatestMonthForView(true);
+    }
 
     this.filterEntries();
     this.currentPage = 0;
@@ -666,6 +804,128 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   navigateToCreateEntry(): void {
+    this.navigateToCreateEntryForDate(this.getCreateTargetDate());
+  }
+
+  setDisplayMode(mode: "cards" | "calendar"): void {
+    this.displayMode = mode;
+    if (mode === "calendar") {
+      this.selectedDay = null;
+      this.filterEntries();
+      this.currentPage = 0;
+      this.updatePaginatedEntries();
+    }
+  }
+
+  clearSelectedDay(): void {
+    this.selectedDay = null;
+    this.displayMode = "calendar";
+    this.filterEntries();
+    this.currentPage = 0;
+    this.updatePaginatedEntries();
+  }
+
+  getSelectedDayLabel(): string {
+    if (!this.selectedDay) {
+      return "";
+    }
+
+    const date = new Date(`${this.selectedDay}T12:00:00`);
+    return date.toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  getCalendarHeading(): string {
+    if (!this.selectedMonth) {
+      return "Current month";
+    }
+
+    return `${this.selectedMonth.label} ${this.selectedMonth.year}`;
+  }
+
+  getCalendarStatusLabel(status: CalendarStatus): string {
+    if (status === "daily") {
+      return "Daily";
+    }
+    if (status === "dream") {
+      return "Dream";
+    }
+    if (status === "complete") {
+      return "Complete";
+    }
+    return "Open";
+  }
+
+  getCalendarDayDateLabel(day: CalendarDay): string {
+    return day.date.toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  getCalendarDayLabel(day: CalendarDay): string {
+    const dateLabel = this.getCalendarDayDateLabel(day);
+    const statusLabel = this.getCalendarStatusLabel(day.status);
+    const entryCountLabel =
+      day.entries.length > 0
+        ? `${day.entries.length} entr${day.entries.length === 1 ? "y" : "ies"}`
+        : "no entries";
+
+    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.`;
+  }
+
+  getEntryCountByType(day: CalendarDay, type: "daily" | "dream"): number {
+    return day.entries.filter((entry) => entry.type === type).length;
+  }
+
+  onCalendarDaySelect(day: CalendarDay): void {
+    if (!day.isCurrentMonth) {
+      return;
+    }
+
+    if (day.isFuture) {
+      return;
+    }
+
+    if (day.entries.length === 0) {
+      this.navigateToCreateEntryForDate(day.date);
+      return;
+    }
+
+    this.currentView = "all";
+    this.selectedDay = this.toDateKey(day.date);
+    this.displayMode = "cards";
+    this.currentPage = 0;
+    this.filterEntries();
+    this.updatePaginatedEntries();
+  }
+
+  onCalendarDayKeydown(event: Event, day: CalendarDay): void {
+    event.preventDefault();
+    this.onCalendarDaySelect(day);
+  }
+
+  openCalendarDayByType(
+    day: CalendarDay,
+    view: "daily" | "dreams",
+    event: Event,
+  ): void {
+    event.stopPropagation();
+    this.currentView = view;
+    this.selectedDay = this.toDateKey(day.date);
+    this.displayMode = "cards";
+    this.currentPage = 0;
+    this.filterEntries();
+    this.updatePaginatedEntries();
+  }
+
+  private getCreateTargetDate(): Date {
     // Calculate the appropriate date based on selected month
     let targetDate: Date;
     const today = new Date();
@@ -695,6 +955,10 @@ export class ListComponent implements OnInit, OnDestroy {
       targetDate = today;
     }
 
+    return targetDate;
+  }
+
+  private navigateToCreateEntryForDate(targetDate: Date): void {
     // Format date as DD/MM/YYYY for UK format
     const day = targetDate.getDate().toString().padStart(2, "0");
     const month = (targetDate.getMonth() + 1).toString().padStart(2, "0");
@@ -762,6 +1026,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
     if (earliestMonth) {
       this.hasExplicitMonthSelection = true;
+      this.selectedDay = null;
 
       // Update selection state
       this.allMonths.forEach((m) => (m.isSelected = false));
@@ -787,6 +1052,7 @@ export class ListComponent implements OnInit, OnDestroy {
     const currentMonth = this.allMonths.find((m) => m.isCurrent);
     if (currentMonth) {
       this.hasExplicitMonthSelection = true;
+      this.selectedDay = null;
 
       // Update selection state
       this.allMonths.forEach((m) => (m.isSelected = false));
@@ -807,7 +1073,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
   filterEntries(): void {
     this.calculateEntryCountsForTimeline();
-    let entries: any[] = [];
+    let entries: EntryItem[] = [];
 
     // First filter by view type
     if (this.currentView === "daily") {
@@ -827,6 +1093,14 @@ export class ListComponent implements OnInit, OnDestroy {
           entryDate.getFullYear() === this.selectedMonth!.year
         );
       });
+    }
+
+    this.buildCalendarDays(entries);
+
+    if (this.selectedDay) {
+      entries = entries.filter(
+        (entry) => this.toDateKey(new Date(entry.entry_date)) === this.selectedDay,
+      );
     }
 
     // Sort by date (newest first)
@@ -910,6 +1184,66 @@ export class ListComponent implements OnInit, OnDestroy {
     this.router.navigate(["/entries"], { queryParams: { search: tag } });
   }
 
+  private buildCalendarDays(entries: EntryItem[]): void {
+    const baseMonth = this.selectedMonth
+      ? new Date(this.selectedMonth.year, (this.selectedMonth as any).monthIndex, 1)
+      : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const year = baseMonth.getFullYear();
+    const monthIndex = baseMonth.getMonth();
+    const firstDayOfMonth = new Date(year, monthIndex, 1);
+    const startOffset = (firstDayOfMonth.getDay() + 6) % 7;
+    const gridStartDate = new Date(year, monthIndex, 1 - startOffset);
+    const todayKey = this.toDateKey(new Date());
+    const entriesByDate = new Map<string, EntryItem[]>();
+
+    entries.forEach((entry) => {
+      const key = this.toDateKey(new Date(entry.entry_date));
+      const dateEntries = entriesByDate.get(key) ?? [];
+      dateEntries.push(entry);
+      entriesByDate.set(key, dateEntries);
+    });
+
+    this.calendarDays = Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(gridStartDate);
+      date.setDate(gridStartDate.getDate() + index);
+      const key = this.toDateKey(date);
+      const dateEntries = entriesByDate.get(key) ?? [];
+
+      return {
+        date,
+        dayNumber: date.getDate(),
+        isCurrentMonth: date.getMonth() === monthIndex,
+        isToday: key === todayKey,
+        isFuture: date.getTime() > new Date().setHours(23, 59, 59, 999),
+        status: this.getCalendarStatus(dateEntries),
+        entries: dateEntries,
+      };
+    });
+  }
+
+  private getCalendarStatus(entries: EntryItem[]): CalendarStatus {
+    const hasDaily = entries.some((entry) => entry.type === "daily");
+    const hasDream = entries.some((entry) => entry.type === "dream");
+
+    if (hasDaily && hasDream) {
+      return "complete";
+    }
+    if (hasDaily) {
+      return "daily";
+    }
+    if (hasDream) {
+      return "dream";
+    }
+    return "none";
+  }
+
+  private toDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
   openEntryDetail(entry: any, event?: Event): void {
     event?.stopPropagation();
     this.router.navigate(["/entries", entry.id], {
@@ -985,7 +1319,7 @@ export class ListComponent implements OnInit, OnDestroy {
     }
   }
 
-  private autoSelectLatestMonthForView(): void {
+  private autoSelectLatestMonthForView(animate = false): void {
     const entriesForView =
       this.currentView === "daily"
         ? this.dailyEntries
@@ -1003,7 +1337,7 @@ export class ListComponent implements OnInit, OnDestroy {
         : latest,
     );
 
-    this.selectMonthByDate(new Date(latestEntry.entry_date), false);
+    this.selectMonthByDate(new Date(latestEntry.entry_date), false, animate);
   }
 
   private selectCurrentMonth(explicit: boolean): void {
@@ -1011,7 +1345,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.selectMonthByDate(now, explicit);
   }
 
-  private selectMonthByDate(date: Date, explicit: boolean): void {
+  private selectMonthByDate(date: Date, explicit: boolean, animate = false): void {
     const monthToSelect = this.allMonths.find(
       (month) =>
         (month as any).monthIndex === date.getMonth() &&
@@ -1029,10 +1363,12 @@ export class ListComponent implements OnInit, OnDestroy {
     this.selectedMonth = monthToSelect;
 
     const selectedIndex = this.allMonths.findIndex((m) => m === monthToSelect);
-    this.timelineScrollIndex = Math.max(
-      0,
-      Math.min(selectedIndex - 2, this.maxScrollIndex),
-    );
+    if (animate) {
+      this.centerTimelineAnimated(selectedIndex);
+      return;
+    }
+
+    this.timelineScrollIndex = Math.max(0, Math.min(selectedIndex - 2, this.maxScrollIndex));
     this.updateVisibleMonths();
   }
 

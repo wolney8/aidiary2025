@@ -265,4 +265,35 @@ describe("CreateComponent save reliability", () => {
       queryParams: { analysisWarning: "ai-rate-limit" },
     });
   });
+
+  it("blocks saving when the selected date is in the future", () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    component.selectedType = "daily";
+    component.entryDate = tomorrow;
+    component.content = "A future daily entry";
+
+    component.saveAsDraft();
+
+    expect(entriesServiceMock.createDailyEntry).not.toHaveBeenCalled();
+    expect(entriesServiceMock.updateDailyEntry).not.toHaveBeenCalled();
+    expect(component.errorMessage).toBe(
+      "Entries cannot be created or moved to a future date.",
+    );
+    expect(component.isSaving).toBeFalse();
+  });
+
+  it("blocks saving when a future date is typed into the date field", () => {
+    component.selectedType = "daily";
+    component.entryDate = "2999-01-01";
+    component.content = "A manually typed future daily entry";
+
+    component.saveAsDraft();
+
+    expect(entriesServiceMock.createDailyEntry).not.toHaveBeenCalled();
+    expect(component.errorMessage).toBe(
+      "Entries cannot be created or moved to a future date.",
+    );
+  });
 });
