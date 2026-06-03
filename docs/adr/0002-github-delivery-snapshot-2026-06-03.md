@@ -109,7 +109,9 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#54` User profile settings: pronouns, display name, AI style
 - `#55` Photo uploads
 - `#64` Finish Settings experience and remove remaining “Coming soon” gaps
+- `#82` Preserve calendar day and entry-type context when creating new entries
 - `#81` Calendar view floating preview deck
+- `#84` Entries view filter affordance and calendar return controls
 - `#79` Diary motivation ideas backlog
 
 ### Settings and personalisation
@@ -136,6 +138,10 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#67` Milestone closure governance checklist
 - `#80` Registration and authentication security review
 
+### AI entry analysis follow-up
+
+- `#83` Save & Analyse does not persist AI response and tags on new entries
+
 ## Newly added issues in this cycle
 
 - `#75` addressed a real current UI gap in All Entries month view card centring.
@@ -143,6 +149,9 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#77` adds destructive bulk-delete safety aligned with export and portability work.
 - `#78` introduced a concrete diary adherence calendar view.
 - `#81` extends the calendar view with an in-place preview interaction for day entry icons.
+- `#82` tracks date and type preservation when creating entries from calendar-driven contexts.
+- `#83` tracks the create-and-analyse persistence bug for AI responses and derived metadata.
+- `#84` tracks stronger filter affordance and entries-view control consistency.
 - `#79` captures wider retention and motivation ideas without forcing immediate implementation.
 - `#80` creates an explicit security review track for registration and authentication.
 
