@@ -6,6 +6,18 @@ import sqlite3
 
 profile_bp = Blueprint('profile', __name__)
 
+MAX_SHORT_TEXT_LENGTH = 80
+MAX_PRONOUNS_LENGTH = 40
+MAX_TIMEZONE_LENGTH = 64
+ALLOWED_AI_TONES = {'friendly', 'empathetic', 'analytical', 'formal'}
+ALLOWED_AI_VERBOSITY = {'concise', 'balanced', 'detailed'}
+ALLOWED_AI_FOCUS = {
+    'reflective',
+    'emotional-support',
+    'practical-advice',
+    'creative-prompts',
+}
+
 def get_db():
     """Get database connection."""
     db_path = current_app.config['DATABASE_PATH']
@@ -13,6 +25,52 @@ def get_db():
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _normalise_optional_text(value, *, max_length: int):
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return ''
+    if len(text) > max_length:
+        raise ValueError(f'Maximum length is {max_length} characters')
+    return text
+
+
+def _normalise_choice(value, *, allowed: set[str], field_label: str):
+    if value is None:
+        return None
+
+    normalised = str(value).strip()
+    if not normalised:
+        return ''
+    if normalised not in allowed:
+        raise ValueError(f'Invalid {field_label}')
+    return normalised
+
+
+def _normalise_profile_update(field: str, value):
+    if field in {'first_name', 'last_name', 'display_name',
+                 'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname'}:
+        return _normalise_optional_text(value, max_length=MAX_SHORT_TEXT_LENGTH)
+    if field == 'pronouns':
+        return _normalise_optional_text(value, max_length=MAX_PRONOUNS_LENGTH)
+    if field == 'timezone':
+        return _normalise_optional_text(value, max_length=MAX_TIMEZONE_LENGTH)
+    if field == 'ai_tone':
+        return _normalise_choice(value, allowed=ALLOWED_AI_TONES, field_label='AI tone')
+    if field == 'ai_verbosity':
+        return _normalise_choice(
+            value, allowed=ALLOWED_AI_VERBOSITY, field_label='AI verbosity'
+        )
+    if field == 'ai_focus':
+        return _normalise_choice(value, allowed=ALLOWED_AI_FOCUS, field_label='AI focus')
+    if field == 'allow_ai_history':
+        return 1 if bool(value) else 0
+
+    return value
 
 @profile_bp.route('/profile', methods=['GET'])
 @jwt_required()
@@ -58,13 +116,13 @@ def update_profile():
     updates = []
     values = []
     
-    for field in allowed_fields:
-        if field in data:
-            updates.append(f'{field} = ?')
-            value = data[field]
-            if field == 'allow_ai_history':
-                value = 1 if bool(value) else 0
-            values.append(value)
+    try:
+        for field in allowed_fields:
+            if field in data:
+                updates.append(f'{field} = ?')
+                values.append(_normalise_profile_update(field, data[field]))
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     
     if not updates:
         return jsonify({'error': 'No fields to update'}), 400

@@ -28,6 +28,10 @@ import { User } from "../../core/models/user.model";
       <header class="section-header">
         <h2>Personalisation</h2>
         <p>Choose how the app and AI companion address and support you.</p>
+        <p class="supporting-copy">
+          Changes here update the current compatibility profile endpoint. This
+          is the active home for app-level preferences and AI behaviour.
+        </p>
       </header>
 
       <form (ngSubmit)="saveSettings()" class="settings-form">
@@ -45,12 +49,18 @@ import { User } from "../../core/models/user.model";
                 matInput
                 [(ngModel)]="settings.display_name"
                 name="display_name"
+                maxlength="80"
               />
             </mat-form-field>
 
             <mat-form-field appearance="outline">
               <mat-label>Pronouns</mat-label>
-              <input matInput [(ngModel)]="settings.pronouns" name="pronouns" />
+              <input
+                matInput
+                [(ngModel)]="settings.pronouns"
+                name="pronouns"
+                maxlength="40"
+              />
             </mat-form-field>
 
             <mat-form-field appearance="outline">
@@ -60,6 +70,7 @@ import { User } from "../../core/models/user.model";
                 [(ngModel)]="settings.timezone"
                 name="timezone"
                 placeholder="Europe/London"
+                maxlength="64"
               />
             </mat-form-field>
           </mat-card-content>
@@ -134,6 +145,7 @@ import { User } from "../../core/models/user.model";
                 matInput
                 [(ngModel)]="settings.chatgpt_daily_diary_coachname"
                 name="chatgpt_daily_diary_coachname"
+                maxlength="80"
               />
             </mat-form-field>
 
@@ -143,6 +155,7 @@ import { User } from "../../core/models/user.model";
                 matInput
                 [(ngModel)]="settings.chatgpt_dream_diary_coachname"
                 name="chatgpt_dream_diary_coachname"
+                maxlength="80"
               />
             </mat-form-field>
 
@@ -152,6 +165,8 @@ import { User } from "../../core/models/user.model";
                 matInput
                 [(ngModel)]="settings.dailydiary_api_key"
                 name="dailydiary_api_key"
+                type="password"
+                autocomplete="off"
               />
             </mat-form-field>
 
@@ -161,6 +176,8 @@ import { User } from "../../core/models/user.model";
                 matInput
                 [(ngModel)]="settings.dreamdiary_api_key"
                 name="dreamdiary_api_key"
+                type="password"
+                autocomplete="off"
               />
             </mat-form-field>
           </mat-card-content>
@@ -196,6 +213,10 @@ import { User } from "../../core/models/user.model";
       .section-header p {
         margin: 0;
         color: var(--colour-text-secondary);
+      }
+
+      .supporting-copy {
+        margin-top: var(--spacing-xs);
       }
 
       .settings-form {
@@ -292,8 +313,9 @@ export class PersonalisationComponent implements OnInit {
         this.successMessage = response.message;
         this.saving = false;
       },
-      error: () => {
-        this.errorMessage = "Settings update failed. Please try again.";
+      error: (error) => {
+        this.errorMessage =
+          error?.error?.error || "Settings update failed. Please try again.";
         this.saving = false;
       },
     });

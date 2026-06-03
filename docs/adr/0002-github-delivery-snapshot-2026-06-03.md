@@ -109,8 +109,6 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#54` User profile settings: pronouns, display name, AI style
 - `#55` Photo uploads
 - `#64` Finish Settings experience and remove remaining “Coming soon” gaps
-- `#75` All Entries month view: centre cards when fewer than four results
-- `#78` Calendar view for diary adherence, missed days, and daily/dream completion
 - `#79` Diary motivation ideas backlog
 
 ### Settings and personalisation
@@ -139,12 +137,18 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 
 ## Newly added issues in this cycle
 
-- `#75` addresses a real current UI gap in All Entries month view card centring.
+- `#75` addressed a real current UI gap in All Entries month view card centring.
 - `#76` makes chat FAB visibility explicit rather than implicit inside chat UI delivery.
 - `#77` adds destructive bulk-delete safety aligned with export and portability work.
-- `#78` introduces a concrete diary adherence calendar view.
+- `#78` introduced a concrete diary adherence calendar view.
 - `#79` captures wider retention and motivation ideas without forcing immediate implementation.
 - `#80` creates an explicit security review track for registration and authentication.
+
+## Implemented locally, GitHub sync pending
+
+- `#75` is implemented on `main` locally via the entries grid centring changes.
+- `#78` is implemented on `main` locally via the calendar adherence view and future-date guard rails.
+- GitHub issue state and milestone closure still need to be updated manually because local Codex sessions do not have GitHub write access.
 
 ## Interpretation
 
