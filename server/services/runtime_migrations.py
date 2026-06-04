@@ -7,8 +7,15 @@ from typing import Callable
 
 
 _TARGET_COLUMNS: dict[str, tuple[str, ...]] = {
-    'dailydiary_entries': ('mood', 'ai_style'),
-    'dreamdiary_entries': ('mood', 'ai_style'),
+    'dailydiary_entries': ('mood', 'ai_style', 'ai_response'),
+    'dreamdiary_entries': (
+        'mood',
+        'ai_style',
+        'summary',
+        'interpretation',
+        'image_prompt',
+        'image_url',
+    ),
 }
 
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
@@ -26,7 +33,7 @@ def ensure_entry_mood_style_columns(
     database_path: str,
     log: Callable[[str, object], None] | None = None,
 ) -> int:
-    """Ensure runtime diary tables include mood/ai_style columns.
+    """Ensure runtime diary tables include compatibility columns.
 
     Returns the number of columns added across all target tables.
     Safe to run repeatedly (idempotent).

@@ -130,7 +130,7 @@ describe("CreateComponent save reliability", () => {
     expect(entriesServiceMock.updateDailyEntry).toHaveBeenCalledTimes(2);
     expect(analysisServiceMock.analyseText).toHaveBeenCalledTimes(1);
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 123], {
-      queryParams: undefined,
+      queryParams: { analysisWarning: "ai-save-failed" },
     });
     expect(component.errorMessage).toBe("");
     expect(component.isSaving).toBeFalse();
@@ -179,7 +179,7 @@ describe("CreateComponent save reliability", () => {
     );
     expect(analysisServiceMock.analyseText).toHaveBeenCalledTimes(1);
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 99], {
-      queryParams: undefined,
+      queryParams: { analysisWarning: "ai-save-failed" },
     });
     expect(component.errorMessage).toBe("");
     expect(component.isSaving).toBeFalse();

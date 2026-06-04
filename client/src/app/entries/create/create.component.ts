@@ -936,7 +936,7 @@ export class CreateComponent implements OnInit {
             })
             .subscribe({
               next: () => this.finishNavigation(entryId),
-              error: () => this.finishNavigation(entryId),
+              error: () => this.finishNavigation(entryId, "ai-save-failed"),
             });
         },
         error: (error) => {
@@ -984,7 +984,7 @@ export class CreateComponent implements OnInit {
             })
             .subscribe({
               next: () => this.finishNavigation(entryId),
-              error: () => this.finishNavigation(entryId),
+              error: () => this.finishNavigation(entryId, "ai-save-failed"),
             });
         },
         error: (error) => {
