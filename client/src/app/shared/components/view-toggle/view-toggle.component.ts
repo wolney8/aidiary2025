@@ -11,6 +11,8 @@ import { MatIconModule } from "@angular/material/icon";
   template: `
     <mat-button-toggle-group
       class="view-toggle"
+      [class.emphasise-daily]="emphasiseActiveFilter && selectedView === 'daily'"
+      [class.emphasise-dreams]="emphasiseActiveFilter && selectedView === 'dreams'"
       [value]="selectedView"
       (change)="onViewChange($event.value)"
       aria-label="Filter entry type"
@@ -55,8 +57,44 @@ import { MatIconModule } from "@angular/material/icon";
         background: var(--colour-primary-hover);
       }
 
+      .view-toggle.emphasise-daily .mat-button-toggle-checked {
+        background: linear-gradient(180deg, #1d4ed8 0%, #2563eb 100%);
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45);
+        animation: activeFilterPulseBlue 2.2s ease-in-out infinite;
+      }
+
+      .view-toggle.emphasise-dreams .mat-button-toggle-checked {
+        background: linear-gradient(180deg, #6d28d9 0%, #7c3aed 100%);
+        box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4);
+        animation: activeFilterPulsePurple 2.2s ease-in-out infinite;
+      }
+
       .view-toggle .mat-button-toggle .mat-icon {
         margin-right: var(--spacing-xs);
+      }
+
+      @keyframes activeFilterPulseBlue {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.16);
+          transform: translateY(0);
+        }
+        50% {
+          box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.08);
+          transform: translateY(-1px);
+        }
+      }
+
+      @keyframes activeFilterPulsePurple {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.15);
+          transform: translateY(0);
+        }
+        50% {
+          box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.08);
+          transform: translateY(-1px);
+        }
       }
     `,
   ],
@@ -67,6 +105,7 @@ export class ViewToggleComponent {
       this.selectedView = view;
     }
   }
+  @Input() emphasiseActiveFilter = false;
   @Output() viewChange = new EventEmitter<string>();
   selectedView = "all";
 
