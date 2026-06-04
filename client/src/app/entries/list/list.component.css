@@ -227,6 +227,78 @@
   gap: 0.25rem;
 }
 
+.selected-day-return {
+  border-radius: 999px !important;
+  border-color: var(--colour-border) !important;
+  background: #ffffff !important;
+  color: var(--colour-text-primary) !important;
+  font-weight: 600 !important;
+}
+
+.selected-day-return:hover {
+  border-color: var(--colour-primary) !important;
+  background: #eff6ff !important;
+}
+
+.filter-status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  padding: 0.95rem 1.1rem;
+  border: 1px solid var(--colour-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.filter-status-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.filter-status-copy mat-icon {
+  width: 2.1rem;
+  height: 2.1rem;
+  font-size: 2.1rem;
+}
+
+.filter-status-copy strong,
+.filter-status-copy span {
+  display: block;
+}
+
+.filter-status-copy span {
+  margin-top: 0.1rem;
+  color: var(--colour-text-secondary);
+  font-size: 0.92rem;
+}
+
+.filter-status-clear {
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+}
+
+.filter-status-daily {
+  border-color: #93c5fd;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+}
+
+.filter-status-daily .filter-status-copy mat-icon {
+  color: #1d4ed8;
+}
+
+.filter-status-dreams {
+  border-color: #c4b5fd;
+  background: linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%);
+}
+
+.filter-status-dreams .filter-status-copy mat-icon {
+  color: #6d28d9;
+}
+
 .entries-grid {
   display: grid;
   gap: 1.5rem;
@@ -325,7 +397,8 @@
 @media (max-width: 600px) {
   .list-header,
   .selected-day-banner,
-  .calendar-summary {
+  .calendar-summary,
+  .filter-status-banner {
     align-items: stretch;
   }
 
@@ -337,6 +410,10 @@
 
   .display-mode-toggle button {
     flex: 1;
+  }
+
+  .filter-status-copy {
+    align-items: flex-start;
   }
 
   .entries-grid {

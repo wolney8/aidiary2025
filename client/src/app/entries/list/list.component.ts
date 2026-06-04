@@ -92,6 +92,7 @@ type CalendarPreviewState = {
             <div class="list-controls">
               <app-view-toggle
                 [value]="currentView"
+                [emphasiseActiveFilter]="hasFocusedTypeFilter()"
                 (viewChange)="onViewChange($event)"
               ></app-view-toggle>
               <div class="display-mode-toggle" aria-label="Entries display mode">
@@ -184,8 +185,40 @@ type CalendarPreviewState = {
               <strong>{{ getSelectedDayLabel() }}</strong>
               <span>{{ totalEntries }} matching entr{{ totalEntries === 1 ? 'y' : 'ies' }}</span>
             </div>
-            <button mat-button type="button" (click)="clearSelectedDay()">
+            <button
+              mat-stroked-button
+              type="button"
+              class="selected-day-return"
+              (click)="clearSelectedDay()"
+            >
               Back to calendar
+            </button>
+          </div>
+
+          <div
+            class="filter-status-banner"
+            *ngIf="hasFocusedTypeFilter()"
+            [class.filter-status-daily]="currentView === 'daily'"
+            [class.filter-status-dreams]="currentView === 'dreams'"
+            role="status"
+            aria-live="polite"
+          >
+            <div class="filter-status-copy">
+              <mat-icon>{{
+                currentView === "daily" ? "book" : "nights_stay"
+              }}</mat-icon>
+              <div>
+                <strong>{{ getFocusedFilterHeading() }}</strong>
+                <span>{{ getFocusedFilterDescription() }}</span>
+              </div>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              class="filter-status-clear"
+              (click)="onViewChange('all')"
+            >
+              Show all entries
             </button>
           </div>
 
@@ -954,6 +987,34 @@ export class ListComponent implements OnInit, OnDestroy {
     }
 
     return `${this.selectedMonth.label} ${this.selectedMonth.year}`;
+  }
+
+  hasFocusedTypeFilter(): boolean {
+    return this.currentView === "daily" || this.currentView === "dreams";
+  }
+
+  getFocusedFilterHeading(): string {
+    if (this.currentView === "daily") {
+      return "Filtering diary entries";
+    }
+
+    if (this.currentView === "dreams") {
+      return "Filtering dream entries";
+    }
+
+    return "Showing all entries";
+  }
+
+  getFocusedFilterDescription(): string {
+    if (this.currentView === "daily") {
+      return "Cards and calendar are currently limited to Daily entries only.";
+    }
+
+    if (this.currentView === "dreams") {
+      return "Cards and calendar are currently limited to Dream entries only.";
+    }
+
+    return "All entry types are visible.";
   }
 
   getCalendarStatusLabel(status: CalendarStatus): string {
