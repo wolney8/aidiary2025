@@ -184,6 +184,89 @@ def client_schema_without_mood_columns():
     os.close(db_fd)
     os.unlink(db_path)
 
+
+@pytest.fixture
+def client_schema_without_analysis_columns():
+    """Create test client where analysis result columns are missing initially."""
+    db_fd, db_path = tempfile.mkstemp()
+    os.environ['DB_PATH'] = db_path
+    os.environ['JWT_SECRET'] = 'test-secret'
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+
+    conn.execute('''
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            age INTEGER,
+            sex TEXT,
+            goals TEXT,
+            dailydiary_api_key TEXT,
+            dreamdiary_api_key TEXT,
+            chatgpt_daily_diary_coachname TEXT,
+            chatgpt_dream_diary_coachname TEXT
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE dailydiary_entries (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            entry_date DATE,
+            entry_number INTEGER,
+            title TEXT,
+            user_message TEXT,
+            daily_people_names TEXT,
+            daily_places TEXT,
+            tags TEXT,
+            mood TEXT,
+            ai_style TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE dreamdiary_entries (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            entry_date DATE,
+            entry_number INTEGER,
+            title TEXT,
+            cast TEXT,
+            location TEXT,
+            period TEXT,
+            emotion TEXT,
+            plot TEXT,
+            symbols_and_imagery TEXT,
+            insight TEXT,
+            action TEXT,
+            other TEXT,
+            dream_people_names TEXT,
+            dream_places TEXT,
+            tags TEXT,
+            mood TEXT,
+            ai_style TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+    app = create_app()
+    app.config['TESTING'] = True
+
+    with app.test_client() as client:
+        yield client
+
+    os.close(db_fd)
+    os.unlink(db_path)
+
 def get_auth_token(client):
     """Helper to get authentication token."""
     response = client.post('/api/register',
@@ -308,6 +391,84 @@ def test_startup_migration_ensures_entry_ai_metadata_table(client):
         ).fetchone()
 
     assert row is not None
+
+
+def test_startup_migration_adds_daily_ai_response_column(client_schema_without_analysis_columns):
+    """App startup should add missing daily ai_response column and allow updates."""
+    token = get_auth_token(client_schema_without_analysis_columns)
+
+    create_response = client_schema_without_analysis_columns.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-11', 'user_message': 'Draft text'}),
+        content_type='application/json'
+    )
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    update_response = client_schema_without_analysis_columns.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'ai_response': 'Attached analysis'}),
+        content_type='application/json'
+    )
+    assert update_response.status_code == 200
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT ai_response FROM dailydiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    columns = {
+        info[1]
+        for info in conn.execute('PRAGMA table_info(dailydiary_entries)').fetchall()
+    }
+    conn.close()
+
+    assert 'ai_response' in columns
+    assert row[0] == 'Attached analysis'
+
+
+def test_startup_migration_adds_dream_analysis_columns(client_schema_without_analysis_columns):
+    """App startup should add missing dream analysis columns and allow updates."""
+    token = get_auth_token(client_schema_without_analysis_columns)
+
+    create_response = client_schema_without_analysis_columns.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2024-03-12', 'plot': 'Dream draft'}),
+        content_type='application/json'
+    )
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    update_response = client_schema_without_analysis_columns.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'summary': 'Dream summary',
+            'interpretation': 'Dream interpretation',
+            'image_prompt': 'Moonlit forest',
+        }),
+        content_type='application/json'
+    )
+    assert update_response.status_code == 200
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT summary, interpretation, image_prompt FROM dreamdiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    columns = {
+        info[1]
+        for info in conn.execute('PRAGMA table_info(dreamdiary_entries)').fetchall()
+    }
+    conn.close()
+
+    assert {'summary', 'interpretation', 'image_prompt', 'image_url'}.issubset(columns)
+    assert row == ('Dream summary', 'Dream interpretation', 'Moonlit forest')
 
 @patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry(mock_openai, client):

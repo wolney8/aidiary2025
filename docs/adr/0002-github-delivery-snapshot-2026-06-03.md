@@ -16,6 +16,7 @@ Data source used for this snapshot:
 Snapshot date:
 
 - 3 June 2026
+- Reviewed against live GitHub issue state again on 4 June 2026
 
 ## Decision
 
@@ -109,9 +110,11 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#54` User profile settings: pronouns, display name, AI style
 - `#55` Photo uploads
 - `#64` Finish Settings experience and remove remaining “Coming soon” gaps
-- `#82` Preserve calendar day and entry-type context when creating new entries
-- `#81` Calendar view floating preview deck
 - `#84` Entries view filter affordance and calendar return controls
+- `#85` Create/Edit entry date fields: use UK format and human-readable date labels
+- `#88` Important days: user-configurable personal dates and reminders context
+- `#90` Add bottom-page navigation or back-to-top control on long entry screens
+- `#91` Dream entries: AI image generation, retry flow, and prompt-hover metadata
 - `#79` Diary motivation ideas backlog
 
 ### Settings and personalisation
@@ -125,6 +128,7 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#70` Integration adapters framework
 - `#74` Import/export parity and data portability contract
 - `#77` Bulk delete all entries with export guard rails and destructive-action warnings
+- `#89` Public holidays and locale-based event calendar integration
 
 ### Cloud database and operational readiness
 
@@ -141,6 +145,8 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 ### AI entry analysis follow-up
 
 - `#83` Save & Analyse does not persist AI response and tags on new entries
+- `#86` Improve diary and dream analysis prompt quality, structure, and model reliability
+- `#87` Run NLTK enrichment on entry save before AI analysis, then supplement from AI output
 
 ## Newly added issues in this cycle
 
@@ -152,15 +158,22 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#82` tracks date and type preservation when creating entries from calendar-driven contexts.
 - `#83` tracks the create-and-analyse persistence bug for AI responses and derived metadata.
 - `#84` tracks stronger filter affordance and entries-view control consistency.
+- `#85` tracks UK date formatting and human-readable date labels in create and edit flows.
+- `#86` tracks prompt, model, and structured-output improvements for diary and dream analysis quality.
+- `#87` tracks runtime NLTK enrichment on normal save/analyse flows, with user text taking priority over AI-derived enrichment.
+- `#88` adds user-configurable important days such as anniversaries, birthdays, and milestone dates.
+- `#89` adds locale-based public holiday integration and caching.
+- `#90` adds bottom-page navigation support for long entry screens.
+- `#91` adds dream-entry AI image generation, retry flow, and prompt-hover metadata.
 - `#79` captures wider retention and motivation ideas without forcing immediate implementation.
 - `#80` creates an explicit security review track for registration and authentication.
 
 ## Implemented locally, GitHub sync pending
 
-- `#75` is implemented on `main` locally via the entries grid centring changes.
-- `#78` is implemented on `main` locally via the calendar adherence view and future-date guard rails.
-- Both issues remain open on GitHub as of 3 June 2026 and still need manual closure or status updates.
-- GitHub issue state and milestone closure still need to be updated manually because local Codex sessions do not have GitHub write access.
+- `#75` is implemented on `main` locally and is now closed on GitHub.
+- `#78` is implemented on `main` locally and is now closed on GitHub.
+- `#81` is implemented on `main` locally and is now closed on GitHub.
+- `#82` is implemented on `main` locally and is now closed on GitHub.
 
 ## Interpretation
 
@@ -168,6 +181,17 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
   - older phase-numbered work
   - newer milestone-driven product and operations work
 - Work on chat reliability, settings completion, portability, and cloud readiness appears to be the current forward-looking roadmap.
+- AI analysis work now has a split between:
+  - bug-fix and persistence work in `#83`
+  - quality/prompt work in `#86`
+  - runtime NLTK enrichment in `#87`
+- Calendar and date-driven planning work is expanding across:
+  - `#78`, `#81`, `#82`, `#84`, `#85`
+  - `#88` personal important days
+  - `#89` public holidays and locale-aware event context
+- Entry presentation and media work now also includes:
+  - `#90` bottom-page navigation support
+  - `#91` dream-entry AI image generation and image UX
 - Some older milestone names reuse numbers for different meanings:
   - `M8` appears both as `Cloud DB Migration` and a separate closed milestone named `AI reliability and context quality`
   - `M9` appears both as `CBT Structured Diary` and a separate closed milestone named `Edit parity and date consistency`
@@ -179,6 +203,7 @@ This naming overlap requires care when discussing priorities.
 - Check GitHub again before acting on issue status because this file is only a snapshot.
 - Prefer milestone title plus issue number when referring to work, not milestone number alone.
 - Treat GitHub as authoritative for open/closed state.
+- Note that `#87` is currently assigned to the closed milestone `M8: AI reliability and context quality`, so milestone governance may need tidying if future AI analysis work should remain visibly open in GitHub.
 
 ## To confirm
 

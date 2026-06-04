@@ -717,6 +717,12 @@ export class DetailComponent implements OnInit {
       return;
     }
 
+    if (warningCode === "ai-save-failed") {
+      this.analysisWarningMessage =
+        "Your entry was saved, but the AI response could not be attached to it. Please try analysing again.";
+      return;
+    }
+
     this.analysisWarningMessage = "";
   }
 
