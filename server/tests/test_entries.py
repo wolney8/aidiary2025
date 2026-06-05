@@ -505,8 +505,56 @@ def test_analyse_daily_entry(mock_openai, client):
     assert data['daily_people_names'] == 'John,Sarah'
 
 
+@patch('routes.analyse.derive_daily_nltk_fields')
 @patch('routes.analyse.OpenAIService')
-def test_analyse_daily_entry_passes_recent_context_without_contract_change(mock_service_cls, client):
+def test_analyse_daily_entry_merges_user_and_ai_nltk_tags(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'You sounded calm after meeting Sam in London.',
+        'tags': 'reflection,friendship',
+        'people_names': 'Sam',
+        'places': 'London',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {
+            'tags': 'gym,anxiety',
+            'daily_people_names': 'Alex',
+            'daily_places': 'Manchester',
+        },
+        {
+            'tags': 'calm,reflection',
+            'daily_people_names': '',
+            'daily_places': '',
+        },
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'Met Alex after the gym in Manchester'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['tags'] == 'gym,anxiety,reflection,friendship,calm'
+    assert data['daily_people_names'] == 'Alex,Sam'
+    assert data['daily_places'] == 'Manchester,London'
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_passes_recent_context_without_contract_change(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
     """Analyse should pass bounded recent context to service without changing response shape."""
     token = get_auth_token(client)
 
@@ -532,6 +580,10 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(mock_
         'places': 'Library',
     }
     mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
 
     response = client.post('/api/analyse',
         headers={'Authorization': f'Bearer {token}'},
@@ -591,6 +643,51 @@ def test_analyse_dream_entry_success_keys_present(mock_openai, client):
     assert 'dream_people_names' in data
     assert 'dream_places' in data
     assert data['dream_people_names'] == 'Alex,Sam'
+
+
+@patch('routes.analyse.derive_dream_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_dream_entry_merges_user_and_ai_nltk_tags(
+    mock_service_cls,
+    mock_dream_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_dream_entry.return_value = {
+        'summary': 'You were crossing a bridge with Maya.',
+        'interpretation': 'The dream suggests transition and curiosity.',
+        'image_prompt': 'Moonlit bridge over a river',
+        'tags': 'transition,curiosity',
+        'people_names': 'Maya',
+        'places': 'Bridge',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_dream_nltk.side_effect = [
+        {
+            'tags': 'river,night',
+            'dream_people_names': 'Jordan',
+            'dream_places': 'Leeds',
+        },
+        {
+            'tags': 'symbolism,transition',
+            'dream_people_names': '',
+            'dream_places': '',
+        },
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'dream', 'text': 'I crossed a river at night with Jordan in Leeds'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['tags'] == 'river,night,transition,curiosity,symbolism'
+    assert data['dream_people_names'] == 'Jordan,Maya'
+    assert data['dream_places'] == 'Leeds,Bridge'
 
 
 @patch('routes.analyse.OpenAIService', side_effect=Exception('boom'))

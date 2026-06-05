@@ -6,6 +6,11 @@ from datetime import datetime
 import difflib
 import sqlite3
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
+from services.nltk_enrichment import (
+    derive_daily_nltk_fields,
+    derive_dream_nltk_fields,
+    merge_csv_values,
+)
 
 
 def _normalise_people_names(raw: str) -> str:
@@ -61,6 +66,25 @@ def _normalise_people_names(raw: str) -> str:
         ordered.append(item)
 
     return ",".join(ordered)
+
+
+def _normalise_places(raw: str) -> str:
+    if not raw:
+        return ""
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for token in str(raw).split(","):
+        candidate = token.strip()
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(candidate)
+
+    return ",".join(cleaned)
 
 analyse_bp = Blueprint('analyse', __name__)
 ANALYSE_TEXT_MAX_LENGTH = 10000
@@ -167,6 +191,90 @@ def _build_metadata_summary_header(mode: str, text: str, result: dict) -> str:
     if not hint_text:
         return _truncate_text(base, 280)
     return _truncate_text(f"{base} | {hint_text}", 280)
+
+
+def _merge_daily_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
+    user_nltk = derive_daily_nltk_fields("", text)
+    ai_nltk = derive_daily_nltk_fields("", str(result.get("ai_response", "")))
+
+    merged_people = _normalise_people_names(
+        merge_csv_values(
+            user_nltk.get("daily_people_names", ""),
+            str(result.get("people_names", "")),
+        )
+    )
+    merged_places = _normalise_places(
+        merge_csv_values(
+            user_nltk.get("daily_places", ""),
+            str(result.get("places", "")),
+        )
+    )
+    merged_tags = merge_csv_values(
+        user_nltk.get("tags", ""),
+        str(result.get("tags", "")),
+        ai_nltk.get("tags", ""),
+    )
+
+    return {
+        "ai_response": str(result.get("ai_response", "")),
+        "tags": merged_tags,
+        "people_names": merged_people,
+        "places": merged_places,
+    }
+
+
+def _merge_dream_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
+    user_nltk = derive_dream_nltk_fields(
+        {
+            "title": "",
+            "plot": text,
+            "cast": "",
+            "symbols_and_imagery": "",
+            "insight": "",
+            "action": "",
+            "other": "",
+            "tags": "",
+        }
+    )
+    ai_nltk = derive_dream_nltk_fields(
+        {
+            "title": "",
+            "plot": str(result.get("summary", "")),
+            "cast": "",
+            "symbols_and_imagery": "",
+            "insight": str(result.get("interpretation", "")),
+            "action": "",
+            "other": "",
+            "tags": "",
+        }
+    )
+
+    merged_people = _normalise_people_names(
+        merge_csv_values(
+            user_nltk.get("dream_people_names", ""),
+            str(result.get("people_names", "")),
+        )
+    )
+    merged_places = _normalise_places(
+        merge_csv_values(
+            user_nltk.get("dream_places", ""),
+            str(result.get("places", "")),
+        )
+    )
+    merged_tags = merge_csv_values(
+        user_nltk.get("tags", ""),
+        str(result.get("tags", "")),
+        ai_nltk.get("tags", ""),
+    )
+
+    return {
+        "summary": str(result.get("summary", "")),
+        "interpretation": str(result.get("interpretation", "")),
+        "image_prompt": str(result.get("image_prompt", "")),
+        "tags": merged_tags,
+        "people_names": merged_people,
+        "places": merged_places,
+    }
 
 
 def _persist_analysis_metadata(
@@ -365,41 +473,43 @@ def analyse_text():
         
         if mode == 'daily':
             result = ai_service.analyse_daily_entry(text, recent_context=recent_context)
+            merged_result = _merge_daily_analysis_with_nltk(text, result)
             if user_id is not None:
                 _persist_analysis_metadata(
                     user_id=user_id,
                     mode=mode,
                     reference_date=reference_date,
-                    summary_header=_build_metadata_summary_header(mode, text, result),
-                    tags=str(result.get('tags', '')),
-                    people_names=_normalise_people_names(result.get('people_names', '')),
-                    places=str(result.get('places', '')),
+                    summary_header=_build_metadata_summary_header(mode, text, merged_result),
+                    tags=str(merged_result.get('tags', '')),
+                    people_names=_normalise_people_names(merged_result.get('people_names', '')),
+                    places=str(merged_result.get('places', '')),
                 )
             return jsonify({
-                'ai_response': result['ai_response'],
-                'tags': result['tags'],
-                'daily_people_names': _normalise_people_names(result.get('people_names', '')),
-                'daily_places': result['places']
+                'ai_response': merged_result['ai_response'],
+                'tags': merged_result['tags'],
+                'daily_people_names': _normalise_people_names(merged_result.get('people_names', '')),
+                'daily_places': merged_result['places']
             }), 200
         else:  # dream mode
             result = ai_service.analyse_dream_entry(text, recent_context=recent_context)
+            merged_result = _merge_dream_analysis_with_nltk(text, result)
             if user_id is not None:
                 _persist_analysis_metadata(
                     user_id=user_id,
                     mode=mode,
                     reference_date=reference_date,
-                    summary_header=_build_metadata_summary_header(mode, text, result),
-                    tags=str(result.get('tags', '')),
-                    people_names=_normalise_people_names(result.get('people_names', '')),
-                    places=str(result.get('places', '')),
+                    summary_header=_build_metadata_summary_header(mode, text, merged_result),
+                    tags=str(merged_result.get('tags', '')),
+                    people_names=_normalise_people_names(merged_result.get('people_names', '')),
+                    places=str(merged_result.get('places', '')),
                 )
             return jsonify({
-                'summary': result['summary'],
-                'interpretation': result['interpretation'],
-                'image_prompt': result['image_prompt'],
-                'tags': result['tags'],
-                'dream_people_names': _normalise_people_names(result.get('people_names', '')),
-                'dream_places': result['places']
+                'summary': merged_result['summary'],
+                'interpretation': merged_result['interpretation'],
+                'image_prompt': merged_result['image_prompt'],
+                'tags': merged_result['tags'],
+                'dream_people_names': _normalise_people_names(merged_result.get('people_names', '')),
+                'dream_places': merged_result['places']
             }), 200
             
     except AnalysisRateLimitError:

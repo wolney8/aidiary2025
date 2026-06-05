@@ -77,11 +77,9 @@ import { MatIconModule } from "@angular/material/icon";
         0%,
         100% {
           box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.16);
-          transform: translateY(0);
         }
         50% {
           box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.08);
-          transform: translateY(-1px);
         }
       }
 
@@ -89,11 +87,9 @@ import { MatIconModule } from "@angular/material/icon";
         0%,
         100% {
           box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.15);
-          transform: translateY(0);
         }
         50% {
           box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.08);
-          transform: translateY(-1px);
         }
       }
     `,
