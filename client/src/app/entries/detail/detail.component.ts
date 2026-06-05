@@ -7,6 +7,8 @@ import { MatChipsModule } from "@angular/material/chips";
 import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
 import { EntriesService } from "../../core/services/entries.service";
+import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
+import { formatReadableLongDate } from "../../shared/utils/date-display";
 
 @Component({
   selector: "app-detail",
@@ -18,6 +20,7 @@ import { EntriesService } from "../../core/services/entries.service";
     MatChipsModule,
     MatIconModule,
     MatButtonModule,
+    BackToTopComponent,
   ],
   template: `
     <div class="detail-container" *ngIf="entry">
@@ -283,6 +286,8 @@ import { EntriesService } from "../../core/services/entries.service";
           </p>
         </div>
       </div>
+
+      <app-back-to-top />
     </div>
   `,
   styles: [
@@ -293,9 +298,9 @@ import { EntriesService } from "../../core/services/entries.service";
       }
 
       .date-nav {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: center;
-        justify-content: space-between;
         gap: 1rem;
         margin-bottom: var(--spacing-md);
       }
@@ -312,12 +317,18 @@ import { EntriesService } from "../../core/services/entries.service";
       .date-nav h2 {
         margin: 0;
         text-align: center;
-        flex: 1;
+        justify-self: center;
+      }
+
+      .date-nav > button {
+        justify-self: start;
+        width: auto;
       }
 
       .action-buttons {
         display: flex;
         gap: 0.5rem;
+        justify-self: end;
       }
 
       .entry-image-band {
@@ -383,12 +394,16 @@ import { EntriesService } from "../../core/services/entries.service";
         }
 
         .date-nav {
-          flex-direction: column;
-          align-items: stretch;
+          grid-template-columns: 1fr;
         }
 
         .date-nav h2 {
-          text-align: left;
+          text-align: center;
+        }
+
+        .action-buttons {
+          justify-self: stretch;
+          justify-content: flex-end;
         }
       }
 
@@ -527,16 +542,7 @@ export class DetailComponent implements OnInit {
       return "Entry";
     }
 
-    const date = new Date(this.entry.entry_date);
-    if (Number.isNaN(date.getTime())) {
-      return "Entry";
-    }
-
-    return new Intl.DateTimeFormat("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(date);
+    return formatReadableLongDate(this.entry.entry_date) || "Entry";
   }
 
   getTitle(): string {

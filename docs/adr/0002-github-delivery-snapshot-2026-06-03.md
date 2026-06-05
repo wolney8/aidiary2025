@@ -128,6 +128,9 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#70` Integration adapters framework
 - `#74` Import/export parity and data portability contract
 - `#77` Bulk delete all entries with export guard rails and destructive-action warnings
+- `#92` Import: allow multiple same-day entries and refine duplicate detection
+- `#93` Import: improve duplicate skip reporting with date, title, and reason
+- `#94` Import: review skipped entries and allow manual re-add
 - `#89` Public holidays and locale-based event calendar integration
 
 ### Cloud database and operational readiness
@@ -165,6 +168,9 @@ These are mostly labelled `status:blocked` in GitHub and appear to represent old
 - `#89` adds locale-based public holiday integration and caching.
 - `#90` adds bottom-page navigation support for long entry screens.
 - `#91` adds dream-entry AI image generation, retry flow, and prompt-hover metadata.
+- `#92` tracks the import duplicate-rule fix so same-day entries are allowed and only narrower duplicates are skipped by default.
+- `#93` tracks clearer import duplicate reporting so users can see exactly what was skipped and why.
+- `#94` tracks a follow-up review flow so skipped import rows can be inspected and manually re-added.
 - `#79` captures wider retention and motivation ideas without forcing immediate implementation.
 - `#80` creates an explicit security review track for registration and authentication.
 

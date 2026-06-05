@@ -296,4 +296,18 @@ describe("CreateComponent save reliability", () => {
       "Entries cannot be created or moved to a future date.",
     );
   });
+
+  it("shows a human-readable UK date label for the selected date", () => {
+    component.entryDate = new Date(2026, 4, 1);
+
+    expect(component.getReadableEntryDateLabel()).toBe("Friday 1st May 2026");
+  });
+
+  it("uses the correct ordinal suffixes for teen dates", () => {
+    component.entryDate = new Date(2026, 5, 13);
+
+    expect(component.getReadableEntryDateLabel()).toBe(
+      "Saturday 13th June 2026",
+    );
+  });
 });

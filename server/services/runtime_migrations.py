@@ -28,6 +28,25 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'allow_ai_history': 'INTEGER DEFAULT 1',
 }
 
+_EXPORT_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS export_history (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id               INTEGER NOT NULL,
+    exported_at           TEXT    NOT NULL,
+    filename              TEXT    NOT NULL,
+    from_date             TEXT,
+    to_date               TEXT,
+    include_daily         INTEGER NOT NULL DEFAULT 1,
+    include_dreams        INTEGER NOT NULL DEFAULT 1,
+    daily_count           INTEGER NOT NULL DEFAULT 0,
+    dream_count           INTEGER NOT NULL DEFAULT 0,
+    is_full_range         INTEGER NOT NULL DEFAULT 0,
+    guard_token           TEXT,
+    used_for_bulk_delete  INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -137,3 +156,17 @@ def ensure_user_settings_columns(
                 log('Runtime migration added column %s.%s', 'users', column_name)
 
     return added_columns
+
+
+def ensure_export_history_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime export-history table exists for guarded bulk delete."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_EXPORT_HISTORY_DDL)
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'export_history')
+
+    return True
