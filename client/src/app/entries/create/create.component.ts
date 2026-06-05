@@ -23,6 +23,11 @@ import { COMMA, ENTER } from "@angular/cdk/keycodes";
 import { MatButtonToggleChange } from "@angular/material/button-toggle";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
+import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
+import {
+  formatReadableLongDate,
+  parseLocalIsoDate,
+} from "../../shared/utils/date-display";
 import {
   DailyAnalysisResponse,
   DreamAnalysisResponse,
@@ -60,6 +65,7 @@ const UK_DATE_FORMATS = {
     MatChipsModule,
     MatIconModule,
     MatSelectModule,
+    BackToTopComponent,
   ],
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: "en-GB" },
@@ -121,6 +127,9 @@ const UK_DATE_FORMATS = {
               [for]="picker"
             ></mat-datepicker-toggle>
             <mat-datepicker #picker></mat-datepicker>
+            <mat-hint *ngIf="getReadableEntryDateLabel()">
+              {{ getReadableEntryDateLabel() }}
+            </mat-hint>
           </mat-form-field>
 
           <!-- AI Style Selection - only show when AI toggle is on -->
@@ -418,6 +427,8 @@ const UK_DATE_FORMATS = {
           <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
         </mat-card-content>
       </mat-card>
+
+      <app-back-to-top />
     </div>
   `,
   styles: [
@@ -1158,31 +1169,7 @@ export class CreateComponent implements OnInit {
   }
 
   private parseApiDateAsLocal(value: unknown): Date | null {
-    if (typeof value !== "string" || !value.trim()) {
-      return null;
-    }
-
-    const trimmed = value.trim();
-    const isoDateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
-    if (isoDateOnlyMatch) {
-      const year = Number(isoDateOnlyMatch[1]);
-      const monthIndex = Number(isoDateOnlyMatch[2]) - 1;
-      const day = Number(isoDateOnlyMatch[3]);
-      const localDate = new Date(year, monthIndex, day);
-
-      if (
-        localDate.getFullYear() === year &&
-        localDate.getMonth() === monthIndex &&
-        localDate.getDate() === day
-      ) {
-        return localDate;
-      }
-
-      return null;
-    }
-
-    const parsed = new Date(trimmed);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return parseLocalIsoDate(value);
   }
 
   readonly allowPastOrTodayOnly = (value: Date | null): boolean => {
@@ -1230,6 +1217,10 @@ export class CreateComponent implements OnInit {
   private describeEntryDate(value: Date | string | null): string {
     const parsed = this.coerceEntryDate(value);
     return parsed ? parsed.toDateString() : "";
+  }
+
+  getReadableEntryDateLabel(): string {
+    return formatReadableLongDate(this.entryDate);
   }
 
   private handleSaveError(error: unknown, fallbackMessage: string): void {

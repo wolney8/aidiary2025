@@ -396,17 +396,42 @@ class TestImportIntegration:
 # ---------------------------------------------------------------------------
 
 class TestDuplicateHandling:
-    def test_duplicate_daily_entry_skipped(self, client):
+    def test_duplicate_daily_entry_same_day_same_title_and_content_skipped(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx(daily_rows=[['2024-06-01', 'First', 'Body', '']])
         # First upload
         _upload(client, token, file_bytes)
-        # Second upload — same date
+        # Second upload — same date, same title, same content
         resp = _upload(client, token, file_bytes)
         data = json.loads(resp.data)
         assert data['summary']['inserted_daily'] == 0
         assert data['summary']['skipped_daily'] == 1
         assert '2024-06-01' in data['summary']['duplicate_dates_daily']
+
+    def test_same_day_different_title_is_allowed(self, client):
+        token = _register_and_login(client)
+        first_file = _make_xlsx(daily_rows=[['2024-06-01', 'Morning notes', 'Body', '']])
+        second_file = _make_xlsx(daily_rows=[['2024-06-01', 'Evening notes', 'Body', '']])
+
+        first_resp = _upload(client, token, first_file)
+        second_resp = _upload(client, token, second_file)
+
+        assert first_resp.status_code == 200
+        data = json.loads(second_resp.data)
+        assert data['summary']['inserted_daily'] == 1
+        assert data['summary']['skipped_daily'] == 0
+
+    def test_same_day_same_title_different_content_is_allowed(self, client):
+        token = _register_and_login(client)
+        first_file = _make_xlsx(daily_rows=[['2024-06-01', 'Gym twice', 'Morning gym session', '']])
+        second_file = _make_xlsx(daily_rows=[['2024-06-01', 'Gym twice', 'Evening gym session', '']])
+
+        _upload(client, token, first_file)
+        second_resp = _upload(client, token, second_file)
+
+        data = json.loads(second_resp.data)
+        assert data['summary']['inserted_daily'] == 1
+        assert data['summary']['skipped_daily'] == 0
 
     def test_duplicate_reported_in_warnings(self, client):
         token = _register_and_login(client)
@@ -416,16 +441,16 @@ class TestDuplicateHandling:
         data = json.loads(resp.data)
         # At least one warning should mention the duplicate
         combined = ' '.join(data['warnings'])
-        assert '2024-07-01' in combined or 'skipped' in combined.lower()
+        assert 'same date, title, and content already exist' in combined.lower()
 
     def test_partial_duplicate(self, client):
-        """One existing date + one new date → only new one inserted."""
+        """One existing same-day/same-title/same-content row + one new row → only new one inserted."""
         token = _register_and_login(client)
         file1 = _make_xlsx(daily_rows=[['2024-08-01', 'Existing', 'Body', '']])
         _upload(client, token, file1)
 
         file2 = _make_xlsx(daily_rows=[
-            ['2024-08-01', 'Dup', 'Should skip', ''],
+            ['2024-08-01', 'Existing', 'Body', ''],
             ['2024-08-02', 'New', 'Should insert', ''],
         ])
         resp = _upload(client, token, file2)
@@ -752,19 +777,19 @@ class TestImportHistory:
         """Two users should each see only their own history."""
         # User 1
         client.post('/api/register',
-                    data=json.dumps({'username': 'userA', 'password': 'pw'}),
+                    data=json.dumps({'username': 'userA', 'password': 'pw12345a'}),
                     content_type='application/json')
         r = client.post('/api/login',
-                        data=json.dumps({'username': 'userA', 'password': 'pw'}),
+                        data=json.dumps({'username': 'userA', 'password': 'pw12345a'}),
                         content_type='application/json')
         token_a = json.loads(r.data)['token']
 
         # User 2
         client.post('/api/register',
-                    data=json.dumps({'username': 'userB', 'password': 'pw'}),
+                    data=json.dumps({'username': 'userB', 'password': 'pw12345a'}),
                     content_type='application/json')
         r = client.post('/api/login',
-                        data=json.dumps({'username': 'userB', 'password': 'pw'}),
+                        data=json.dumps({'username': 'userB', 'password': 'pw12345a'}),
                         content_type='application/json')
         token_b = json.loads(r.data)['token']
 
@@ -979,6 +1004,55 @@ class TestExportDownload:
         assert dream_ws.cell(2, 4).value == 'Alex'
         assert dream_ws.cell(2, 5).value == 'Forest'
         assert dream_ws.cell(2, 12).value == 'dream,flight'
+
+    def test_export_records_guard_token_for_full_range_export(self, client):
+        token = _register_and_login(client)
+        db_path = os.environ['DB_PATH']
+        self._seed_export_rows(db_path)
+
+        resp = client.get(
+            '/api/import/export?from_date=2026-01-10&to_date=2026-01-21&include_daily=true&include_dreams=true',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        guard_token = resp.headers.get('X-AiDiary-Export-Token')
+        assert guard_token
+
+        conn = sqlite3.connect(db_path)
+        row = conn.execute(
+            '''
+            SELECT from_date, to_date, include_daily, include_dreams, is_full_range,
+                   daily_count, dream_count, guard_token, used_for_bulk_delete
+            FROM export_history
+            ORDER BY id DESC
+            LIMIT 1
+            '''
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert row[0] == '2026-01-10'
+        assert row[1] == '2026-01-21'
+        assert row[2] == 1
+        assert row[3] == 1
+        assert row[4] == 1
+        assert row[5] == 2
+        assert row[6] == 2
+        assert row[7] == guard_token
+        assert row[8] == 0
+
+    def test_export_does_not_issue_guard_token_for_partial_export(self, client):
+        token = _register_and_login(client)
+        self._seed_export_rows(os.environ['DB_PATH'])
+
+        resp = client.get(
+            '/api/import/export?from_date=2026-01-11&to_date=2026-01-20',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        assert resp.headers.get('X-AiDiary-Export-Token') is None
 
     def test_export_daily_only(self, client):
         token = _register_and_login(client)

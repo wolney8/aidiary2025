@@ -5,6 +5,7 @@ import {
   HttpEventType,
   HttpHeaders,
   HttpParams,
+  HttpResponse,
 } from "@angular/common/http";
 import { Injectable, inject } from "@angular/core";
 import { type Observable, throwError } from "rxjs";
@@ -46,6 +47,30 @@ export interface ExportFilters {
   toDate?: string;
   includeDaily?: boolean;
   includeDreams?: boolean;
+}
+
+export interface ExportDownloadResult {
+  blob: Blob;
+  guardToken?: string;
+}
+
+export interface BulkDeleteReadiness {
+  first_entry_date: string | null;
+  last_entry_date: string | null;
+  daily_count: number;
+  dream_count: number;
+  total_entries: number;
+  has_entries: boolean;
+  eligible_for_delete: boolean;
+  guard_token_present: boolean;
+  requires_full_export: boolean;
+}
+
+export interface BulkDeleteResult {
+  message: string;
+  deleted_daily: number;
+  deleted_dreams: number;
+  deleted_total: number;
 }
 
 interface UploadSummaryPayload {
@@ -110,15 +135,61 @@ export class ImportService {
   }
 
   /** Download user entries as an Excel export, optionally filtered by date/type. */
-  downloadExport(filters?: ExportFilters): Observable<Blob> {
+  downloadExport(filters?: ExportFilters): Observable<ExportDownloadResult> {
     const headers = this.getAuthHeaders();
     const params = this.buildExportParams(filters);
     return this.requestWithPortFallback((baseUrl) =>
-      this.http.get(`${baseUrl}/import/export`, {
-        headers,
-        params,
-        responseType: "blob",
-      }),
+      this.http
+        .get(`${baseUrl}/import/export`, {
+          headers,
+          params,
+          responseType: "blob",
+          observe: "response",
+        })
+        .pipe(
+          map((response: HttpResponse<Blob>) => ({
+            blob: response.body ?? new Blob(),
+            guardToken:
+              response.headers.get("X-AiDiary-Export-Token") ?? undefined,
+          })),
+        ),
+    );
+  }
+
+  getBulkDeleteReadiness(
+    guardToken?: string,
+  ): Observable<BulkDeleteReadiness> {
+    const headers = this.getAuthHeaders();
+    let params = new HttpParams();
+    if (guardToken) {
+      params = params.set("guard_token", guardToken);
+    }
+
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.get<BulkDeleteReadiness>(
+        `${baseUrl}/entries/bulk-delete-readiness`,
+        {
+          headers,
+          params,
+        },
+      ),
+    );
+  }
+
+  bulkDeleteAllEntries(
+    guardToken: string,
+    confirmationText: string,
+  ): Observable<BulkDeleteResult> {
+    const headers = this.getAuthHeaders();
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.post<BulkDeleteResult>(
+        `${baseUrl}/entries/bulk-delete`,
+        {
+          guard_token: guardToken,
+          confirmation_text: confirmationText,
+        },
+        { headers },
+      ),
     );
   }
 

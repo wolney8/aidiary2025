@@ -279,6 +279,26 @@ def get_auth_token(client):
     data = json.loads(response.data)
     return data['token']
 
+
+def seed_bulk_delete_entries(client, token: str) -> None:
+    client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-01',
+            'user_message': 'Daily bulk delete seed'
+        }),
+        content_type='application/json'
+    )
+    client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-03',
+            'title': 'Dream seed',
+            'plot': 'Dream bulk delete seed'
+        }),
+        content_type='application/json'
+    )
+
 def test_create_daily_entry(client):
     """Test creating a daily entry."""
     token = get_auth_token(client)
@@ -296,6 +316,89 @@ def test_create_daily_entry(client):
     data = json.loads(response.data)
     assert 'id' in data
     assert data['entry_number'] == 1
+
+
+def test_bulk_delete_readiness_requires_guarded_export(client):
+    token = get_auth_token(client)
+    seed_bulk_delete_entries(client, token)
+
+    response = client.get(
+        '/api/entries/bulk-delete-readiness',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['has_entries'] is True
+    assert data['eligible_for_delete'] is False
+    assert data['first_entry_date'] == '2026-05-01'
+    assert data['last_entry_date'] == '2026-05-03'
+
+
+def test_bulk_delete_rejects_without_matching_export_guard(client):
+    token = get_auth_token(client)
+    seed_bulk_delete_entries(client, token)
+
+    response = client.post(
+        '/api/entries/bulk-delete',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'guard_token': 'missing-token',
+            'confirmation_text': 'DELETE ALL',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 409
+    data = json.loads(response.data)
+    assert 'same-session full export' in data['error']
+
+
+def test_bulk_delete_succeeds_after_full_range_export(client):
+    token = get_auth_token(client)
+    seed_bulk_delete_entries(client, token)
+
+    export_response = client.get(
+        '/api/import/export?from_date=2026-05-01&to_date=2026-05-03&include_daily=true&include_dreams=true',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert export_response.status_code == 200
+    guard_token = export_response.headers.get('X-AiDiary-Export-Token')
+    assert guard_token
+
+    readiness_response = client.get(
+        f'/api/entries/bulk-delete-readiness?guard_token={guard_token}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    readiness_data = json.loads(readiness_response.data)
+    assert readiness_data['eligible_for_delete'] is True
+
+    delete_response = client.post(
+        '/api/entries/bulk-delete',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'guard_token': guard_token,
+            'confirmation_text': 'DELETE ALL',
+        }),
+        content_type='application/json'
+    )
+
+    assert delete_response.status_code == 200
+    delete_data = json.loads(delete_response.data)
+    assert delete_data['deleted_total'] == 2
+    assert delete_data['deleted_daily'] == 1
+    assert delete_data['deleted_dreams'] == 1
+
+    remaining_daily = client.get(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    remaining_dreams = client.get(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert json.loads(remaining_daily.data) == []
+    assert json.loads(remaining_dreams.data) == []
 
 def test_create_daily_entry_rejects_future_date(client):
     """POST /api/daily should reject future dates."""

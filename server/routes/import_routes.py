@@ -14,7 +14,9 @@ from services.import_service import (
     parse_excel,
     insert_entries,
     ensure_history_table,
+    ensure_export_history_table,
     record_import_history,
+    record_export_history,
     get_import_history,
 )
 
@@ -144,13 +146,13 @@ def upload_import():
     if result['duplicate_dates_daily']:
         all_warnings.append(
             f"{result['skipped_daily']} daily entr{'y' if result['skipped_daily'] == 1 else 'ies'} "
-            f"skipped — date already exists: "
+            f"skipped — same date, title, and content already exist: "
             + ', '.join(sorted(set(result['duplicate_dates_daily'])))
         )
     if result['duplicate_dates_dreams']:
         all_warnings.append(
             f"{result['skipped_dreams']} dream entr{'y' if result['skipped_dreams'] == 1 else 'ies'} "
-            f"skipped — date already exists: "
+            f"skipped — same date, title, and content already exist: "
             + ', '.join(sorted(set(result['duplicate_dates_dreams'])))
         )
 
@@ -324,6 +326,32 @@ def export_entries():
     daily_rows = []
     dream_rows = []
 
+    first_daily = conn.execute(
+        'SELECT MIN(entry_date) AS min_date, COUNT(*) AS total_count FROM dailydiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+    first_dream = conn.execute(
+        'SELECT MIN(entry_date) AS min_date, COUNT(*) AS total_count FROM dreamdiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+
+    overall_first_date = min(
+        [value for value in [first_daily['min_date'], first_dream['min_date']] if value],
+        default=None,
+    )
+    overall_last_daily = conn.execute(
+        'SELECT MAX(entry_date) AS max_date FROM dailydiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+    overall_last_dream = conn.execute(
+        'SELECT MAX(entry_date) AS max_date FROM dreamdiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+    overall_last_date = max(
+        [value for value in [overall_last_daily['max_date'], overall_last_dream['max_date']] if value],
+        default=None,
+    )
+
     if include_daily:
         daily_query = '''
             SELECT entry_date, title, user_message, ai_response
@@ -362,8 +390,6 @@ def export_entries():
 
         dream_query += ' ORDER BY entry_date ASC, entry_number ASC'
         dream_rows = conn.execute(dream_query, tuple(dream_params)).fetchall()
-
-    conn.close()
 
     wb = openpyxl.Workbook()
 
@@ -432,9 +458,39 @@ def export_entries():
     if has_filters:
         filename = f'aidiary_export_filtered_{stamp}.xlsx'
 
-    return send_file(
+    ensure_export_history_table(conn)
+    is_full_range = bool(
+        include_daily
+        and include_dreams
+        and overall_first_date
+        and overall_last_date
+        and from_date
+        and to_date
+        and from_date.isoformat() == overall_first_date
+        and to_date.isoformat() == overall_last_date
+    )
+    export_record = record_export_history(
+        conn,
+        user_id=user_id,
+        filename=filename,
+        from_date=from_date.isoformat() if from_date else None,
+        to_date=to_date.isoformat() if to_date else None,
+        include_daily=include_daily,
+        include_dreams=include_dreams,
+        daily_count=len(daily_rows),
+        dream_count=len(dream_rows),
+        is_full_range=is_full_range,
+        issue_guard_token=is_full_range and (len(daily_rows) + len(dream_rows) > 0),
+    )
+    conn.close()
+
+    response = send_file(
         buffer,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True,
         download_name=filename,
     )
+    response.headers['Access-Control-Expose-Headers'] = 'X-AiDiary-Export-Token'
+    if export_record['guard_token']:
+        response.headers['X-AiDiary-Export-Token'] = export_record['guard_token']
+    return response

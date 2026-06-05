@@ -6,6 +6,11 @@ import sqlite3
 from datetime import datetime
 import re
 from html import escape
+from services.import_service import (
+    ensure_export_history_table,
+    get_latest_bulk_delete_guard,
+    mark_export_guard_used,
+)
 
 entries_bp = Blueprint('entries', __name__)
 
@@ -63,6 +68,58 @@ def _is_future_entry_date(value: str) -> bool:
 
     today = datetime.now().date()
     return parsed.date() > today
+
+
+def _get_entry_range_summary(conn: sqlite3.Connection, user_id: int) -> dict[str, int | str | None | bool]:
+    daily_row = conn.execute(
+        'SELECT MIN(entry_date) AS min_date, MAX(entry_date) AS max_date, COUNT(*) AS total_count FROM dailydiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+    dream_row = conn.execute(
+        'SELECT MIN(entry_date) AS min_date, MAX(entry_date) AS max_date, COUNT(*) AS total_count FROM dreamdiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+
+    all_min_dates = [value for value in [daily_row['min_date'], dream_row['min_date']] if value]
+    all_max_dates = [value for value in [daily_row['max_date'], dream_row['max_date']] if value]
+    daily_count = int(daily_row['total_count'] or 0)
+    dream_count = int(dream_row['total_count'] or 0)
+
+    return {
+        'first_entry_date': min(all_min_dates) if all_min_dates else None,
+        'last_entry_date': max(all_max_dates) if all_max_dates else None,
+        'daily_count': daily_count,
+        'dream_count': dream_count,
+        'total_entries': daily_count + dream_count,
+        'has_entries': (daily_count + dream_count) > 0,
+    }
+
+
+def _build_bulk_delete_readiness(
+    conn: sqlite3.Connection,
+    user_id: int,
+    guard_token: str | None,
+) -> dict[str, int | str | None | bool]:
+    ensure_export_history_table(conn)
+    summary = _get_entry_range_summary(conn, user_id)
+    guard_record = get_latest_bulk_delete_guard(conn, user_id, guard_token)
+
+    eligible = bool(
+        summary['has_entries']
+        and guard_record
+        and guard_record.get('is_full_range')
+        and guard_record.get('include_daily') == 1
+        and guard_record.get('include_dreams') == 1
+        and guard_record.get('from_date') == summary['first_entry_date']
+        and guard_record.get('to_date') == summary['last_entry_date']
+    )
+
+    return {
+        **summary,
+        'eligible_for_delete': eligible,
+        'guard_token_present': bool(guard_record),
+        'requires_full_export': bool(summary['has_entries']),
+    }
 
 
 def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
@@ -525,6 +582,64 @@ def delete_dream_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     return '', 204
+
+
+@entries_bp.route('/entries/bulk-delete-readiness', methods=['GET'])
+@jwt_required()
+def get_bulk_delete_readiness():
+    """Return whether the current user can bulk-delete all entries."""
+    user_id = int(get_jwt_identity())
+    guard_token = (request.args.get('guard_token') or '').strip() or None
+
+    conn = get_db()
+    readiness = _build_bulk_delete_readiness(conn, user_id, guard_token)
+    conn.close()
+
+    return jsonify(readiness), 200
+
+
+@entries_bp.route('/entries/bulk-delete', methods=['POST'])
+@jwt_required()
+def bulk_delete_entries():
+    """Delete all daily and dream entries for the current user after guarded export."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+    guard_token = str(data.get('guard_token') or '').strip()
+    confirmation_text = str(data.get('confirmation_text') or '').strip()
+
+    if confirmation_text != 'DELETE ALL':
+        return jsonify({'error': 'Type DELETE ALL to confirm bulk delete.'}), 400
+
+    conn = get_db()
+    readiness = _build_bulk_delete_readiness(conn, user_id, guard_token)
+    if not readiness['eligible_for_delete']:
+        conn.close()
+        return jsonify({
+            'error': 'A same-session full export of all entries is required before bulk delete.',
+            'readiness': readiness,
+        }), 409
+
+    guard_record = get_latest_bulk_delete_guard(conn, user_id, guard_token)
+    daily_deleted = conn.execute(
+        'DELETE FROM dailydiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).rowcount
+    dream_deleted = conn.execute(
+        'DELETE FROM dreamdiary_entries WHERE user_id = ?',
+        (user_id,),
+    ).rowcount
+    if guard_record:
+        mark_export_guard_used(conn, int(guard_record['id']))
+    else:
+        conn.commit()
+    conn.close()
+
+    return jsonify({
+        'message': 'All entries deleted.',
+        'deleted_daily': daily_deleted,
+        'deleted_dreams': dream_deleted,
+        'deleted_total': daily_deleted + dream_deleted,
+    }), 200
 
 
 @entries_bp.route('/search', methods=['GET'])

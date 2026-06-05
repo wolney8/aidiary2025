@@ -5,6 +5,7 @@ import logging
 import math
 import re
 import sqlite3
+import secrets
 from datetime import datetime, date, timezone
 from collections import Counter
 from services.nltk_enrichment import (
@@ -112,6 +113,16 @@ def _sanitise(value) -> str:
     if text.startswith(_FORMULA_PREFIXES):
         text = text[1:].lstrip()
     return _INJECTION_PATTERNS.sub('', text)
+
+
+def _normalise_title_key(value: str) -> str:
+    """Collapse title casing/spacing so duplicate checks are less brittle."""
+    return ' '.join((value or '').strip().lower().split())
+
+
+def _normalise_content_key(value: str) -> str:
+    """Collapse content casing/spacing so duplicate checks can use main body text."""
+    return ' '.join((value or '').strip().lower().split())
 
 
 def _normalise_headers(columns) -> list[str]:
@@ -322,7 +333,8 @@ def parse_excel(file_bytes: bytes) -> dict:
 
 def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict:
     """
-    Insert parsed entries, skipping duplicates (same user_id + entry_date).
+    Insert parsed entries, skipping duplicates when the same entry type,
+    same day, and same normalised title already exist for the user.
 
     Returns:
         {
@@ -336,20 +348,22 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
     """
     cursor = conn.cursor()
 
-    # Fetch existing entry dates for this user upfront to minimise round-trips
+    # Fetch existing date+title pairs for this user upfront to minimise round-trips.
     existing_daily = {
-        row[0]
+        (row[0], _normalise_title_key(row[1] or ''), _normalise_content_key(row[2] or ''))
         for row in cursor.execute(
-            'SELECT DISTINCT entry_date FROM dailydiary_entries WHERE user_id = ?',
+            'SELECT entry_date, title, user_message FROM dailydiary_entries WHERE user_id = ?',
             (user_id,),
         )
+        if _normalise_title_key(row[1] or '') and _normalise_content_key(row[2] or '')
     }
     existing_dreams = {
-        row[0]
+        (row[0], _normalise_title_key(row[1] or ''), _normalise_content_key(row[2] or ''))
         for row in cursor.execute(
-            'SELECT DISTINCT entry_date FROM dreamdiary_entries WHERE user_id = ?',
+            'SELECT entry_date, title, plot FROM dreamdiary_entries WHERE user_id = ?',
             (user_id,),
         )
+        if _normalise_title_key(row[1] or '') and _normalise_content_key(row[2] or '')
     }
 
     inserted_daily = 0
@@ -358,7 +372,10 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
     for row in parsed.get('daily', []):
         entry_date = row['entry_date']
-        if entry_date in existing_daily:
+        title_key = _normalise_title_key(row['title'])
+        content_key = _normalise_content_key(row['user_message'])
+        duplicate_key = (entry_date, title_key, content_key)
+        if title_key and content_key and duplicate_key in existing_daily:
             skipped_daily += 1
             dup_daily.append(entry_date)
             continue
@@ -390,7 +407,8 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
                 derived_fields['tags'],
             ),
         )
-        existing_daily.add(entry_date)
+        if title_key and content_key:
+            existing_daily.add(duplicate_key)
         inserted_daily += 1
 
     inserted_dreams = 0
@@ -399,7 +417,10 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
     for row in parsed.get('dreams', []):
         entry_date = row['entry_date']
-        if entry_date in existing_dreams:
+        title_key = _normalise_title_key(row['title'])
+        content_key = _normalise_content_key(row['plot'])
+        duplicate_key = (entry_date, title_key, content_key)
+        if title_key and content_key and duplicate_key in existing_dreams:
             skipped_dreams += 1
             dup_dreams.append(entry_date)
             continue
@@ -435,7 +456,8 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
                 row.get('dream_places', ''),
             ),
         )
-        existing_dreams.add(entry_date)
+        if title_key and content_key:
+            existing_dreams.add(duplicate_key)
         inserted_dreams += 1
 
     conn.commit()
@@ -540,6 +562,25 @@ CREATE TABLE IF NOT EXISTS import_history (
 )
 '''
 
+EXPORT_HISTORY_DDL = '''
+CREATE TABLE IF NOT EXISTS export_history (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id               INTEGER NOT NULL,
+    exported_at           TEXT    NOT NULL,
+    filename              TEXT    NOT NULL,
+    from_date             TEXT,
+    to_date               TEXT,
+    include_daily         INTEGER NOT NULL DEFAULT 1,
+    include_dreams        INTEGER NOT NULL DEFAULT 1,
+    daily_count           INTEGER NOT NULL DEFAULT 0,
+    dream_count           INTEGER NOT NULL DEFAULT 0,
+    is_full_range         INTEGER NOT NULL DEFAULT 0,
+    guard_token           TEXT,
+    used_for_bulk_delete  INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+'''
+
 
 def ensure_history_table(conn: sqlite3.Connection) -> None:
     """Create or repair import_history table for older local databases."""
@@ -622,6 +663,36 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def ensure_export_history_table(conn: sqlite3.Connection) -> None:
+    """Create or repair export_history table for guarded bulk-delete flow."""
+    conn.execute(EXPORT_HISTORY_DDL)
+
+    columns = {
+        row[1]: row for row in conn.execute('PRAGMA table_info(export_history)').fetchall()
+    }
+
+    required_columns = {
+        'exported_at': "TEXT NOT NULL DEFAULT ''",
+        'filename': "TEXT NOT NULL DEFAULT ''",
+        'from_date': 'TEXT',
+        'to_date': 'TEXT',
+        'include_daily': 'INTEGER NOT NULL DEFAULT 1',
+        'include_dreams': 'INTEGER NOT NULL DEFAULT 1',
+        'daily_count': 'INTEGER NOT NULL DEFAULT 0',
+        'dream_count': 'INTEGER NOT NULL DEFAULT 0',
+        'is_full_range': 'INTEGER NOT NULL DEFAULT 0',
+        'guard_token': 'TEXT',
+        'used_for_bulk_delete': 'INTEGER NOT NULL DEFAULT 0',
+    }
+
+    for column_name, definition in required_columns.items():
+        if column_name in columns:
+            continue
+        conn.execute(f'ALTER TABLE export_history ADD COLUMN {column_name} {definition}')
+
+    conn.commit()
+
+
 def record_import_history(
     conn: sqlite3.Connection,
     user_id: int,
@@ -686,3 +757,83 @@ def get_import_history(conn: sqlite3.Connection, user_id: int) -> list[dict]:
         history.append(record)
 
     return history
+
+
+def record_export_history(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    filename: str,
+    from_date: str | None,
+    to_date: str | None,
+    include_daily: bool,
+    include_dreams: bool,
+    daily_count: int,
+    dream_count: int,
+    is_full_range: bool,
+    issue_guard_token: bool,
+) -> dict[str, str | bool | int | None]:
+    """Insert an export-history row and optionally issue a one-time guard token."""
+    ensure_export_history_table(conn)
+    guard_token = secrets.token_urlsafe(24) if issue_guard_token else None
+    exported_at = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    cursor = conn.cursor()
+    cursor.execute(
+        '''INSERT INTO export_history
+           (user_id, exported_at, filename, from_date, to_date, include_daily,
+            include_dreams, daily_count, dream_count, is_full_range, guard_token,
+            used_for_bulk_delete)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)''',
+        (
+            user_id,
+            exported_at,
+            filename,
+            from_date,
+            to_date,
+            1 if include_daily else 0,
+            1 if include_dreams else 0,
+            daily_count,
+            dream_count,
+            1 if is_full_range else 0,
+            guard_token,
+        ),
+    )
+    conn.commit()
+    return {
+        'export_id': cursor.lastrowid,
+        'guard_token': guard_token,
+        'is_full_range': is_full_range,
+    }
+
+
+def get_latest_bulk_delete_guard(
+    conn: sqlite3.Connection,
+    user_id: int,
+    guard_token: str | None,
+) -> dict | None:
+    """Return the latest matching unused guard export record for a user."""
+    if not guard_token:
+        return None
+
+    ensure_export_history_table(conn)
+    row = conn.execute(
+        '''SELECT id, user_id, exported_at, from_date, to_date, include_daily,
+                  include_dreams, daily_count, dream_count, is_full_range,
+                  guard_token, used_for_bulk_delete
+           FROM export_history
+           WHERE user_id = ? AND guard_token = ? AND used_for_bulk_delete = 0
+           ORDER BY exported_at DESC
+           LIMIT 1''',
+        (user_id, guard_token),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def mark_export_guard_used(conn: sqlite3.Connection, export_history_id: int) -> None:
+    """Mark a qualifying export guard token as consumed by bulk delete."""
+    conn.execute(
+        'UPDATE export_history SET used_for_bulk_delete = 1 WHERE id = ?',
+        (export_history_id,),
+    )
+    conn.commit()
