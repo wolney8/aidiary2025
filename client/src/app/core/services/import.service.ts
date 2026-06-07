@@ -34,6 +34,15 @@ export interface ImportResult {
   skipped_dreams?: number;
   errors?: string[];
   warnings?: string[];
+  duplicate_entries?: ImportDuplicateEntry[];
+}
+
+export interface ImportDuplicateEntry {
+  entry_type: "daily" | "dream";
+  entry_date: string;
+  title: string;
+  reason: string;
+  content_preview?: string;
 }
 
 export interface UploadProgress {
@@ -85,6 +94,7 @@ interface UploadResponsePayload {
   status?: unknown;
   errors?: unknown;
   warnings?: unknown;
+  duplicate_entries?: unknown;
   message?: unknown;
   imported_count?: unknown;
   skipped_count?: unknown;
@@ -253,6 +263,9 @@ export class ImportService {
 
               const errors = this.toStringArray(body.errors);
               const warnings = this.toStringArray(body.warnings);
+              const duplicateEntries = this.toDuplicateEntryArray(
+                body.duplicate_entries,
+              );
 
               const message =
                 typeof body.message === "string"
@@ -280,6 +293,7 @@ export class ImportService {
                 skipped_dreams: optionalNumber(summary.skipped_dreams),
                 errors,
                 warnings,
+                duplicate_entries: duplicateEntries,
               };
               return { type: "result" as const, result };
             }
@@ -472,5 +486,47 @@ export class ImportService {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string")
       : [];
+  }
+
+  private toDuplicateEntryArray(value: unknown): ImportDuplicateEntry[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const entries: Array<ImportDuplicateEntry | null> = value
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        const raw = item as Record<string, unknown>;
+        const entryType = raw["entry_type"];
+        const entryDate = raw["entry_date"];
+        const title = raw["title"];
+        const reason = raw["reason"];
+        const contentPreview = raw["content_preview"];
+
+        if (
+          (entryType !== "daily" && entryType !== "dream") ||
+          typeof entryDate !== "string" ||
+          typeof title !== "string" ||
+          typeof reason !== "string"
+        ) {
+          return null;
+        }
+
+        return {
+          entry_type: entryType,
+          entry_date: entryDate,
+          title,
+          reason,
+          content_preview:
+            typeof contentPreview === "string" ? contentPreview : undefined,
+        };
+      });
+
+    return entries.filter(
+      (item): item is ImportDuplicateEntry => item !== null,
+    );
   }
 }

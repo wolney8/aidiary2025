@@ -20,10 +20,12 @@ import { MatTooltipModule } from "@angular/material/tooltip";
 import { filter } from "rxjs/operators";
 import {
   type ImportHistoryItem,
+  type ImportDuplicateEntry,
   type ImportResult,
   ImportService,
   type UploadProgress,
 } from "../../core/services/import.service";
+import { formatReadableLongDate } from "../../shared/utils/date-display";
 
 type UploadState =
   | "idle"
@@ -226,6 +228,36 @@ type UploadState =
                 <strong>Warnings:</strong>
                 {{ importResult!.warnings!.join("; ") }}
               </p>
+              <div
+                *ngIf="hasDuplicateEntries(importResult!)"
+                class="duplicate-review"
+              >
+                <p class="duplicate-review__title">Skipped duplicates</p>
+                <ul class="duplicate-review__list">
+                  <li
+                    *ngFor="let duplicate of getVisibleDuplicateEntries(importResult!)"
+                  >
+                    <strong>{{ formatDuplicateDate(duplicate.entry_date) }}</strong>
+                    — {{ duplicate.entry_type === "daily" ? "Daily" : "Dream" }}
+                    — title: "{{ duplicate.title }}"
+                    <span *ngIf="duplicate.content_preview">
+                      — preview: "{{ duplicate.content_preview }}"
+                    </span>
+                  </li>
+                </ul>
+                <button
+                  mat-button
+                  type="button"
+                  *ngIf="hasHiddenDuplicateEntries(importResult!)"
+                  (click)="showAllDuplicateEntries = !showAllDuplicateEntries"
+                >
+                  {{
+                    showAllDuplicateEntries
+                      ? "Show fewer"
+                      : "Show all skipped duplicates"
+                  }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -257,6 +289,36 @@ type UploadState =
               >
                 <li *ngFor="let err of importResult!.errors">{{ err }}</li>
               </ul>
+              <div
+                *ngIf="hasDuplicateEntries(importResult!)"
+                class="duplicate-review"
+              >
+                <p class="duplicate-review__title">Skipped duplicates</p>
+                <ul class="duplicate-review__list">
+                  <li
+                    *ngFor="let duplicate of getVisibleDuplicateEntries(importResult!)"
+                  >
+                    <strong>{{ formatDuplicateDate(duplicate.entry_date) }}</strong>
+                    — {{ duplicate.entry_type === "daily" ? "Daily" : "Dream" }}
+                    — title: "{{ duplicate.title }}"
+                    <span *ngIf="duplicate.content_preview">
+                      — preview: "{{ duplicate.content_preview }}"
+                    </span>
+                  </li>
+                </ul>
+                <button
+                  mat-button
+                  type="button"
+                  *ngIf="hasHiddenDuplicateEntries(importResult!)"
+                  (click)="showAllDuplicateEntries = !showAllDuplicateEntries"
+                >
+                  {{
+                    showAllDuplicateEntries
+                      ? "Show fewer"
+                      : "Show all skipped duplicates"
+                  }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -629,6 +691,24 @@ type UploadState =
         margin: 0 0 4px;
       }
 
+      .duplicate-review {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+      }
+
+      .duplicate-review__title {
+        margin: 0 0 6px;
+        font-weight: 600;
+      }
+
+      .duplicate-review__list {
+        margin: 0;
+        padding-left: 18px;
+        display: grid;
+        gap: 4px;
+      }
+
       .error-list {
         margin: 6px 0 0 16px;
         padding: 0;
@@ -755,6 +835,7 @@ export class ImportComponent implements OnInit {
   uploadProgress: UploadProgress = { percent: 0, loaded: 0, total: 0 };
   importResult: ImportResult | null = null;
   importErrorMessage = "";
+  showAllDuplicateEntries = false;
 
   // Template download
   isDownloading = false;
@@ -815,6 +896,7 @@ export class ImportComponent implements OnInit {
     this.uploadState = "idle";
     this.importResult = null;
     this.importErrorMessage = "";
+    this.showAllDuplicateEntries = false;
     this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
   }
 
@@ -829,6 +911,7 @@ export class ImportComponent implements OnInit {
     };
     this.importResult = null;
     this.importErrorMessage = "";
+    this.showAllDuplicateEntries = false;
 
     this.importService
       .uploadFile(this.selectedFile)
@@ -955,6 +1038,23 @@ export class ImportComponent implements OnInit {
       result.inserted_daily !== undefined ||
       result.inserted_dreams !== undefined;
     return hasSplitData && result.imported_count > 0;
+  }
+
+  hasDuplicateEntries(result: ImportResult): boolean {
+    return (result.duplicate_entries?.length ?? 0) > 0;
+  }
+
+  hasHiddenDuplicateEntries(result: ImportResult): boolean {
+    return (result.duplicate_entries?.length ?? 0) > 5;
+  }
+
+  getVisibleDuplicateEntries(result: ImportResult): ImportDuplicateEntry[] {
+    const entries = result.duplicate_entries ?? [];
+    return this.showAllDuplicateEntries ? entries : entries.slice(0, 5);
+  }
+
+  formatDuplicateDate(value: string): string {
+    return formatReadableLongDate(value) || value;
   }
 
   private applySelectedFile(file: File): void {
