@@ -210,6 +210,8 @@ This naming overlap requires care when discussing priorities.
 - Prefer milestone title plus issue number when referring to work, not milestone number alone.
 - Treat GitHub as authoritative for open/closed state.
 - Note that `#87` is currently assigned to the closed milestone `M8: AI reliability and context quality`, so milestone governance may need tidying if future AI analysis work should remain visibly open in GitHub.
+- `#93` is the current active local implementation branch: `feat/93-import-duplicate-reporting`.
+- `#94` should follow `#93`, because the manual re-add flow should reuse the structured duplicate payload rather than inventing a second review contract.
 
 ## To confirm
 

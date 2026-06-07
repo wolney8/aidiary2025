@@ -330,6 +330,8 @@ class TestSuccessfulImport:
             assert key in summary, f'Missing key in summary: {key}'
 
         assert isinstance(data['warnings'], list)
+        assert 'duplicate_entries' in data
+        assert isinstance(data['duplicate_entries'], list)
 
 
 class TestImportIntegration:
@@ -442,6 +444,21 @@ class TestDuplicateHandling:
         # At least one warning should mention the duplicate
         combined = ' '.join(data['warnings'])
         assert 'same date, title, and content already exist' in combined.lower()
+
+    def test_duplicate_entries_payload_includes_date_title_type_and_reason(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx(daily_rows=[['2024-07-02', 'Gym twice', 'Morning session', '']])
+        _upload(client, token, file_bytes)
+        resp = _upload(client, token, file_bytes)
+        data = json.loads(resp.data)
+
+        assert data['duplicate_entries']
+        duplicate = data['duplicate_entries'][0]
+        assert duplicate['entry_type'] == 'daily'
+        assert duplicate['entry_date'] == '2024-07-02'
+        assert duplicate['title'] == 'Gym twice'
+        assert duplicate['reason'] == 'same_date_title_content'
+        assert 'Morning session' in duplicate['content_preview']
 
     def test_partial_duplicate(self, client):
         """One existing same-day/same-title/same-content row + one new row → only new one inserted."""

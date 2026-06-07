@@ -56,6 +56,7 @@ def upload_import():
         "duplicate_dates_daily":  [str, ...],
         "duplicate_dates_dreams": [str, ...]
       },
+      "duplicate_entries": [dict, ...],
       "warnings": [str, ...],
       "import_id": int
     }
@@ -127,6 +128,7 @@ def upload_import():
                 'duplicate_dates_dreams': [],
             },
             'warnings': all_warnings,
+            'duplicate_entries': [],
             'import_id': import_id,
         }), 200
 
@@ -175,6 +177,7 @@ def upload_import():
             'duplicate_dates_daily': result['duplicate_dates_daily'],
             'duplicate_dates_dreams': result['duplicate_dates_dreams'],
         },
+        'duplicate_entries': result.get('duplicate_entries', []),
         'warnings': all_warnings,
         'import_id': import_id,
     }), 200

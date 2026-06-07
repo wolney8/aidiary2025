@@ -125,6 +125,13 @@ def _normalise_content_key(value: str) -> str:
     return ' '.join((value or '').strip().lower().split())
 
 
+def _truncate_preview(value: str, limit: int = 96) -> str:
+    text = ' '.join((value or '').strip().split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + '…'
+
+
 def _normalise_headers(columns) -> list[str]:
     return [str(column).strip().lower() for column in columns]
 
@@ -344,6 +351,7 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
           'skipped_dreams':   int,
           'duplicate_dates_daily':  [str, ...],
           'duplicate_dates_dreams': [str, ...],
+          'duplicate_entries': [dict, ...],
         }
     """
     cursor = conn.cursor()
@@ -369,6 +377,7 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
     inserted_daily = 0
     skipped_daily = 0
     dup_daily: list[str] = []
+    duplicate_entries: list[dict[str, str]] = []
 
     for row in parsed.get('daily', []):
         entry_date = row['entry_date']
@@ -378,6 +387,13 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
         if title_key and content_key and duplicate_key in existing_daily:
             skipped_daily += 1
             dup_daily.append(entry_date)
+            duplicate_entries.append({
+                'entry_type': 'daily',
+                'entry_date': entry_date,
+                'title': row['title'] or 'Untitled daily entry',
+                'reason': 'same_date_title_content',
+                'content_preview': _truncate_preview(row['user_message']),
+            })
             continue
 
         derived_fields = _derive_daily_nltk_fields(row['title'], row['user_message'])
@@ -423,6 +439,13 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
         if title_key and content_key and duplicate_key in existing_dreams:
             skipped_dreams += 1
             dup_dreams.append(entry_date)
+            duplicate_entries.append({
+                'entry_type': 'dream',
+                'entry_date': entry_date,
+                'title': row['title'] or 'Untitled dream entry',
+                'reason': 'same_date_title_content',
+                'content_preview': _truncate_preview(row['plot']),
+            })
             continue
 
         max_num = cursor.execute(
@@ -469,6 +492,7 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
         'skipped_dreams': skipped_dreams,
         'duplicate_dates_daily': dup_daily,
         'duplicate_dates_dreams': dup_dreams,
+        'duplicate_entries': duplicate_entries,
     }
 
 
