@@ -1,11 +1,14 @@
 // Entry detail view with two-column layout
-import { Component, OnInit, inject } from "@angular/core";
+import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
+import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router, RouterModule } from "@angular/router";
 import { MatCardModule } from "@angular/material/card";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
+import { MatTooltipModule } from "@angular/material/tooltip";
+import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { EntriesService } from "../../core/services/entries.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
 import { formatReadableLongDate } from "../../shared/utils/date-display";
@@ -15,11 +18,14 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     RouterModule,
     MatCardModule,
     MatChipsModule,
     MatIconModule,
     MatButtonModule,
+    MatTooltipModule,
+    MatProgressSpinnerModule,
     BackToTopComponent,
   ],
   template: `
@@ -47,16 +53,126 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         </div>
       </div>
 
-      <section class="entry-image-band" aria-label="Entry image">
-        <img
-          *ngIf="getEntryImageUrl()"
-          [src]="getEntryImageUrl()!"
-          alt="Entry image"
-          class="entry-image"
-        />
-        <div class="entry-image-placeholder" *ngIf="!getEntryImageUrl()">
-          <mat-icon>image</mat-icon>
-          <p>No image uploaded for this entry yet.</p>
+      <section
+        class="entry-image-band"
+        [class.expanded]="isDreamImageExpanded"
+        [class.has-image]="!!getEntryImageUrl()"
+        aria-label="Entry image"
+      >
+        <div
+          class="entry-image-surface"
+          [class.clickable]="canExpandDreamImage()"
+          [class.expanded]="isDreamImageExpanded"
+          [attr.role]="canExpandDreamImage() ? 'button' : null"
+          [attr.tabindex]="canExpandDreamImage() ? 0 : null"
+          [attr.aria-label]="
+            canExpandDreamImage()
+              ? isDreamImageExpanded
+                ? 'Collapse dream image'
+                : 'Expand dream image'
+              : null
+          "
+          (click)="onDreamImageSurfaceClick($event)"
+          (keydown.enter)="onDreamImageSurfaceClick($event)"
+          (keydown.space)="onDreamImageSurfaceClick($event)"
+        >
+          <div
+            class="entry-image-actions"
+            *ngIf="isDream()"
+            [class.hidden]="isDreamImageExpanded"
+            (click)="$event.stopPropagation()"
+          >
+            <button
+              mat-raised-button
+              color="primary"
+              type="button"
+              (click)="generateDreamImage()"
+              [disabled]="isGeneratingDreamImage || !hasDreamImagePrompt()"
+              [matTooltip]="
+                hasDreamImagePrompt()
+                  ? ''
+                  : 'Generate an AI analysis first so this entry has an image prompt.'
+              "
+              [matTooltipShowDelay]="2500"
+            >
+              <mat-icon *ngIf="!isGeneratingDreamImage">{{
+                getEntryImageUrl() ? "refresh" : "auto_awesome"
+              }}</mat-icon>
+              <mat-progress-spinner
+                *ngIf="isGeneratingDreamImage"
+                mode="indeterminate"
+                diameter="18"
+                strokeWidth="3"
+              ></mat-progress-spinner>
+              {{
+                isGeneratingDreamImage
+                  ? "Generating image…"
+                  : getEntryImageUrl()
+                    ? "Retry image"
+                    : "Generate image"
+              }}
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="toggleDreamPromptEditor()"
+              [disabled]="isGeneratingDreamImage || isSavingDreamPrompt"
+            >
+              <mat-icon>{{ isEditingDreamPrompt ? "close" : "edit" }}</mat-icon>
+              {{ isEditingDreamPrompt ? "Close prompt" : "Edit prompt" }}
+            </button>
+          </div>
+          <div class="entry-image-loading" *ngIf="isGeneratingDreamImage">
+            <mat-progress-spinner
+              mode="indeterminate"
+              diameter="56"
+              strokeWidth="4"
+            ></mat-progress-spinner>
+            <span>Generating image…</span>
+          </div>
+          <div
+            class="entry-image-prompt-editor"
+            *ngIf="isDream() && isEditingDreamPrompt"
+            (click)="$event.stopPropagation()"
+          >
+            <label for="dream-image-prompt">Image prompt</label>
+            <textarea
+              id="dream-image-prompt"
+              [(ngModel)]="dreamPromptDraft"
+              rows="4"
+              maxlength="1000"
+              placeholder="Describe the dream scene you want the AI to render."
+            ></textarea>
+            <div class="entry-image-prompt-actions">
+              <button
+                mat-button
+                type="button"
+                (click)="cancelDreamPromptEdit()"
+                [disabled]="isSavingDreamPrompt"
+              >
+                Cancel
+              </button>
+              <button
+                mat-raised-button
+                color="primary"
+                type="button"
+                (click)="saveDreamPrompt()"
+                [disabled]="!canSaveDreamPrompt() || isSavingDreamPrompt"
+              >
+                {{ isSavingDreamPrompt ? "Saving…" : "Save prompt" }}
+              </button>
+            </div>
+          </div>
+          <img
+            *ngIf="getEntryImageUrl()"
+            [src]="getEntryImageUrl()!"
+            alt="Entry image"
+            class="entry-image"
+          />
+          <div class="entry-image-placeholder" *ngIf="!getEntryImageUrl()">
+            <mat-icon>image</mat-icon>
+            <p>No image generated for this dream yet.</p>
+          </div>
         </div>
       </section>
 
@@ -276,16 +392,6 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             </mat-chip-option>
           </mat-chip-listbox>
         </div>
-
-        <div class="metadata-section" *ngIf="isDream()">
-          <h4>Image Generated with prompt:</h4>
-          <p
-            class="paragraph-block"
-            *ngFor="let paragraph of toParagraphs(entry.image_prompt)"
-          >
-            {{ paragraph }}
-          </p>
-        </div>
       </div>
 
       <app-back-to-top />
@@ -333,22 +439,169 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .entry-image-band {
+        position: relative;
         margin-bottom: var(--spacing-md);
         border-radius: var(--radius-md);
         border: 1px solid var(--colour-border);
-        background: var(--colour-surface);
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
         overflow: hidden;
+      }
+
+      .entry-image-band.expanded {
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.22);
+      }
+
+      .entry-image-surface {
+        position: relative;
+        min-height: 220px;
+        max-height: 320px;
+        overflow: hidden;
+        transition:
+          max-height 260ms ease,
+          background 260ms ease;
+      }
+
+      .entry-image-surface.clickable {
+        cursor: zoom-in;
+      }
+
+      .entry-image-surface.expanded {
+        min-height: 705px;
+        max-height: 705px;
+        background: #020617;
+        cursor: zoom-out;
+      }
+
+      .entry-image-actions {
+        position: absolute;
+        top: 0.9rem;
+        right: 0.9rem;
+        display: flex;
+        gap: 0.75rem;
+        z-index: 2;
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+      }
+
+      .entry-image-actions.hidden {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-8px);
+      }
+
+      .entry-image-actions .mdc-button {
+        color: #ffffff !important;
+      }
+
+      .entry-image-actions .mat-mdc-raised-button {
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.22);
+      }
+
+      .entry-image-actions .mat-mdc-outlined-button {
+        border-color: rgba(255, 255, 255, 0.72) !important;
+        background: rgba(15, 23, 42, 0.54) !important;
+      }
+
+      .entry-image-actions .mat-icon,
+      .entry-image-actions .mat-mdc-progress-spinner {
+        color: inherit;
+        --mdc-circular-progress-active-indicator-color: currentColor;
+      }
+
+      .entry-image-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.8rem;
+        background: rgba(15, 23, 42, 0.42);
+        color: #ffffff;
+        pointer-events: none;
+        backdrop-filter: blur(2px);
+      }
+
+      .entry-image-loading .mat-mdc-progress-spinner {
+        --mdc-circular-progress-active-indicator-color: #ffffff;
+      }
+
+      .entry-image-prompt-editor {
+        position: absolute;
+        top: 4.2rem;
+        right: 0.9rem;
+        z-index: 2;
+        width: min(360px, calc(100% - 1.8rem));
+        padding: 0.9rem;
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(15, 23, 42, 0.92);
+        color: #ffffff;
+        backdrop-filter: blur(8px);
+      }
+
+      .entry-image-prompt-editor label {
+        display: block;
+        margin-bottom: 0.45rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .entry-image-prompt-editor textarea {
+        box-sizing: border-box;
+        width: 100%;
+        resize: vertical;
+        min-height: 5.5rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+        padding: 0.7rem 0.8rem;
+        font: inherit;
+      }
+
+      .entry-image-prompt-editor textarea::placeholder {
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .entry-image-prompt-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.6rem;
+        margin-top: 0.7rem;
+      }
+
+      .entry-image-prompt-actions .mdc-button {
+        color: #ffffff !important;
+      }
+
+      .entry-image-prompt-actions .mat-mdc-button {
+        background: rgba(255, 255, 255, 0.08) !important;
       }
 
       .entry-image {
         width: 100%;
-        max-height: 320px;
+        height: 320px;
         object-fit: cover;
         display: block;
+        transition:
+          height 260ms ease,
+          transform 260ms ease,
+          filter 260ms ease;
+      }
+
+      .entry-image-surface.expanded .entry-image {
+        height: 705px;
+        object-fit: cover;
+        filter: saturate(1.05);
       }
 
       .entry-image-placeholder {
-        min-height: 180px;
+        min-height: 220px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -405,6 +658,15 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         .action-buttons {
           justify-self: stretch;
           justify-content: flex-end;
+        }
+
+        .entry-image-surface.expanded {
+          min-height: min(65vh, 560px);
+          max-height: min(65vh, 560px);
+        }
+
+        .entry-image-surface.expanded .entry-image {
+          height: min(65vh, 560px);
         }
       }
 
@@ -490,6 +752,11 @@ export class DetailComponent implements OnInit {
   entryType: "daily" | "dream" = "daily";
   backQueryParams: Record<string, string | number> = {};
   analysisWarningMessage = "";
+  isGeneratingDreamImage = false;
+  isDreamImageExpanded = false;
+  isEditingDreamPrompt = false;
+  isSavingDreamPrompt = false;
+  dreamPromptDraft = "";
 
   showAllTags = false;
   showAllPeople = false;
@@ -504,11 +771,13 @@ export class DetailComponent implements OnInit {
       next: (entry) => {
         this.entry = entry;
         this.entryType = "daily";
+        this.dreamPromptDraft = this.getCurrentDreamPrompt();
       },
       error: () => {
         this.entriesService.getDreamEntry(id).subscribe((entry) => {
           this.entry = entry;
           this.entryType = "dream";
+          this.dreamPromptDraft = this.getCurrentDreamPrompt();
         });
       },
     });
@@ -582,6 +851,98 @@ export class DetailComponent implements OnInit {
     return value.length > 0 ? value : null;
   }
 
+  hasDreamImagePrompt(): boolean {
+    return this.isDream() && typeof this.entry?.image_prompt === "string"
+      ? this.entry.image_prompt.trim().length > 0
+      : false;
+  }
+
+  getDreamImagePromptTooltip(): string {
+    if (!this.hasDreamImagePrompt()) {
+      return "";
+    }
+
+    return `Image generated with prompt: ${this.entry.image_prompt}`;
+  }
+
+  canExpandDreamImage(): boolean {
+    return this.isDream() && !!this.getEntryImageUrl();
+  }
+
+  onDreamImageSurfaceClick(event: Event): void {
+    if (!this.canExpandDreamImage()) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDreamImageExpanded = !this.isDreamImageExpanded;
+  }
+
+  toggleDreamPromptEditor(): void {
+    this.isEditingDreamPrompt = !this.isEditingDreamPrompt;
+    this.dreamPromptDraft = this.getCurrentDreamPrompt();
+  }
+
+  cancelDreamPromptEdit(): void {
+    this.isEditingDreamPrompt = false;
+    this.dreamPromptDraft = this.getCurrentDreamPrompt();
+  }
+
+  canSaveDreamPrompt(): boolean {
+    return this.dreamPromptDraft.trim().length > 0;
+  }
+
+  saveDreamPrompt(): void {
+    if (!this.entry?.id || !this.isDream() || !this.canSaveDreamPrompt()) {
+      return;
+    }
+
+    const nextPrompt = this.dreamPromptDraft.trim();
+    this.isSavingDreamPrompt = true;
+    this.entriesService
+      .updateDreamEntry(this.entry.id, { image_prompt: nextPrompt })
+      .subscribe({
+        next: () => {
+          this.entry = {
+            ...this.entry,
+            image_prompt: nextPrompt,
+          };
+          this.isSavingDreamPrompt = false;
+          this.isEditingDreamPrompt = false;
+        },
+        error: (error) => {
+          console.error("Failed to save dream image prompt:", error);
+          this.isSavingDreamPrompt = false;
+          alert("Failed to save the image prompt. Please try again.");
+        },
+      });
+  }
+
+  generateDreamImage(): void {
+    if (!this.entry?.id || !this.isDream() || this.isGeneratingDreamImage) {
+      return;
+    }
+
+    this.isGeneratingDreamImage = true;
+    this.entriesService.generateDreamImage(this.entry.id).subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          image_prompt: result.image_prompt,
+          image_url: result.image_url,
+        };
+        this.dreamPromptDraft = result.image_prompt;
+        this.isGeneratingDreamImage = false;
+      },
+      error: (error) => {
+        console.error("Failed to generate dream image:", error);
+        this.isGeneratingDreamImage = false;
+        alert("Failed to generate dream image. Please try again.");
+      },
+    });
+  }
+
   getUserParagraphs(): string[] {
     const content = this.getUserContent();
     const paragraphs = this.toParagraphs(content);
@@ -596,6 +957,20 @@ export class DetailComponent implements OnInit {
 
   getAIParagraphs(): string[] {
     return this.toParagraphs(this.getAIContent());
+  }
+
+  @HostListener("document:click", ["$event"])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.isDreamImageExpanded) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(".entry-image-band")) {
+      return;
+    }
+
+    this.isDreamImageExpanded = false;
   }
 
   getUserContent(): string {
@@ -649,6 +1024,12 @@ export class DetailComponent implements OnInit {
     }
 
     return chunks;
+  }
+
+  private getCurrentDreamPrompt(): string {
+    return typeof this.entry?.image_prompt === "string"
+      ? this.entry.image_prompt.trim()
+      : "";
   }
 
   getVisibleItems(items: string[], expanded: boolean): string[] {

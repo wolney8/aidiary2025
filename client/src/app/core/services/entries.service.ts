@@ -2,7 +2,10 @@
 import { Injectable, inject } from "@angular/core";
 import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { Observable, of, throwError } from "rxjs";
-import { DailyEntry, DreamEntry } from "../models/entry.model";
+import {
+  DailyEntry,
+  DreamEntry,
+} from "../models/entry.model";
 import { AuthService } from "./auth.service";
 
 @Injectable({
@@ -132,5 +135,19 @@ export class EntriesService {
     return this.http.delete<void>(`${this.apiUrl}/dreams/${id}`, {
       headers: this.getHeaders(),
     });
+  }
+
+  generateDreamImage(
+    id: number,
+  ): Observable<{ id: number; image_prompt: string; image_url: string }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.post<{ id: number; image_prompt: string; image_url: string }>(
+      `${this.apiUrl}/dreams/${id}/generate-image`,
+      {},
+      { headers: this.getHeaders() },
+    );
   }
 }

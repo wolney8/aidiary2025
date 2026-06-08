@@ -1417,3 +1417,95 @@ def test_update_dream_entry_rejects_future_entry_date(client):
     assert update_resp.status_code == 400
     data = json.loads(update_resp.data)
     assert data['error'] == 'Future entry dates are not allowed'
+
+
+@patch('routes.entries.OpenAIService')
+def test_generate_dream_image_updates_entry(mock_service_cls, client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-10',
+            'title': 'Moon dream',
+            'plot': 'I saw a silver moon over a lake',
+            'image_prompt': 'Moonlit lake with silver reflections',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_prompt': 'Moonlit lake with silver reflections'}),
+        content_type='application/json'
+    )
+
+    mock_service = MagicMock()
+    mock_service.generate_image.return_value = 'data:image/png;base64,abc123'
+    mock_service_cls.return_value = mock_service
+
+    response = client.post(
+        f'/api/dreams/{entry_id}/generate-image',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == 'Moonlit lake with silver reflections'
+    assert data['image_url'] == 'data:image/png;base64,abc123'
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_url FROM dreamdiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] == 'data:image/png;base64,abc123'
+
+
+def test_generate_dream_image_rejects_missing_prompt(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-11',
+            'title': 'Promptless dream',
+            'plot': 'I was walking through fog'
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    response = client.post(
+        f'/api/dreams/{entry_id}/generate-image',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'This dream entry does not yet have an image prompt.'
+
+
+def test_generate_dream_image_not_found(client):
+    token = get_auth_token(client)
+
+    response = client.post(
+        '/api/dreams/999/generate-image',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert data['error'] == 'Entry not found'
