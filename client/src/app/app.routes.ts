@@ -75,6 +75,7 @@ export const routes: Routes = [
       },
       {
         path: "import",
+        canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
           import("./settings/import/import.component").then(
             (m) => m.ImportComponent,

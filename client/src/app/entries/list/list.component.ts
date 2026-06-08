@@ -296,6 +296,7 @@ type CalendarPreviewState = {
                   <mat-chip-set *ngIf="getTags(entry).length > 0">
                     <mat-chip
                       *ngFor="let tag of getTags(entry).slice(0, 2)"
+                      [class.duplicate-tag-chip]="isDuplicateTag(tag)"
                       (click)="searchForTag(tag)"
                       >{{ tag }}</mat-chip
                     >
@@ -1463,6 +1464,10 @@ export class ListComponent implements OnInit, OnDestroy {
       .split(",")
       .map((tag: string) => tag.trim())
       .filter((tag: string) => tag);
+  }
+
+  isDuplicateTag(tag: string): boolean {
+    return tag.trim() === "*Duplicate*";
   }
 
   searchForTag(tag: string): void {

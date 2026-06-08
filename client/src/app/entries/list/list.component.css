@@ -1027,6 +1027,16 @@
   color: #ffffff;
 }
 
+.entry-card mat-chip.duplicate-tag-chip {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.entry-card mat-chip.duplicate-tag-chip:hover {
+  background-color: #dc2626;
+  color: #ffffff;
+}
+
 .entry-snippet {
   margin-bottom: 8px;
   flex: 1;

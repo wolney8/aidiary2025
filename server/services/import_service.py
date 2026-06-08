@@ -1,6 +1,7 @@
 # server/services/import_service.py
 # Excel import service: validation, parsing, duplicate handling, history tracking
 import io
+import json
 import logging
 import math
 import re
@@ -43,6 +44,7 @@ DREAM_IMPORT_HEADERS = (
 # Script-injection patterns to strip from cell values
 _INJECTION_PATTERNS = re.compile(r'[<>]|javascript:', re.IGNORECASE)
 _FORMULA_PREFIXES = ('=', '+', '-', '@')
+_DUPLICATE_TAG = '*Duplicate*'
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +395,13 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
                 'title': row['title'] or 'Untitled daily entry',
                 'reason': 'same_date_title_content',
                 'content_preview': _truncate_preview(row['user_message']),
+                'prefill': {
+                    'entry_type': 'daily',
+                    'entry_date': entry_date,
+                    'title': row['title'] or '',
+                    'user_message': row['user_message'] or '',
+                    'tags': row.get('tags', '') or '',
+                },
             })
             continue
 
@@ -445,6 +454,23 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
                 'title': row['title'] or 'Untitled dream entry',
                 'reason': 'same_date_title_content',
                 'content_preview': _truncate_preview(row['plot']),
+                'prefill': {
+                    'entry_type': 'dream',
+                    'entry_date': entry_date,
+                    'title': row['title'] or '',
+                    'plot': row.get('plot', '') or '',
+                    'cast': row.get('cast', '') or '',
+                    'location': row.get('location', '') or '',
+                    'period': row.get('period', '') or '',
+                    'emotion': row.get('emotion', '') or '',
+                    'symbols_and_imagery': row.get('symbols_and_imagery', '') or '',
+                    'insight': row.get('insight', '') or '',
+                    'action': row.get('action', '') or '',
+                    'other': row.get('other', '') or '',
+                    'tags': row.get('tags', '') or '',
+                    'dream_people_names': row.get('dream_people_names', '') or '',
+                    'dream_places': row.get('dream_places', '') or '',
+                },
             })
             continue
 
@@ -493,6 +519,265 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
         'duplicate_dates_daily': dup_daily,
         'duplicate_dates_dreams': dup_dreams,
         'duplicate_entries': duplicate_entries,
+    }
+
+
+def _fetch_existing_duplicate_keys(
+    cursor: sqlite3.Cursor,
+    user_id: int,
+) -> tuple[set[tuple[str, str, str]], set[tuple[str, str, str]]]:
+    existing_daily = {
+        (row[0], _normalise_title_key(row[1] or ''), _normalise_content_key(row[2] or ''))
+        for row in cursor.execute(
+            'SELECT entry_date, title, user_message FROM dailydiary_entries WHERE user_id = ?',
+            (user_id,),
+        )
+        if _normalise_title_key(row[1] or '') and _normalise_content_key(row[2] or '')
+    }
+    existing_dreams = {
+        (row[0], _normalise_title_key(row[1] or ''), _normalise_content_key(row[2] or ''))
+        for row in cursor.execute(
+            'SELECT entry_date, title, plot FROM dreamdiary_entries WHERE user_id = ?',
+            (user_id,),
+        )
+        if _normalise_title_key(row[1] or '') and _normalise_content_key(row[2] or '')
+    }
+    return existing_daily, existing_dreams
+
+
+def preview_import_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict:
+    """Classify parsed rows into ready rows and duplicate candidates without inserting."""
+    cursor = conn.cursor()
+    existing_daily, existing_dreams = _fetch_existing_duplicate_keys(cursor, user_id)
+
+    ready_daily_rows: list[dict[str, str]] = []
+    ready_dream_rows: list[dict[str, str]] = []
+    duplicate_rows: list[dict[str, object]] = []
+    duplicate_dates_daily: list[str] = []
+    duplicate_dates_dreams: list[str] = []
+    duplicate_daily_count = 0
+    duplicate_dream_count = 0
+
+    daily_duplicate_index = 0
+    for row in parsed.get('daily', []):
+        entry_date = row['entry_date']
+        title_key = _normalise_title_key(row['title'])
+        content_key = _normalise_content_key(row['user_message'])
+        duplicate_key = (entry_date, title_key, content_key)
+
+        if title_key and content_key and duplicate_key in existing_daily:
+            daily_duplicate_index += 1
+            duplicate_daily_count += 1
+            duplicate_dates_daily.append(entry_date)
+            duplicate_rows.append({
+                'row_id': f'daily-{daily_duplicate_index}',
+                'entry_type': 'daily',
+                'entry_date': entry_date,
+                'title': row['title'] or 'Untitled daily entry',
+                'reason': 'same_date_title_content',
+                'content_preview': _truncate_preview(row['user_message']),
+                'row_data': dict(row),
+            })
+            continue
+
+        ready_daily_rows.append(dict(row))
+        if title_key and content_key:
+            existing_daily.add(duplicate_key)
+
+    dream_duplicate_index = 0
+    for row in parsed.get('dreams', []):
+        entry_date = row['entry_date']
+        title_key = _normalise_title_key(row['title'])
+        content_key = _normalise_content_key(row['plot'])
+        duplicate_key = (entry_date, title_key, content_key)
+
+        if title_key and content_key and duplicate_key in existing_dreams:
+            dream_duplicate_index += 1
+            duplicate_dream_count += 1
+            duplicate_dates_dreams.append(entry_date)
+            duplicate_rows.append({
+                'row_id': f'dream-{dream_duplicate_index}',
+                'entry_type': 'dream',
+                'entry_date': entry_date,
+                'title': row['title'] or 'Untitled dream entry',
+                'reason': 'same_date_title_content',
+                'content_preview': _truncate_preview(row['plot']),
+                'row_data': dict(row),
+            })
+            continue
+
+        ready_dream_rows.append(dict(row))
+        if title_key and content_key:
+            existing_dreams.add(duplicate_key)
+
+    return {
+        'ready_daily_rows': ready_daily_rows,
+        'ready_dream_rows': ready_dream_rows,
+        'duplicate_rows': duplicate_rows,
+        'summary': {
+            'ready_daily': len(ready_daily_rows),
+            'ready_dreams': len(ready_dream_rows),
+            'duplicate_daily': duplicate_daily_count,
+            'duplicate_dreams': duplicate_dream_count,
+            'duplicate_dates_daily': duplicate_dates_daily,
+            'duplicate_dates_dreams': duplicate_dates_dreams,
+        },
+    }
+
+
+def _merge_tags(*tag_groups: str) -> str:
+    seen: set[str] = set()
+    merged: list[str] = []
+
+    for tag_group in tag_groups:
+        for raw_tag in (tag_group or '').split(','):
+            tag = raw_tag.strip()
+            if not tag:
+                continue
+            key = tag.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(tag)
+
+    return ','.join(merged)
+
+
+def _insert_daily_import_row(
+    cursor: sqlite3.Cursor,
+    user_id: int,
+    row: dict[str, str],
+    *,
+    mark_duplicate: bool = False,
+) -> None:
+    entry_date = row['entry_date']
+    derived_fields = _derive_daily_nltk_fields(row['title'], row['user_message'])
+    ai_response = _sanitise(row.get('ai_response', ''))
+    max_num = cursor.execute(
+        'SELECT MAX(entry_number) FROM dailydiary_entries WHERE user_id = ? AND entry_date = ?',
+        (user_id, entry_date),
+    ).fetchone()[0] or 0
+
+    tags = _merge_tags(
+        row.get('tags', '') or '',
+        derived_fields['tags'],
+        _DUPLICATE_TAG if mark_duplicate else '',
+    )
+
+    cursor.execute(
+        '''INSERT INTO dailydiary_entries
+           (user_id, entry_date, entry_number, title, user_message,
+            ai_response, daily_people_names, daily_places, tags)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (
+            user_id,
+            entry_date,
+            max_num + 1,
+            row['title'],
+            row['user_message'],
+            ai_response,
+            derived_fields['daily_people_names'],
+            derived_fields['daily_places'],
+            tags,
+        ),
+    )
+
+
+def _insert_dream_import_row(
+    cursor: sqlite3.Cursor,
+    user_id: int,
+    row: dict[str, str],
+    *,
+    mark_duplicate: bool = False,
+) -> None:
+    entry_date = row['entry_date']
+    max_num = cursor.execute(
+        'SELECT MAX(entry_number) FROM dreamdiary_entries WHERE user_id = ? AND entry_date = ?',
+        (user_id, entry_date),
+    ).fetchone()[0] or 0
+    tags = _merge_tags(row.get('tags', '') or '', _DUPLICATE_TAG if mark_duplicate else '')
+
+    cursor.execute(
+        '''INSERT INTO dreamdiary_entries
+           (user_id, entry_date, entry_number, title, "cast", location,
+            period, emotion, plot, symbols_and_imagery, insight, action, other,
+            tags, dream_people_names, dream_places)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (
+            user_id,
+            entry_date,
+            max_num + 1,
+            row['title'],
+            row['cast'],
+            row['location'],
+            row['period'],
+            row['emotion'],
+            row['plot'],
+            row['symbols_and_imagery'],
+            row['insight'],
+            row['action'],
+            row['other'],
+            tags,
+            row.get('dream_people_names', ''),
+            row.get('dream_places', ''),
+        ),
+    )
+
+
+def commit_import_preview(
+    conn: sqlite3.Connection,
+    user_id: int,
+    preview_payload: dict,
+    accepted_duplicate_row_ids: set[str] | None = None,
+) -> dict:
+    """Commit a staged import preview, optionally including accepted duplicates."""
+    accepted_duplicate_row_ids = accepted_duplicate_row_ids or set()
+    cursor = conn.cursor()
+
+    inserted_daily = 0
+    inserted_dreams = 0
+    accepted_duplicate_daily = 0
+    accepted_duplicate_dreams = 0
+
+    for row in preview_payload.get('ready_daily_rows', []):
+        _insert_daily_import_row(cursor, user_id, row)
+        inserted_daily += 1
+
+    for row in preview_payload.get('ready_dream_rows', []):
+        _insert_dream_import_row(cursor, user_id, row)
+        inserted_dreams += 1
+
+    duplicate_rows = preview_payload.get('duplicate_rows', [])
+    for duplicate in duplicate_rows:
+        if duplicate.get('row_id') not in accepted_duplicate_row_ids:
+            continue
+        entry_type = duplicate.get('entry_type')
+        row_data = duplicate.get('row_data')
+        if not isinstance(row_data, dict):
+            continue
+        if entry_type == 'daily':
+            _insert_daily_import_row(cursor, user_id, row_data, mark_duplicate=True)
+            inserted_daily += 1
+            accepted_duplicate_daily += 1
+        elif entry_type == 'dream':
+            _insert_dream_import_row(cursor, user_id, row_data, mark_duplicate=True)
+            inserted_dreams += 1
+            accepted_duplicate_dreams += 1
+
+    skipped_daily = preview_payload.get('summary', {}).get('duplicate_daily', 0) - accepted_duplicate_daily
+    skipped_dreams = preview_payload.get('summary', {}).get('duplicate_dreams', 0) - accepted_duplicate_dreams
+    conn.commit()
+
+    return {
+        'inserted_daily': inserted_daily,
+        'skipped_daily': max(0, skipped_daily),
+        'inserted_dreams': inserted_dreams,
+        'skipped_dreams': max(0, skipped_dreams),
+        'duplicate_dates_daily': preview_payload.get('summary', {}).get('duplicate_dates_daily', []),
+        'duplicate_dates_dreams': preview_payload.get('summary', {}).get('duplicate_dates_dreams', []),
+        'duplicate_entries': [],
+        'accepted_duplicate_daily': accepted_duplicate_daily,
+        'accepted_duplicate_dreams': accepted_duplicate_dreams,
     }
 
 
@@ -601,6 +886,19 @@ CREATE TABLE IF NOT EXISTS export_history (
     is_full_range         INTEGER NOT NULL DEFAULT 0,
     guard_token           TEXT,
     used_for_bulk_delete  INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+'''
+
+IMPORT_SESSIONS_DDL = '''
+CREATE TABLE IF NOT EXISTS import_sessions (
+    id              TEXT PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    created_at      TEXT NOT NULL,
+    filename        TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json    TEXT NOT NULL,
+    consumed_at     TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 '''
@@ -714,6 +1012,93 @@ def ensure_export_history_table(conn: sqlite3.Connection) -> None:
             continue
         conn.execute(f'ALTER TABLE export_history ADD COLUMN {column_name} {definition}')
 
+    conn.commit()
+
+
+def ensure_import_sessions_table(conn: sqlite3.Connection) -> None:
+    """Create or repair import_sessions table used for staged duplicate review."""
+    conn.execute(IMPORT_SESSIONS_DDL)
+
+    columns = {
+        row[1]: row for row in conn.execute('PRAGMA table_info(import_sessions)').fetchall()
+    }
+    required_columns = {
+        'created_at': "TEXT NOT NULL DEFAULT ''",
+        'filename': "TEXT NOT NULL DEFAULT ''",
+        'file_size_bytes': 'INTEGER NOT NULL DEFAULT 0',
+        'payload_json': "TEXT NOT NULL DEFAULT '{}'",
+        'consumed_at': 'TEXT',
+    }
+
+    for column_name, definition in required_columns.items():
+        if column_name in columns:
+            continue
+        conn.execute(f'ALTER TABLE import_sessions ADD COLUMN {column_name} {definition}')
+
+    conn.commit()
+
+
+def create_import_session(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    filename: str,
+    file_size: int,
+    payload: dict,
+) -> str:
+    """Persist a short-lived staged import session and return its id."""
+    ensure_import_sessions_table(conn)
+    session_id = secrets.token_urlsafe(18)
+    created_at = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    conn.execute(
+        '''INSERT INTO import_sessions
+           (id, user_id, created_at, filename, file_size_bytes, payload_json, consumed_at)
+           VALUES (?, ?, ?, ?, ?, ?, NULL)''',
+        (
+            session_id,
+            user_id,
+            created_at,
+            filename,
+            file_size,
+            json.dumps(payload),
+        ),
+    )
+    conn.commit()
+    return session_id
+
+
+def get_import_session(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    session_id: str,
+) -> dict | None:
+    """Return an active staged import session for the given user."""
+    ensure_import_sessions_table(conn)
+    row = conn.execute(
+        '''SELECT id, user_id, created_at, filename, file_size_bytes, payload_json, consumed_at
+           FROM import_sessions
+           WHERE id = ? AND user_id = ? AND consumed_at IS NULL
+           LIMIT 1''',
+        (session_id, user_id),
+    ).fetchone()
+    if not row:
+        return None
+
+    record = dict(row)
+    try:
+        record['payload'] = json.loads(record.pop('payload_json'))
+    except (TypeError, ValueError):
+        record['payload'] = {}
+    return record
+
+
+def mark_import_session_consumed(conn: sqlite3.Connection, session_id: str) -> None:
+    """Mark a staged import session as consumed so it cannot be reused."""
+    conn.execute(
+        'UPDATE import_sessions SET consumed_at = ? WHERE id = ?',
+        (datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), session_id),
+    )
     conn.commit()
 
 

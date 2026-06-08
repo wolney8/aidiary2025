@@ -677,6 +677,7 @@ export class CreateComponent implements OnInit {
         this.selectedType = typeParam;
         this.previousSelectedType = typeParam;
       }
+
     });
 
     // Check for id parameter for editing

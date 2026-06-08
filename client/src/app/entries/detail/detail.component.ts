@@ -216,6 +216,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               *ngFor="let tag of getVisibleItems(getTags(), showAllTags)"
               (click)="searchForTag(tag)"
               [class.clickable-chip]="true"
+              [class.duplicate-tag-chip]="isDuplicateTag(tag)"
             >
               {{ tag }}
             </mat-chip-option>
@@ -442,6 +443,16 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         color: #ffffff !important;
       }
 
+      .duplicate-tag-chip {
+        background-color: #fee2e2 !important;
+        color: #991b1b !important;
+      }
+
+      .duplicate-tag-chip:hover {
+        background-color: #dc2626 !important;
+        color: #ffffff !important;
+      }
+
       .clickable-chip mat-icon {
         font-size: 16px;
         width: 16px;
@@ -659,6 +670,10 @@ export class DetailComponent implements OnInit {
           .map((item: string) => item.trim())
           .filter((item: string) => item.length > 0)
       : [];
+  }
+
+  isDuplicateTag(tag: string): boolean {
+    return tag.trim() === "*Duplicate*";
   }
 
   getPeopleArray(): string[] {

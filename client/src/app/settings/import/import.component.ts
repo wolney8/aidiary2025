@@ -5,12 +5,14 @@ import { CommonModule } from "@angular/common";
 import {
   Component,
   type ElementRef,
+  HostListener,
   inject,
   type OnInit,
   ViewChild,
 } from "@angular/core";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
+import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatDividerModule } from "@angular/material/divider";
 import { MatIconModule } from "@angular/material/icon";
@@ -20,7 +22,6 @@ import { MatTooltipModule } from "@angular/material/tooltip";
 import { filter } from "rxjs/operators";
 import {
   type ImportHistoryItem,
-  type ImportDuplicateEntry,
   type ImportResult,
   ImportService,
   type UploadProgress,
@@ -30,6 +31,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 type UploadState =
   | "idle"
   | "uploading"
+  | "review"
   | "success"
   | "partial"
   | "empty"
@@ -42,6 +44,7 @@ type UploadState =
     CommonModule,
     MatCardModule,
     MatButtonModule,
+    MatCheckboxModule,
     MatIconModule,
     MatProgressBarModule,
     MatTableModule,
@@ -201,6 +204,44 @@ type UploadState =
             </p>
           </div>
 
+          <!-- Result feedback — review required -->
+          <div
+            *ngIf="uploadState === 'review'"
+            class="feedback feedback--warning"
+            role="alert"
+            aria-live="assertive"
+            [@fadeSlideIn]
+          >
+            <mat-icon aria-hidden="true">rule</mat-icon>
+            <div class="feedback-body">
+              <p class="feedback-title">Duplicate review required</p>
+              <p>
+                {{ importResult!.ready_daily ?? 0 }} daily and
+                {{ importResult!.ready_dreams ?? 0 }} dream entries are ready to
+                import.
+              </p>
+              <p>
+                {{ getDuplicateCount(importResult!) }} duplicate
+                {{ getDuplicateCount(importResult!) === 1 ? "entry" : "entries" }}
+                need your decision before anything is imported.
+              </p>
+              <p *ngIf="importResult!.warnings && importResult!.warnings!.length">
+                <strong>Warnings:</strong>
+                {{ importResult!.warnings!.join("; ") }}
+              </p>
+              <div class="review-actions">
+                <button
+                  mat-stroked-button
+                  type="button"
+                  (click)="openDuplicateReview()"
+                >
+                  <mat-icon>table_view</mat-icon>
+                  Show duplicates
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Result feedback — success -->
           <div
             *ngIf="uploadState === 'success'"
@@ -222,42 +263,10 @@ type UploadState =
                 {{ importResult!.inserted_dreams ?? 0 }} inserted,
                 {{ importResult!.skipped_dreams ?? 0 }} skipped
               </p>
-              <p
-                *ngIf="importResult!.warnings && importResult!.warnings!.length"
-              >
+              <p *ngIf="importResult!.warnings && importResult!.warnings!.length">
                 <strong>Warnings:</strong>
                 {{ importResult!.warnings!.join("; ") }}
               </p>
-              <div
-                *ngIf="hasDuplicateEntries(importResult!)"
-                class="duplicate-review"
-              >
-                <p class="duplicate-review__title">Skipped duplicates</p>
-                <ul class="duplicate-review__list">
-                  <li
-                    *ngFor="let duplicate of getVisibleDuplicateEntries(importResult!)"
-                  >
-                    <strong>{{ formatDuplicateDate(duplicate.entry_date) }}</strong>
-                    — {{ duplicate.entry_type === "daily" ? "Daily" : "Dream" }}
-                    — title: "{{ duplicate.title }}"
-                    <span *ngIf="duplicate.content_preview">
-                      — preview: "{{ duplicate.content_preview }}"
-                    </span>
-                  </li>
-                </ul>
-                <button
-                  mat-button
-                  type="button"
-                  *ngIf="hasHiddenDuplicateEntries(importResult!)"
-                  (click)="showAllDuplicateEntries = !showAllDuplicateEntries"
-                >
-                  {{
-                    showAllDuplicateEntries
-                      ? "Show fewer"
-                      : "Show all skipped duplicates"
-                  }}
-                </button>
-              </div>
             </div>
           </div>
 
@@ -283,42 +292,16 @@ type UploadState =
                 {{ importResult!.inserted_dreams ?? 0 }} inserted,
                 {{ importResult!.skipped_dreams ?? 0 }} skipped
               </p>
+              <p *ngIf="importResult!.warnings && importResult!.warnings!.length">
+                <strong>Warnings:</strong>
+                {{ importResult!.warnings!.join("; ") }}
+              </p>
               <ul
                 *ngIf="importResult!.errors && importResult!.errors!.length"
                 class="error-list"
               >
                 <li *ngFor="let err of importResult!.errors">{{ err }}</li>
               </ul>
-              <div
-                *ngIf="hasDuplicateEntries(importResult!)"
-                class="duplicate-review"
-              >
-                <p class="duplicate-review__title">Skipped duplicates</p>
-                <ul class="duplicate-review__list">
-                  <li
-                    *ngFor="let duplicate of getVisibleDuplicateEntries(importResult!)"
-                  >
-                    <strong>{{ formatDuplicateDate(duplicate.entry_date) }}</strong>
-                    — {{ duplicate.entry_type === "daily" ? "Daily" : "Dream" }}
-                    — title: "{{ duplicate.title }}"
-                    <span *ngIf="duplicate.content_preview">
-                      — preview: "{{ duplicate.content_preview }}"
-                    </span>
-                  </li>
-                </ul>
-                <button
-                  mat-button
-                  type="button"
-                  *ngIf="hasHiddenDuplicateEntries(importResult!)"
-                  (click)="showAllDuplicateEntries = !showAllDuplicateEntries"
-                >
-                  {{
-                    showAllDuplicateEntries
-                      ? "Show fewer"
-                      : "Show all skipped duplicates"
-                  }}
-                </button>
-              </div>
             </div>
           </div>
 
@@ -360,7 +343,9 @@ type UploadState =
           <button
             mat-stroked-button
             (click)="clearSelection()"
-            [disabled]="!selectedFile || uploadState === 'uploading'"
+            [disabled]="
+              !selectedFile || uploadState === 'uploading' || isCommittingReview
+            "
             aria-label="Clear selected file"
           >
             <mat-icon>clear</mat-icon>
@@ -372,7 +357,11 @@ type UploadState =
             color="primary"
             (click)="uploadFile()"
             [disabled]="
-              !selectedFile || !!validationError || uploadState === 'uploading'
+              !selectedFile ||
+              !!validationError ||
+              uploadState === 'uploading' ||
+              uploadState === 'review' ||
+              isCommittingReview
             "
             aria-label="Upload selected file and import entries"
           >
@@ -381,6 +370,91 @@ type UploadState =
           </button>
         </mat-card-actions>
       </mat-card>
+
+      <div
+        *ngIf="isDuplicateModalOpen && importResult"
+        class="duplicate-modal-backdrop"
+        role="presentation"
+        (click)="closeDuplicateReview()"
+      >
+        <div
+          class="duplicate-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="duplicate-review-title"
+          (click)="$event.stopPropagation()"
+        >
+          <div class="duplicate-modal__header">
+            <div>
+              <h3 id="duplicate-review-title">Review duplicate entries</h3>
+              <p>
+                Nothing will be imported until you confirm this review.
+              </p>
+            </div>
+            <button
+              mat-icon-button
+              type="button"
+              aria-label="Close duplicate review"
+              (click)="closeDuplicateReview()"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+
+          <div class="duplicate-modal__table-wrapper">
+            <table class="duplicate-table">
+              <thead>
+                <tr>
+                  <th scope="col">Include</th>
+                  <th scope="col">Date</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Title</th>
+                  <th scope="col">Preview</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let duplicate of importResult.duplicate_entries ?? []">
+                  <td>
+                    <mat-checkbox
+                      [checked]="isDuplicateSelected(duplicate.row_id)"
+                      (change)="toggleDuplicateSelection(duplicate.row_id, $event.checked)"
+                      [aria-label]="'Include duplicate ' + duplicate.title"
+                    ></mat-checkbox>
+                  </td>
+                  <td>{{ formatDuplicateDate(duplicate.entry_date) }}</td>
+                  <td>{{ duplicate.entry_type === "daily" ? "Daily" : "Dream" }}</td>
+                  <td>{{ duplicate.title }}</td>
+                  <td>{{ duplicate.content_preview || "—" }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="duplicate-modal__footer">
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="commitReviewedImport(false)"
+              [disabled]="isCommittingReview"
+            >
+              Accept and import without duplicates
+            </button>
+            <button
+              mat-raised-button
+              color="warn"
+              type="button"
+              (click)="commitReviewedImport(true)"
+              [disabled]="isCommittingReview"
+            >
+              {{
+                isCommittingReview
+                  ? "Importing…"
+                  : "Accept and import with " + selectedDuplicateRowIds.size + " duplicates"
+              }}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- ── Step 3: Import History ── -->
       <mat-card class="step-card">
@@ -691,22 +765,86 @@ type UploadState =
         margin: 0 0 4px;
       }
 
-      .duplicate-review {
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid rgba(0, 0, 0, 0.08);
+      .review-actions {
+        margin-top: 10px;
       }
 
-      .duplicate-review__title {
+      .duplicate-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.52);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        z-index: 1200;
+      }
+
+      .duplicate-modal {
+        width: min(980px, 100%);
+        max-height: min(80vh, 720px);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        background: #fffef8;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        box-shadow: 0 28px 60px rgba(15, 23, 42, 0.24);
+      }
+
+      .duplicate-modal__header,
+      .duplicate-modal__footer {
+        padding: 18px 20px;
+        background: #fffdf4;
+      }
+
+      .duplicate-modal__header {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-start;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+      }
+
+      .duplicate-modal__header h3 {
         margin: 0 0 6px;
-        font-weight: 600;
       }
 
-      .duplicate-review__list {
+      .duplicate-modal__header p {
         margin: 0;
-        padding-left: 18px;
-        display: grid;
-        gap: 4px;
+        color: var(--colour-text-secondary);
+      }
+
+      .duplicate-modal__table-wrapper {
+        overflow: auto;
+        padding: 0 20px 20px;
+      }
+
+      .duplicate-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .duplicate-table th,
+      .duplicate-table td {
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      }
+
+      .duplicate-table th {
+        position: sticky;
+        top: 0;
+        background: #fffef8;
+        z-index: 1;
+      }
+
+      .duplicate-modal__footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        border-top: 1px solid rgba(148, 163, 184, 0.24);
       }
 
       .error-list {
@@ -835,7 +973,10 @@ export class ImportComponent implements OnInit {
   uploadProgress: UploadProgress = { percent: 0, loaded: 0, total: 0 };
   importResult: ImportResult | null = null;
   importErrorMessage = "";
-  showAllDuplicateEntries = false;
+  importSessionId: string | null = null;
+  isDuplicateModalOpen = false;
+  isCommittingReview = false;
+  selectedDuplicateRowIds = new Set<string>();
 
   // Template download
   isDownloading = false;
@@ -855,6 +996,24 @@ export class ImportComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadHistory();
+  }
+
+  canDeactivate(): boolean {
+    if (!this.hasPendingReview()) {
+      return true;
+    }
+    return confirm(
+      "This import review will be cancelled and lost if you leave now. Continue?",
+    );
+  }
+
+  @HostListener("window:beforeunload", ["$event"])
+  handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!this.hasPendingReview()) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
   }
 
   triggerFilePicker(): void {
@@ -890,14 +1049,10 @@ export class ImportComponent implements OnInit {
   }
 
   clearSelection(): void {
-    this.selectedFile = null;
-    this.isDragging = false;
-    this.validationError = null;
-    this.uploadState = "idle";
-    this.importResult = null;
-    this.importErrorMessage = "";
-    this.showAllDuplicateEntries = false;
-    this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
+    if (!this.confirmResetPendingReview()) {
+      return;
+    }
+    this.resetImportState();
   }
 
   uploadFile(): void {
@@ -911,7 +1066,9 @@ export class ImportComponent implements OnInit {
     };
     this.importResult = null;
     this.importErrorMessage = "";
-    this.showAllDuplicateEntries = false;
+    this.importSessionId = null;
+    this.isDuplicateModalOpen = false;
+    this.selectedDuplicateRowIds.clear();
 
     this.importService
       .uploadFile(this.selectedFile)
@@ -924,6 +1081,7 @@ export class ImportComponent implements OnInit {
           } else if (event.type === "result") {
             this.importResult = event.result;
             const resultStatus = event.result.status;
+            this.importSessionId = event.result.import_session_id ?? null;
             // Map backend 'failed' status to local 'error' UI state
             if (resultStatus === "failed") {
               this.uploadState = "error";
@@ -1040,30 +1198,105 @@ export class ImportComponent implements OnInit {
     return hasSplitData && result.imported_count > 0;
   }
 
-  hasDuplicateEntries(result: ImportResult): boolean {
-    return (result.duplicate_entries?.length ?? 0) > 0;
-  }
-
-  hasHiddenDuplicateEntries(result: ImportResult): boolean {
-    return (result.duplicate_entries?.length ?? 0) > 5;
-  }
-
-  getVisibleDuplicateEntries(result: ImportResult): ImportDuplicateEntry[] {
-    const entries = result.duplicate_entries ?? [];
-    return this.showAllDuplicateEntries ? entries : entries.slice(0, 5);
-  }
-
   formatDuplicateDate(value: string): string {
     return formatReadableLongDate(value) || value;
   }
 
   private applySelectedFile(file: File): void {
+    if (!this.confirmResetPendingReview()) {
+      return;
+    }
     this.selectedFile = file;
     this.validationError = this.importService.validateFile(file);
 
     // Reset any previous result when a new file is chosen
+    this.resetImportFeedback();
+  }
+
+  getDuplicateCount(result: ImportResult): number {
+    return (result.duplicate_entries?.length ?? 0) || 0;
+  }
+
+  openDuplicateReview(): void {
+    this.isDuplicateModalOpen = true;
+  }
+
+  closeDuplicateReview(): void {
+    this.isDuplicateModalOpen = false;
+  }
+
+  toggleDuplicateSelection(rowId: string, checked: boolean): void {
+    if (checked) {
+      this.selectedDuplicateRowIds.add(rowId);
+      return;
+    }
+    this.selectedDuplicateRowIds.delete(rowId);
+  }
+
+  isDuplicateSelected(rowId: string): boolean {
+    return this.selectedDuplicateRowIds.has(rowId);
+  }
+
+  commitReviewedImport(includeSelectedDuplicates: boolean): void {
+    if (!this.importSessionId) {
+      return;
+    }
+
+    this.isCommittingReview = true;
+    const acceptedDuplicateRowIds = includeSelectedDuplicates
+      ? Array.from(this.selectedDuplicateRowIds)
+      : [];
+
+    this.importService
+      .commitImportSession(this.importSessionId, acceptedDuplicateRowIds)
+      .subscribe({
+        next: (result) => {
+          this.importResult = result;
+          this.uploadState = result.status === "failed" ? "error" : result.status;
+          this.importSessionId = null;
+          this.isDuplicateModalOpen = false;
+          this.selectedDuplicateRowIds.clear();
+          this.isCommittingReview = false;
+          if (this.shouldRefreshHistory(result.status)) {
+            this.loadHistory();
+          }
+        },
+        error: (err: Error) => {
+          this.isCommittingReview = false;
+          this.uploadState = "error";
+          this.importErrorMessage =
+            err.message || "Import commit failed. Please try again.";
+        },
+      });
+  }
+
+  private hasPendingReview(): boolean {
+    return this.uploadState === "review" && !!this.importSessionId;
+  }
+
+  private confirmResetPendingReview(): boolean {
+    if (!this.hasPendingReview()) {
+      return true;
+    }
+    return confirm(
+      "The current import review will be cancelled and lost if you continue. Continue?",
+    );
+  }
+
+  private resetImportFeedback(): void {
     this.uploadState = "idle";
     this.importResult = null;
     this.importErrorMessage = "";
+    this.importSessionId = null;
+    this.isDuplicateModalOpen = false;
+    this.selectedDuplicateRowIds.clear();
+  }
+
+  private resetImportState(): void {
+    this.selectedFile = null;
+    this.isDragging = false;
+    this.validationError = null;
+    this.resetImportFeedback();
+    this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
   }
 }

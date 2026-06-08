@@ -1,6 +1,9 @@
 import { CanDeactivateFn } from '@angular/router';
-import { CreateComponent } from './create/create.component';
 
-export const pendingChangesGuard: CanDeactivateFn<CreateComponent> = (component) => {
+type PendingChangesComponent = {
+  canDeactivate: () => boolean;
+};
+
+export const pendingChangesGuard: CanDeactivateFn<PendingChangesComponent> = (component) => {
   return component.canDeactivate();
 };

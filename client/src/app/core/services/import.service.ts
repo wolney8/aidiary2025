@@ -23,7 +23,7 @@ export interface ImportHistoryItem {
 }
 
 export interface ImportResult {
-  status: "success" | "partial" | "failed" | "empty";
+  status: "success" | "partial" | "failed" | "empty" | "review";
   message: string;
   imported_count: number;
   skipped_count: number;
@@ -32,12 +32,18 @@ export interface ImportResult {
   inserted_dreams?: number;
   skipped_daily?: number;
   skipped_dreams?: number;
+  ready_daily?: number;
+  ready_dreams?: number;
+  duplicate_daily?: number;
+  duplicate_dreams?: number;
   errors?: string[];
   warnings?: string[];
   duplicate_entries?: ImportDuplicateEntry[];
+  import_session_id?: string;
 }
 
 export interface ImportDuplicateEntry {
+  row_id: string;
   entry_type: "daily" | "dream";
   entry_date: string;
   title: string;
@@ -87,6 +93,10 @@ interface UploadSummaryPayload {
   inserted_dreams?: unknown;
   skipped_daily?: unknown;
   skipped_dreams?: unknown;
+  ready_daily?: unknown;
+  ready_dreams?: unknown;
+  duplicate_daily?: unknown;
+  duplicate_dreams?: unknown;
 }
 
 interface UploadResponsePayload {
@@ -95,6 +105,7 @@ interface UploadResponsePayload {
   errors?: unknown;
   warnings?: unknown;
   duplicate_entries?: unknown;
+  import_session_id?: unknown;
   message?: unknown;
   imported_count?: unknown;
   skipped_count?: unknown;
@@ -272,6 +283,8 @@ export class ImportService {
                   ? body.message
                   : rawStatus === "empty"
                     ? "No valid entries were found in the uploaded file."
+                    : status === "review"
+                      ? "Duplicates found. Review and confirm before importing."
                     : status === "partial"
                       ? "Import completed with duplicates skipped."
                       : "Upload complete.";
@@ -291,9 +304,17 @@ export class ImportService {
                 inserted_dreams: optionalNumber(summary.inserted_dreams),
                 skipped_daily: optionalNumber(summary.skipped_daily),
                 skipped_dreams: optionalNumber(summary.skipped_dreams),
+                ready_daily: optionalNumber(summary.ready_daily),
+                ready_dreams: optionalNumber(summary.ready_dreams),
+                duplicate_daily: optionalNumber(summary.duplicate_daily),
+                duplicate_dreams: optionalNumber(summary.duplicate_dreams),
                 errors,
                 warnings,
                 duplicate_entries: duplicateEntries,
+                import_session_id:
+                  typeof body.import_session_id === "string"
+                    ? body.import_session_id
+                    : undefined,
               };
               return { type: "result" as const, result };
             }
@@ -304,6 +325,25 @@ export class ImportService {
           // Filter out null events from intermediate HttpEventTypes
           map((val) => val),
         ),
+    );
+  }
+
+  commitImportSession(
+    importSessionId: string,
+    acceptedDuplicateRowIds: string[],
+  ): Observable<ImportResult> {
+    const headers = this.getAuthHeaders();
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http
+        .post<unknown>(
+          `${baseUrl}/import/commit`,
+          {
+            import_session_id: importSessionId,
+            accepted_duplicate_row_ids: acceptedDuplicateRowIds,
+          },
+          { headers },
+        )
+        .pipe(map((response) => this.normaliseUploadResult(response))),
     );
   }
 
@@ -454,7 +494,14 @@ export class ImportService {
     );
 
     const rawStatus = String(item.status ?? "failed");
-    const status = this.mapBackendStatus(rawStatus);
+    const status: ImportHistoryItem["status"] =
+      rawStatus === "success"
+        ? "success"
+        : rawStatus === "empty"
+          ? "empty"
+          : rawStatus === "skipped" || rawStatus === "partial"
+            ? "partial"
+            : "failed";
 
     return {
       id: Number(item.id ?? 0),
@@ -470,6 +517,9 @@ export class ImportService {
   private mapBackendStatus(
     rawStatus: string,
   ): ImportHistoryItem["status"] | ImportResult["status"] {
+    if (rawStatus === "review_required" || rawStatus === "review") {
+      return "review";
+    }
     if (rawStatus === "success") {
       return "success";
     }
@@ -480,6 +530,66 @@ export class ImportService {
       return "empty";
     }
     return "failed";
+  }
+
+  private normaliseUploadResult(response: unknown): ImportResult {
+    const body =
+      response && typeof response === "object"
+        ? (response as UploadResponsePayload)
+        : {};
+    const summary =
+      body.summary && typeof body.summary === "object"
+        ? (body.summary as UploadSummaryPayload)
+        : {};
+
+    const optionalNumber = (value: unknown): number | undefined => {
+      if (value === null || value === undefined) {
+        return undefined;
+      }
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? numericValue : undefined;
+    };
+
+    const insertedDaily = Number(summary.inserted_daily ?? 0);
+    const insertedDreams = Number(summary.inserted_dreams ?? 0);
+    const skippedDaily = Number(summary.skipped_daily ?? 0);
+    const skippedDreams = Number(summary.skipped_dreams ?? 0);
+    const rawStatus = String(body.status ?? "failed");
+    const status = this.mapBackendStatus(rawStatus);
+    const errors = this.toStringArray(body.errors);
+    const warnings = this.toStringArray(body.warnings);
+
+    return {
+      status,
+      message:
+        typeof body.message === "string"
+          ? body.message
+          : status === "review"
+            ? "Duplicates found. Review and confirm before importing."
+            : status === "partial"
+              ? "Import completed with duplicates skipped."
+              : rawStatus === "empty"
+                ? "No valid entries were found in the uploaded file."
+                : "Upload complete.",
+      imported_count: Number(body.imported_count ?? insertedDaily + insertedDreams),
+      skipped_count: Number(body.skipped_count ?? skippedDaily + skippedDreams),
+      error_count: Number(body.error_count ?? errors.length),
+      inserted_daily: optionalNumber(summary.inserted_daily),
+      inserted_dreams: optionalNumber(summary.inserted_dreams),
+      skipped_daily: optionalNumber(summary.skipped_daily),
+      skipped_dreams: optionalNumber(summary.skipped_dreams),
+      ready_daily: optionalNumber(summary.ready_daily),
+      ready_dreams: optionalNumber(summary.ready_dreams),
+      duplicate_daily: optionalNumber(summary.duplicate_daily),
+      duplicate_dreams: optionalNumber(summary.duplicate_dreams),
+      errors,
+      warnings,
+      duplicate_entries: this.toDuplicateEntryArray(body.duplicate_entries),
+      import_session_id:
+        typeof body.import_session_id === "string"
+          ? body.import_session_id
+          : undefined,
+    };
   }
 
   private toStringArray(value: unknown): string[] {
@@ -500,6 +610,7 @@ export class ImportService {
         }
 
         const raw = item as Record<string, unknown>;
+        const rowId = raw["row_id"];
         const entryType = raw["entry_type"];
         const entryDate = raw["entry_date"];
         const title = raw["title"];
@@ -507,6 +618,7 @@ export class ImportService {
         const contentPreview = raw["content_preview"];
 
         if (
+          typeof rowId !== "string" ||
           (entryType !== "daily" && entryType !== "dream") ||
           typeof entryDate !== "string" ||
           typeof title !== "string" ||
@@ -516,6 +628,7 @@ export class ImportService {
         }
 
         return {
+          row_id: rowId,
           entry_type: entryType,
           entry_date: entryDate,
           title,

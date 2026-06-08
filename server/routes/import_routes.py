@@ -12,9 +12,14 @@ from services.import_service import (
     DREAM_IMPORT_HEADERS,
     validate_file,
     parse_excel,
-    insert_entries,
+    preview_import_entries,
+    commit_import_preview,
     ensure_history_table,
+    ensure_import_sessions_table,
     ensure_export_history_table,
+    create_import_session,
+    get_import_session,
+    mark_import_session_consumed,
     record_import_history,
     record_export_history,
     get_import_history,
@@ -41,24 +46,20 @@ def get_db():
 def upload_import():
     """
     Accept an Excel workbook (.xlsx), validate it, parse entries,
-    insert non-duplicate rows, and record the session in import_history.
+    and either import immediately or stage duplicate review before commit.
 
     Multipart form field: ``file``
 
     Success response 200:
     {
-      "status": "success",
+      "status": "success" | "review_required",
       "summary": {
-        "inserted_daily":  int,
-        "skipped_daily":   int,
-        "inserted_dreams": int,
-        "skipped_dreams":  int,
-        "duplicate_dates_daily":  [str, ...],
-        "duplicate_dates_dreams": [str, ...]
+        ...
       },
       "duplicate_entries": [dict, ...],
+      "import_session_id": str | null,
       "warnings": [str, ...],
-      "import_id": int
+      "import_id": int | null
     }
 
     Error response 400 / 422:
@@ -132,36 +133,59 @@ def upload_import():
             'import_id': import_id,
         }), 200
 
-    # --- Insert entries ---
+    # --- Stage or insert entries ---
     conn = get_db()
     ensure_history_table(conn)
+    ensure_import_sessions_table(conn)
 
     try:
-        result = insert_entries(conn, user_id, parsed)
+        preview = preview_import_entries(conn, user_id, parsed)
     except Exception as exc:
         conn.close()
         current_app.logger.error('Import insert failed: %s', exc)
         return jsonify({'status': 'error', 'errors': ['Database error during import.']}), 500
 
-    # Merge all warnings
-    all_warnings = parse_warnings[:]
-    if result['duplicate_dates_daily']:
-        all_warnings.append(
-            f"{result['skipped_daily']} daily entr{'y' if result['skipped_daily'] == 1 else 'ies'} "
-            f"skipped — same date, title, and content already exist: "
-            + ', '.join(sorted(set(result['duplicate_dates_daily'])))
-        )
-    if result['duplicate_dates_dreams']:
-        all_warnings.append(
-            f"{result['skipped_dreams']} dream entr{'y' if result['skipped_dreams'] == 1 else 'ies'} "
-            f"skipped — same date, title, and content already exist: "
-            + ', '.join(sorted(set(result['duplicate_dates_dreams'])))
-        )
+    duplicate_rows = preview.get('duplicate_rows', [])
+    public_duplicate_rows = [
+        {
+            'row_id': row['row_id'],
+            'entry_type': row['entry_type'],
+            'entry_date': row['entry_date'],
+            'title': row['title'],
+            'reason': row['reason'],
+            'content_preview': row['content_preview'],
+        }
+        for row in duplicate_rows
+    ]
 
-    # Determine overall status
+    if duplicate_rows:
+        payload = {
+            'parse_warnings': parse_warnings,
+            **preview,
+        }
+        import_session_id = create_import_session(
+            conn,
+            user_id=user_id,
+            filename=filename,
+            file_size=file_size,
+            payload=payload,
+        )
+        conn.close()
+        return jsonify({
+            'status': 'review_required',
+            'message': 'Duplicates found. Review and confirm before importing.',
+            'summary': preview['summary'],
+            'duplicate_entries': public_duplicate_rows,
+            'warnings': parse_warnings,
+            'errors': [],
+            'import_session_id': import_session_id,
+            'import_id': None,
+        }), 200
+
+    result = commit_import_preview(conn, user_id, preview, set())
+    all_warnings = parse_warnings[:]
     any_inserted = result['inserted_daily'] + result['inserted_dreams'] > 0
     status_str = 'success' if any_inserted else 'skipped'
-
     import_id = record_import_history(
         conn, user_id, filename, file_size, result, all_warnings, status=status_str
     )
@@ -177,9 +201,98 @@ def upload_import():
             'duplicate_dates_daily': result['duplicate_dates_daily'],
             'duplicate_dates_dreams': result['duplicate_dates_dreams'],
         },
-        'duplicate_entries': result.get('duplicate_entries', []),
+        'duplicate_entries': [],
         'warnings': all_warnings,
+        'errors': [],
         'import_id': import_id,
+        'import_session_id': None,
+    }), 200
+
+
+@import_bp.route('/import/commit', methods=['POST'])
+@jwt_required()
+def commit_import():
+    """Commit a staged import session after duplicate review."""
+    user_id = int(get_jwt_identity())
+    payload = request.get_json(silent=True) or {}
+    import_session_id = payload.get('import_session_id')
+    accepted_duplicate_row_ids = payload.get('accepted_duplicate_row_ids', [])
+
+    if not isinstance(import_session_id, str) or not import_session_id.strip():
+        return jsonify({'status': 'error', 'errors': ['Import session id is required.']}), 400
+
+    if not isinstance(accepted_duplicate_row_ids, list) or any(
+        not isinstance(row_id, str) for row_id in accepted_duplicate_row_ids
+    ):
+        return jsonify({
+            'status': 'error',
+            'errors': ['Accepted duplicate row ids must be an array of strings.'],
+        }), 400
+
+    conn = get_db()
+    ensure_history_table(conn)
+    ensure_import_sessions_table(conn)
+    session = get_import_session(conn, user_id=user_id, session_id=import_session_id)
+    if not session:
+        conn.close()
+        return jsonify({
+            'status': 'error',
+            'errors': ['The import review session could not be found or has already been used.'],
+        }), 404
+
+    preview_payload = session.get('payload', {})
+    parse_warnings = preview_payload.get('parse_warnings', [])
+
+    try:
+        result = commit_import_preview(
+            conn,
+            user_id,
+            preview_payload,
+            set(accepted_duplicate_row_ids),
+        )
+        status_str = 'success'
+        if result['skipped_daily'] or result['skipped_dreams']:
+            status_str = 'partial' if (result['inserted_daily'] + result['inserted_dreams']) > 0 else 'skipped'
+
+        final_warnings = list(parse_warnings)
+        omitted_duplicates = result['skipped_daily'] + result['skipped_dreams']
+        if omitted_duplicates:
+            final_warnings.append(
+                f'{omitted_duplicates} duplicate entr{"y" if omitted_duplicates == 1 else "ies"} were left out.'
+            )
+
+        import_id = record_import_history(
+            conn,
+            user_id,
+            session['filename'],
+            session['file_size_bytes'],
+            result,
+            final_warnings,
+            status=status_str,
+        )
+        mark_import_session_consumed(conn, import_session_id)
+    except Exception as exc:
+        conn.close()
+        current_app.logger.error('Import commit failed: %s', exc)
+        return jsonify({'status': 'error', 'errors': ['Database error during import commit.']}), 500
+
+    conn.close()
+    return jsonify({
+        'status': status_str,
+        'message': 'Import successful.',
+        'summary': {
+            'inserted_daily': result['inserted_daily'],
+            'skipped_daily': result['skipped_daily'],
+            'inserted_dreams': result['inserted_dreams'],
+            'skipped_dreams': result['skipped_dreams'],
+            'duplicate_dates_daily': result['duplicate_dates_daily'],
+            'duplicate_dates_dreams': result['duplicate_dates_dreams'],
+        },
+        'duplicate_entries': [],
+        'warnings': final_warnings,
+        'errors': [],
+        'import_id': import_id,
+        'import_session_id': None,
     }), 200
 
 

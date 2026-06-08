@@ -47,6 +47,19 @@ CREATE TABLE IF NOT EXISTS export_history (
 )
 """
 
+_IMPORT_SESSIONS_DDL = """
+CREATE TABLE IF NOT EXISTS import_sessions (
+    id              TEXT PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    created_at      TEXT NOT NULL,
+    filename        TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json    TEXT NOT NULL,
+    consumed_at     TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -168,5 +181,19 @@ def ensure_export_history_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'export_history')
+
+    return True
+
+
+def ensure_import_sessions_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime staged import-sessions table exists for duplicate review."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_IMPORT_SESSIONS_DDL)
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'import_sessions')
 
     return True
