@@ -174,6 +174,18 @@ def _upload(client, token: str, file_bytes: bytes, filename='test.xlsx',
     )
 
 
+def _commit_review(client, token: str, import_session_id: str, accepted_duplicate_row_ids=None):
+    return client.post(
+        '/api/import/commit',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'import_session_id': import_session_id,
+            'accepted_duplicate_row_ids': accepted_duplicate_row_ids or [],
+        }),
+        content_type='application/json',
+    )
+
+
 def _create_legacy_import_history_table(conn: sqlite3.Connection) -> None:
     conn.executescript('''
         DROP TABLE IF EXISTS import_history;
@@ -322,6 +334,7 @@ class TestSuccessfulImport:
         assert 'summary' in data
         assert 'warnings' in data
         assert 'import_id' in data
+        assert 'import_session_id' in data
 
         summary = data['summary']
         for key in ('inserted_daily', 'skipped_daily',
@@ -398,7 +411,7 @@ class TestImportIntegration:
 # ---------------------------------------------------------------------------
 
 class TestDuplicateHandling:
-    def test_duplicate_daily_entry_same_day_same_title_and_content_skipped(self, client):
+    def test_duplicate_daily_entry_same_day_same_title_and_content_requires_review(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx(daily_rows=[['2024-06-01', 'First', 'Body', '']])
         # First upload
@@ -406,9 +419,16 @@ class TestDuplicateHandling:
         # Second upload — same date, same title, same content
         resp = _upload(client, token, file_bytes)
         data = json.loads(resp.data)
-        assert data['summary']['inserted_daily'] == 0
-        assert data['summary']['skipped_daily'] == 1
-        assert '2024-06-01' in data['summary']['duplicate_dates_daily']
+        assert data['status'] == 'review_required'
+        assert data['summary']['duplicate_daily'] == 1
+        assert data['import_session_id']
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        count = conn.execute(
+            "SELECT COUNT(*) FROM dailydiary_entries WHERE entry_date = '2024-06-01'"
+        ).fetchone()[0]
+        conn.close()
+        assert count == 1
 
     def test_same_day_different_title_is_allowed(self, client):
         token = _register_and_login(client)
@@ -441,9 +461,8 @@ class TestDuplicateHandling:
         _upload(client, token, file_bytes)
         resp = _upload(client, token, file_bytes)
         data = json.loads(resp.data)
-        # At least one warning should mention the duplicate
-        combined = ' '.join(data['warnings'])
-        assert 'same date, title, and content already exist' in combined.lower()
+        assert data['status'] == 'review_required'
+        assert data['message'] == 'Duplicates found. Review and confirm before importing.'
 
     def test_duplicate_entries_payload_includes_date_title_type_and_reason(self, client):
         token = _register_and_login(client)
@@ -454,6 +473,7 @@ class TestDuplicateHandling:
 
         assert data['duplicate_entries']
         duplicate = data['duplicate_entries'][0]
+        assert duplicate['row_id'] == 'daily-1'
         assert duplicate['entry_type'] == 'daily'
         assert duplicate['entry_date'] == '2024-07-02'
         assert duplicate['title'] == 'Gym twice'
@@ -472,8 +492,14 @@ class TestDuplicateHandling:
         ])
         resp = _upload(client, token, file2)
         data = json.loads(resp.data)
-        assert data['summary']['inserted_daily'] == 1
-        assert data['summary']['skipped_daily'] == 1
+        assert data['status'] == 'review_required'
+        assert data['summary']['ready_daily'] == 1
+        assert data['summary']['duplicate_daily'] == 1
+
+        commit_resp = _commit_review(client, token, data['import_session_id'], [])
+        commit_data = json.loads(commit_resp.data)
+        assert commit_data['summary']['inserted_daily'] == 1
+        assert commit_data['summary']['skipped_daily'] == 1
 
     def test_all_duplicates_returns_skipped_status(self, client):
         token = _register_and_login(client)
@@ -481,7 +507,35 @@ class TestDuplicateHandling:
         _upload(client, token, file_bytes)
         resp = _upload(client, token, file_bytes)
         data = json.loads(resp.data)
-        assert data['status'] == 'skipped'
+        commit_resp = _commit_review(client, token, data['import_session_id'], [])
+        commit_data = json.loads(commit_resp.data)
+        assert commit_data['status'] == 'skipped'
+
+    def test_commit_selected_duplicates_imports_with_duplicate_tag(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx(daily_rows=[['2024-09-03', 'Repeat', 'Body', '']])
+        _upload(client, token, file_bytes)
+        preview_resp = _upload(client, token, file_bytes)
+        preview_data = json.loads(preview_resp.data)
+        duplicate_row = preview_data['duplicate_entries'][0]
+
+        commit_resp = _commit_review(
+            client,
+            token,
+            preview_data['import_session_id'],
+            [duplicate_row['row_id']],
+        )
+        commit_data = json.loads(commit_resp.data)
+        assert commit_data['status'] == 'success'
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT tags FROM dailydiary_entries WHERE entry_date = '2024-09-03' ORDER BY id DESC"
+        ).fetchall()
+        conn.close()
+        assert len(rows) == 2
+        assert '*Duplicate*' in (rows[0]['tags'] or '')
 
 
 # ---------------------------------------------------------------------------
