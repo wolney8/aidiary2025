@@ -11,6 +11,7 @@ from services.import_service import (
     get_latest_bulk_delete_guard,
     mark_export_guard_used,
 )
+from services.openai_svc import OpenAIService
 
 entries_bp = Blueprint('entries', __name__)
 
@@ -582,6 +583,56 @@ def delete_dream_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
     
     return '', 204
+
+
+@entries_bp.route('/dreams/<int:entry_id>/generate-image', methods=['POST'])
+@jwt_required()
+def generate_dream_image(entry_id):
+    """Generate or regenerate a dream image from the stored dream image prompt."""
+    user_id = int(get_jwt_identity())
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        '''SELECT id, image_prompt, image_url
+           FROM dreamdiary_entries
+           WHERE id = ? AND user_id = ?''',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    image_prompt = (entry['image_prompt'] or '').strip()
+    if not image_prompt:
+        conn.close()
+        return jsonify({'error': 'This dream entry does not yet have an image prompt.'}), 400
+
+    try:
+        ai_service = OpenAIService()
+        image_url = ai_service.generate_image(image_prompt)
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 503
+    except Exception as exc:
+        current_app.logger.error('Dream image generation failed for entry %s: %s', entry_id, exc)
+        conn.close()
+        return jsonify({'error': 'Image generation failed'}), 502
+
+    cursor.execute(
+        'UPDATE dreamdiary_entries SET image_url = ? WHERE id = ? AND user_id = ?',
+        (image_url, entry_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'id': entry_id,
+        'image_prompt': image_prompt,
+        'image_url': image_url,
+        'has_existing_image': bool(entry['image_url']),
+    }), 200
 
 
 @entries_bp.route('/entries/bulk-delete-readiness', methods=['GET'])

@@ -463,8 +463,15 @@ type CalendarPreviewState = {
                     class="calendar-preview-card"
                     *ngFor="let entry of getCalendarPreviewEntries(); let previewIndex = index"
                     [style.--preview-index]="previewIndex"
+                    [class.has-preview-image]="hasCalendarPreviewImage(entry)"
                     (click)="openEntryDetail(entry, $event)"
                   >
+                    <div
+                      class="calendar-preview-card-image"
+                      *ngIf="hasCalendarPreviewImage(entry)"
+                      [style.background-image]="getCalendarPreviewImageStyle(entry)"
+                      aria-hidden="true"
+                    ></div>
                     <div class="calendar-preview-card-title">
                       <mat-icon>{{
                         entry.type === "dream" ? "nights_stay" : "book"
@@ -1685,6 +1692,24 @@ export class ListComponent implements OnInit, OnDestroy {
     entry: EntryItem,
   ): entry is DreamEntry & { type: "dream" } {
     return entry.type === "dream";
+  }
+
+  hasCalendarPreviewImage(entry: EntryItem): boolean {
+    return this.getCalendarPreviewImageUrl(entry) !== null;
+  }
+
+  getCalendarPreviewImageStyle(entry: EntryItem): string | null {
+    const imageUrl = this.getCalendarPreviewImageUrl(entry);
+    return imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : null;
+  }
+
+  private getCalendarPreviewImageUrl(entry: EntryItem): string | null {
+    if (!this.isDreamEntry(entry)) {
+      return null;
+    }
+
+    const raw = typeof entry.image_url === "string" ? entry.image_url.trim() : "";
+    return raw.length > 0 ? raw : null;
   }
 
   private generateTimelineMonths(count = 4): TimelineMonth[] {

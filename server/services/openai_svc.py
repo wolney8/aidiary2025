@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import base64
 from typing import Dict, Generator
 from openai import OpenAI
 
@@ -14,6 +15,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
+DREAM_IMAGE_STYLE_PREFIX = (
+    'Create a dreamlike image that feels grounded and cinematic rather than '
+    'painterly. Keep it visually believable and moderately realistic, but do '
+    'not make it look fully photographic. Use natural depth, subtle surreal '
+    'details, soft atmospheric lighting, and restrained haze. Base the image '
+    'on this dream prompt:'
+)
 
 
 class AnalysisRateLimitError(Exception):
@@ -588,10 +596,28 @@ Additional requirements for this retry:
             return self._dream_contextual_fallback(text, recent_context)
     
     def generate_image(self, prompt: str) -> str:
-        """Generate image from prompt using DALL-E (placeholder)."""
-        # This would call DALL-E API in production
-        # For now, return placeholder URL
-        return "https://via.placeholder.com/512x512.png?text=Dream+Image"
+        """Generate a dream image and return it as a PNG data URL."""
+        model = os.getenv('OPENAI_IMAGE_MODEL', 'gpt-image-1')
+        size = os.getenv('OPENAI_IMAGE_SIZE', '1024x1024')
+        style_prefix = os.getenv('OPENAI_DREAM_IMAGE_STYLE_PREFIX', DREAM_IMAGE_STYLE_PREFIX).strip()
+        styled_prompt = f'{style_prefix} {prompt.strip()}'
+
+        response = self.client.images.generate(
+            model=model,
+            prompt=styled_prompt,
+            size=size,
+            output_format='png',
+            n=1,
+        )
+
+        data = getattr(response, 'data', None) or []
+        if not data or not getattr(data[0], 'b64_json', None):
+            raise ValueError('Image generation returned no image data')
+
+        image_base64 = data[0].b64_json
+        # Validate that the returned payload decodes cleanly before storing it.
+        base64.b64decode(image_base64, validate=True)
+        return f'data:image/png;base64,{image_base64}'
 
     def chat_companion(
         self,

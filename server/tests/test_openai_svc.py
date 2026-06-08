@@ -8,6 +8,7 @@ from services.openai_svc import (
     DEFAULT_OPENAI_MAX_RETRIES,
     DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
+    DREAM_IMAGE_STYLE_PREFIX,
     OpenAIService,
 )
 
@@ -789,3 +790,25 @@ def test_chat_companion_error_yields_safe_fallback(mock_openai):
     result = list(service.chat_companion(messages=[{'role': 'user', 'content': 'Hi'}], system_prompt='System'))
 
     assert result == ['']
+
+
+@patch('services.openai_svc.OpenAI')
+def test_generate_image_applies_hidden_dream_style_prefix(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_image = MagicMock()
+    mock_image.b64_json = 'YWJjMTIz'
+    mock_response = MagicMock()
+    mock_response.data = [mock_image]
+    mock_client.images.generate.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.generate_image('Moonlit bridge above still water')
+
+    assert result == 'data:image/png;base64,YWJjMTIz'
+    image_call = mock_client.images.generate.call_args.kwargs
+    assert image_call['prompt'].startswith(DREAM_IMAGE_STYLE_PREFIX)
+    assert image_call['prompt'].endswith('Moonlit bridge above still water')
