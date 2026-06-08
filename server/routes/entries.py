@@ -6,14 +6,26 @@ import sqlite3
 from datetime import datetime
 import re
 from html import escape
+import base64
+from io import BytesIO
 from services.import_service import (
     ensure_export_history_table,
     get_latest_bulk_delete_guard,
     mark_export_guard_used,
 )
 from services.openai_svc import OpenAIService
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 entries_bp = Blueprint('entries', __name__)
+
+ALLOWED_ENTRY_IMAGE_MIME_TYPES = {
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+}
+MAX_ENTRY_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+ENTRY_IMAGE_TARGET_SIZE = (933, 705)
+ENTRY_IMAGE_JPEG_QUALITY = 85
 
 def get_db():
     """Get database connection."""
@@ -69,6 +81,42 @@ def _is_future_entry_date(value: str) -> bool:
 
     today = datetime.now().date()
     return parsed.date() > today
+
+
+def _normalise_uploaded_entry_image(file_bytes: bytes) -> str:
+    if not file_bytes:
+        raise ValueError('No image data was uploaded.')
+
+    try:
+        image = Image.open(BytesIO(file_bytes))
+        image = ImageOps.exif_transpose(image)
+    except UnidentifiedImageError as exc:
+        raise ValueError('The uploaded file is not a supported image.') from exc
+
+    if image.mode not in ('RGB', 'L'):
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        alpha_source = image.convert('RGBA')
+        background.paste(alpha_source, mask=alpha_source.split()[-1])
+        image = background
+    else:
+        image = image.convert('RGB')
+
+    cropped = ImageOps.fit(
+        image,
+        ENTRY_IMAGE_TARGET_SIZE,
+        method=Image.Resampling.LANCZOS,
+        centering=(0.5, 0.5),
+    )
+
+    output = BytesIO()
+    cropped.save(
+        output,
+        format='JPEG',
+        quality=ENTRY_IMAGE_JPEG_QUALITY,
+        optimize=True,
+    )
+    encoded = base64.b64encode(output.getvalue()).decode('ascii')
+    return f'data:image/jpeg;base64,{encoded}'
 
 
 def _get_entry_range_summary(conn: sqlite3.Connection, user_id: int) -> dict[str, int | str | None | bool]:
@@ -588,13 +636,14 @@ def delete_dream_entry(entry_id):
 @entries_bp.route('/dreams/<int:entry_id>/generate-image', methods=['POST'])
 @jwt_required()
 def generate_dream_image(entry_id):
-    """Generate or regenerate a dream image from the stored dream image prompt."""
+    """Generate or regenerate a dream image from the stored or overridden dream image prompt."""
     user_id = int(get_jwt_identity())
+    data = request.get_json(silent=True) or {}
 
     conn = get_db()
     cursor = conn.cursor()
     entry = cursor.execute(
-        '''SELECT id, image_prompt, image_url
+        '''SELECT id, image_prompt, image_url, recycled_image_prompt
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -604,7 +653,8 @@ def generate_dream_image(entry_id):
         conn.close()
         return jsonify({'error': 'Entry not found'}), 404
 
-    image_prompt = (entry['image_prompt'] or '').strip()
+    image_prompt_override = (data.get('image_prompt_override') or '').strip()
+    image_prompt = image_prompt_override or (entry['image_prompt'] or '').strip()
     if not image_prompt:
         conn.close()
         return jsonify({'error': 'This dream entry does not yet have an image prompt.'}), 400
@@ -632,6 +682,112 @@ def generate_dream_image(entry_id):
         'image_prompt': image_prompt,
         'image_url': image_url,
         'has_existing_image': bool(entry['image_url']),
+        'recycled_image_prompt': (entry['recycled_image_prompt'] or ''),
+    }), 200
+
+
+@entries_bp.route('/dreams/<int:entry_id>/image', methods=['POST'])
+@jwt_required()
+def upload_dream_image(entry_id):
+    """Upload or replace a dream image for the entry."""
+    user_id = int(get_jwt_identity())
+
+    if 'image' not in request.files:
+        return jsonify({'error': 'Upload an image file using the "image" field.'}), 400
+
+    uploaded_file = request.files['image']
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({'error': 'No image file was selected.'}), 400
+
+    content_type = (uploaded_file.content_type or '').lower().strip()
+    if content_type not in ALLOWED_ENTRY_IMAGE_MIME_TYPES:
+        return jsonify({'error': 'Unsupported image type. Use JPG, PNG, or WEBP.'}), 400
+
+    file_bytes = uploaded_file.read()
+    if len(file_bytes) > MAX_ENTRY_IMAGE_UPLOAD_BYTES:
+        return jsonify({'error': 'Image is too large. Maximum size is 5 MB.'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        '''SELECT id, image_prompt, image_url, recycled_image_prompt
+           FROM dreamdiary_entries
+           WHERE id = ? AND user_id = ?''',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    recycled_prompt = (
+        (entry['image_prompt'] or '').strip()
+        or (entry['recycled_image_prompt'] or '').strip()
+    )
+
+    try:
+        image_url = _normalise_uploaded_entry_image(file_bytes)
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        current_app.logger.error('Dream image upload failed for entry %s: %s', entry_id, exc)
+        conn.close()
+        return jsonify({'error': 'Image upload failed'}), 500
+
+    cursor.execute(
+        'UPDATE dreamdiary_entries SET image_url = ?, image_prompt = NULL, recycled_image_prompt = ? WHERE id = ? AND user_id = ?',
+        (image_url, recycled_prompt or None, entry_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'id': entry_id,
+        'image_prompt': '',
+        'image_url': image_url,
+        'has_existing_image': bool(entry['image_url']),
+        'recycled_image_prompt': recycled_prompt,
+    }), 200
+
+
+@entries_bp.route('/dreams/<int:entry_id>/image', methods=['DELETE'])
+@jwt_required()
+def delete_dream_image(entry_id):
+    """Delete only the current dream image, preserving the stored prompt."""
+    user_id = int(get_jwt_identity())
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        '''SELECT id, image_prompt, image_url, recycled_image_prompt
+           FROM dreamdiary_entries
+           WHERE id = ? AND user_id = ?''',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    restored_prompt = (
+        (entry['recycled_image_prompt'] or '').strip()
+        or (entry['image_prompt'] or '').strip()
+    )
+
+    cursor.execute(
+        'UPDATE dreamdiary_entries SET image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL WHERE id = ? AND user_id = ?',
+        (restored_prompt or None, entry_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'id': entry_id,
+        'image_prompt': restored_prompt,
+        'image_url': None,
+        'had_existing_image': bool(entry['image_url']),
+        'recycled_image_prompt': '',
     }), 200
 
 

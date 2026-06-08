@@ -16,10 +16,13 @@ export class EntriesService {
   private authService = inject(AuthService);
   private apiUrl = "http://localhost:5001/api";
 
-  private getHeaders(): HttpHeaders {
+  private getHeaders(includeJsonContentType = true): HttpHeaders {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
     };
+
+    if (includeJsonContentType) {
+      headers["Content-Type"] = "application/json";
+    }
 
     const token = this.authService.getToken();
     if (token) {
@@ -139,15 +142,79 @@ export class EntriesService {
 
   generateDreamImage(
     id: number,
-  ): Observable<{ id: number; image_prompt: string; image_url: string }> {
+    imagePromptOverride?: string,
+  ): Observable<{
+    id: number;
+    image_prompt: string;
+    image_url: string;
+    recycled_image_prompt?: string;
+  }> {
     if (!this.authService.isAuthenticated()) {
       return throwError(() => new Error("User not authenticated"));
     }
 
-    return this.http.post<{ id: number; image_prompt: string; image_url: string }>(
+    return this.http.post<{
+      id: number;
+      image_prompt: string;
+      image_url: string;
+      recycled_image_prompt?: string;
+    }>(
       `${this.apiUrl}/dreams/${id}/generate-image`,
-      {},
+      imagePromptOverride?.trim()
+        ? { image_prompt_override: imagePromptOverride.trim() }
+        : {},
       { headers: this.getHeaders() },
+    );
+  }
+
+  uploadDreamImage(
+    id: number,
+    file: File,
+  ): Observable<{
+    id: number;
+    image_prompt: string;
+    image_url: string;
+    recycled_image_prompt?: string;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    return this.http.post<{
+      id: number;
+      image_prompt: string;
+      image_url: string;
+      recycled_image_prompt?: string;
+    }>(
+      `${this.apiUrl}/dreams/${id}/image`,
+      formData,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
+  deleteDreamImage(
+    id: number,
+  ): Observable<{
+    id: number;
+    image_prompt: string;
+    image_url: string | null;
+    recycled_image_prompt?: string;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.delete<{
+      id: number;
+      image_prompt: string;
+      image_url: string | null;
+      recycled_image_prompt?: string;
+    }>(
+      `${this.apiUrl}/dreams/${id}/image`,
+      { headers: this.getHeaders(false) },
     );
   }
 }

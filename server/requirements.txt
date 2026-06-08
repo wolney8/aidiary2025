@@ -12,3 +12,4 @@ pytest-mock==3.14.0
 pandas==2.2.3
 openpyxl==3.1.5
 nltk==3.9.1
+Pillow==11.1.0

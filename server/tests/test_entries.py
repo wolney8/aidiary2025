@@ -5,9 +5,12 @@ import json
 from app import create_app
 import tempfile
 import os
+import base64
+from io import BytesIO
 from unittest.mock import patch, MagicMock
 from routes.analyse import ANALYSE_TEXT_MAX_LENGTH
 from services.openai_svc import AnalysisRateLimitError
+from PIL import Image
 
 @pytest.fixture
 def client():
@@ -83,6 +86,7 @@ def client():
                 interpretation TEXT,
                 image_prompt TEXT,
                 image_url TEXT,
+                recycled_image_prompt TEXT,
                 dream_people_names TEXT,
                 dream_places TEXT,
                 tags TEXT,
@@ -165,6 +169,7 @@ def client_schema_without_mood_columns():
             interpretation TEXT,
             image_prompt TEXT,
             image_url TEXT,
+            recycled_image_prompt TEXT,
             dream_people_names TEXT,
             dream_places TEXT,
             tags TEXT,
@@ -278,6 +283,17 @@ def get_auth_token(client):
     )
     data = json.loads(response.data)
     return data['token']
+
+
+def create_test_image_bytes(
+    size: tuple[int, int] = (1200, 900),
+    color: tuple[int, int, int] = (64, 128, 196),
+    format_name: str = 'PNG',
+) -> bytes:
+    image = Image.new('RGB', size, color)
+    buffer = BytesIO()
+    image.save(buffer, format=format_name)
+    return buffer.getvalue()
 
 
 def seed_bulk_delete_entries(client, token: str) -> None:
@@ -1469,6 +1485,57 @@ def test_generate_dream_image_updates_entry(mock_service_cls, client):
     assert row[0] == 'data:image/png;base64,abc123'
 
 
+@patch('routes.entries.OpenAIService')
+def test_generate_dream_image_uses_override_without_persisting_it(mock_service_cls, client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-12',
+            'title': 'Edited prompt dream',
+            'plot': 'I was under a green sky',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_prompt': 'Original stored prompt'}),
+        content_type='application/json'
+    )
+
+    mock_service = MagicMock()
+    mock_service.generate_image.return_value = 'data:image/png;base64,override123'
+    mock_service_cls.return_value = mock_service
+
+    response = client.post(
+        f'/api/dreams/{entry_id}/generate-image',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_prompt_override': 'Temporary edited prompt'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == 'Temporary edited prompt'
+    assert data['image_url'] == 'data:image/png;base64,override123'
+    mock_service.generate_image.assert_called_once_with('Temporary edited prompt')
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_url FROM dreamdiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] == 'Original stored prompt'
+    assert row[1] == 'data:image/png;base64,override123'
+
+
 def test_generate_dream_image_rejects_missing_prompt(client):
     token = get_auth_token(client)
 
@@ -1509,3 +1576,129 @@ def test_generate_dream_image_not_found(client):
     assert response.status_code == 404
     data = json.loads(response.data)
     assert data['error'] == 'Entry not found'
+
+
+def test_upload_dream_image_updates_entry(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-12',
+            'title': 'Uploadable dream',
+            'plot': 'Dream text',
+            'image_prompt': 'Moonlit hills'
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_prompt': 'Moonlit hills'}),
+        content_type='application/json'
+    )
+
+    image_bytes = create_test_image_bytes()
+
+    response = client.post(
+        f'/api/dreams/{entry_id}/image',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'image': (BytesIO(image_bytes), 'dream.png')},
+        content_type='multipart/form-data'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == ''
+    assert data['recycled_image_prompt'] == 'Moonlit hills'
+    assert data['image_url'].startswith('data:image/jpeg;base64,')
+
+    encoded = data['image_url'].split(',', 1)[1]
+    image = Image.open(BytesIO(base64.b64decode(encoded)))
+    assert image.size == (933, 705)
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_url FROM dreamdiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] is None
+    assert isinstance(row[1], str) and row[1].startswith('data:image/jpeg;base64,')
+
+
+def test_upload_dream_image_rejects_invalid_type(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-13',
+            'title': 'Invalid upload dream',
+            'plot': 'Dream text',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    response = client.post(
+        f'/api/dreams/{entry_id}/image',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'image': (BytesIO(b'not an image'), 'dream.txt', 'text/plain')},
+        content_type='multipart/form-data'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Unsupported image type. Use JPG, PNG, or WEBP.'
+
+
+def test_delete_dream_image_clears_only_image(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-14',
+            'title': 'Delete image dream',
+            'plot': 'Dream text',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'image_prompt': 'Keep this prompt',
+            'image_url': 'data:image/png;base64,abc123'
+        }),
+        content_type='application/json'
+    )
+
+    response = client.delete(
+        f'/api/dreams/{entry_id}/image',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == 'Keep this prompt'
+    assert data['image_url'] is None
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_url FROM dreamdiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] == 'Keep this prompt'
+    assert row[1] is None
