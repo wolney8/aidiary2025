@@ -1,5 +1,12 @@
 // Entry detail view with two-column layout
-import { Component, HostListener, OnInit, inject } from "@angular/core";
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  OnInit,
+  ViewChild,
+  inject,
+} from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router, RouterModule } from "@angular/router";
@@ -56,6 +63,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       <section
         class="entry-image-band"
         [class.expanded]="isDreamImageExpanded"
+        [class.prompt-editor-open]="isEditingDreamPrompt"
         [class.has-image]="!!getEntryImageUrl()"
         aria-label="Entry image"
       >
@@ -82,12 +90,20 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             [class.hidden]="isDreamImageExpanded"
             (click)="$event.stopPropagation()"
           >
+            <input
+              #dreamImageInput
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              class="dream-image-file-input"
+              (change)="onDreamImageSelected($event)"
+            />
             <button
               mat-raised-button
               color="primary"
               type="button"
+              *ngIf="shouldShowDreamGenerateButton()"
               (click)="generateDreamImage()"
-              [disabled]="isGeneratingDreamImage || !hasDreamImagePrompt()"
+              [disabled]="isDreamImageBusy() || !hasDreamImagePrompt()"
               [matTooltip]="
                 hasDreamImagePrompt()
                   ? ''
@@ -115,63 +131,133 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             <button
               mat-stroked-button
               type="button"
+              (click)="triggerDreamImageUpload()"
+              [disabled]="isDreamImageBusy()"
+            >
+              <mat-icon>{{ getEntryImageUrl() ? "upload" : "add_photo_alternate" }}</mat-icon>
+              {{ getEntryImageUrl() ? "Replace image" : "Upload image" }}
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
               (click)="toggleDreamPromptEditor()"
-              [disabled]="isGeneratingDreamImage || isSavingDreamPrompt"
+              [disabled]="isDreamImageBusy() || isSavingDreamPrompt"
             >
               <mat-icon>{{ isEditingDreamPrompt ? "close" : "edit" }}</mat-icon>
               {{ isEditingDreamPrompt ? "Close prompt" : "Edit prompt" }}
             </button>
+            <button
+              mat-stroked-button
+              color="warn"
+              class="danger-action"
+              type="button"
+              *ngIf="getEntryImageUrl()"
+              (click)="deleteDreamImage()"
+              [disabled]="isDreamImageBusy()"
+            >
+              <mat-icon>delete</mat-icon>
+              Delete image
+            </button>
           </div>
-          <div class="entry-image-loading" *ngIf="isGeneratingDreamImage">
+          <div class="entry-image-loading" *ngIf="isDreamImageBusy()">
             <mat-progress-spinner
               mode="indeterminate"
               diameter="56"
               strokeWidth="4"
             ></mat-progress-spinner>
-            <span>Generating image…</span>
-          </div>
-          <div
-            class="entry-image-prompt-editor"
-            *ngIf="isDream() && isEditingDreamPrompt"
-            (click)="$event.stopPropagation()"
-          >
-            <label for="dream-image-prompt">Image prompt</label>
-            <textarea
-              id="dream-image-prompt"
-              [(ngModel)]="dreamPromptDraft"
-              rows="4"
-              maxlength="1000"
-              placeholder="Describe the dream scene you want the AI to render."
-            ></textarea>
-            <div class="entry-image-prompt-actions">
-              <button
-                mat-button
-                type="button"
-                (click)="cancelDreamPromptEdit()"
-                [disabled]="isSavingDreamPrompt"
-              >
-                Cancel
-              </button>
-              <button
-                mat-raised-button
-                color="primary"
-                type="button"
-                (click)="saveDreamPrompt()"
-                [disabled]="!canSaveDreamPrompt() || isSavingDreamPrompt"
-              >
-                {{ isSavingDreamPrompt ? "Saving…" : "Save prompt" }}
-              </button>
-            </div>
+            <span>{{ getDreamImageBusyLabel() }}</span>
           </div>
           <img
             *ngIf="getEntryImageUrl()"
             [src]="getEntryImageUrl()!"
             alt="Entry image"
             class="entry-image"
+            [style.object-position]="getDreamImageObjectPosition()"
           />
+          <div
+            class="entry-image-adjuster"
+            *ngIf="isDream() && getEntryImageUrl() && isDreamImageExpanded"
+            (click)="$event.stopPropagation()"
+          >
+            <button
+              mat-mini-fab
+              color="primary"
+              type="button"
+              aria-label="Adjust image position"
+              (click)="toggleDreamImageAdjuster()"
+            >
+              <mat-icon>control_camera</mat-icon>
+            </button>
+            <div
+              class="entry-image-adjuster-panel"
+              *ngIf="isAdjustingDreamImagePosition"
+            >
+              <label for="dream-image-position-x">Horizontal framing</label>
+              <input
+                id="dream-image-position-x"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                [(ngModel)]="dreamImagePositionX"
+              />
+              <label for="dream-image-position-y">Vertical framing</label>
+              <input
+                id="dream-image-position-y"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                [(ngModel)]="dreamImagePositionY"
+              />
+            </div>
+          </div>
           <div class="entry-image-placeholder" *ngIf="!getEntryImageUrl()">
             <mat-icon>image</mat-icon>
             <p>No image generated for this dream yet.</p>
+          </div>
+        </div>
+        <div
+          class="entry-image-prompt-editor"
+          *ngIf="isDream() && isEditingDreamPrompt"
+          (click)="$event.stopPropagation()"
+        >
+          <label for="dream-image-prompt">Image prompt</label>
+          <textarea
+            id="dream-image-prompt"
+            [(ngModel)]="dreamPromptDraft"
+            rows="4"
+            maxlength="1000"
+            placeholder="Describe the dream scene you want the AI to render."
+          ></textarea>
+          <div class="entry-image-prompt-actions">
+            <button
+              mat-button
+              type="button"
+              (click)="cancelDreamPromptEdit()"
+              [disabled]="isSavingDreamPrompt"
+            >
+              Cancel
+            </button>
+            <button
+              mat-icon-button
+              type="button"
+              *ngIf="hasRecyclableDreamPrompt()"
+              (click)="restoreRecycledDreamPrompt()"
+              [disabled]="isSavingDreamPrompt"
+              aria-label="Restore previous image prompt"
+            >
+              <mat-icon>recycling</mat-icon>
+            </button>
+            <button
+              mat-raised-button
+              color="primary"
+              type="button"
+              (click)="saveDreamPrompt()"
+              [disabled]="!canSaveDreamPrompt() || isSavingDreamPrompt"
+            >
+              {{ isSavingDreamPrompt ? "Saving…" : "Save prompt" }}
+            </button>
           </div>
         </div>
       </section>
@@ -444,7 +530,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         border-radius: var(--radius-md);
         border: 1px solid var(--colour-border);
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-        overflow: hidden;
+        overflow: visible;
       }
 
       .entry-image-band.expanded {
@@ -453,11 +539,11 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 
       .entry-image-surface {
         position: relative;
-        min-height: 220px;
-        max-height: 320px;
+        height: 214px;
         overflow: hidden;
+        border-radius: inherit;
         transition:
-          max-height 260ms ease,
+          height 260ms ease,
           background 260ms ease;
       }
 
@@ -466,8 +552,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .entry-image-surface.expanded {
-        min-height: 705px;
-        max-height: 705px;
+        height: 470px;
         background: #020617;
         cursor: zoom-out;
       }
@@ -478,10 +563,16 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         right: 0.9rem;
         display: flex;
         gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         z-index: 2;
         transition:
           opacity 180ms ease,
           transform 180ms ease;
+      }
+
+      .dream-image-file-input {
+        display: none;
       }
 
       .entry-image-actions.hidden {
@@ -501,6 +592,17 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       .entry-image-actions .mat-mdc-outlined-button {
         border-color: rgba(255, 255, 255, 0.72) !important;
         background: rgba(15, 23, 42, 0.54) !important;
+      }
+
+      .entry-image-actions .mat-mdc-outlined-button.danger-action {
+        border-color: rgba(248, 113, 113, 0.95) !important;
+        background: rgba(127, 29, 29, 0.72) !important;
+        color: #fee2e2 !important;
+      }
+
+      .entry-image-actions .mat-mdc-outlined-button.danger-action:hover {
+        background: rgba(185, 28, 28, 0.9) !important;
+        color: #ffffff !important;
       }
 
       .entry-image-actions .mat-icon,
@@ -528,6 +630,48 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         --mdc-circular-progress-active-indicator-color: #ffffff;
       }
 
+      .entry-image-loading span {
+        font-weight: 600;
+      }
+
+      .entry-image-adjuster {
+        position: absolute;
+        left: 1rem;
+        bottom: 1rem;
+        z-index: 2;
+        display: flex;
+        align-items: flex-end;
+        gap: 0.75rem;
+      }
+
+      .entry-image-adjuster-panel {
+        min-width: 220px;
+        padding: 0.75rem 0.85rem;
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(15, 23, 42, 0.82);
+        color: #ffffff;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.28);
+      }
+
+      .entry-image-adjuster-panel label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .entry-image-adjuster-panel label + input[type="range"] {
+        margin-bottom: 0.7rem;
+      }
+
+      .entry-image-adjuster-panel input[type="range"] {
+        width: 100%;
+      }
+
       .entry-image-prompt-editor {
         position: absolute;
         top: 4.2rem;
@@ -540,6 +684,10 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         background: rgba(15, 23, 42, 0.92);
         color: #ffffff;
         backdrop-filter: blur(8px);
+      }
+
+      .entry-image-band.prompt-editor-open {
+        margin-bottom: calc(var(--spacing-md) + 11rem);
       }
 
       .entry-image-prompt-editor label {
@@ -584,24 +732,25 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .entry-image {
+        position: absolute;
+        inset: 0;
         width: 100%;
-        height: 320px;
+        height: 100%;
         object-fit: cover;
         display: block;
         transition:
-          height 260ms ease,
           transform 260ms ease,
           filter 260ms ease;
       }
 
       .entry-image-surface.expanded .entry-image {
-        height: 705px;
         object-fit: cover;
         filter: saturate(1.05);
       }
 
       .entry-image-placeholder {
-        min-height: 220px;
+        position: absolute;
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -661,12 +810,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         }
 
         .entry-image-surface.expanded {
-          min-height: min(65vh, 560px);
-          max-height: min(65vh, 560px);
-        }
-
-        .entry-image-surface.expanded .entry-image {
-          height: min(65vh, 560px);
+          height: min(55vh, 420px);
         }
       }
 
@@ -745,6 +889,7 @@ export class DetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private entriesService = inject(EntriesService);
+  @ViewChild("dreamImageInput") dreamImageInput?: ElementRef<HTMLInputElement>;
 
   private readonly collapsedItemsLimit = 8;
 
@@ -753,10 +898,16 @@ export class DetailComponent implements OnInit {
   backQueryParams: Record<string, string | number> = {};
   analysisWarningMessage = "";
   isGeneratingDreamImage = false;
+  isUploadingDreamImage = false;
   isDreamImageExpanded = false;
+  isAdjustingDreamImagePosition = false;
   isEditingDreamPrompt = false;
   isSavingDreamPrompt = false;
+  dreamImagePositionX = 50;
+  dreamImagePositionY = 50;
   dreamPromptDraft = "";
+  dreamPromptOverride = "";
+  recycledDreamPrompt = "";
 
   showAllTags = false;
   showAllPeople = false;
@@ -772,12 +923,14 @@ export class DetailComponent implements OnInit {
         this.entry = entry;
         this.entryType = "daily";
         this.dreamPromptDraft = this.getCurrentDreamPrompt();
+        this.recycledDreamPrompt = this.getCurrentRecycledDreamPrompt();
       },
       error: () => {
         this.entriesService.getDreamEntry(id).subscribe((entry) => {
           this.entry = entry;
           this.entryType = "dream";
           this.dreamPromptDraft = this.getCurrentDreamPrompt();
+          this.recycledDreamPrompt = this.getCurrentRecycledDreamPrompt();
         });
       },
     });
@@ -852,21 +1005,30 @@ export class DetailComponent implements OnInit {
   }
 
   hasDreamImagePrompt(): boolean {
-    return this.isDream() && typeof this.entry?.image_prompt === "string"
-      ? this.entry.image_prompt.trim().length > 0
-      : false;
+    return this.isDream() && this.getCurrentDreamPrompt().length > 0;
   }
 
-  getDreamImagePromptTooltip(): string {
-    if (!this.hasDreamImagePrompt()) {
-      return "";
-    }
+  isUsingCustomDreamImage(): boolean {
+    return !!this.getEntryImageUrl() && !this.hasDreamImagePrompt();
+  }
 
-    return `Image generated with prompt: ${this.entry.image_prompt}`;
+  shouldShowDreamGenerateButton(): boolean {
+    return !this.isUsingCustomDreamImage() || this.isGeneratingDreamImage;
   }
 
   canExpandDreamImage(): boolean {
     return this.isDream() && !!this.getEntryImageUrl();
+  }
+
+  isDreamImageBusy(): boolean {
+    return this.isGeneratingDreamImage || this.isUploadingDreamImage;
+  }
+
+  getDreamImageBusyLabel(): string {
+    if (this.isUploadingDreamImage) {
+      return "Uploading image…";
+    }
+    return "Generating image…";
   }
 
   onDreamImageSurfaceClick(event: Event): void {
@@ -877,6 +1039,13 @@ export class DetailComponent implements OnInit {
     event.preventDefault();
     event.stopPropagation();
     this.isDreamImageExpanded = !this.isDreamImageExpanded;
+    if (!this.isDreamImageExpanded) {
+      this.isAdjustingDreamImagePosition = false;
+    }
+  }
+
+  toggleDreamImageAdjuster(): void {
+    this.isAdjustingDreamImagePosition = !this.isAdjustingDreamImagePosition;
   }
 
   toggleDreamPromptEditor(): void {
@@ -893,6 +1062,18 @@ export class DetailComponent implements OnInit {
     return this.dreamPromptDraft.trim().length > 0;
   }
 
+  hasRecyclableDreamPrompt(): boolean {
+    return this.recycledDreamPrompt.trim().length > 0;
+  }
+
+  restoreRecycledDreamPrompt(): void {
+    if (!this.hasRecyclableDreamPrompt()) {
+      return;
+    }
+
+    this.dreamPromptDraft = this.recycledDreamPrompt.trim();
+  }
+
   saveDreamPrompt(): void {
     if (!this.entry?.id || !this.isDream() || !this.canSaveDreamPrompt()) {
       return;
@@ -900,45 +1081,140 @@ export class DetailComponent implements OnInit {
 
     const nextPrompt = this.dreamPromptDraft.trim();
     this.isSavingDreamPrompt = true;
-    this.entriesService
-      .updateDreamEntry(this.entry.id, { image_prompt: nextPrompt })
-      .subscribe({
-        next: () => {
-          this.entry = {
-            ...this.entry,
-            image_prompt: nextPrompt,
-          };
-          this.isSavingDreamPrompt = false;
-          this.isEditingDreamPrompt = false;
-        },
-        error: (error) => {
-          console.error("Failed to save dream image prompt:", error);
-          this.isSavingDreamPrompt = false;
-          alert("Failed to save the image prompt. Please try again.");
-        },
-      });
+    this.dreamPromptOverride = nextPrompt;
+    this.entriesService.generateDreamImage(this.entry.id, nextPrompt).subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          image_url: result.image_url,
+          recycled_image_prompt: result.recycled_image_prompt ?? this.entry?.recycled_image_prompt ?? "",
+        };
+        this.dreamPromptDraft = nextPrompt;
+        this.isGeneratingDreamImage = false;
+        this.isSavingDreamPrompt = false;
+        this.isEditingDreamPrompt = false;
+      },
+      error: (error) => {
+        console.error("Failed to generate dream image from edited prompt:", error);
+        this.isGeneratingDreamImage = false;
+        this.isSavingDreamPrompt = false;
+        alert("Failed to generate a new image from this prompt. Please try again.");
+      },
+    });
+    this.isGeneratingDreamImage = true;
   }
 
   generateDreamImage(): void {
-    if (!this.entry?.id || !this.isDream() || this.isGeneratingDreamImage) {
+    if (!this.entry?.id || !this.isDream() || this.isDreamImageBusy()) {
       return;
     }
 
     this.isGeneratingDreamImage = true;
-    this.entriesService.generateDreamImage(this.entry.id).subscribe({
+    const promptOverride = this.dreamPromptOverride.trim();
+    this.entriesService.generateDreamImage(
+      this.entry.id,
+      promptOverride.length > 0 ? promptOverride : undefined,
+    ).subscribe({
       next: (result) => {
         this.entry = {
           ...this.entry,
-          image_prompt: result.image_prompt,
           image_url: result.image_url,
+          recycled_image_prompt: result.recycled_image_prompt ?? "",
         };
-        this.dreamPromptDraft = result.image_prompt;
+        if (!promptOverride.length) {
+          this.entry = {
+            ...this.entry,
+            image_prompt: result.image_prompt,
+          };
+        }
+        this.dreamPromptDraft = this.getCurrentDreamPrompt();
+        this.recycledDreamPrompt = result.recycled_image_prompt?.trim() || "";
         this.isGeneratingDreamImage = false;
       },
       error: (error) => {
         console.error("Failed to generate dream image:", error);
         this.isGeneratingDreamImage = false;
         alert("Failed to generate dream image. Please try again.");
+      },
+    });
+  }
+
+  triggerDreamImageUpload(): void {
+    if (!this.isDream() || this.isDreamImageBusy()) {
+      return;
+    }
+
+    this.dreamImageInput?.nativeElement.click();
+  }
+
+  onDreamImageSelected(event: Event): void {
+    if (!this.entry?.id || !this.isDream()) {
+      return;
+    }
+
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    this.isUploadingDreamImage = true;
+    this.entriesService.uploadDreamImage(this.entry.id, file).subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          image_prompt: result.image_prompt,
+          image_url: result.image_url,
+          recycled_image_prompt: result.recycled_image_prompt ?? "",
+        };
+        this.dreamPromptOverride = "";
+        this.dreamPromptDraft = result.image_prompt;
+        this.recycledDreamPrompt = result.recycled_image_prompt?.trim() || "";
+        this.isUploadingDreamImage = false;
+      },
+      error: (error) => {
+        console.error("Failed to upload dream image:", error);
+        this.isUploadingDreamImage = false;
+        alert(this.extractDreamImageError(error, "Failed to upload image. Please try again."));
+      },
+    });
+  }
+
+  deleteDreamImage(): void {
+    if (!this.entry?.id || !this.isDream() || this.isDreamImageBusy()) {
+      return;
+    }
+
+    const confirmed = confirm(
+      "Delete the current image? Your saved image prompt will be kept so you can generate again later.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    this.isUploadingDreamImage = true;
+    this.entriesService.deleteDreamImage(this.entry.id).subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          image_prompt: result.image_prompt,
+          image_url: result.image_url,
+          recycled_image_prompt: result.recycled_image_prompt ?? "",
+        };
+        this.dreamPromptOverride = "";
+        this.isDreamImageExpanded = false;
+        this.isAdjustingDreamImagePosition = false;
+        this.dreamPromptDraft = result.image_prompt;
+        this.recycledDreamPrompt = result.recycled_image_prompt?.trim() || "";
+        this.isUploadingDreamImage = false;
+      },
+      error: (error) => {
+        console.error("Failed to delete dream image:", error);
+        this.isUploadingDreamImage = false;
+        alert(this.extractDreamImageError(error, "Failed to delete image. Please try again."));
       },
     });
   }
@@ -971,6 +1247,7 @@ export class DetailComponent implements OnInit {
     }
 
     this.isDreamImageExpanded = false;
+    this.isAdjustingDreamImagePosition = false;
   }
 
   getUserContent(): string {
@@ -1027,9 +1304,39 @@ export class DetailComponent implements OnInit {
   }
 
   private getCurrentDreamPrompt(): string {
+    if (this.dreamPromptOverride.trim().length > 0) {
+      return this.dreamPromptOverride.trim();
+    }
+
     return typeof this.entry?.image_prompt === "string"
       ? this.entry.image_prompt.trim()
       : "";
+  }
+
+  private getCurrentRecycledDreamPrompt(): string {
+    return typeof this.entry?.recycled_image_prompt === "string"
+      ? this.entry.recycled_image_prompt.trim()
+      : "";
+  }
+
+  private extractDreamImageError(error: any, fallback: string): string {
+    const message =
+      typeof error?.error?.error === "string" ? error.error.error.trim() : "";
+    return message || fallback;
+  }
+
+  getDreamImageObjectPosition(): string {
+    const x = this.clampDreamImagePosition(this.dreamImagePositionX);
+    const y = this.clampDreamImagePosition(this.dreamImagePositionY);
+    return `${x}% ${y}%`;
+  }
+
+  private clampDreamImagePosition(value: number): number {
+    if (Number.isNaN(value)) {
+      return 50;
+    }
+
+    return Math.min(100, Math.max(0, value));
   }
 
   getVisibleItems(items: string[], expanded: boolean): string[] {

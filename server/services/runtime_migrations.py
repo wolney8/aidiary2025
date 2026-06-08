@@ -15,6 +15,7 @@ _TARGET_COLUMNS: dict[str, tuple[str, ...]] = {
         'interpretation',
         'image_prompt',
         'image_url',
+        'recycled_image_prompt',
     ),
 }
 
