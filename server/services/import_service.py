@@ -7,7 +7,7 @@ import math
 import re
 import sqlite3
 import secrets
-from datetime import datetime, date, timezone
+from datetime import datetime, date, time, timezone
 from collections import Counter
 from services.nltk_enrichment import (
     derive_daily_nltk_fields as _runtime_derive_daily_nltk_fields,
@@ -25,9 +25,12 @@ ALLOWED_MIME_TYPES = {
     'application/octet-stream',  # generic binary used by some clients
 }
 
-DAILY_IMPORT_HEADERS = ('date', 'title', 'user_entry', 'ai_response')
+DAILY_REQUIRED_HEADERS = ('date', 'title', 'user_entry', 'ai_response')
+DAILY_OPTIONAL_HEADERS = ('entry_time',)
+DAILY_IMPORT_HEADERS = ('date', 'entry_time', 'title', 'user_entry', 'ai_response')
 DREAM_IMPORT_HEADERS = (
     'date',
+    'entry_time',
     'title',
     'plot',
     'cast',
@@ -40,11 +43,18 @@ DREAM_IMPORT_HEADERS = (
     'other',
     'tags',
 )
+_DREAM_REQUIRED_HEADERS = tuple(
+    header for header in DREAM_IMPORT_HEADERS if header != 'entry_time'
+)
 
 # Script-injection patterns to strip from cell values
 _INJECTION_PATTERNS = re.compile(r'[<>]|javascript:', re.IGNORECASE)
 _FORMULA_PREFIXES = ('=', '+', '-', '@')
 _DUPLICATE_TAG = '*Duplicate*'
+_DEFAULT_IMPORT_TIMES = {
+    'daily': '19:00',
+    'dream': '08:00',
+}
 
 
 # ---------------------------------------------------------------------------
@@ -145,11 +155,13 @@ def _normalise_header_set(columns: list[str]) -> set[str]:
 def _validate_sheet_headers(
     sheet_name: str,
     columns: list[str],
-    expected_headers: tuple[str, ...],
+    required_headers: tuple[str, ...],
+    optional_headers: tuple[str, ...] = (),
 ) -> list[str]:
     warnings: list[str] = []
-    missing = [header for header in expected_headers if header not in columns]
-    unexpected = [column for column in columns if column and column not in expected_headers]
+    accepted_headers = set(required_headers) | set(optional_headers)
+    missing = [header for header in required_headers if header not in columns]
+    unexpected = [column for column in columns if column and column not in accepted_headers]
 
     if missing:
         warnings.append(
@@ -166,16 +178,17 @@ def _validate_sheet_headers(
 
 
 def _validate_daily_headers_strict(columns: list[str]) -> list[str]:
-    expected = set(DAILY_IMPORT_HEADERS)
+    required = set(DAILY_REQUIRED_HEADERS)
+    full = set(DAILY_IMPORT_HEADERS)
     actual = _normalise_header_set(columns)
     header_counts = Counter(columns)
     duplicates = [name for name, count in header_counts.items() if name and count > 1]
 
-    if actual == expected and not duplicates:
+    if actual in (required, full) and not duplicates:
         return []
 
-    missing = sorted(expected - actual)
-    unexpected = sorted(actual - expected)
+    missing = sorted(required - actual)
+    unexpected = sorted(actual - full)
     details: list[str] = []
     if missing:
         details.append(f"missing columns: {', '.join(missing)}")
@@ -210,6 +223,31 @@ def _parse_date(value) -> str | None:
             return datetime.strptime(text, fmt).strftime('%Y-%m-%d')
         except ValueError:
             continue
+    return None
+
+
+def _parse_time(value, *, default: str) -> str | None:
+    """Parse spreadsheet time values into HH:MM, defaulting only for blank cells."""
+    if _is_blankish(value):
+        return default
+
+    if isinstance(value, datetime):
+        return value.strftime('%H:%M')
+    if isinstance(value, time):
+        return value.strftime('%H:%M')
+
+    text = str(value).strip()
+    if 'T' in text:
+        text = text.split('T')[-1]
+    if ' ' in text:
+        text = text.split(' ')[-1]
+
+    for fmt in ('%H:%M', '%H:%M:%S', '%I:%M %p', '%I:%M:%S %p'):
+        try:
+            return datetime.strptime(text, fmt).strftime('%H:%M')
+        except ValueError:
+            continue
+
     return None
 
 
@@ -280,8 +318,20 @@ def parse_excel(file_bytes: bytes) -> dict:
                         f'("{row.get("date", "")}").'
                     )
                     continue
+                entry_time = _parse_time(
+                    row.get('entry_time', ''),
+                    default=_DEFAULT_IMPORT_TIMES['daily'],
+                )
+                if not entry_time:
+                    warnings.append(
+                        f'Daily sheet row {row_num}: skipped — invalid time '
+                        f'("{row.get("entry_time", "")}"). Use HH:MM.'
+                    )
+                    continue
+
                 daily_rows.append({
                     'entry_date': entry_date,
+                    'entry_time': entry_time,
                     'title': _sanitise(row.get('title', '')),
                     'user_message': _sanitise(row.get('user_entry', row.get('user_message', ''))),
                     'ai_response': _sanitise(row.get('ai_response', '')),
@@ -297,7 +347,12 @@ def parse_excel(file_bytes: bytes) -> dict:
         df = pd.read_excel(xls, sheet_name=sheet_map[dream_sheet_key], dtype=str)
         df.columns = _normalise_headers(df.columns)
         warnings.extend(
-            _validate_sheet_headers('Dreams', df.columns.tolist(), DREAM_IMPORT_HEADERS)
+            _validate_sheet_headers(
+                'Dreams',
+                df.columns.tolist(),
+                _DREAM_REQUIRED_HEADERS,
+                ('entry_time',),
+            )
         )
         for idx, row in df.iterrows():
             row_num = idx + 2
@@ -309,9 +364,21 @@ def parse_excel(file_bytes: bytes) -> dict:
                 )
                 continue
             
+            entry_time = _parse_time(
+                row.get('entry_time', ''),
+                default=_DEFAULT_IMPORT_TIMES['dream'],
+            )
+            if not entry_time:
+                warnings.append(
+                    f'Dreams sheet row {row_num}: skipped — invalid time '
+                    f'("{row.get("entry_time", "")}"). Use HH:MM.'
+                )
+                continue
+
             # Build row data with sanitised values
             row_data = {
                 'entry_date': entry_date,
+                'entry_time': entry_time,
                 'title': _sanitise(row.get('title', '')),
                 'plot': _sanitise(row.get('plot', '')),
                 'cast': _sanitise(row.get('cast', '')),
@@ -666,12 +733,13 @@ def _insert_daily_import_row(
 
     cursor.execute(
         '''INSERT INTO dailydiary_entries
-           (user_id, entry_date, entry_number, title, user_message,
+           (user_id, entry_date, entry_time, entry_number, title, user_message,
             ai_response, daily_people_names, daily_places, tags)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             user_id,
             entry_date,
+            row.get('entry_time', _DEFAULT_IMPORT_TIMES['daily']),
             max_num + 1,
             row['title'],
             row['user_message'],
@@ -699,13 +767,14 @@ def _insert_dream_import_row(
 
     cursor.execute(
         '''INSERT INTO dreamdiary_entries
-           (user_id, entry_date, entry_number, title, "cast", location,
+           (user_id, entry_date, entry_time, entry_number, title, "cast", location,
             period, emotion, plot, symbols_and_imagery, insight, action, other,
             tags, dream_people_names, dream_places)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             user_id,
             entry_date,
+            row.get('entry_time', _DEFAULT_IMPORT_TIMES['dream']),
             max_num + 1,
             row['title'],
             row['cast'],
