@@ -39,6 +39,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY,
             user_id INTEGER,
             entry_date DATE,
+            entry_time TEXT,
             entry_number INTEGER,
             title TEXT,
             user_message TEXT,
@@ -53,6 +54,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY,
             user_id INTEGER,
             entry_date DATE,
+            entry_time TEXT,
             entry_number INTEGER,
             title TEXT,
             cast TEXT,
@@ -121,18 +123,20 @@ def _make_xlsx(daily_rows=None, dream_rows=None) -> bytes:
     wb = openpyxl.Workbook()
     ws_daily = wb.active
     ws_daily.title = 'Daily'
-    ws_daily.append(['date', 'title', 'user_entry', 'ai_response'])
+    ws_daily.append(list(DAILY_IMPORT_HEADERS))
     for row in (daily_rows or []):
-        ws_daily.append(row)
+        row_values = list(row)
+        if len(row_values) == 4:
+            row_values = [row_values[0], '', *row_values[1:]]
+        ws_daily.append(row_values)
 
     ws_dreams = wb.create_sheet(title='Dreams')
-    ws_dreams.append([
-        'date', 'title', 'plot', 'cast', 'location',
-        'period', 'emotion', 'symbols_and_imagery',
-        'insight', 'action', 'other', 'tags',
-    ])
+    ws_dreams.append(list(DREAM_IMPORT_HEADERS))
     for row in (dream_rows or []):
-        ws_dreams.append(row)
+        row_values = list(row)
+        if len(row_values) == 12:
+            row_values = [row_values[0], '', *row_values[1:]]
+        ws_dreams.append(row_values)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -151,12 +155,18 @@ def _make_xlsx_with_headers(
     ws_daily.title = 'Daily'
     ws_daily.append(daily_headers)
     for row in (daily_rows or []):
-        ws_daily.append(row)
+        row_values = list(row)
+        if list(daily_headers) == list(DAILY_IMPORT_HEADERS) and len(row_values) == 4:
+            row_values = [row_values[0], '', *row_values[1:]]
+        ws_daily.append(row_values)
 
     ws_dreams = wb.create_sheet(title='Dreams')
     ws_dreams.append(dream_headers)
     for row in (dream_rows or []):
-        ws_dreams.append(row)
+        row_values = list(row)
+        if list(dream_headers) == list(DREAM_IMPORT_HEADERS) and len(row_values) == 12:
+            row_values = [row_values[0], '', *row_values[1:]]
+        ws_dreams.append(row_values)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -587,6 +597,96 @@ class TestMalformedData:
         assert '<script>' not in row['title']
         assert 'javascript:' not in row['user_message']
 
+    def test_import_preserves_entry_time_from_new_format_workbook(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=list(DAILY_IMPORT_HEADERS),
+            dream_headers=list(DREAM_IMPORT_HEADERS),
+            daily_rows=[['2024-11-02', '14:25', 'Timed daily', 'Body', 'AI']],
+            dream_rows=[[
+                '2024-11-03',
+                '06:40',
+                'Timed dream',
+                'A long corridor',
+                'Guide',
+                'House',
+                'Past',
+                'Uneasy',
+                'Mirrors',
+                'Notice patterns',
+                'Pause',
+                'None',
+                'dream',
+            ]],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        daily_row = conn.execute(
+            "SELECT entry_time FROM dailydiary_entries WHERE title = 'Timed daily'"
+        ).fetchone()
+        dream_row = conn.execute(
+            "SELECT entry_time FROM dreamdiary_entries WHERE title = 'Timed dream'"
+        ).fetchone()
+        conn.close()
+
+        assert daily_row['entry_time'] == '14:25'
+        assert dream_row['entry_time'] == '06:40'
+
+    def test_legacy_workbook_without_entry_time_defaults_by_entry_type(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx_with_headers(
+            daily_headers=['date', 'title', 'user_entry', 'ai_response'],
+            dream_headers=[
+                'date',
+                'title',
+                'plot',
+                'cast',
+                'location',
+                'period',
+                'emotion',
+                'symbols_and_imagery',
+                'insight',
+                'action',
+                'other',
+                'tags',
+            ],
+            daily_rows=[['2024-11-04', 'Legacy daily', 'Body', 'AI']],
+            dream_rows=[[
+                '2024-11-05',
+                'Legacy dream',
+                'Ocean tide',
+                'Friend',
+                'Beach',
+                'Future',
+                'Calm',
+                'Moon',
+                'Slow down',
+                'Rest',
+                'None',
+                'dream',
+            ]],
+        )
+
+        resp = _upload(client, token, file_bytes)
+        assert resp.status_code == 200
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        daily_row = conn.execute(
+            "SELECT entry_time FROM dailydiary_entries WHERE title = 'Legacy daily'"
+        ).fetchone()
+        dream_row = conn.execute(
+            "SELECT entry_time FROM dreamdiary_entries WHERE title = 'Legacy dream'"
+        ).fetchone()
+        conn.close()
+
+        assert daily_row['entry_time'] == '19:00'
+        assert dream_row['entry_time'] == '08:00'
+
 
 # ---------------------------------------------------------------------------
 # Schema contract regression coverage (Issue #39)
@@ -964,30 +1064,31 @@ class TestExportDownload:
         conn.execute(
             """
             INSERT INTO dailydiary_entries
-            (user_id, entry_date, entry_number, title, user_message, ai_response, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (user_id, entry_date, entry_time, entry_number, title, user_message, ai_response, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, '2026-01-10', 1, 'Daily one', 'Body text', 'AI text', 'tag1,tag2'),
+            (user_id, '2026-01-10', '09:30', 1, 'Daily one', 'Body text', 'AI text', 'tag1,tag2'),
         )
         conn.execute(
             """
             INSERT INTO dailydiary_entries
-            (user_id, entry_date, entry_number, title, user_message, ai_response, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (user_id, entry_date, entry_time, entry_number, title, user_message, ai_response, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (user_id, '2026-01-20', 2, 'Daily two', 'Body two', 'AI two', 'tag3'),
+            (user_id, '2026-01-20', '19:45', 2, 'Daily two', 'Body two', 'AI two', 'tag3'),
         )
 
         conn.execute(
             """
             INSERT INTO dreamdiary_entries
-            (user_id, entry_date, entry_number, title, cast, location, period,
+            (user_id, entry_date, entry_time, entry_number, title, cast, location, period,
              emotion, plot, symbols_and_imagery, insight, action, other, dream_places, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
                 '2026-01-11',
+                '08:15',
                 1,
                 'Dream one',
                 'Alex',
@@ -1006,13 +1107,14 @@ class TestExportDownload:
         conn.execute(
             """
             INSERT INTO dreamdiary_entries
-            (user_id, entry_date, entry_number, title, cast, location, period,
+            (user_id, entry_date, entry_time, entry_number, title, cast, location, period,
              emotion, plot, symbols_and_imagery, insight, action, other, dream_places, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
                 '2026-01-21',
+                '07:50',
                 2,
                 'Dream two',
                 'Sam',
@@ -1065,16 +1167,18 @@ class TestExportDownload:
         assert dream_ws.max_row == 3
 
         assert daily_ws.cell(2, 1).value == '2026-01-10'
-        assert daily_ws.cell(2, 2).value == 'Daily one'
-        assert daily_ws.cell(2, 3).value == 'Body text'
-        assert daily_ws.cell(2, 4).value == 'AI text'
+        assert daily_ws.cell(2, 2).value == '09:30'
+        assert daily_ws.cell(2, 3).value == 'Daily one'
+        assert daily_ws.cell(2, 4).value == 'Body text'
+        assert daily_ws.cell(2, 5).value == 'AI text'
 
         assert dream_ws.cell(2, 1).value == '2026-01-11'
-        assert dream_ws.cell(2, 2).value == 'Dream one'
-        assert dream_ws.cell(2, 3).value == 'Flying over trees'
-        assert dream_ws.cell(2, 4).value == 'Alex'
-        assert dream_ws.cell(2, 5).value == 'Forest'
-        assert dream_ws.cell(2, 12).value == 'dream,flight'
+        assert dream_ws.cell(2, 2).value == '08:15'
+        assert dream_ws.cell(2, 3).value == 'Dream one'
+        assert dream_ws.cell(2, 4).value == 'Flying over trees'
+        assert dream_ws.cell(2, 5).value == 'Alex'
+        assert dream_ws.cell(2, 6).value == 'Forest'
+        assert dream_ws.cell(2, 13).value == 'dream,flight'
 
     def test_export_records_guard_token_for_full_range_export(self, client):
         token = _register_and_login(client)

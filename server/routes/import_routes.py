@@ -470,7 +470,7 @@ def export_entries():
 
     if include_daily:
         daily_query = '''
-            SELECT entry_date, title, user_message, ai_response
+            SELECT entry_date, entry_time, title, user_message, ai_response
             FROM dailydiary_entries
             WHERE user_id = ?
         '''
@@ -484,12 +484,12 @@ def export_entries():
             daily_query += ' AND entry_date <= ?'
             daily_params.append(to_date.isoformat())
 
-        daily_query += ' ORDER BY entry_date ASC, entry_number ASC'
+        daily_query += " ORDER BY entry_date ASC, COALESCE(entry_time, '19:00') ASC, entry_number ASC"
         daily_rows = conn.execute(daily_query, tuple(daily_params)).fetchall()
 
     if include_dreams:
         dream_query = '''
-            SELECT entry_date, title, plot, "cast", location, period,
+            SELECT entry_date, entry_time, title, plot, "cast", location, period,
                    emotion, symbols_and_imagery, insight, action, other, tags
             FROM dreamdiary_entries
             WHERE user_id = ?
@@ -504,7 +504,7 @@ def export_entries():
             dream_query += ' AND entry_date <= ?'
             dream_params.append(to_date.isoformat())
 
-        dream_query += ' ORDER BY entry_date ASC, entry_number ASC'
+        dream_query += " ORDER BY entry_date ASC, COALESCE(entry_time, '08:00') ASC, entry_number ASC"
         dream_rows = conn.execute(dream_query, tuple(dream_params)).fetchall()
 
     wb = openpyxl.Workbook()
@@ -516,6 +516,7 @@ def export_entries():
         for row in daily_rows:
             ws_daily.append([
                 row['entry_date'] or '',
+                row['entry_time'] or '',
                 row['title'] or '',
                 row['user_message'] or '',
                 row['ai_response'] or '',
@@ -527,6 +528,7 @@ def export_entries():
             for row in dream_rows:
                 ws_dreams.append([
                     row['entry_date'] or '',
+                    row['entry_time'] or '',
                     row['title'] or '',
                     row['plot'] or '',
                     row['cast'] or '',
@@ -546,6 +548,7 @@ def export_entries():
         for row in dream_rows:
             ws_dreams.append([
                 row['entry_date'] or '',
+                row['entry_time'] or '',
                 row['title'] or '',
                 row['plot'] or '',
                 row['cast'] or '',
