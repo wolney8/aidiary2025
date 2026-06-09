@@ -283,7 +283,7 @@ type CalendarPreviewState = {
                   </mat-icon>
                   <mat-card-title>{{ getEntryTitle(entry) }}</mat-card-title>
                   <mat-card-subtitle>{{
-                    entry.entry_date | date: "dd/MM/yyyy"
+                    getEntryDateTimeSubtitle(entry)
                   }}</mat-card-subtitle>
                 </mat-card-header>
 
@@ -293,6 +293,12 @@ type CalendarPreviewState = {
                     *ngIf="getEntryCardImageUrl(entry) as entryImageUrl; else entryCardPlaceholder"
                   >
                     <img [src]="entryImageUrl" alt="" />
+                    <div
+                      class="entry-ai-badge"
+                      *ngIf="isAiGeneratedEntryImage(entry)"
+                    >
+                      <mat-icon>auto_awesome</mat-icon>
+                    </div>
                   </div>
                   <ng-template #entryCardPlaceholder>
                     <div class="entry-image-placeholder">
@@ -485,7 +491,12 @@ type CalendarPreviewState = {
                       <mat-icon>{{
                         entry.type === "dream" ? "nights_stay" : "book"
                       }}</mat-icon>
-                      <span>{{ getEntryTitle(entry) }}</span>
+                      <div>
+                        <span>{{ getEntryTitle(entry) }}</span>
+                        <small *ngIf="getEntryTimeLabel(entry)">{{
+                          getEntryTimeLabel(entry)
+                        }}</small>
+                      </div>
                     </div>
                     <div
                       class="calendar-preview-card-tags"
@@ -1376,8 +1387,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
     // Sort by date (newest first)
     this.filteredEntries = entries.sort(
-      (a, b) =>
-        new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime(),
+      (a, b) => this.getEntrySortTimestamp(b) - this.getEntrySortTimestamp(a),
     );
 
     this.totalEntries = this.filteredEntries.length;
@@ -1473,6 +1483,43 @@ export class ListComponent implements OnInit, OnDestroy {
 
     const dailyEntry = entry as DailyEntry & { type: "daily" };
     return this.truncatePreviewText(dailyEntry.ai_response || "", 100);
+  }
+
+  getEntryDateTimeSubtitle(entry: EntryItem): string {
+    const dateLabel = new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(`${entry.entry_date}T00:00:00`));
+    const timeLabel = this.getEntryTimeLabel(entry);
+    return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel;
+  }
+
+  getEntryTimeLabel(entry: EntryItem): string {
+    const rawValue = typeof entry.entry_time === "string" ? entry.entry_time.trim() : "";
+    const value = rawValue || this.getFallbackEntryTime(entry);
+    if (!/^\d{2}:\d{2}$/.test(value)) {
+      return "";
+    }
+
+    const [hoursText, minutesText] = value.split(":");
+    const hours = Number(hoursText);
+    const minutes = Number(minutesText);
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return "";
+    }
+
+    return new Intl.DateTimeFormat("en-GB", {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(2000, 0, 1, hours, minutes));
   }
 
   getTags(entry: any): string[] {
@@ -1716,9 +1763,25 @@ export class ListComponent implements OnInit, OnDestroy {
     return this.getCalendarPreviewImageUrl(entry);
   }
 
+  isAiGeneratedEntryImage(entry: EntryItem): boolean {
+    return (entry.image_source || "").trim() === "ai";
+  }
+
   private getCalendarPreviewImageUrl(entry: EntryItem): string | null {
     const raw = typeof entry.image_url === "string" ? entry.image_url.trim() : "";
     return raw.length > 0 ? raw : null;
+  }
+
+  private getEntrySortTimestamp(entry: EntryItem): number {
+    const timeValue =
+      typeof entry.entry_time === "string" && /^\d{2}:\d{2}$/.test(entry.entry_time.trim())
+        ? entry.entry_time.trim()
+        : this.getFallbackEntryTime(entry);
+    return new Date(`${entry.entry_date}T${timeValue}:00`).getTime();
+  }
+
+  private getFallbackEntryTime(entry: EntryItem): string {
+    return entry.type === "dream" ? "08:00" : "19:00";
   }
 
   private generateTimelineMonths(count = 4): TimelineMonth[] {

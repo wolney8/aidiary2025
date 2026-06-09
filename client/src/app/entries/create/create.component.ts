@@ -132,6 +132,17 @@ const UK_DATE_FORMATS = {
             </mat-hint>
           </mat-form-field>
 
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Time</mat-label>
+            <input
+              matInput
+              type="time"
+              [(ngModel)]="entryTime"
+              name="entry_time"
+            />
+            <mat-hint>Defaults to the time you started this entry.</mat-hint>
+          </mat-form-field>
+
           <!-- AI Style Selection - only show when AI toggle is on -->
           <mat-form-field
             appearance="outline"
@@ -546,6 +557,7 @@ export class CreateComponent implements OnInit {
   backQueryParams: Record<string, string | number> = {};
 
   entryDate: Date | string | null = new Date();
+  entryTime = this.getCurrentLocalTime();
   entryTitle = "";
   content = "";
   tags: string[] = [];
@@ -577,6 +589,7 @@ export class CreateComponent implements OnInit {
 
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
   private initialDate = this.describeEntryDate(this.entryDate);
+  private initialTime = this.entryTime;
 
   // Mood options for both entry types
   moodOptions: MoodOption[] = [
@@ -674,8 +687,8 @@ export class CreateComponent implements OnInit {
       // Check for entry type parameter
       const typeParam = params.get("type");
       if (typeParam === "dream" || typeParam === "daily") {
-        this.selectedType = typeParam;
-        this.previousSelectedType = typeParam;
+      this.selectedType = typeParam;
+      this.previousSelectedType = typeParam;
       }
 
     });
@@ -707,6 +720,9 @@ export class CreateComponent implements OnInit {
     this.selectedType = type;
     this.previousSelectedType = type;
     this.entryDate = this.parseApiDateAsLocal(entry.entry_date) ?? new Date();
+    this.entryTime = this.coerceEntryTime(entry.entry_time) ?? this.getCurrentLocalTime();
+    this.initialDate = this.describeEntryDate(this.entryDate);
+    this.initialTime = this.entryTime;
     this.entryTitle = entry.title || "";
     this.tags = entry.tags
       ? entry.tags
@@ -789,13 +805,21 @@ export class CreateComponent implements OnInit {
 
     this.isSaving = true;
     const entryDate = this.serialiseDateAsLocalIso(normalisedEntryDate);
+    const entryTime = this.coerceEntryTime(this.entryTime);
     const tags = this.tags.join(",");
     const trimmedTitle = this.entryTitle.trim();
     const body = this.content.trim();
 
+    if (!entryTime) {
+      this.errorMessage = "Please select a valid time for this entry.";
+      this.isSaving = false;
+      return;
+    }
+
     if (this.selectedType === "daily") {
       const createPayload = {
         entry_date: entryDate,
+        entry_time: entryTime,
         title: trimmedTitle,
         user_message: body,
         tags,
@@ -807,6 +831,7 @@ export class CreateComponent implements OnInit {
 
       const updatePayload = {
         entry_date: entryDate,
+        entry_time: entryTime,
         title: trimmedTitle,
         user_message: body,
         tags,
@@ -851,6 +876,7 @@ export class CreateComponent implements OnInit {
 
       const createPayload = {
         entry_date: entryDate,
+        entry_time: entryTime,
         title: trimmedTitle,
         plot: dreamPlotContent,
         tags,
@@ -870,6 +896,7 @@ export class CreateComponent implements OnInit {
 
       const updatePayload = {
         entry_date: entryDate,
+        entry_time: entryTime,
         title: trimmedTitle,
         plot: dreamPlotContent,
         tags,
@@ -1173,6 +1200,40 @@ export class CreateComponent implements OnInit {
     return parseLocalIsoDate(value);
   }
 
+  private coerceEntryTime(value: unknown): string | null {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const text = value.trim();
+    if (!/^\d{2}:\d{2}$/.test(text)) {
+      return null;
+    }
+
+    const [hoursText, minutesText] = text.split(":");
+    const hours = Number(hoursText);
+    const minutes = Number(minutesText);
+    if (
+      Number.isNaN(hours) ||
+      Number.isNaN(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      return null;
+    }
+
+    return `${hoursText}:${minutesText}`;
+  }
+
+  private getCurrentLocalTime(): string {
+    const now = new Date();
+    const hours = `${now.getHours()}`.padStart(2, "0");
+    const minutes = `${now.getMinutes()}`.padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
   readonly allowPastOrTodayOnly = (value: Date | null): boolean => {
     if (!value) {
       return false;
@@ -1247,7 +1308,8 @@ export class CreateComponent implements OnInit {
       this.selectedMood ||
       this.selectedAIStyle !== "friendly" ||
       this.leaveItToAI ||
-      this.describeEntryDate(this.entryDate) !== this.initialDate,
+      this.describeEntryDate(this.entryDate) !== this.initialDate ||
+      this.entryTime !== this.initialTime
     );
 
     const hasDreamChanges =
@@ -1289,7 +1351,9 @@ export class CreateComponent implements OnInit {
     this.isSaving = false;
     this.errorMessage = "";
     this.entryDate = new Date();
+    this.entryTime = this.getCurrentLocalTime();
     this.initialDate = this.entryDate.toDateString();
+    this.initialTime = this.entryTime;
     this.entryTitle = "";
     this.content = "";
     this.tags = [];

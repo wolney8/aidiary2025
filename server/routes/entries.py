@@ -96,6 +96,27 @@ def _is_future_entry_date(value: str) -> bool:
     return parsed.date() > today
 
 
+def _normalise_entry_time(value):
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    for fmt in ('%H:%M', '%H:%M:%S'):
+        try:
+            return datetime.strptime(text, fmt).strftime('%H:%M')
+        except ValueError:
+            continue
+
+    return None
+
+
+def _default_entry_time_for_kind(entry_kind: str) -> str:
+    return '08:00' if entry_kind == 'dream' else '19:00'
+
+
 def _normalise_uploaded_entry_image(file_bytes: bytes) -> bytes:
     if not file_bytes:
         raise ValueError('No image data was uploaded.')
@@ -179,10 +200,63 @@ def _resolve_entry_image_value(
     if not entry.get('image_url'):
         entry['image_url'] = None
 
+    image_source = str(entry.get('image_source') or '').strip().lower()
+    if not image_source and entry.get('image_url'):
+        image_source = 'ai' if str(entry.get('image_prompt') or '').strip() else 'upload'
+        try:
+            conn.execute(
+                f'UPDATE {table_name} SET image_source = ? WHERE id = ? AND user_id = ?',
+                (image_source, entry['id'], entry['user_id']),
+            )
+        except Exception:
+            current_app.logger.warning(
+                'Entry image source backfill skipped for %s %s',
+                table_name,
+                entry.get('id'),
+            )
+
     entry['image_position_x'] = _normalise_image_position(entry.get('image_position_x'))
     entry['image_position_y'] = _normalise_image_position(entry.get('image_position_y'))
+    entry['image_source'] = image_source or None
     entry.pop('image_storage_key', None)
     return entry
+
+
+def _infer_daily_scene_category(text: str) -> str:
+    lower = text.lower()
+    if any(token in lower for token in ('work', 'office', 'meeting', 'email', 'deadline')):
+        return 'a work or responsibility-oriented moment'
+    if any(token in lower for token in ('walk', 'park', 'outside', 'street', 'journey', 'drive', 'train')):
+        return 'an outdoor or transitional everyday moment'
+    if any(token in lower for token in ('bumble', 'whatsapp', 'message', 'texted', 'call', 'date')):
+        return 'a private interpersonal or communication-focused moment'
+    if any(token in lower for token in ('home', 'house', 'room', 'bed', 'kitchen')):
+        return 'a quiet domestic moment'
+    return 'an emotionally significant everyday moment'
+
+
+def _infer_daily_emotional_tone(title: str, user_message: str, ai_response: str) -> str:
+    lower = f'{title} {user_message} {ai_response}'.lower()
+    if any(token in lower for token in ('anxious', 'uncertain', 'worried', 'nervous', 'uneasy')):
+        return 'subtle uncertainty with emotional tension'
+    if any(token in lower for token in ('sad', 'upset', 'hurt', 'grief', 'loss')):
+        return 'tender sadness and emotional weight'
+    if any(token in lower for token in ('happy', 'joy', 'excited', 'hopeful', 'relief')):
+        return 'gentle hopefulness and emotional lift'
+    if any(token in lower for token in ('angry', 'frustrated', 'resentful', 'irritated')):
+        return 'contained frustration and internal pressure'
+    return 'reflective emotional ambiguity'
+
+
+def _infer_daily_symbolic_cue(title: str, user_message: str) -> str:
+    lower = f'{title} {user_message}'.lower()
+    if any(token in lower for token in ('phone', 'message', 'whatsapp', 'bumble', 'text')):
+        return 'use symbolic communication cues without any readable screens'
+    if any(token in lower for token in ('walk', 'road', 'street', 'path')):
+        return 'use path or journey imagery to suggest emotional movement'
+    if any(token in lower for token in ('dad', 'family', 'home')):
+        return 'use intimate domestic details to suggest memory and emotional context'
+    return 'use restrained environmental symbolism rather than literal storytelling'
 
 
 def _derive_daily_image_prompt(entry: sqlite3.Row) -> str | None:
@@ -193,25 +267,24 @@ def _derive_daily_image_prompt(entry: sqlite3.Row) -> str | None:
     if not user_message or not ai_response:
         return None
 
+    scene_category = _infer_daily_scene_category(user_message)
+    emotional_tone = _infer_daily_emotional_tone(title, user_message, ai_response)
+    symbolic_cue = _infer_daily_symbolic_cue(title, user_message)
+
     prompt_parts = [
         'Create a single anonymous, visually grounded scene inspired by the emotional core of this diary entry.',
     ]
     if title:
-        prompt_parts.append(f'Entry theme: {title}.')
-    prompt_parts.append(f'Source context: {user_message[:320]}')
-    prompt_parts.append(f'Emotional interpretation: {ai_response[:220]}')
+        prompt_parts.append(f'Theme: {title[:120]}.')
+    prompt_parts.append(f'Scene category: {scene_category}.')
+    prompt_parts.append(f'Emotional tone: {emotional_tone}.')
+    prompt_parts.append(f'Symbolic cue: {symbolic_cue}.')
     prompt_parts.append(
-        'Focus on the most emotionally meaningful atmosphere, turning point, or symbolic moment rather than a literal replay.'
+        'Focus on atmosphere, body language, setting, and one emotionally meaningful moment rather than a literal replay of events.'
     )
-    prompt_parts.append(
-        'Show a single scene or symbolic composition, not a collage.'
-    )
-    prompt_parts.append(
-        'Keep people anonymous and avoid legible devices or readable surfaces.'
-    )
-    prompt_parts.append(
-        'Do not render any visible text, names, letters, numbers, chat messages, phone screens, app interfaces, signage, captions, or typography in the image.'
-    )
+    prompt_parts.append('Show a single scene or symbolic composition, not a collage.')
+    prompt_parts.append('Keep people anonymous and avoid legible devices or readable surfaces.')
+    prompt_parts.append('Do not render any visible text, names, letters, numbers, chat messages, phone screens, app interfaces, signage, captions, or typography in the image.')
     return ' '.join(prompt_parts)
 
 
@@ -365,7 +438,7 @@ def get_daily_entries():
     entries = cursor.execute('''
         SELECT * FROM dailydiary_entries
         WHERE user_id = ?
-        ORDER BY entry_date DESC, entry_number DESC
+        ORDER BY entry_date DESC, COALESCE(entry_time, '19:00') DESC, entry_number DESC
     ''', (user_id,)).fetchall()
     
     payload = [
@@ -421,8 +494,13 @@ def create_daily_entry():
     entry_date = _normalise_entry_date(
         data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
     )
+    entry_time = _normalise_entry_time(
+        data.get('entry_time', datetime.now().strftime('%H:%M'))
+    )
     if not entry_date:
         return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+    if not entry_time:
+        return jsonify({'error': 'Invalid entry_time format. Use HH:MM'}), 400
     if _is_future_entry_date(entry_date):
         return jsonify({'error': 'Future entry dates are not allowed'}), 400
 
@@ -443,11 +521,12 @@ def create_daily_entry():
     
     cursor.execute('''
         INSERT INTO dailydiary_entries 
-        (user_id, entry_date, entry_number, title, user_message, tags, daily_people_names, daily_places)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, entry_date, entry_time, entry_number, title, user_message, tags, daily_people_names, daily_places)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id,
         entry_date,
+        entry_time,
         entry_number,
         title,
         user_message,
@@ -463,6 +542,7 @@ def create_daily_entry():
     return jsonify({
         'id': entry_id,
         'entry_date': entry_date,
+        'entry_time': entry_time,
         'entry_number': entry_number,
         'title': title
     }), 201
@@ -517,6 +597,14 @@ def update_daily_entry(entry_id):
             entry_number = (max_entry['max_num'] or 0) + 1
             updates.append('entry_number = ?')
             values.append(entry_number)
+
+    if 'entry_time' in data:
+        parsed_entry_time = _normalise_entry_time(data.get('entry_time'))
+        if not parsed_entry_time:
+            conn.close()
+            return jsonify({'error': 'Invalid entry_time format. Use HH:MM'}), 400
+        updates.append('entry_time = ?')
+        values.append(parsed_entry_time)
     
     for field in allowed_fields:
         if field in data:
@@ -586,7 +674,7 @@ def generate_daily_image(entry_id):
     cursor = conn.cursor()
     entry = cursor.execute(
         '''SELECT id, title, user_message, ai_response, image_prompt, image_url,
-                  image_storage_key, recycled_image_prompt, image_position_x, image_position_y
+                  image_storage_key, recycled_image_prompt, image_position_x, image_position_y, image_source
            FROM dailydiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -626,13 +714,13 @@ def generate_daily_image(entry_id):
 
     if image_prompt_override:
         cursor.execute(
-            'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL WHERE id = ? AND user_id = ?',
-            (storage_key, entry_id, user_id),
+            'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_source = ? WHERE id = ? AND user_id = ?',
+            (storage_key, 'ai', entry_id, user_id),
         )
     else:
         cursor.execute(
-            'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = ? WHERE id = ? AND user_id = ?',
-            (storage_key, image_prompt, entry_id, user_id),
+            'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = ?, image_source = ? WHERE id = ? AND user_id = ?',
+            (storage_key, image_prompt, 'ai', entry_id, user_id),
         )
     conn.commit()
     conn.close()
@@ -646,6 +734,7 @@ def generate_daily_image(entry_id):
         'recycled_image_prompt': (entry['recycled_image_prompt'] or ''),
         'image_position_x': _normalise_image_position(entry['image_position_x']),
         'image_position_y': _normalise_image_position(entry['image_position_y']),
+        'image_source': 'ai',
     }), 200
 
 
@@ -674,7 +763,7 @@ def upload_daily_image(entry_id):
     cursor = conn.cursor()
     entry = cursor.execute(
         '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt,
-                  image_position_x, image_position_y
+                  image_position_x, image_position_y, image_source
            FROM dailydiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -705,8 +794,8 @@ def upload_daily_image(entry_id):
         return jsonify({'error': 'Image upload failed'}), 500
 
     cursor.execute(
-        'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = NULL, recycled_image_prompt = ? WHERE id = ? AND user_id = ?',
-        (storage_key, recycled_prompt or None, entry_id, user_id),
+        'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = NULL, recycled_image_prompt = ?, image_source = ? WHERE id = ? AND user_id = ?',
+        (storage_key, recycled_prompt or None, 'upload', entry_id, user_id),
     )
     conn.commit()
     conn.close()
@@ -720,6 +809,7 @@ def upload_daily_image(entry_id):
         'recycled_image_prompt': recycled_prompt,
         'image_position_x': _normalise_image_position(entry['image_position_x']),
         'image_position_y': _normalise_image_position(entry['image_position_y']),
+        'image_source': 'upload',
     }), 200
 
 
@@ -732,7 +822,7 @@ def delete_daily_image(entry_id):
     conn = get_db()
     cursor = conn.cursor()
     entry = cursor.execute(
-        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt, image_source
            FROM dailydiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -748,7 +838,7 @@ def delete_daily_image(entry_id):
     )
 
     cursor.execute(
-        'UPDATE dailydiary_entries SET image_storage_key = NULL, image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL, image_position_x = 50, image_position_y = 50 WHERE id = ? AND user_id = ?',
+        'UPDATE dailydiary_entries SET image_storage_key = NULL, image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL, image_position_x = 50, image_position_y = 50, image_source = NULL WHERE id = ? AND user_id = ?',
         (restored_prompt or None, entry_id, user_id),
     )
     conn.commit()
@@ -763,6 +853,7 @@ def delete_daily_image(entry_id):
         'recycled_image_prompt': '',
         'image_position_x': 50.0,
         'image_position_y': 50.0,
+        'image_source': None,
     }), 200
 
 # Dream entries endpoints
@@ -778,7 +869,7 @@ def get_dream_entries():
     entries = cursor.execute('''
         SELECT * FROM dreamdiary_entries
         WHERE user_id = ?
-        ORDER BY entry_date DESC, entry_number DESC
+        ORDER BY entry_date DESC, COALESCE(entry_time, '08:00') DESC, entry_number DESC
     ''', (user_id,)).fetchall()
     
     payload = [
@@ -834,8 +925,13 @@ def create_dream_entry():
     entry_date = _normalise_entry_date(
         data.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
     )
+    entry_time = _normalise_entry_time(
+        data.get('entry_time', datetime.now().strftime('%H:%M'))
+    )
     if not entry_date:
         return jsonify({'error': 'Invalid entry_date format. Use YYYY-MM-DD'}), 400
+    if not entry_time:
+        return jsonify({'error': 'Invalid entry_time format. Use HH:MM'}), 400
     if _is_future_entry_date(entry_date):
         return jsonify({'error': 'Future entry dates are not allowed'}), 400
     
@@ -854,12 +950,12 @@ def create_dream_entry():
     # Insert with all dream-specific fields
     cursor.execute('''
         INSERT INTO dreamdiary_entries 
-        (user_id, entry_date, entry_number, title, cast, location, 
+        (user_id, entry_date, entry_time, entry_number, title, cast, location, 
          period, emotion, plot, symbols_and_imagery, insight, action, other, tags,
          dream_people_names, dream_places)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        user_id, entry_date, entry_number,
+        user_id, entry_date, entry_time, entry_number,
         data.get('title', ''),
         data.get('cast', ''),
         data.get('location', ''),
@@ -882,6 +978,7 @@ def create_dream_entry():
     return jsonify({
         'id': entry_id,
         'entry_date': entry_date,
+        'entry_time': entry_time,
         'entry_number': entry_number
     }), 201
 
@@ -938,6 +1035,14 @@ def update_dream_entry(entry_id):
             entry_number = (max_entry['max_num'] or 0) + 1
             updates.append('entry_number = ?')
             values.append(entry_number)
+
+    if 'entry_time' in data:
+        parsed_entry_time = _normalise_entry_time(data.get('entry_time'))
+        if not parsed_entry_time:
+            conn.close()
+            return jsonify({'error': 'Invalid entry_time format. Use HH:MM'}), 400
+        updates.append('entry_time = ?')
+        values.append(parsed_entry_time)
     
     for field in allowed_fields:
         if field in data:
@@ -1007,7 +1112,7 @@ def generate_dream_image(entry_id):
     cursor = conn.cursor()
     entry = cursor.execute(
         '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt,
-                  image_position_x, image_position_y
+                  image_position_x, image_position_y, image_source
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -1040,8 +1145,8 @@ def generate_dream_image(entry_id):
         return jsonify({'error': 'Image generation failed'}), 502
 
     cursor.execute(
-        'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL WHERE id = ? AND user_id = ?',
-        (storage_key, entry_id, user_id),
+        'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL, image_source = ? WHERE id = ? AND user_id = ?',
+        (storage_key, 'ai', entry_id, user_id),
     )
     conn.commit()
     conn.close()
@@ -1055,6 +1160,7 @@ def generate_dream_image(entry_id):
         'recycled_image_prompt': (entry['recycled_image_prompt'] or ''),
         'image_position_x': _normalise_image_position(entry['image_position_x']),
         'image_position_y': _normalise_image_position(entry['image_position_y']),
+        'image_source': 'ai',
     }), 200
 
 
@@ -1083,7 +1189,7 @@ def upload_dream_image(entry_id):
     cursor = conn.cursor()
     entry = cursor.execute(
         '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt,
-                  image_position_x, image_position_y
+                  image_position_x, image_position_y, image_source
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -1114,8 +1220,8 @@ def upload_dream_image(entry_id):
         return jsonify({'error': 'Image upload failed'}), 500
 
     cursor.execute(
-        'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = NULL, recycled_image_prompt = ? WHERE id = ? AND user_id = ?',
-        (storage_key, recycled_prompt or None, entry_id, user_id),
+        'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = NULL, recycled_image_prompt = ?, image_source = ? WHERE id = ? AND user_id = ?',
+        (storage_key, recycled_prompt or None, 'upload', entry_id, user_id),
     )
     conn.commit()
     conn.close()
@@ -1129,6 +1235,7 @@ def upload_dream_image(entry_id):
         'recycled_image_prompt': recycled_prompt,
         'image_position_x': _normalise_image_position(entry['image_position_x']),
         'image_position_y': _normalise_image_position(entry['image_position_y']),
+        'image_source': 'upload',
     }), 200
 
 
@@ -1141,7 +1248,7 @@ def delete_dream_image(entry_id):
     conn = get_db()
     cursor = conn.cursor()
     entry = cursor.execute(
-        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt, image_source
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -1157,7 +1264,7 @@ def delete_dream_image(entry_id):
     )
 
     cursor.execute(
-        'UPDATE dreamdiary_entries SET image_storage_key = NULL, image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL, image_position_x = 50, image_position_y = 50 WHERE id = ? AND user_id = ?',
+        'UPDATE dreamdiary_entries SET image_storage_key = NULL, image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL, image_position_x = 50, image_position_y = 50, image_source = NULL WHERE id = ? AND user_id = ?',
         (restored_prompt or None, entry_id, user_id),
     )
     conn.commit()
@@ -1172,6 +1279,7 @@ def delete_dream_image(entry_id):
         'recycled_image_prompt': '',
         'image_position_x': 50.0,
         'image_position_y': 50.0,
+        'image_source': None,
     }), 200
 
 
