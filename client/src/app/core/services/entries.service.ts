@@ -86,6 +86,96 @@ export class EntriesService {
     });
   }
 
+  generateDailyImage(
+    id: number,
+    imagePromptOverride?: string,
+  ): Observable<{
+    id: number;
+    image_prompt: string;
+    image_url: string;
+    recycled_image_prompt?: string;
+    image_position_x?: number;
+    image_position_y?: number;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.post<{
+      id: number;
+      image_prompt: string;
+      image_url: string;
+      recycled_image_prompt?: string;
+      image_position_x?: number;
+      image_position_y?: number;
+    }>(
+      `${this.apiUrl}/daily/${id}/generate-image`,
+      imagePromptOverride?.trim()
+        ? { image_prompt_override: imagePromptOverride.trim() }
+        : {},
+      { headers: this.getHeaders() },
+    );
+  }
+
+  uploadDailyImage(
+    id: number,
+    file: File,
+  ): Observable<{
+    id: number;
+    image_prompt: string;
+    image_url: string;
+    recycled_image_prompt?: string;
+    image_position_x?: number;
+    image_position_y?: number;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    return this.http.post<{
+      id: number;
+      image_prompt: string;
+      image_url: string;
+      recycled_image_prompt?: string;
+      image_position_x?: number;
+      image_position_y?: number;
+    }>(
+      `${this.apiUrl}/daily/${id}/image`,
+      formData,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
+  deleteDailyImage(
+    id: number,
+  ): Observable<{
+    id: number;
+    image_prompt: string;
+    image_url: string | null;
+    recycled_image_prompt?: string;
+    image_position_x?: number;
+    image_position_y?: number;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.delete<{
+      id: number;
+      image_prompt: string;
+      image_url: string | null;
+      recycled_image_prompt?: string;
+      image_position_x?: number;
+      image_position_y?: number;
+    }>(
+      `${this.apiUrl}/daily/${id}/image`,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
   // Dream entries
   getDreamEntries(): Observable<DreamEntry[]> {
     if (!this.authService.isAuthenticated()) {

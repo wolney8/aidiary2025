@@ -5,6 +5,7 @@ import pytest
 
 from services.openai_svc import (
     AnalysisRateLimitError,
+    DAILY_IMAGE_STYLE_PREFIX,
     DEFAULT_OPENAI_MAX_RETRIES,
     DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
@@ -812,3 +813,31 @@ def test_generate_image_applies_hidden_dream_style_prefix(mock_openai):
     image_call = mock_client.images.generate.call_args.kwargs
     assert image_call['prompt'].startswith(DREAM_IMAGE_STYLE_PREFIX)
     assert image_call['prompt'].endswith('Moonlit bridge above still water')
+
+
+@patch('services.openai_svc.OpenAI')
+def test_generate_image_uses_explicit_style_prefix_when_provided(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_image = MagicMock()
+    mock_image.b64_json = 'YWJjMTIz'
+    mock_response = MagicMock()
+    mock_response.data = [mock_image]
+    mock_client.images.generate.return_value = mock_response
+
+    service = OpenAIService()
+    service.generate_image('City street at dusk', style_prefix='Daily style prefix:')
+
+    image_call = mock_client.images.generate.call_args.kwargs
+    assert image_call['prompt'].startswith('Daily style prefix:')
+    assert image_call['prompt'].endswith('City street at dusk')
+
+
+def test_image_style_prefixes_forbid_visible_text():
+    assert 'visible text' in DREAM_IMAGE_STYLE_PREFIX
+    assert 'visible text' in DAILY_IMAGE_STYLE_PREFIX
+    assert 'anonymous' in DREAM_IMAGE_STYLE_PREFIX.lower()
+    assert 'anonymous' in DAILY_IMAGE_STYLE_PREFIX.lower()

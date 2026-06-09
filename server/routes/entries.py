@@ -2,6 +2,7 @@
 # CRUD routes for diary entries
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+import os
 import sqlite3
 from datetime import datetime
 import re
@@ -12,7 +13,11 @@ from services.import_service import (
     get_latest_bulk_delete_guard,
     mark_export_guard_used,
 )
-from services.openai_svc import OpenAIService
+from services.openai_svc import (
+    DAILY_IMAGE_STYLE_PREFIX,
+    DREAM_IMAGE_STYLE_PREFIX,
+    OpenAIService,
+)
 from services.media_storage import (
     delete_image,
     is_legacy_data_url,
@@ -109,15 +114,11 @@ def _normalise_uploaded_entry_image(file_bytes: bytes) -> bytes:
     else:
         image = image.convert('RGB')
 
-    cropped = ImageOps.fit(
-        image,
-        ENTRY_IMAGE_TARGET_SIZE,
-        method=Image.Resampling.LANCZOS,
-        centering=(0.5, 0.5),
-    )
+    resized = image.copy()
+    resized.thumbnail(ENTRY_IMAGE_TARGET_SIZE, Image.Resampling.LANCZOS)
 
     output = BytesIO()
-    cropped.save(
+    resized.save(
         output,
         format='JPEG',
         quality=ENTRY_IMAGE_JPEG_QUALITY,
@@ -182,6 +183,36 @@ def _resolve_entry_image_value(
     entry['image_position_y'] = _normalise_image_position(entry.get('image_position_y'))
     entry.pop('image_storage_key', None)
     return entry
+
+
+def _derive_daily_image_prompt(entry: sqlite3.Row) -> str | None:
+    title = str(entry['title'] or '').strip()
+    user_message = str(entry['user_message'] or '').strip()
+    ai_response = str(entry['ai_response'] or '').strip()
+
+    if not user_message or not ai_response:
+        return None
+
+    prompt_parts = [
+        'Create a single anonymous, visually grounded scene inspired by the emotional core of this diary entry.',
+    ]
+    if title:
+        prompt_parts.append(f'Entry theme: {title}.')
+    prompt_parts.append(f'Source context: {user_message[:320]}')
+    prompt_parts.append(f'Emotional interpretation: {ai_response[:220]}')
+    prompt_parts.append(
+        'Focus on the most emotionally meaningful atmosphere, turning point, or symbolic moment rather than a literal replay.'
+    )
+    prompt_parts.append(
+        'Show a single scene or symbolic composition, not a collage.'
+    )
+    prompt_parts.append(
+        'Keep people anonymous and avoid legible devices or readable surfaces.'
+    )
+    prompt_parts.append(
+        'Do not render any visible text, names, letters, numbers, chat messages, phone screens, app interfaces, signage, captions, or typography in the image.'
+    )
+    return ' '.join(prompt_parts)
 
 
 def _serialise_entry_row(
@@ -459,7 +490,8 @@ def update_daily_entry(entry_id):
     # Update allowed fields
     allowed_fields = [
         'title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places',
-        'tags', 'mood', 'ai_style', 'image_position_x', 'image_position_y'
+        'tags', 'mood', 'ai_style', 'image_prompt', 'recycled_image_prompt',
+        'image_url', 'image_position_x', 'image_position_y'
     ]
     updates = []
     values = []
@@ -541,6 +573,197 @@ def delete_daily_entry(entry_id):
     delete_image(entry['image_storage_key'])
     
     return '', 204
+
+
+@entries_bp.route('/daily/<int:entry_id>/generate-image', methods=['POST'])
+@jwt_required()
+def generate_daily_image(entry_id):
+    """Generate or regenerate a daily image from stored, derived, or overridden prompt."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json(silent=True) or {}
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        '''SELECT id, title, user_message, ai_response, image_prompt, image_url,
+                  image_storage_key, recycled_image_prompt, image_position_x, image_position_y
+           FROM dailydiary_entries
+           WHERE id = ? AND user_id = ?''',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    image_prompt_override = (data.get('image_prompt_override') or '').strip()
+    stored_prompt = (entry['image_prompt'] or '').strip()
+    derived_prompt = _derive_daily_image_prompt(entry) if not stored_prompt and not image_prompt_override else None
+    image_prompt = image_prompt_override or stored_prompt or (derived_prompt or '').strip()
+
+    if not image_prompt:
+        conn.close()
+        return jsonify({'error': 'This daily entry needs saved AI analysis before an image can be generated.'}), 400
+
+    try:
+        ai_service = OpenAIService()
+        image_bytes = ai_service.generate_image(
+            image_prompt,
+            style_prefix=os.getenv('OPENAI_DAILY_IMAGE_STYLE_PREFIX', DAILY_IMAGE_STYLE_PREFIX),
+        )
+        storage_key = store_generated_image(
+            image_bytes,
+            user_id=user_id,
+            entry_kind='daily',
+        )
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 503
+    except Exception as exc:
+        current_app.logger.error('Daily image generation failed for entry %s: %s', entry_id, exc)
+        conn.close()
+        return jsonify({'error': 'Image generation failed'}), 502
+
+    if image_prompt_override:
+        cursor.execute(
+            'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL WHERE id = ? AND user_id = ?',
+            (storage_key, entry_id, user_id),
+        )
+    else:
+        cursor.execute(
+            'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = ? WHERE id = ? AND user_id = ?',
+            (storage_key, image_prompt, entry_id, user_id),
+        )
+    conn.commit()
+    conn.close()
+    delete_image(entry['image_storage_key'])
+
+    return jsonify({
+        'id': entry_id,
+        'image_prompt': image_prompt,
+        'image_url': resolve_image_url(storage_key),
+        'has_existing_image': bool(entry['image_url'] or entry['image_storage_key']),
+        'recycled_image_prompt': (entry['recycled_image_prompt'] or ''),
+        'image_position_x': _normalise_image_position(entry['image_position_x']),
+        'image_position_y': _normalise_image_position(entry['image_position_y']),
+    }), 200
+
+
+@entries_bp.route('/daily/<int:entry_id>/image', methods=['POST'])
+@jwt_required()
+def upload_daily_image(entry_id):
+    """Upload or replace a daily image for the entry."""
+    user_id = int(get_jwt_identity())
+
+    if 'image' not in request.files:
+        return jsonify({'error': 'Upload an image file using the "image" field.'}), 400
+
+    uploaded_file = request.files['image']
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({'error': 'No image file was selected.'}), 400
+
+    content_type = (uploaded_file.content_type or '').lower().strip()
+    if content_type not in ALLOWED_ENTRY_IMAGE_MIME_TYPES:
+        return jsonify({'error': 'Unsupported image type. Use JPG, PNG, or WEBP.'}), 400
+
+    file_bytes = uploaded_file.read()
+    if len(file_bytes) > MAX_ENTRY_IMAGE_UPLOAD_BYTES:
+        return jsonify({'error': 'Image is too large. Maximum size is 5 MB.'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt,
+                  image_position_x, image_position_y
+           FROM dailydiary_entries
+           WHERE id = ? AND user_id = ?''',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    recycled_prompt = (
+        (entry['image_prompt'] or '').strip()
+        or (entry['recycled_image_prompt'] or '').strip()
+    )
+
+    try:
+        image_bytes = _normalise_uploaded_entry_image(file_bytes)
+        storage_key = store_uploaded_image(
+            image_bytes,
+            user_id=user_id,
+            entry_kind='daily',
+        )
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        current_app.logger.error('Daily image upload failed for entry %s: %s', entry_id, exc)
+        conn.close()
+        return jsonify({'error': 'Image upload failed'}), 500
+
+    cursor.execute(
+        'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = NULL, recycled_image_prompt = ? WHERE id = ? AND user_id = ?',
+        (storage_key, recycled_prompt or None, entry_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    delete_image(entry['image_storage_key'])
+
+    return jsonify({
+        'id': entry_id,
+        'image_prompt': '',
+        'image_url': resolve_image_url(storage_key),
+        'has_existing_image': bool(entry['image_url'] or entry['image_storage_key']),
+        'recycled_image_prompt': recycled_prompt,
+        'image_position_x': _normalise_image_position(entry['image_position_x']),
+        'image_position_y': _normalise_image_position(entry['image_position_y']),
+    }), 200
+
+
+@entries_bp.route('/daily/<int:entry_id>/image', methods=['DELETE'])
+@jwt_required()
+def delete_daily_image(entry_id):
+    """Delete only the current daily image, preserving the stored prompt."""
+    user_id = int(get_jwt_identity())
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt
+           FROM dailydiary_entries
+           WHERE id = ? AND user_id = ?''',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    restored_prompt = (
+        (entry['recycled_image_prompt'] or '').strip()
+        or (entry['image_prompt'] or '').strip()
+    )
+
+    cursor.execute(
+        'UPDATE dailydiary_entries SET image_storage_key = NULL, image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL, image_position_x = 50, image_position_y = 50 WHERE id = ? AND user_id = ?',
+        (restored_prompt or None, entry_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    delete_image(entry['image_storage_key'])
+
+    return jsonify({
+        'id': entry_id,
+        'image_prompt': restored_prompt,
+        'image_url': None,
+        'had_existing_image': bool(entry['image_url'] or entry['image_storage_key']),
+        'recycled_image_prompt': '',
+        'image_position_x': 50.0,
+        'image_position_y': 50.0,
+    }), 200
 
 # Dream entries endpoints
 @entries_bp.route('/dreams', methods=['GET'])

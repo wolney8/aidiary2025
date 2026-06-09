@@ -16,11 +16,24 @@ DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
 DREAM_IMAGE_STYLE_PREFIX = (
-    'Create a dreamlike image that feels grounded and cinematic rather than '
-    'painterly. Keep it visually believable and moderately realistic, but do '
-    'not make it look fully photographic. Use natural depth, subtle surreal '
-    'details, soft atmospheric lighting, and restrained haze. Base the image '
-    'on this dream prompt:'
+    'Create a dreamlike but believable single scene with cinematic lighting, '
+    'moderate realism, and restrained surreal details. Keep it anonymous and '
+    'symbolic rather than literal. Do not make it fully photographic, '
+    'painterly, hazy, or text-heavy. Absolutely do not include any visible '
+    'text, letters, words, numbers, names, captions, subtitles, signage, chat '
+    'bubbles, screens with messages, app interfaces, watermarks, logos, or '
+    'typography of any kind anywhere in the image. Base the image on this '
+    'dream prompt:'
+)
+DAILY_IMAGE_STYLE_PREFIX = (
+    'Create a grounded, reflective, anonymous single scene inspired by a diary '
+    'entry. Keep it moderately realistic without becoming fully photographic. '
+    'Favor atmosphere, body language, setting, and symbolic detail over literal '
+    'story transcription. Avoid showing any readable personal information. '
+    'Absolutely do not include any visible text, letters, words, numbers, '
+    'names, captions, subtitles, signage, chat bubbles, phone screens showing '
+    'messages, app interfaces, watermarks, logos, or typography of any kind '
+    'anywhere in the image. Base the image on this diary prompt:'
 )
 
 
@@ -595,11 +608,11 @@ Additional requirements for this retry:
             self._log_analysis_outcome('dream', 'fallback_exception', level='exception')
             return self._dream_contextual_fallback(text, recent_context)
     
-    def generate_image(self, prompt: str) -> bytes:
-        """Generate a dream image and return raw PNG bytes."""
+    def generate_image(self, prompt: str, style_prefix: str | None = None) -> bytes:
+        """Generate an entry image and return raw PNG bytes."""
         model = os.getenv('OPENAI_IMAGE_MODEL', 'gpt-image-1')
         size = os.getenv('OPENAI_IMAGE_SIZE', '1024x1024')
-        style_prefix = os.getenv('OPENAI_DREAM_IMAGE_STYLE_PREFIX', DREAM_IMAGE_STYLE_PREFIX).strip()
+        style_prefix = (style_prefix or os.getenv('OPENAI_DREAM_IMAGE_STYLE_PREFIX', DREAM_IMAGE_STYLE_PREFIX)).strip()
         styled_prompt = f'{style_prefix} {prompt.strip()}'
 
         response = self.client.images.generate(
