@@ -69,6 +69,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         aria-label="Entry image"
       >
         <div
+          #entryImageSurface
           class="entry-image-surface"
           [class.clickable]="canExpandDreamImage()"
           [class.expanded]="isDreamImageExpanded"
@@ -77,8 +78,8 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           [attr.aria-label]="
             canExpandDreamImage()
               ? isDreamImageExpanded
-                ? 'Collapse dream image'
-                : 'Expand dream image'
+                ? 'Collapse entry image'
+                : 'Expand entry image'
               : null
           "
           (click)="onDreamImageSurfaceClick($event)"
@@ -87,7 +88,6 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         >
           <div
             class="entry-image-actions"
-            *ngIf="isDream()"
             [class.hidden]="isDreamImageExpanded"
             (click)="$event.stopPropagation()"
           >
@@ -104,12 +104,8 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               type="button"
               *ngIf="shouldShowDreamGenerateButton()"
               (click)="generateDreamImage()"
-              [disabled]="isDreamImageBusy() || !hasDreamImagePrompt()"
-              [matTooltip]="
-                hasDreamImagePrompt()
-                  ? ''
-                  : 'Generate an AI analysis first so this entry has an image prompt.'
-              "
+              [disabled]="isDreamImageBusy() || !canGenerateEntryImage()"
+              [matTooltip]="getEntryImageGenerationTooltip()"
               [matTooltipShowDelay]="2500"
             >
               <mat-icon *ngIf="!isGeneratingDreamImage">{{
@@ -170,14 +166,16 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           </div>
           <img
             *ngIf="getEntryImageUrl()"
+            #entryImageElement
             [src]="getEntryImageUrl()!"
             alt="Entry image"
             class="entry-image"
             [style.object-position]="getDreamImageObjectPosition()"
+            (load)="onEntryImageLoaded()"
           />
           <div
             class="entry-image-adjuster"
-            *ngIf="isDream() && getEntryImageUrl() && isDreamImageExpanded"
+            *ngIf="getEntryImageUrl() && isDreamImageExpanded"
             (click)="$event.stopPropagation()"
           >
             <button
@@ -193,16 +191,18 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               class="entry-image-adjuster-panel"
               *ngIf="isAdjustingDreamImagePosition"
             >
-              <label for="dream-image-position-x">Horizontal framing</label>
-              <input
-                id="dream-image-position-x"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                [(ngModel)]="dreamImagePositionX"
-                (ngModelChange)="onDreamImagePositionChange()"
-              />
+              <ng-container *ngIf="hasHorizontalDreamImageAdjustment">
+                <label for="dream-image-position-x">Horizontal framing</label>
+                <input
+                  id="dream-image-position-x"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  [(ngModel)]="dreamImagePositionX"
+                  (ngModelChange)="onDreamImagePositionChange()"
+                />
+              </ng-container>
               <label for="dream-image-position-y">Vertical framing</label>
               <input
                 id="dream-image-position-y"
@@ -215,14 +215,29 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               />
             </div>
           </div>
+          <div
+            class="entry-image-download"
+            *ngIf="getEntryImageUrl() && isDreamImageExpanded"
+            (click)="$event.stopPropagation()"
+          >
+            <button
+              mat-mini-fab
+              color="primary"
+              type="button"
+              aria-label="Download full image"
+              (click)="downloadEntryImage($event)"
+            >
+              <mat-icon>download</mat-icon>
+            </button>
+          </div>
           <div class="entry-image-placeholder" *ngIf="!getEntryImageUrl()">
             <mat-icon>image</mat-icon>
-            <p>No image generated for this dream yet.</p>
+            <p>{{ getEntryImagePlaceholderMessage() }}</p>
           </div>
         </div>
         <div
           class="entry-image-prompt-editor"
-          *ngIf="isDream() && isEditingDreamPrompt"
+          *ngIf="isEditingDreamPrompt"
           (click)="$event.stopPropagation()"
         >
           <label for="dream-image-prompt">Image prompt</label>
@@ -236,14 +251,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           <div class="entry-image-prompt-actions">
             <button
               mat-button
-              type="button"
-              (click)="cancelDreamPromptEdit()"
-              [disabled]="isSavingDreamPrompt"
-            >
-              Cancel
-            </button>
-            <button
-              mat-icon-button
+              class="entry-image-recycle-button"
               type="button"
               *ngIf="hasRecyclableDreamPrompt()"
               (click)="restoreRecycledDreamPrompt()"
@@ -251,6 +259,14 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               aria-label="Restore previous image prompt"
             >
               <mat-icon>recycling</mat-icon>
+            </button>
+            <button
+              mat-button
+              type="button"
+              (click)="cancelDreamPromptEdit()"
+              [disabled]="isSavingDreamPrompt"
+            >
+              Cancel
             </button>
             <button
               mat-raised-button
@@ -658,6 +674,13 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         box-shadow: 0 12px 32px rgba(15, 23, 42, 0.28);
       }
 
+      .entry-image-download {
+        position: absolute;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 2;
+      }
+
       .entry-image-adjuster-panel label {
         display: block;
         margin-bottom: 0.35rem;
@@ -732,6 +755,14 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 
       .entry-image-prompt-actions .mat-mdc-button {
         background: rgba(255, 255, 255, 0.08) !important;
+      }
+
+      .entry-image-prompt-actions .entry-image-recycle-button {
+        min-width: 40px;
+        padding: 0 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .entry-image {
@@ -893,6 +924,8 @@ export class DetailComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private entriesService = inject(EntriesService);
   @ViewChild("dreamImageInput") dreamImageInput?: ElementRef<HTMLInputElement>;
+  @ViewChild("entryImageSurface") entryImageSurface?: ElementRef<HTMLDivElement>;
+  @ViewChild("entryImageElement") entryImageElement?: ElementRef<HTMLImageElement>;
 
   private readonly collapsedItemsLimit = 8;
 
@@ -906,6 +939,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   isAdjustingDreamImagePosition = false;
   isEditingDreamPrompt = false;
   isSavingDreamPrompt = false;
+  hasHorizontalDreamImageAdjustment = false;
   dreamImagePositionX = 50;
   dreamImagePositionY = 50;
   dreamPromptDraft = "";
@@ -998,10 +1032,6 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   getEntryImageUrl(): string | null {
-    if (!this.isDream()) {
-      return null;
-    }
-
     const raw = this.entry?.image_url;
     if (!raw || typeof raw !== "string") {
       return null;
@@ -1012,7 +1042,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   hasDreamImagePrompt(): boolean {
-    return this.isDream() && this.getCurrentDreamPrompt().length > 0;
+    return this.getCurrentDreamPrompt().length > 0;
   }
 
   isUsingCustomDreamImage(): boolean {
@@ -1024,7 +1054,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   canExpandDreamImage(): boolean {
-    return this.isDream() && !!this.getEntryImageUrl();
+    return !!this.getEntryImageUrl();
   }
 
   isDreamImageBusy(): boolean {
@@ -1048,15 +1078,22 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.isDreamImageExpanded = !this.isDreamImageExpanded;
     if (!this.isDreamImageExpanded) {
       this.isAdjustingDreamImagePosition = false;
+      return;
     }
+
+    setTimeout(() => this.updateDreamImageAdjustmentAvailability());
   }
 
   toggleDreamImageAdjuster(): void {
     this.isAdjustingDreamImagePosition = !this.isAdjustingDreamImagePosition;
   }
 
+  onEntryImageLoaded(): void {
+    this.updateDreamImageAdjustmentAvailability();
+  }
+
   onDreamImagePositionChange(): void {
-    if (!this.isDream() || !this.entry?.id || !this.getEntryImageUrl()) {
+    if (!this.entry?.id || !this.getEntryImageUrl()) {
       return;
     }
 
@@ -1064,15 +1101,81 @@ export class DetailComponent implements OnInit, OnDestroy {
 
     this.dreamImagePositionSaveHandle = setTimeout(() => {
       this.dreamImagePositionSaveHandle = null;
-      this.entriesService.updateDreamEntry(this.entry.id, {
-        image_position_x: this.clampDreamImagePosition(this.dreamImagePositionX),
-        image_position_y: this.clampDreamImagePosition(this.dreamImagePositionY),
-      }).subscribe({
-        error: (error) => {
-          console.error("Failed to persist dream image position:", error);
+      const imagePositionX = this.hasHorizontalDreamImageAdjustment
+        ? this.clampDreamImagePosition(this.dreamImagePositionX)
+        : 50;
+      const imagePositionY = this.clampDreamImagePosition(
+        this.dreamImagePositionY,
+      );
+      const request: { subscribe: (handlers: { error: (error: unknown) => void }) => unknown } = this.isDream()
+        ? this.entriesService.updateDreamEntry(this.entry.id, {
+            image_position_x: imagePositionX,
+            image_position_y: imagePositionY,
+          })
+        : this.entriesService.updateDailyEntry(this.entry.id, {
+            image_position_x: imagePositionX,
+            image_position_y: imagePositionY,
+          });
+      request.subscribe({
+        error: (error: unknown) => {
+          console.error("Failed to persist entry image position:", error);
         },
       });
     }, 250);
+  }
+
+  canGenerateEntryImage(): boolean {
+    if (this.hasDreamImagePrompt()) {
+      return true;
+    }
+
+    return this.isDream() ? false : this.canDeriveDailyImagePrompt();
+  }
+
+  getEntryImageGenerationTooltip(): string {
+    if (this.canGenerateEntryImage()) {
+      return "";
+    }
+
+    return this.isDream()
+      ? "Generate an AI analysis first so this entry has an image prompt."
+      : "Generate and save an AI response first so this daily entry has enough context for an image prompt.";
+  }
+
+  getEntryImagePlaceholderMessage(): string {
+    return this.isDream()
+      ? "No image generated for this dream yet."
+      : "No image added for this daily entry yet.";
+  }
+
+  private canDeriveDailyImagePrompt(): boolean {
+    const userMessage =
+      typeof this.entry?.user_message === "string"
+        ? this.entry.user_message.trim()
+        : "";
+    const aiResponse =
+      typeof this.entry?.ai_response === "string"
+        ? this.entry.ai_response.trim()
+        : "";
+    return userMessage.length > 0 && aiResponse.length > 0;
+  }
+
+  private generateEntryImageRequest(promptOverride?: string) {
+    return this.isDream()
+      ? this.entriesService.generateDreamImage(this.entry.id, promptOverride)
+      : this.entriesService.generateDailyImage(this.entry.id, promptOverride);
+  }
+
+  private uploadEntryImageRequest(file: File) {
+    return this.isDream()
+      ? this.entriesService.uploadDreamImage(this.entry.id, file)
+      : this.entriesService.uploadDailyImage(this.entry.id, file);
+  }
+
+  private deleteEntryImageRequest() {
+    return this.isDream()
+      ? this.entriesService.deleteDreamImage(this.entry.id)
+      : this.entriesService.deleteDailyImage(this.entry.id);
   }
 
   toggleDreamPromptEditor(): void {
@@ -1102,14 +1205,14 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   saveDreamPrompt(): void {
-    if (!this.entry?.id || !this.isDream() || !this.canSaveDreamPrompt()) {
+    if (!this.entry?.id || !this.canSaveDreamPrompt()) {
       return;
     }
 
     const nextPrompt = this.dreamPromptDraft.trim();
     this.isSavingDreamPrompt = true;
     this.dreamPromptOverride = nextPrompt;
-    this.entriesService.generateDreamImage(this.entry.id, nextPrompt).subscribe({
+    this.generateEntryImageRequest(nextPrompt).subscribe({
       next: (result) => {
         this.entry = {
           ...this.entry,
@@ -1134,15 +1237,14 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   generateDreamImage(): void {
-    if (!this.entry?.id || !this.isDream() || this.isDreamImageBusy()) {
+    if (!this.entry?.id || this.isDreamImageBusy()) {
       return;
     }
 
     this.isGeneratingDreamImage = true;
     this.cancelDreamImagePositionSave();
     const promptOverride = this.dreamPromptOverride.trim();
-    this.entriesService.generateDreamImage(
-      this.entry.id,
+    this.generateEntryImageRequest(
       promptOverride.length > 0 ? promptOverride : undefined,
     ).subscribe({
       next: (result) => {
@@ -1171,7 +1273,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   triggerDreamImageUpload(): void {
-    if (!this.isDream() || this.isDreamImageBusy()) {
+    if (this.isDreamImageBusy()) {
       return;
     }
 
@@ -1179,7 +1281,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   onDreamImageSelected(event: Event): void {
-    if (!this.entry?.id || !this.isDream()) {
+    if (!this.entry?.id) {
       return;
     }
 
@@ -1193,7 +1295,7 @@ export class DetailComponent implements OnInit, OnDestroy {
 
     this.cancelDreamImagePositionSave();
     this.isUploadingDreamImage = true;
-    this.entriesService.uploadDreamImage(this.entry.id, file).subscribe({
+    this.uploadEntryImageRequest(file).subscribe({
       next: (result) => {
         this.entry = {
           ...this.entry,
@@ -1216,7 +1318,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   deleteDreamImage(): void {
-    if (!this.entry?.id || !this.isDream() || this.isDreamImageBusy()) {
+    if (!this.entry?.id || this.isDreamImageBusy()) {
       return;
     }
 
@@ -1230,7 +1332,7 @@ export class DetailComponent implements OnInit, OnDestroy {
 
     this.cancelDreamImagePositionSave();
     this.isUploadingDreamImage = true;
-    this.entriesService.deleteDreamImage(this.entry.id).subscribe({
+    this.deleteEntryImageRequest().subscribe({
       next: (result) => {
         this.entry = {
           ...this.entry,
@@ -1283,6 +1385,11 @@ export class DetailComponent implements OnInit, OnDestroy {
 
     this.isDreamImageExpanded = false;
     this.isAdjustingDreamImagePosition = false;
+  }
+
+  @HostListener("window:resize")
+  onWindowResize(): void {
+    this.updateDreamImageAdjustmentAvailability();
   }
 
   getUserContent(): string {
@@ -1357,6 +1464,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   private syncDreamImageUiFromEntry(): void {
     this.dreamPromptDraft = this.getCurrentDreamPrompt();
     this.recycledDreamPrompt = this.getCurrentRecycledDreamPrompt();
+    this.hasHorizontalDreamImageAdjustment = false;
     this.dreamImagePositionX = this.clampDreamImagePosition(
       Number(this.entry?.image_position_x ?? 50),
     );
@@ -1378,8 +1486,38 @@ export class DetailComponent implements OnInit, OnDestroy {
     return message || fallback;
   }
 
+  async downloadEntryImage(event: Event): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const imageUrl = this.getEntryImageUrl();
+    if (!imageUrl) {
+      return;
+    }
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = this.getEntryImageDownloadFilename(blob.type);
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error("Failed to download entry image:", error);
+      window.open(imageUrl, "_blank", "noopener");
+    }
+  }
+
   getDreamImageObjectPosition(): string {
-    const x = this.clampDreamImagePosition(this.dreamImagePositionX);
+    const x = this.hasHorizontalDreamImageAdjustment
+      ? this.clampDreamImagePosition(this.dreamImagePositionX)
+      : 50;
     const y = this.clampDreamImagePosition(this.dreamImagePositionY);
     return `${x}% ${y}%`;
   }
@@ -1390,6 +1528,50 @@ export class DetailComponent implements OnInit, OnDestroy {
     }
 
     return Math.min(100, Math.max(0, value));
+  }
+
+  private updateDreamImageAdjustmentAvailability(): void {
+    const surface = this.entryImageSurface?.nativeElement;
+    const image = this.entryImageElement?.nativeElement;
+
+    if (
+      !surface ||
+      !image ||
+      !image.naturalWidth ||
+      !image.naturalHeight ||
+      !surface.clientWidth ||
+      !surface.clientHeight
+    ) {
+      this.hasHorizontalDreamImageAdjustment = false;
+      return;
+    }
+
+    const imageAspect = image.naturalWidth / image.naturalHeight;
+    const surfaceAspect = surface.clientWidth / surface.clientHeight;
+    this.hasHorizontalDreamImageAdjustment = imageAspect > surfaceAspect + 0.01;
+
+    if (!this.hasHorizontalDreamImageAdjustment) {
+      this.dreamImagePositionX = 50;
+    }
+  }
+
+  private getEntryImageDownloadFilename(mimeType: string): string {
+    const entryKind = this.isDream() ? "dream" : "daily";
+    const entryId = this.entry?.id ?? "entry";
+    const entryDate =
+      typeof this.entry?.entry_date === "string"
+        ? this.entry.entry_date
+        : "image";
+
+    if (mimeType === "image/png") {
+      return `${entryKind}-${entryId}-${entryDate}.png`;
+    }
+
+    if (mimeType === "image/webp") {
+      return `${entryKind}-${entryId}-${entryDate}.webp`;
+    }
+
+    return `${entryKind}-${entryId}-${entryDate}.jpg`;
   }
 
   getVisibleItems(items: string[], expanded: boolean): string[] {

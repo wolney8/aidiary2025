@@ -59,8 +59,10 @@ def client():
                 title TEXT,
                 user_message TEXT,
                 ai_response TEXT,
+                image_prompt TEXT,
                 image_url TEXT,
                 image_storage_key TEXT,
+                recycled_image_prompt TEXT,
                 image_position_x REAL DEFAULT 50,
                 image_position_y REAL DEFAULT 50,
                 daily_people_names TEXT,
@@ -1631,7 +1633,7 @@ def test_upload_dream_image_updates_entry(client):
         content_type='application/json'
     )
 
-    image_bytes = create_test_image_bytes()
+    image_bytes = create_test_image_bytes(size=(800, 1600))
 
     response = client.post(
         f'/api/dreams/{entry_id}/image',
@@ -1659,7 +1661,9 @@ def test_upload_dream_image_updates_entry(client):
     assert row[1] is None
     assert isinstance(row[2], str) and row[2].startswith('entries/dream/')
     image = Image.open(os.path.join(os.environ['MEDIA_ROOT'], row[2]))
-    assert image.size == (933, 705)
+    assert image.height == 705
+    assert image.width < image.height
+    assert image.width <= 933
 
 
 def test_upload_dream_image_rejects_invalid_type(client):
@@ -1741,6 +1745,263 @@ def test_delete_dream_image_clears_only_image(client):
     assert row[2] is None
     assert row[3] == 50.0
     assert row[4] == 50.0
+
+
+@patch('routes.entries.OpenAIService')
+def test_generate_daily_image_derives_prompt_and_stores_image(mock_service_cls, client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-17',
+            'title': 'Park walk',
+            'user_message': 'I went for a thoughtful walk through the park after work.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'ai_response': 'You seemed calm and reflective, finding a quiet reset in nature.'}),
+        content_type='application/json'
+    )
+
+    mock_service = MagicMock()
+    mock_service.generate_image.return_value = create_test_image_bytes(
+        size=(933, 705),
+        color=(90, 120, 150),
+        format_name='PNG',
+    )
+    mock_service_cls.return_value = mock_service
+
+    response = client.post(
+        f'/api/daily/{entry_id}/generate-image',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_url'].startswith('http://localhost/media/')
+    assert 'Park walk' in data['image_prompt']
+    assert 'Do not render any visible text' in data['image_prompt']
+    assert 'anonymous' in data['image_prompt'].lower()
+    assert data['image_position_x'] == 50.0
+    assert data['image_position_y'] == 50.0
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_url, image_storage_key FROM dailydiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert isinstance(row[0], str) and 'Park walk' in row[0]
+    assert 'Title:' not in row[0]
+    assert row[1] is None
+    assert isinstance(row[2], str) and row[2].startswith('entries/daily/')
+
+
+@patch('routes.entries.OpenAIService')
+def test_generate_daily_image_override_does_not_persist_it(mock_service_cls, client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-18',
+            'title': 'Original day',
+            'user_message': 'I had a difficult but meaningful conversation.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'ai_response': 'You were brave enough to have an honest conversation.',
+            'image_prompt': 'Original stored daily prompt',
+        }),
+        content_type='application/json'
+    )
+
+    mock_service = MagicMock()
+    mock_service.generate_image.return_value = create_test_image_bytes(
+        size=(933, 705),
+        color=(50, 70, 90),
+        format_name='PNG',
+    )
+    mock_service_cls.return_value = mock_service
+
+    response = client.post(
+        f'/api/daily/{entry_id}/generate-image',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_prompt_override': 'Temporary daily prompt override'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == 'Temporary daily prompt override'
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_storage_key FROM dailydiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] == 'Original stored daily prompt'
+    assert isinstance(row[1], str) and row[1].startswith('entries/daily/')
+
+
+def test_upload_daily_image_updates_entry(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-19',
+            'title': 'Upload daily',
+            'user_message': 'Daily content',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_prompt': 'Daily prompt to recycle'}),
+        content_type='application/json'
+    )
+
+    response = client.post(
+        f'/api/daily/{entry_id}/image',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'image': (BytesIO(create_test_image_bytes(size=(1600, 800))), 'daily.png')},
+        content_type='multipart/form-data'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == ''
+    assert data['recycled_image_prompt'] == 'Daily prompt to recycle'
+    assert data['image_url'].startswith('http://localhost/media/')
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_url, image_storage_key FROM dailydiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] is None
+    assert row[1] is None
+    assert isinstance(row[2], str) and row[2].startswith('entries/daily/')
+    image = Image.open(os.path.join(os.environ['MEDIA_ROOT'], row[2]))
+    assert image.width == 933
+    assert image.height < image.width
+    assert image.height <= 705
+
+
+def test_delete_daily_image_clears_only_image(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-20',
+            'title': 'Delete daily image',
+            'user_message': 'Daily content',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    client.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'image_prompt': 'Keep daily prompt',
+            'image_url': 'data:image/png;base64,abc123',
+            'image_position_x': 12,
+            'image_position_y': 72,
+        }),
+        content_type='application/json'
+    )
+
+    response = client.delete(
+        f'/api/daily/{entry_id}/image',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_prompt'] == 'Keep daily prompt'
+    assert data['image_url'] is None
+    assert data['image_position_x'] == 50.0
+    assert data['image_position_y'] == 50.0
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_prompt, image_url, image_storage_key, image_position_x, image_position_y FROM dailydiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] == 'Keep daily prompt'
+    assert row[1] is None
+    assert row[2] is None
+    assert row[3] == 50.0
+    assert row[4] == 50.0
+
+
+def test_update_daily_image_position_persists(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-21',
+            'title': 'Position daily',
+            'user_message': 'Daily content',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'image_position_x': 22,
+            'image_position_y': 64,
+        }),
+        content_type='application/json'
+    )
+
+    assert update_resp.status_code == 200
+
+    get_resp = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert get_resp.status_code == 200
+    data = json.loads(get_resp.data)
+    assert data['image_position_x'] == 22.0
+    assert data['image_position_y'] == 64.0
 
 
 def test_get_dream_entry_lazily_migrates_legacy_image_data_url(client):

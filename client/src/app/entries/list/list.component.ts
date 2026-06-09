@@ -288,19 +288,28 @@ type CalendarPreviewState = {
                 </mat-card-header>
 
                 <mat-card-content>
-                  <div class="entry-image-placeholder">
-                    <!-- Chart placeholder matching wireframes -->
-                    <mat-icon>pie_chart</mat-icon>
+                  <div
+                    class="entry-card-image"
+                    *ngIf="getEntryCardImageUrl(entry) as entryImageUrl; else entryCardPlaceholder"
+                  >
+                    <img [src]="entryImageUrl" alt="" />
                   </div>
-                  <p class="entry-snippet">{{ getEntrySnippet(entry) }}</p>
-                  <mat-chip-set *ngIf="getTags(entry).length > 0">
-                    <mat-chip
-                      *ngFor="let tag of getTags(entry).slice(0, 2)"
-                      [class.duplicate-tag-chip]="isDuplicateTag(tag)"
-                      (click)="searchForTag(tag)"
-                      >{{ tag }}</mat-chip
-                    >
-                  </mat-chip-set>
+                  <ng-template #entryCardPlaceholder>
+                    <div class="entry-image-placeholder">
+                      <mat-icon>pie_chart</mat-icon>
+                    </div>
+                  </ng-template>
+                  <div class="entry-card-copy">
+                    <p class="entry-snippet">{{ getEntrySnippet(entry) }}</p>
+                    <mat-chip-set *ngIf="getTags(entry).length > 0">
+                      <mat-chip
+                        *ngFor="let tag of getTags(entry).slice(0, 2)"
+                        [class.duplicate-tag-chip]="isDuplicateTag(tag)"
+                        (click)="searchForTag(tag)"
+                        >{{ tag }}</mat-chip
+                      >
+                    </mat-chip-set>
+                  </div>
                 </mat-card-content>
 
                 <mat-card-actions>
@@ -1703,11 +1712,11 @@ export class ListComponent implements OnInit, OnDestroy {
     return imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : null;
   }
 
-  private getCalendarPreviewImageUrl(entry: EntryItem): string | null {
-    if (!this.isDreamEntry(entry)) {
-      return null;
-    }
+  getEntryCardImageUrl(entry: EntryItem): string | null {
+    return this.getCalendarPreviewImageUrl(entry);
+  }
 
+  private getCalendarPreviewImageUrl(entry: EntryItem): string | null {
     const raw = typeof entry.image_url === "string" ? entry.image_url.trim() : "";
     return raw.length > 0 ? raw : null;
   }

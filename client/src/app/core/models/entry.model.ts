@@ -7,12 +7,14 @@ export interface DailyEntry {
   title?: string;
   user_message?: string;
   ai_response?: string;
+  image_prompt?: string;
   daily_people_names?: string;
   daily_places?: string;
   tags?: string;
   mood?: string;
   ai_style?: string;
   image_url?: string;
+  recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;
 }
