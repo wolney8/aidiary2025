@@ -841,3 +841,5 @@ def test_image_style_prefixes_forbid_visible_text():
     assert 'visible text' in DAILY_IMAGE_STYLE_PREFIX
     assert 'anonymous' in DREAM_IMAGE_STYLE_PREFIX.lower()
     assert 'anonymous' in DAILY_IMAGE_STYLE_PREFIX.lower()
+    assert 'watercolor' in DREAM_IMAGE_STYLE_PREFIX.lower()
+    assert 'watercolor' in DAILY_IMAGE_STYLE_PREFIX.lower()

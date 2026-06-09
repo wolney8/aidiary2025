@@ -17,23 +17,27 @@ DEFAULT_OPENAI_MAX_RETRIES = 2
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
 DREAM_IMAGE_STYLE_PREFIX = (
     'Create a dreamlike but believable single scene with cinematic lighting, '
-    'moderate realism, and restrained surreal details. Keep it anonymous and '
-    'symbolic rather than literal. Do not make it fully photographic, '
-    'painterly, hazy, or text-heavy. Absolutely do not include any visible '
-    'text, letters, words, numbers, names, captions, subtitles, signage, chat '
-    'bubbles, screens with messages, app interfaces, watermarks, logos, or '
-    'typography of any kind anywhere in the image. Base the image on this '
-    'dream prompt:'
+    'clean modern digital illustration or film-still energy, moderate realism, '
+    'and restrained surreal detail. Keep it anonymous, symbolic, and visually '
+    'clear rather than literal. Do not make it fully photographic. Avoid any '
+    'watercolor, oil-paint, gouache, wash, smeared brushwork, foggy bloom, '
+    'dreamy paint texture, or hazy painterly effect. Absolutely do not include '
+    'any visible text, letters, words, numbers, names, captions, subtitles, '
+    'signage, chat bubbles, screens with messages, app interfaces, watermarks, '
+    'logos, or typography of any kind anywhere in the image. Base the image on '
+    'this dream prompt:'
 )
 DAILY_IMAGE_STYLE_PREFIX = (
     'Create a grounded, reflective, anonymous single scene inspired by a diary '
-    'entry. Keep it moderately realistic without becoming fully photographic. '
-    'Favor atmosphere, body language, setting, and symbolic detail over literal '
-    'story transcription. Avoid showing any readable personal information. '
-    'Absolutely do not include any visible text, letters, words, numbers, '
-    'names, captions, subtitles, signage, chat bubbles, phone screens showing '
-    'messages, app interfaces, watermarks, logos, or typography of any kind '
-    'anywhere in the image. Base the image on this diary prompt:'
+    'entry. Use a clean modern digital illustration or cinematic-still look '
+    'with moderate realism, natural lighting, and clear forms. Favor '
+    'atmosphere, body language, setting, and symbolic detail over literal '
+    'story transcription. Do not make it watercolor, oil-painted, washed out, '
+    'smudged, hazy, or painterly. Avoid showing any readable personal '
+    'information. Absolutely do not include any visible text, letters, words, '
+    'numbers, names, captions, subtitles, signage, chat bubbles, phone screens '
+    'showing messages, app interfaces, watermarks, logos, or typography of any '
+    'kind anywhere in the image. Base the image on this diary prompt:'
 )
 
 

@@ -3,6 +3,7 @@ export interface DailyEntry {
   id?: number;
   user_id?: number;
   entry_date: string;
+  entry_time?: string;
   entry_number?: number;
   title?: string;
   user_message?: string;
@@ -14,6 +15,7 @@ export interface DailyEntry {
   mood?: string;
   ai_style?: string;
   image_url?: string;
+  image_source?: string;
   recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;
@@ -23,6 +25,7 @@ export interface DreamEntry {
   id?: number;
   user_id?: number;
   entry_date: string;
+  entry_time?: string;
   entry_number?: number;
   title?: string;
   cast?: string;
@@ -38,6 +41,7 @@ export interface DreamEntry {
   interpretation?: string;
   image_prompt?: string;
   image_url?: string;
+  image_source?: string;
   recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;

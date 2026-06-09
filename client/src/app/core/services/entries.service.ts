@@ -93,6 +93,7 @@ export class EntriesService {
     id: number;
     image_prompt: string;
     image_url: string;
+    image_source?: string | null;
     recycled_image_prompt?: string;
     image_position_x?: number;
     image_position_y?: number;
@@ -105,6 +106,7 @@ export class EntriesService {
       id: number;
       image_prompt: string;
       image_url: string;
+      image_source?: string | null;
       recycled_image_prompt?: string;
       image_position_x?: number;
       image_position_y?: number;
@@ -124,6 +126,7 @@ export class EntriesService {
     id: number;
     image_prompt: string;
     image_url: string;
+    image_source?: string | null;
     recycled_image_prompt?: string;
     image_position_x?: number;
     image_position_y?: number;
@@ -139,6 +142,7 @@ export class EntriesService {
       id: number;
       image_prompt: string;
       image_url: string;
+      image_source?: string | null;
       recycled_image_prompt?: string;
       image_position_x?: number;
       image_position_y?: number;
@@ -155,6 +159,7 @@ export class EntriesService {
     id: number;
     image_prompt: string;
     image_url: string | null;
+    image_source?: string | null;
     recycled_image_prompt?: string;
     image_position_x?: number;
     image_position_y?: number;
@@ -167,6 +172,7 @@ export class EntriesService {
       id: number;
       image_prompt: string;
       image_url: string | null;
+      image_source?: string | null;
       recycled_image_prompt?: string;
       image_position_x?: number;
       image_position_y?: number;
@@ -237,6 +243,7 @@ export class EntriesService {
     id: number;
     image_prompt: string;
     image_url: string;
+    image_source?: string | null;
     recycled_image_prompt?: string;
     image_position_x?: number;
     image_position_y?: number;
@@ -249,6 +256,7 @@ export class EntriesService {
       id: number;
       image_prompt: string;
       image_url: string;
+      image_source?: string | null;
       recycled_image_prompt?: string;
       image_position_x?: number;
       image_position_y?: number;
@@ -268,6 +276,7 @@ export class EntriesService {
     id: number;
     image_prompt: string;
     image_url: string;
+    image_source?: string | null;
     recycled_image_prompt?: string;
     image_position_x?: number;
     image_position_y?: number;
@@ -283,6 +292,7 @@ export class EntriesService {
       id: number;
       image_prompt: string;
       image_url: string;
+      image_source?: string | null;
       recycled_image_prompt?: string;
       image_position_x?: number;
       image_position_y?: number;
@@ -299,6 +309,7 @@ export class EntriesService {
     id: number;
     image_prompt: string;
     image_url: string | null;
+    image_source?: string | null;
     recycled_image_prompt?: string;
     image_position_x?: number;
     image_position_y?: number;
@@ -311,6 +322,7 @@ export class EntriesService {
       id: number;
       image_prompt: string;
       image_url: string | null;
+      image_source?: string | null;
       recycled_image_prompt?: string;
       image_position_x?: number;
       image_position_y?: number;

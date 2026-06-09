@@ -8,17 +8,20 @@ from typing import Callable
 
 _TARGET_COLUMNS: dict[str, dict[str, str]] = {
     'dailydiary_entries': {
+        'entry_time': 'TEXT',
         'mood': 'TEXT',
         'ai_style': 'TEXT',
         'ai_response': 'TEXT',
         'image_prompt': 'TEXT',
         'image_url': 'TEXT',
         'image_storage_key': 'TEXT',
+        'image_source': 'TEXT',
         'recycled_image_prompt': 'TEXT',
         'image_position_x': 'REAL DEFAULT 50',
         'image_position_y': 'REAL DEFAULT 50',
     },
     'dreamdiary_entries': {
+        'entry_time': 'TEXT',
         'mood': 'TEXT',
         'ai_style': 'TEXT',
         'summary': 'TEXT',
@@ -26,6 +29,7 @@ _TARGET_COLUMNS: dict[str, dict[str, str]] = {
         'image_prompt': 'TEXT',
         'image_url': 'TEXT',
         'image_storage_key': 'TEXT',
+        'image_source': 'TEXT',
         'recycled_image_prompt': 'TEXT',
         'image_position_x': 'REAL DEFAULT 50',
         'image_position_y': 'REAL DEFAULT 50',

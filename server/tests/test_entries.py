@@ -55,6 +55,7 @@ def client():
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
                 entry_date DATE,
+                entry_time TEXT,
                 entry_number INTEGER,
                 title TEXT,
                 user_message TEXT,
@@ -62,6 +63,7 @@ def client():
                 image_prompt TEXT,
                 image_url TEXT,
                 image_storage_key TEXT,
+                image_source TEXT,
                 recycled_image_prompt TEXT,
                 image_position_x REAL DEFAULT 50,
                 image_position_y REAL DEFAULT 50,
@@ -80,6 +82,7 @@ def client():
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER,
                 entry_date DATE,
+                entry_time TEXT,
                 entry_number INTEGER,
                 title TEXT,
                 cast TEXT,
@@ -96,6 +99,7 @@ def client():
                 image_prompt TEXT,
                 image_url TEXT,
                 image_storage_key TEXT,
+                image_source TEXT,
                 recycled_image_prompt TEXT,
                 image_position_x REAL DEFAULT 50,
                 image_position_y REAL DEFAULT 50,
@@ -342,6 +346,7 @@ def test_create_daily_entry(client):
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'entry_date': '2024-01-15',
+            'entry_time': '14:35',
             'user_message': 'Today was a good day'
         }),
         content_type='application/json'
@@ -350,6 +355,7 @@ def test_create_daily_entry(client):
     assert response.status_code == 201
     data = json.loads(response.data)
     assert 'id' in data
+    assert data['entry_time'] == '14:35'
     assert data['entry_number'] == 1
 
 
@@ -1242,6 +1248,7 @@ def test_update_daily_entry_updates_date_mood_and_ai_style(client):
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'entry_date': '2024-03-03',
+            'entry_time': '09:10',
             'user_message': 'Original text',
             'mood': 'happy',
             'ai_style': 'friendly'
@@ -1266,6 +1273,7 @@ def test_update_daily_entry_updates_date_mood_and_ai_style(client):
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'entry_date': '2024-03-04',
+            'entry_time': '17:45',
             'mood': 'thoughtful',
             'ai_style': 'reflective',
             'user_message': 'Updated text'
@@ -1279,6 +1287,7 @@ def test_update_daily_entry_updates_date_mood_and_ai_style(client):
     updated = next(entry for entry in entries if entry['id'] == entry_id)
 
     assert updated['entry_date'] == '2024-03-04'
+    assert updated['entry_time'] == '17:45'
     assert updated['mood'] == 'thoughtful'
     assert updated['ai_style'] == 'reflective'
     assert updated['entry_number'] == 2
@@ -1292,6 +1301,7 @@ def test_update_dream_entry_updates_date_mood_and_ai_style(client):
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'entry_date': '2024-03-05',
+            'entry_time': '07:15',
             'title': 'Original dream',
             'plot': 'I crossed a bridge',
             'mood': 'peaceful',
@@ -1317,6 +1327,7 @@ def test_update_dream_entry_updates_date_mood_and_ai_style(client):
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'entry_date': '2024-03-06',
+            'entry_time': '22:05',
             'mood': 'anxious',
             'ai_style': 'brief',
             'plot': 'Updated dream plot'
@@ -1330,6 +1341,7 @@ def test_update_dream_entry_updates_date_mood_and_ai_style(client):
     updated = next(entry for entry in entries if entry['id'] == entry_id)
 
     assert updated['entry_date'] == '2024-03-06'
+    assert updated['entry_time'] == '22:05'
     assert updated['mood'] == 'anxious'
     assert updated['ai_style'] == 'brief'
     assert updated['entry_number'] == 2
@@ -1497,18 +1509,20 @@ def test_generate_dream_image_updates_entry(mock_service_cls, client):
     data = json.loads(response.data)
     assert data['image_prompt'] == 'Moonlit lake with silver reflections'
     assert data['image_url'].startswith('http://localhost/media/')
+    assert data['image_source'] == 'ai'
     assert data['image_position_x'] == 50.0
     assert data['image_position_y'] == 50.0
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_url, image_storage_key FROM dreamdiary_entries WHERE id = ?',
+        'SELECT image_url, image_storage_key, image_source FROM dreamdiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
     assert row[0] is None
     assert isinstance(row[1], str) and row[1].startswith('entries/dream/')
+    assert row[2] == 'ai'
     assert os.path.exists(os.path.join(os.environ['MEDIA_ROOT'], row[1]))
 
 
@@ -1647,19 +1661,21 @@ def test_upload_dream_image_updates_entry(client):
     assert data['image_prompt'] == ''
     assert data['recycled_image_prompt'] == 'Moonlit hills'
     assert data['image_url'].startswith('http://localhost/media/')
+    assert data['image_source'] == 'upload'
     assert data['image_position_x'] == 50.0
     assert data['image_position_y'] == 50.0
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_prompt, image_url, image_storage_key FROM dreamdiary_entries WHERE id = ?',
+        'SELECT image_prompt, image_url, image_storage_key, image_source FROM dreamdiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
     assert row[0] is None
     assert row[1] is None
     assert isinstance(row[2], str) and row[2].startswith('entries/dream/')
+    assert row[3] == 'upload'
     image = Image.open(os.path.join(os.environ['MEDIA_ROOT'], row[2]))
     assert image.height == 705
     assert image.width < image.height
@@ -1791,6 +1807,8 @@ def test_generate_daily_image_derives_prompt_and_stores_image(mock_service_cls, 
     assert 'Park walk' in data['image_prompt']
     assert 'Do not render any visible text' in data['image_prompt']
     assert 'anonymous' in data['image_prompt'].lower()
+    assert 'Source context:' not in data['image_prompt']
+    assert data['image_source'] == 'ai'
     assert data['image_position_x'] == 50.0
     assert data['image_position_y'] == 50.0
 
@@ -1897,17 +1915,19 @@ def test_upload_daily_image_updates_entry(client):
     assert data['image_prompt'] == ''
     assert data['recycled_image_prompt'] == 'Daily prompt to recycle'
     assert data['image_url'].startswith('http://localhost/media/')
+    assert data['image_source'] == 'upload'
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_prompt, image_url, image_storage_key FROM dailydiary_entries WHERE id = ?',
+        'SELECT image_prompt, image_url, image_storage_key, image_source FROM dailydiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
     assert row[0] is None
     assert row[1] is None
     assert isinstance(row[2], str) and row[2].startswith('entries/daily/')
+    assert row[3] == 'upload'
     image = Image.open(os.path.join(os.environ['MEDIA_ROOT'], row[2]))
     assert image.width == 933
     assert image.height < image.width
