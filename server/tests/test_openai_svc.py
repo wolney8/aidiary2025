@@ -808,7 +808,7 @@ def test_generate_image_applies_hidden_dream_style_prefix(mock_openai):
     service = OpenAIService()
     result = service.generate_image('Moonlit bridge above still water')
 
-    assert result == 'data:image/png;base64,YWJjMTIz'
+    assert result == b'abc123'
     image_call = mock_client.images.generate.call_args.kwargs
     assert image_call['prompt'].startswith(DREAM_IMAGE_STYLE_PREFIX)
     assert image_call['prompt'].endswith('Moonlit bridge above still water')

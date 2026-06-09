@@ -1,6 +1,6 @@
 # Flask application factory with CORS and JWT setup
 import os
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
@@ -11,6 +11,7 @@ from services.runtime_migrations import (
     ensure_import_sessions_table,
     ensure_user_settings_columns,
 )
+from services.media_storage import DEFAULT_MEDIA_URL_PREFIX, ensure_media_root
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +57,16 @@ def create_app():
         app.logger.warning('Database file not found at %s', database_path)
 
     app.config['DATABASE_PATH'] = database_path
+    media_root = os.getenv('MEDIA_ROOT')
+    fallback_media_root = os.path.join(app.root_path, 'media')
+    if media_root:
+        resolved_media_root = media_root if os.path.isabs(media_root) else os.path.join(app.root_path, media_root)
+    else:
+        resolved_media_root = fallback_media_root
+    app.config['MEDIA_ROOT'] = resolved_media_root
+    app.config['MEDIA_URL_PREFIX'] = DEFAULT_MEDIA_URL_PREFIX
+    app.config['MEDIA_BASE_URL'] = (os.getenv('MEDIA_BASE_URL') or '').strip() or None
+    ensure_media_root(resolved_media_root)
 
     try:
         added_columns = ensure_entry_mood_style_columns(database_path, app.logger.info)
@@ -145,6 +156,10 @@ def create_app():
     @app.route('/health')
     def health():
         return {'status': 'healthy'}, 200
+
+    @app.route(f'{DEFAULT_MEDIA_URL_PREFIX}/<path:storage_key>')
+    def serve_media(storage_key: str):
+        return send_from_directory(app.config['MEDIA_ROOT'], storage_key, conditional=True)
 
     # Download NLTK data and backfill any entries that were imported before data was available
     _ensure_nltk_data()

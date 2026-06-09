@@ -5,6 +5,7 @@ import json
 from app import create_app
 import tempfile
 import os
+import shutil
 import base64
 from io import BytesIO
 from unittest.mock import patch, MagicMock
@@ -16,7 +17,9 @@ from PIL import Image
 def client():
     """Create test client with temporary database."""
     db_fd, db_path = tempfile.mkstemp()
+    media_root = tempfile.mkdtemp()
     os.environ['DB_PATH'] = db_path
+    os.environ['MEDIA_ROOT'] = media_root
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['OPENAI_API_KEY'] = 'test-key'
     
@@ -56,6 +59,10 @@ def client():
                 title TEXT,
                 user_message TEXT,
                 ai_response TEXT,
+                image_url TEXT,
+                image_storage_key TEXT,
+                image_position_x REAL DEFAULT 50,
+                image_position_y REAL DEFAULT 50,
                 daily_people_names TEXT,
                 daily_places TEXT,
                 tags TEXT,
@@ -86,7 +93,10 @@ def client():
                 interpretation TEXT,
                 image_prompt TEXT,
                 image_url TEXT,
+                image_storage_key TEXT,
                 recycled_image_prompt TEXT,
+                image_position_x REAL DEFAULT 50,
+                image_position_y REAL DEFAULT 50,
                 dream_people_names TEXT,
                 dream_places TEXT,
                 tags TEXT,
@@ -103,13 +113,16 @@ def client():
     
     os.close(db_fd)
     os.unlink(db_path)
+    shutil.rmtree(media_root)
 
 
 @pytest.fixture
 def client_schema_without_mood_columns():
     """Create test client where diary tables start without mood/ai_style columns."""
     db_fd, db_path = tempfile.mkstemp()
+    media_root = tempfile.mkdtemp()
     os.environ['DB_PATH'] = db_path
+    os.environ['MEDIA_ROOT'] = media_root
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
@@ -188,13 +201,16 @@ def client_schema_without_mood_columns():
 
     os.close(db_fd)
     os.unlink(db_path)
+    shutil.rmtree(media_root)
 
 
 @pytest.fixture
 def client_schema_without_analysis_columns():
     """Create test client where analysis result columns are missing initially."""
     db_fd, db_path = tempfile.mkstemp()
+    media_root = tempfile.mkdtemp()
     os.environ['DB_PATH'] = db_path
+    os.environ['MEDIA_ROOT'] = media_root
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
@@ -271,6 +287,7 @@ def client_schema_without_analysis_columns():
 
     os.close(db_fd)
     os.unlink(db_path)
+    shutil.rmtree(media_root)
 
 def get_auth_token(client):
     """Helper to get authentication token."""
@@ -1460,7 +1477,11 @@ def test_generate_dream_image_updates_entry(mock_service_cls, client):
     )
 
     mock_service = MagicMock()
-    mock_service.generate_image.return_value = 'data:image/png;base64,abc123'
+    mock_service.generate_image.return_value = create_test_image_bytes(
+        size=(933, 705),
+        color=(10, 20, 30),
+        format_name='PNG',
+    )
     mock_service_cls.return_value = mock_service
 
     response = client.post(
@@ -1473,16 +1494,20 @@ def test_generate_dream_image_updates_entry(mock_service_cls, client):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['image_prompt'] == 'Moonlit lake with silver reflections'
-    assert data['image_url'] == 'data:image/png;base64,abc123'
+    assert data['image_url'].startswith('http://localhost/media/')
+    assert data['image_position_x'] == 50.0
+    assert data['image_position_y'] == 50.0
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_url FROM dreamdiary_entries WHERE id = ?',
+        'SELECT image_url, image_storage_key FROM dreamdiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
-    assert row[0] == 'data:image/png;base64,abc123'
+    assert row[0] is None
+    assert isinstance(row[1], str) and row[1].startswith('entries/dream/')
+    assert os.path.exists(os.path.join(os.environ['MEDIA_ROOT'], row[1]))
 
 
 @patch('routes.entries.OpenAIService')
@@ -1509,7 +1534,11 @@ def test_generate_dream_image_uses_override_without_persisting_it(mock_service_c
     )
 
     mock_service = MagicMock()
-    mock_service.generate_image.return_value = 'data:image/png;base64,override123'
+    mock_service.generate_image.return_value = create_test_image_bytes(
+        size=(933, 705),
+        color=(30, 40, 50),
+        format_name='PNG',
+    )
     mock_service_cls.return_value = mock_service
 
     response = client.post(
@@ -1522,18 +1551,19 @@ def test_generate_dream_image_uses_override_without_persisting_it(mock_service_c
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['image_prompt'] == 'Temporary edited prompt'
-    assert data['image_url'] == 'data:image/png;base64,override123'
+    assert data['image_url'].startswith('http://localhost/media/')
     mock_service.generate_image.assert_called_once_with('Temporary edited prompt')
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_prompt, image_url FROM dreamdiary_entries WHERE id = ?',
+        'SELECT image_prompt, image_url, image_storage_key FROM dreamdiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
     assert row[0] == 'Original stored prompt'
-    assert row[1] == 'data:image/png;base64,override123'
+    assert row[1] is None
+    assert isinstance(row[2], str) and row[2].startswith('entries/dream/')
 
 
 def test_generate_dream_image_rejects_missing_prompt(client):
@@ -1614,21 +1644,22 @@ def test_upload_dream_image_updates_entry(client):
     data = json.loads(response.data)
     assert data['image_prompt'] == ''
     assert data['recycled_image_prompt'] == 'Moonlit hills'
-    assert data['image_url'].startswith('data:image/jpeg;base64,')
-
-    encoded = data['image_url'].split(',', 1)[1]
-    image = Image.open(BytesIO(base64.b64decode(encoded)))
-    assert image.size == (933, 705)
+    assert data['image_url'].startswith('http://localhost/media/')
+    assert data['image_position_x'] == 50.0
+    assert data['image_position_y'] == 50.0
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_prompt, image_url FROM dreamdiary_entries WHERE id = ?',
+        'SELECT image_prompt, image_url, image_storage_key FROM dreamdiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
     assert row[0] is None
-    assert isinstance(row[1], str) and row[1].startswith('data:image/jpeg;base64,')
+    assert row[1] is None
+    assert isinstance(row[2], str) and row[2].startswith('entries/dream/')
+    image = Image.open(os.path.join(os.environ['MEDIA_ROOT'], row[2]))
+    assert image.size == (933, 705)
 
 
 def test_upload_dream_image_rejects_invalid_type(client):
@@ -1678,7 +1709,10 @@ def test_delete_dream_image_clears_only_image(client):
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'image_prompt': 'Keep this prompt',
-            'image_url': 'data:image/png;base64,abc123'
+            'image_storage_key': None,
+            'image_url': 'data:image/png;base64,abc123',
+            'image_position_x': 20,
+            'image_position_y': 80,
         }),
         content_type='application/json'
     )
@@ -1692,13 +1726,99 @@ def test_delete_dream_image_clears_only_image(client):
     data = json.loads(response.data)
     assert data['image_prompt'] == 'Keep this prompt'
     assert data['image_url'] is None
+    assert data['image_position_x'] == 50.0
+    assert data['image_position_y'] == 50.0
 
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])
     row = conn.execute(
-        'SELECT image_prompt, image_url FROM dreamdiary_entries WHERE id = ?',
+        'SELECT image_prompt, image_url, image_storage_key, image_position_x, image_position_y FROM dreamdiary_entries WHERE id = ?',
         (entry_id,),
     ).fetchone()
     conn.close()
     assert row[0] == 'Keep this prompt'
     assert row[1] is None
+    assert row[2] is None
+    assert row[3] == 50.0
+    assert row[4] == 50.0
+
+
+def test_get_dream_entry_lazily_migrates_legacy_image_data_url(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-15',
+            'title': 'Legacy image dream',
+            'plot': 'Dream text',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    legacy_image = f"data:image/png;base64,{base64.b64encode(create_test_image_bytes(format_name='PNG')).decode('ascii')}"
+    client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'image_url': legacy_image}),
+        content_type='application/json'
+    )
+
+    response = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['image_url'].startswith('http://localhost/media/')
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT image_url, image_storage_key FROM dreamdiary_entries WHERE id = ?',
+        (entry_id,),
+    ).fetchone()
+    conn.close()
+    assert row[0] is None
+    assert isinstance(row[1], str) and row[1].startswith('entries/dream/')
+    assert os.path.exists(os.path.join(os.environ['MEDIA_ROOT'], row[1]))
+
+
+def test_update_dream_image_position_persists(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-16',
+            'title': 'Positioned dream',
+            'plot': 'Dream text',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'image_position_x': 18,
+            'image_position_y': 76,
+        }),
+        content_type='application/json'
+    )
+
+    assert update_resp.status_code == 200
+
+    get_resp = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert get_resp.status_code == 200
+    data = json.loads(get_resp.data)
+    assert data['image_position_x'] == 18.0
+    assert data['image_position_y'] == 76.0
