@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  OnDestroy,
   OnInit,
   ViewChild,
   inject,
@@ -200,6 +201,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
                 max="100"
                 step="1"
                 [(ngModel)]="dreamImagePositionX"
+                (ngModelChange)="onDreamImagePositionChange()"
               />
               <label for="dream-image-position-y">Vertical framing</label>
               <input
@@ -209,6 +211,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
                 max="100"
                 step="1"
                 [(ngModel)]="dreamImagePositionY"
+                (ngModelChange)="onDreamImagePositionChange()"
               />
             </div>
           </div>
@@ -885,7 +888,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
     `,
   ],
 })
-export class DetailComponent implements OnInit {
+export class DetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private entriesService = inject(EntriesService);
@@ -908,6 +911,8 @@ export class DetailComponent implements OnInit {
   dreamPromptDraft = "";
   dreamPromptOverride = "";
   recycledDreamPrompt = "";
+  private dreamImagePositionSaveHandle: ReturnType<typeof setTimeout> | null =
+    null;
 
   showAllTags = false;
   showAllPeople = false;
@@ -922,18 +927,20 @@ export class DetailComponent implements OnInit {
       next: (entry) => {
         this.entry = entry;
         this.entryType = "daily";
-        this.dreamPromptDraft = this.getCurrentDreamPrompt();
-        this.recycledDreamPrompt = this.getCurrentRecycledDreamPrompt();
+        this.syncDreamImageUiFromEntry();
       },
       error: () => {
         this.entriesService.getDreamEntry(id).subscribe((entry) => {
           this.entry = entry;
           this.entryType = "dream";
-          this.dreamPromptDraft = this.getCurrentDreamPrompt();
-          this.recycledDreamPrompt = this.getCurrentRecycledDreamPrompt();
+          this.syncDreamImageUiFromEntry();
         });
       },
     });
+  }
+
+  ngOnDestroy(): void {
+    this.cancelDreamImagePositionSave();
   }
 
   goBack(): void {
@@ -1048,6 +1055,26 @@ export class DetailComponent implements OnInit {
     this.isAdjustingDreamImagePosition = !this.isAdjustingDreamImagePosition;
   }
 
+  onDreamImagePositionChange(): void {
+    if (!this.isDream() || !this.entry?.id || !this.getEntryImageUrl()) {
+      return;
+    }
+
+    this.cancelDreamImagePositionSave();
+
+    this.dreamImagePositionSaveHandle = setTimeout(() => {
+      this.dreamImagePositionSaveHandle = null;
+      this.entriesService.updateDreamEntry(this.entry.id, {
+        image_position_x: this.clampDreamImagePosition(this.dreamImagePositionX),
+        image_position_y: this.clampDreamImagePosition(this.dreamImagePositionY),
+      }).subscribe({
+        error: (error) => {
+          console.error("Failed to persist dream image position:", error);
+        },
+      });
+    }, 250);
+  }
+
   toggleDreamPromptEditor(): void {
     this.isEditingDreamPrompt = !this.isEditingDreamPrompt;
     this.dreamPromptDraft = this.getCurrentDreamPrompt();
@@ -1088,8 +1115,10 @@ export class DetailComponent implements OnInit {
           ...this.entry,
           image_url: result.image_url,
           recycled_image_prompt: result.recycled_image_prompt ?? this.entry?.recycled_image_prompt ?? "",
+          image_position_x: result.image_position_x ?? this.entry?.image_position_x ?? 50,
+          image_position_y: result.image_position_y ?? this.entry?.image_position_y ?? 50,
         };
-        this.dreamPromptDraft = nextPrompt;
+        this.syncDreamImageUiFromEntry();
         this.isGeneratingDreamImage = false;
         this.isSavingDreamPrompt = false;
         this.isEditingDreamPrompt = false;
@@ -1110,6 +1139,7 @@ export class DetailComponent implements OnInit {
     }
 
     this.isGeneratingDreamImage = true;
+    this.cancelDreamImagePositionSave();
     const promptOverride = this.dreamPromptOverride.trim();
     this.entriesService.generateDreamImage(
       this.entry.id,
@@ -1120,6 +1150,8 @@ export class DetailComponent implements OnInit {
           ...this.entry,
           image_url: result.image_url,
           recycled_image_prompt: result.recycled_image_prompt ?? "",
+          image_position_x: result.image_position_x ?? this.entry?.image_position_x ?? 50,
+          image_position_y: result.image_position_y ?? this.entry?.image_position_y ?? 50,
         };
         if (!promptOverride.length) {
           this.entry = {
@@ -1127,8 +1159,7 @@ export class DetailComponent implements OnInit {
             image_prompt: result.image_prompt,
           };
         }
-        this.dreamPromptDraft = this.getCurrentDreamPrompt();
-        this.recycledDreamPrompt = result.recycled_image_prompt?.trim() || "";
+        this.syncDreamImageUiFromEntry();
         this.isGeneratingDreamImage = false;
       },
       error: (error) => {
@@ -1160,6 +1191,7 @@ export class DetailComponent implements OnInit {
       return;
     }
 
+    this.cancelDreamImagePositionSave();
     this.isUploadingDreamImage = true;
     this.entriesService.uploadDreamImage(this.entry.id, file).subscribe({
       next: (result) => {
@@ -1168,10 +1200,11 @@ export class DetailComponent implements OnInit {
           image_prompt: result.image_prompt,
           image_url: result.image_url,
           recycled_image_prompt: result.recycled_image_prompt ?? "",
+          image_position_x: result.image_position_x ?? this.entry?.image_position_x ?? 50,
+          image_position_y: result.image_position_y ?? this.entry?.image_position_y ?? 50,
         };
         this.dreamPromptOverride = "";
-        this.dreamPromptDraft = result.image_prompt;
-        this.recycledDreamPrompt = result.recycled_image_prompt?.trim() || "";
+        this.syncDreamImageUiFromEntry();
         this.isUploadingDreamImage = false;
       },
       error: (error) => {
@@ -1195,6 +1228,7 @@ export class DetailComponent implements OnInit {
       return;
     }
 
+    this.cancelDreamImagePositionSave();
     this.isUploadingDreamImage = true;
     this.entriesService.deleteDreamImage(this.entry.id).subscribe({
       next: (result) => {
@@ -1203,12 +1237,13 @@ export class DetailComponent implements OnInit {
           image_prompt: result.image_prompt,
           image_url: result.image_url,
           recycled_image_prompt: result.recycled_image_prompt ?? "",
+          image_position_x: result.image_position_x ?? 50,
+          image_position_y: result.image_position_y ?? 50,
         };
         this.dreamPromptOverride = "";
         this.isDreamImageExpanded = false;
         this.isAdjustingDreamImagePosition = false;
-        this.dreamPromptDraft = result.image_prompt;
-        this.recycledDreamPrompt = result.recycled_image_prompt?.trim() || "";
+        this.syncDreamImageUiFromEntry();
         this.isUploadingDreamImage = false;
       },
       error: (error) => {
@@ -1317,6 +1352,24 @@ export class DetailComponent implements OnInit {
     return typeof this.entry?.recycled_image_prompt === "string"
       ? this.entry.recycled_image_prompt.trim()
       : "";
+  }
+
+  private syncDreamImageUiFromEntry(): void {
+    this.dreamPromptDraft = this.getCurrentDreamPrompt();
+    this.recycledDreamPrompt = this.getCurrentRecycledDreamPrompt();
+    this.dreamImagePositionX = this.clampDreamImagePosition(
+      Number(this.entry?.image_position_x ?? 50),
+    );
+    this.dreamImagePositionY = this.clampDreamImagePosition(
+      Number(this.entry?.image_position_y ?? 50),
+    );
+  }
+
+  private cancelDreamImagePositionSave(): void {
+    if (this.dreamImagePositionSaveHandle) {
+      clearTimeout(this.dreamImagePositionSaveHandle);
+      this.dreamImagePositionSaveHandle = null;
+    }
   }
 
   private extractDreamImageError(error: any, fallback: string): string {

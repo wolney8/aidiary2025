@@ -595,8 +595,8 @@ Additional requirements for this retry:
             self._log_analysis_outcome('dream', 'fallback_exception', level='exception')
             return self._dream_contextual_fallback(text, recent_context)
     
-    def generate_image(self, prompt: str) -> str:
-        """Generate a dream image and return it as a PNG data URL."""
+    def generate_image(self, prompt: str) -> bytes:
+        """Generate a dream image and return raw PNG bytes."""
         model = os.getenv('OPENAI_IMAGE_MODEL', 'gpt-image-1')
         size = os.getenv('OPENAI_IMAGE_SIZE', '1024x1024')
         style_prefix = os.getenv('OPENAI_DREAM_IMAGE_STYLE_PREFIX', DREAM_IMAGE_STYLE_PREFIX).strip()
@@ -615,9 +615,7 @@ Additional requirements for this retry:
             raise ValueError('Image generation returned no image data')
 
         image_base64 = data[0].b64_json
-        # Validate that the returned payload decodes cleanly before storing it.
-        base64.b64decode(image_base64, validate=True)
-        return f'data:image/png;base64,{image_base64}'
+        return base64.b64decode(image_base64, validate=True)
 
     def chat_companion(
         self,

@@ -6,17 +6,28 @@ import sqlite3
 from typing import Callable
 
 
-_TARGET_COLUMNS: dict[str, tuple[str, ...]] = {
-    'dailydiary_entries': ('mood', 'ai_style', 'ai_response'),
-    'dreamdiary_entries': (
-        'mood',
-        'ai_style',
-        'summary',
-        'interpretation',
-        'image_prompt',
-        'image_url',
-        'recycled_image_prompt',
-    ),
+_TARGET_COLUMNS: dict[str, dict[str, str]] = {
+    'dailydiary_entries': {
+        'mood': 'TEXT',
+        'ai_style': 'TEXT',
+        'ai_response': 'TEXT',
+        'image_url': 'TEXT',
+        'image_storage_key': 'TEXT',
+        'image_position_x': 'REAL DEFAULT 50',
+        'image_position_y': 'REAL DEFAULT 50',
+    },
+    'dreamdiary_entries': {
+        'mood': 'TEXT',
+        'ai_style': 'TEXT',
+        'summary': 'TEXT',
+        'interpretation': 'TEXT',
+        'image_prompt': 'TEXT',
+        'image_url': 'TEXT',
+        'image_storage_key': 'TEXT',
+        'recycled_image_prompt': 'TEXT',
+        'image_position_x': 'REAL DEFAULT 50',
+        'image_position_y': 'REAL DEFAULT 50',
+    },
 }
 
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
@@ -91,10 +102,12 @@ def ensure_entry_mood_style_columns(
                 for row in cursor.execute(f'PRAGMA table_info({table_name})').fetchall()
             }
 
-            for column_name in required_columns:
+            for column_name, column_definition in required_columns.items():
                 if column_name in table_columns:
                     continue
-                cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {column_name} TEXT')
+                cursor.execute(
+                    f'ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}'
+                )
                 added_columns += 1
                 if log:
                     log('Runtime migration added column %s.%s', table_name, column_name)

@@ -12,6 +12,9 @@ export interface DailyEntry {
   tags?: string;
   mood?: string;
   ai_style?: string;
+  image_url?: string;
+  image_position_x?: number;
+  image_position_y?: number;
 }
 
 export interface DreamEntry {
@@ -33,6 +36,9 @@ export interface DreamEntry {
   interpretation?: string;
   image_prompt?: string;
   image_url?: string;
+  recycled_image_prompt?: string;
+  image_position_x?: number;
+  image_position_y?: number;
   dream_people_names?: string; // Comma-separated
   dream_places?: string; // Comma-separated
   tags?: string; // Comma-separated

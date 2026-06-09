@@ -148,6 +148,8 @@ export class EntriesService {
     image_prompt: string;
     image_url: string;
     recycled_image_prompt?: string;
+    image_position_x?: number;
+    image_position_y?: number;
   }> {
     if (!this.authService.isAuthenticated()) {
       return throwError(() => new Error("User not authenticated"));
@@ -158,6 +160,8 @@ export class EntriesService {
       image_prompt: string;
       image_url: string;
       recycled_image_prompt?: string;
+      image_position_x?: number;
+      image_position_y?: number;
     }>(
       `${this.apiUrl}/dreams/${id}/generate-image`,
       imagePromptOverride?.trim()
@@ -175,6 +179,8 @@ export class EntriesService {
     image_prompt: string;
     image_url: string;
     recycled_image_prompt?: string;
+    image_position_x?: number;
+    image_position_y?: number;
   }> {
     if (!this.authService.isAuthenticated()) {
       return throwError(() => new Error("User not authenticated"));
@@ -188,6 +194,8 @@ export class EntriesService {
       image_prompt: string;
       image_url: string;
       recycled_image_prompt?: string;
+      image_position_x?: number;
+      image_position_y?: number;
     }>(
       `${this.apiUrl}/dreams/${id}/image`,
       formData,
@@ -202,6 +210,8 @@ export class EntriesService {
     image_prompt: string;
     image_url: string | null;
     recycled_image_prompt?: string;
+    image_position_x?: number;
+    image_position_y?: number;
   }> {
     if (!this.authService.isAuthenticated()) {
       return throwError(() => new Error("User not authenticated"));
@@ -212,6 +222,8 @@ export class EntriesService {
       image_prompt: string;
       image_url: string | null;
       recycled_image_prompt?: string;
+      image_position_x?: number;
+      image_position_y?: number;
     }>(
       `${this.apiUrl}/dreams/${id}/image`,
       { headers: this.getHeaders(false) },

@@ -6,7 +6,6 @@ import sqlite3
 from datetime import datetime
 import re
 from html import escape
-import base64
 from io import BytesIO
 from services.import_service import (
     ensure_export_history_table,
@@ -14,6 +13,15 @@ from services.import_service import (
     mark_export_guard_used,
 )
 from services.openai_svc import OpenAIService
+from services.media_storage import (
+    delete_image,
+    is_legacy_data_url,
+    media_path_exists,
+    migrate_legacy_data_url,
+    resolve_image_url,
+    store_generated_image,
+    store_uploaded_image,
+)
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 entries_bp = Blueprint('entries', __name__)
@@ -83,7 +91,7 @@ def _is_future_entry_date(value: str) -> bool:
     return parsed.date() > today
 
 
-def _normalise_uploaded_entry_image(file_bytes: bytes) -> str:
+def _normalise_uploaded_entry_image(file_bytes: bytes) -> bytes:
     if not file_bytes:
         raise ValueError('No image data was uploaded.')
 
@@ -115,8 +123,83 @@ def _normalise_uploaded_entry_image(file_bytes: bytes) -> str:
         quality=ENTRY_IMAGE_JPEG_QUALITY,
         optimize=True,
     )
-    encoded = base64.b64encode(output.getvalue()).decode('ascii')
-    return f'data:image/jpeg;base64,{encoded}'
+    return output.getvalue()
+
+
+def _normalise_image_position(value: object) -> float:
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return 50.0
+
+    return max(0.0, min(100.0, numeric_value))
+
+
+def _resolve_entry_image_value(
+    conn: sqlite3.Connection,
+    entry: dict,
+    *,
+    table_name: str,
+    entry_kind: str,
+) -> dict:
+    storage_key = str(entry.get('image_storage_key') or '').strip()
+    image_value = entry.get('image_url')
+
+    if storage_key:
+        if media_path_exists(storage_key):
+            entry['image_url'] = resolve_image_url(storage_key)
+        else:
+            current_app.logger.warning('Entry image missing on disk for %s %s: %s', table_name, entry.get('id'), storage_key)
+            entry['image_url'] = None
+        entry.pop('image_storage_key', None)
+        return entry
+
+    if is_legacy_data_url(image_value):
+        try:
+            migrated_key = migrate_legacy_data_url(
+                str(image_value),
+                user_id=int(entry['user_id']),
+                entry_kind=entry_kind,
+            )
+            conn.execute(
+                f'UPDATE {table_name} SET image_storage_key = ?, image_url = NULL WHERE id = ? AND user_id = ?',
+                (migrated_key, entry['id'], entry['user_id']),
+            )
+            entry['image_url'] = resolve_image_url(migrated_key)
+            entry['image_storage_key'] = migrated_key
+        except Exception as exc:
+            current_app.logger.warning(
+                'Legacy entry image migration skipped for %s %s: %s',
+                table_name,
+                entry.get('id'),
+                exc,
+            )
+
+    if not entry.get('image_url'):
+        entry['image_url'] = None
+
+    entry['image_position_x'] = _normalise_image_position(entry.get('image_position_x'))
+    entry['image_position_y'] = _normalise_image_position(entry.get('image_position_y'))
+    entry.pop('image_storage_key', None)
+    return entry
+
+
+def _serialise_entry_row(
+    conn: sqlite3.Connection,
+    row: sqlite3.Row,
+    *,
+    table_name: str,
+    entry_kind: str,
+) -> dict:
+    entry = dict(row)
+    if 'image_position_x' in entry or 'image_position_y' in entry:
+        entry = _resolve_entry_image_value(
+            conn,
+            entry,
+            table_name=table_name,
+            entry_kind=entry_kind,
+        )
+    return entry
 
 
 def _get_entry_range_summary(conn: sqlite3.Connection, user_id: int) -> dict[str, int | str | None | bool]:
@@ -254,9 +337,19 @@ def get_daily_entries():
         ORDER BY entry_date DESC, entry_number DESC
     ''', (user_id,)).fetchall()
     
+    payload = [
+        _serialise_entry_row(
+            conn,
+            entry,
+            table_name='dailydiary_entries',
+            entry_kind='daily',
+        )
+        for entry in entries
+    ]
+    conn.commit()
     conn.close()
     
-    return jsonify([dict(entry) for entry in entries]), 200
+    return jsonify(payload), 200
 
 @entries_bp.route('/daily/<int:entry_id>', methods=['GET'])
 @jwt_required()
@@ -272,12 +365,20 @@ def get_daily_entry(entry_id):
         WHERE id = ? AND user_id = ?
     ''', (entry_id, user_id)).fetchone()
     
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    payload = _serialise_entry_row(
+        conn,
+        entry,
+        table_name='dailydiary_entries',
+        entry_kind='daily',
+    )
+    conn.commit()
     conn.close()
     
-    if not entry:
-        return jsonify({'error': 'Entry not found'}), 404
-    
-    return jsonify(dict(entry)), 200
+    return jsonify(payload), 200
 
 @entries_bp.route('/daily', methods=['POST'])
 @jwt_required()
@@ -358,7 +459,7 @@ def update_daily_entry(entry_id):
     # Update allowed fields
     allowed_fields = [
         'title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places',
-        'tags', 'mood', 'ai_style'
+        'tags', 'mood', 'ai_style', 'image_position_x', 'image_position_y'
     ]
     updates = []
     values = []
@@ -416,7 +517,15 @@ def delete_daily_entry(entry_id):
     
     conn = get_db()
     cursor = conn.cursor()
-    
+    entry = cursor.execute(
+        'SELECT image_storage_key FROM dailydiary_entries WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
     cursor.execute('''
         DELETE FROM dailydiary_entries
         WHERE id = ? AND user_id = ?
@@ -428,6 +537,8 @@ def delete_daily_entry(entry_id):
     
     if deleted == 0:
         return jsonify({'error': 'Entry not found'}), 404
+
+    delete_image(entry['image_storage_key'])
     
     return '', 204
 
@@ -447,9 +558,19 @@ def get_dream_entries():
         ORDER BY entry_date DESC, entry_number DESC
     ''', (user_id,)).fetchall()
     
+    payload = [
+        _serialise_entry_row(
+            conn,
+            entry,
+            table_name='dreamdiary_entries',
+            entry_kind='dream',
+        )
+        for entry in entries
+    ]
+    conn.commit()
     conn.close()
     
-    return jsonify([dict(entry) for entry in entries]), 200
+    return jsonify(payload), 200
 
 @entries_bp.route('/dreams/<int:entry_id>', methods=['GET'])
 @jwt_required()
@@ -465,12 +586,20 @@ def get_dream_entry(entry_id):
         WHERE id = ? AND user_id = ?
     ''', (entry_id, user_id)).fetchone()
     
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    payload = _serialise_entry_row(
+        conn,
+        entry,
+        table_name='dreamdiary_entries',
+        entry_kind='dream',
+    )
+    conn.commit()
     conn.close()
     
-    if not entry:
-        return jsonify({'error': 'Entry not found'}), 404
-    
-    return jsonify(dict(entry)), 200
+    return jsonify(payload), 200
 
 @entries_bp.route('/dreams', methods=['POST'])
 @jwt_required()
@@ -558,7 +687,8 @@ def update_dream_entry(entry_id):
         'title', 'cast', 'location', 'period', 'emotion', 'plot',
         'symbols_and_imagery', 'insight', 'action', 'other',
         'summary', 'interpretation', 'image_prompt', 'image_url',
-        'dream_people_names', 'dream_places', 'tags', 'mood', 'ai_style'
+        'dream_people_names', 'dream_places', 'tags', 'mood', 'ai_style',
+        'image_position_x', 'image_position_y',
     ]
     
     updates = []
@@ -617,7 +747,15 @@ def delete_dream_entry(entry_id):
     
     conn = get_db()
     cursor = conn.cursor()
-    
+    entry = cursor.execute(
+        'SELECT image_storage_key FROM dreamdiary_entries WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
     cursor.execute('''
         DELETE FROM dreamdiary_entries
         WHERE id = ? AND user_id = ?
@@ -629,6 +767,8 @@ def delete_dream_entry(entry_id):
     
     if deleted == 0:
         return jsonify({'error': 'Entry not found'}), 404
+
+    delete_image(entry['image_storage_key'])
     
     return '', 204
 
@@ -643,7 +783,8 @@ def generate_dream_image(entry_id):
     conn = get_db()
     cursor = conn.cursor()
     entry = cursor.execute(
-        '''SELECT id, image_prompt, image_url, recycled_image_prompt
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt,
+                  image_position_x, image_position_y
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -661,7 +802,12 @@ def generate_dream_image(entry_id):
 
     try:
         ai_service = OpenAIService()
-        image_url = ai_service.generate_image(image_prompt)
+        image_bytes = ai_service.generate_image(image_prompt)
+        storage_key = store_generated_image(
+            image_bytes,
+            user_id=user_id,
+            entry_kind='dream',
+        )
     except ValueError as exc:
         conn.close()
         return jsonify({'error': str(exc)}), 503
@@ -671,18 +817,21 @@ def generate_dream_image(entry_id):
         return jsonify({'error': 'Image generation failed'}), 502
 
     cursor.execute(
-        'UPDATE dreamdiary_entries SET image_url = ? WHERE id = ? AND user_id = ?',
-        (image_url, entry_id, user_id),
+        'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL WHERE id = ? AND user_id = ?',
+        (storage_key, entry_id, user_id),
     )
     conn.commit()
     conn.close()
+    delete_image(entry['image_storage_key'])
 
     return jsonify({
         'id': entry_id,
         'image_prompt': image_prompt,
-        'image_url': image_url,
-        'has_existing_image': bool(entry['image_url']),
+        'image_url': resolve_image_url(storage_key),
+        'has_existing_image': bool(entry['image_url'] or entry['image_storage_key']),
         'recycled_image_prompt': (entry['recycled_image_prompt'] or ''),
+        'image_position_x': _normalise_image_position(entry['image_position_x']),
+        'image_position_y': _normalise_image_position(entry['image_position_y']),
     }), 200
 
 
@@ -710,7 +859,8 @@ def upload_dream_image(entry_id):
     conn = get_db()
     cursor = conn.cursor()
     entry = cursor.execute(
-        '''SELECT id, image_prompt, image_url, recycled_image_prompt
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt,
+                  image_position_x, image_position_y
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -726,7 +876,12 @@ def upload_dream_image(entry_id):
     )
 
     try:
-        image_url = _normalise_uploaded_entry_image(file_bytes)
+        image_bytes = _normalise_uploaded_entry_image(file_bytes)
+        storage_key = store_uploaded_image(
+            image_bytes,
+            user_id=user_id,
+            entry_kind='dream',
+        )
     except ValueError as exc:
         conn.close()
         return jsonify({'error': str(exc)}), 400
@@ -736,18 +891,21 @@ def upload_dream_image(entry_id):
         return jsonify({'error': 'Image upload failed'}), 500
 
     cursor.execute(
-        'UPDATE dreamdiary_entries SET image_url = ?, image_prompt = NULL, recycled_image_prompt = ? WHERE id = ? AND user_id = ?',
-        (image_url, recycled_prompt or None, entry_id, user_id),
+        'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = NULL, recycled_image_prompt = ? WHERE id = ? AND user_id = ?',
+        (storage_key, recycled_prompt or None, entry_id, user_id),
     )
     conn.commit()
     conn.close()
+    delete_image(entry['image_storage_key'])
 
     return jsonify({
         'id': entry_id,
         'image_prompt': '',
-        'image_url': image_url,
-        'has_existing_image': bool(entry['image_url']),
+        'image_url': resolve_image_url(storage_key),
+        'has_existing_image': bool(entry['image_url'] or entry['image_storage_key']),
         'recycled_image_prompt': recycled_prompt,
+        'image_position_x': _normalise_image_position(entry['image_position_x']),
+        'image_position_y': _normalise_image_position(entry['image_position_y']),
     }), 200
 
 
@@ -760,7 +918,7 @@ def delete_dream_image(entry_id):
     conn = get_db()
     cursor = conn.cursor()
     entry = cursor.execute(
-        '''SELECT id, image_prompt, image_url, recycled_image_prompt
+        '''SELECT id, image_prompt, image_url, image_storage_key, recycled_image_prompt
            FROM dreamdiary_entries
            WHERE id = ? AND user_id = ?''',
         (entry_id, user_id),
@@ -776,18 +934,21 @@ def delete_dream_image(entry_id):
     )
 
     cursor.execute(
-        'UPDATE dreamdiary_entries SET image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL WHERE id = ? AND user_id = ?',
+        'UPDATE dreamdiary_entries SET image_storage_key = NULL, image_url = NULL, image_prompt = ?, recycled_image_prompt = NULL, image_position_x = 50, image_position_y = 50 WHERE id = ? AND user_id = ?',
         (restored_prompt or None, entry_id, user_id),
     )
     conn.commit()
     conn.close()
+    delete_image(entry['image_storage_key'])
 
     return jsonify({
         'id': entry_id,
         'image_prompt': restored_prompt,
         'image_url': None,
-        'had_existing_image': bool(entry['image_url']),
+        'had_existing_image': bool(entry['image_url'] or entry['image_storage_key']),
         'recycled_image_prompt': '',
+        'image_position_x': 50.0,
+        'image_position_y': 50.0,
     }), 200
 
 
