@@ -1,10 +1,13 @@
 # server/tests/test_import.py
 # Tests for import backend validation, duplicate handling, history, and API contract
 import io
+import base64
 import json
 import os
 import sqlite3
 import tempfile
+import zipfile
+import shutil
 
 import openpyxl
 import pytest
@@ -47,6 +50,13 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             daily_people_names TEXT,
             daily_places TEXT,
             tags TEXT,
+            image_prompt TEXT,
+            recycled_image_prompt TEXT,
+            image_url TEXT,
+            image_storage_key TEXT,
+            image_position_x TEXT,
+            image_position_y TEXT,
+            image_source TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
@@ -69,7 +79,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             summary TEXT,
             interpretation TEXT,
             image_prompt TEXT,
+            recycled_image_prompt TEXT,
             image_url TEXT,
+            image_storage_key TEXT,
+            image_position_x TEXT,
+            image_position_y TEXT,
+            image_source TEXT,
             dream_people_names TEXT,
             dream_places TEXT,
             tags TEXT,
@@ -83,8 +98,10 @@ def _create_tables(conn: sqlite3.Connection) -> None:
 def client():
     """Flask test client with isolated in-memory database."""
     db_fd, db_path = tempfile.mkstemp(suffix='.db')
+    media_root = tempfile.mkdtemp(prefix='aidiary-import-media-')
     os.environ['DB_PATH'] = db_path
     os.environ['JWT_SECRET'] = 'test-secret'
+    os.environ['MEDIA_ROOT'] = media_root
 
     app = create_app()
     app.config['TESTING'] = True
@@ -97,6 +114,7 @@ def client():
 
     os.close(db_fd)
     os.unlink(db_path)
+    shutil.rmtree(media_root, ignore_errors=True)
 
 
 def _register_and_login(client) -> str:
@@ -127,7 +145,7 @@ def _make_xlsx(daily_rows=None, dream_rows=None) -> bytes:
     for row in (daily_rows or []):
         row_values = list(row)
         if len(row_values) == 4:
-            row_values = [row_values[0], '', *row_values[1:]]
+            row_values = [row_values[0], '', *row_values[1:], '']
         ws_daily.append(row_values)
 
     ws_dreams = wb.create_sheet(title='Dreams')
@@ -135,7 +153,7 @@ def _make_xlsx(daily_rows=None, dream_rows=None) -> bytes:
     for row in (dream_rows or []):
         row_values = list(row)
         if len(row_values) == 12:
-            row_values = [row_values[0], '', *row_values[1:]]
+            row_values = [row_values[0], '', *row_values[1:], '']
         ws_dreams.append(row_values)
 
     buf = io.BytesIO()
@@ -157,7 +175,7 @@ def _make_xlsx_with_headers(
     for row in (daily_rows or []):
         row_values = list(row)
         if list(daily_headers) == list(DAILY_IMPORT_HEADERS) and len(row_values) == 4:
-            row_values = [row_values[0], '', *row_values[1:]]
+            row_values = [row_values[0], '', *row_values[1:], '']
         ws_daily.append(row_values)
 
     ws_dreams = wb.create_sheet(title='Dreams')
@@ -165,12 +183,54 @@ def _make_xlsx_with_headers(
     for row in (dream_rows or []):
         row_values = list(row)
         if list(dream_headers) == list(DREAM_IMPORT_HEADERS) and len(row_values) == 12:
-            row_values = [row_values[0], '', *row_values[1:]]
+            row_values = [row_values[0], '', *row_values[1:], '']
         ws_dreams.append(row_values)
 
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _load_export_package(package_bytes: bytes):
+    with zipfile.ZipFile(io.BytesIO(package_bytes)) as zf:
+        workbook_bytes = zf.read('entries.xlsx')
+        manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
+        workbook = openpyxl.load_workbook(io.BytesIO(workbook_bytes))
+        return workbook, manifest, zf.namelist()
+
+
+def _make_zip_package(
+    daily_rows=None,
+    dream_rows=None,
+    manifest_assets=None,
+    media_files=None,
+) -> bytes:
+    workbook_bytes = _make_xlsx_with_headers(
+        daily_headers=list(DAILY_IMPORT_HEADERS),
+        dream_headers=list(DREAM_IMPORT_HEADERS),
+        daily_rows=daily_rows,
+        dream_rows=dream_rows,
+    )
+    manifest = {
+        'package_type': 'aidiary_export',
+        'version': 1,
+        'generated_at': '2026-06-10T00:00:00Z',
+        'assets': manifest_assets or {},
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('entries.xlsx', workbook_bytes)
+        zf.writestr('manifest.json', json.dumps(manifest))
+        for path, content in (media_files or {}).items():
+            zf.writestr(path, content)
+    return buf.getvalue()
+
+
+def _tiny_png_bytes() -> bytes:
+    return base64.b64decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn0nS8AAAAASUVORK5CYII='
+    )
 
 
 def _upload(client, token: str, file_bytes: bytes, filename='test.xlsx',
@@ -687,6 +747,50 @@ class TestMalformedData:
         assert daily_row['entry_time'] == '19:00'
         assert dream_row['entry_time'] == '08:00'
 
+    def test_zip_package_import_restores_bundled_image_metadata(self, client):
+        token = _register_and_login(client)
+        asset_ref = 'daily_20241106_1'
+        package_bytes = _make_zip_package(
+            daily_rows=[['2024-11-06', '18:10', 'Packaged daily', 'Body text', 'AI text', asset_ref]],
+            manifest_assets={
+                asset_ref: {
+                    'entry_type': 'daily',
+                    'image_filename': 'hero.png',
+                    'image_source': 'ai',
+                    'image_position_x': '33',
+                    'image_position_y': '77',
+                    'image_prompt': 'City lights reflected on wet pavement',
+                    'recycled_image_prompt': '',
+                }
+            },
+            media_files={
+                f'media/{asset_ref}/hero.png': _tiny_png_bytes(),
+            },
+        )
+
+        resp = _upload(client, token, package_bytes, filename='package.zip', content_type='application/zip')
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_daily'] == 1
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT entry_time, image_storage_key, image_source, image_position_x, image_position_y, image_prompt
+            FROM dailydiary_entries
+            WHERE title = 'Packaged daily'
+            """
+        ).fetchone()
+        conn.close()
+
+        assert row['entry_time'] == '18:10'
+        assert row['image_storage_key']
+        assert row['image_source'] == 'ai'
+        assert row['image_position_x'] == '33'
+        assert row['image_position_y'] == '77'
+        assert row['image_prompt'] == 'City lights reflected on wet pavement'
+
 
 # ---------------------------------------------------------------------------
 # Schema contract regression coverage (Issue #39)
@@ -1137,7 +1241,7 @@ class TestExportDownload:
         resp = client.get('/api/import/export')
         assert resp.status_code == 401
 
-    def test_export_returns_xlsx_with_expected_sheets_and_headers(self, client):
+    def test_export_returns_zip_package_with_expected_sheets_and_headers(self, client):
         token = _register_and_login(client)
 
         db_path = os.environ['DB_PATH']
@@ -1149,11 +1253,14 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
-        assert 'spreadsheet' in resp.content_type or 'octet-stream' in resp.content_type
+        assert 'zip' in resp.content_type or 'octet-stream' in resp.content_type
 
-        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        wb, manifest, package_members = _load_export_package(resp.data)
         assert 'Daily' in wb.sheetnames
         assert 'Dreams' in wb.sheetnames
+        assert manifest['package_type'] == 'aidiary_export'
+        assert 'entries.xlsx' in package_members
+        assert 'manifest.json' in package_members
 
         daily_ws = wb['Daily']
         dream_ws = wb['Dreams']
@@ -1239,7 +1346,7 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
-        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        wb, _, _ = _load_export_package(resp.data)
         assert wb.sheetnames == ['Daily']
 
         ws = wb['Daily']
@@ -1257,7 +1364,7 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
-        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        wb, _, _ = _load_export_package(resp.data)
         assert wb.sheetnames == ['Dreams']
 
         ws = wb['Dreams']
@@ -1275,7 +1382,7 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
-        wb = openpyxl.load_workbook(io.BytesIO(resp.data))
+        wb, _, _ = _load_export_package(resp.data)
 
         daily_ws = wb['Daily']
         dream_ws = wb['Dreams']
@@ -1284,6 +1391,47 @@ class TestExportDownload:
         assert daily_ws.cell(2, 1).value == '2026-01-20'
         assert dream_ws.max_row == 2
         assert dream_ws.cell(2, 1).value == '2026-01-11'
+
+    def test_export_package_includes_bundled_images_and_manifest_asset_ref(self, client):
+        token = _register_and_login(client)
+        db_path = os.environ['DB_PATH']
+        self._seed_export_rows(db_path)
+
+        media_root = os.environ['MEDIA_ROOT']
+        storage_key = 'entries/daily/1/export-test.png'
+        absolute_path = os.path.join(media_root, *storage_key.split('/'))
+        os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
+        with open(absolute_path, 'wb') as image_file:
+            image_file.write(_tiny_png_bytes())
+
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            UPDATE dailydiary_entries
+            SET image_storage_key = ?, image_source = ?, image_position_x = ?, image_position_y = ?, image_prompt = ?
+            WHERE title = 'Daily one'
+            """,
+            (storage_key, 'ai', '44', '62', 'A quiet city street'),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.get(
+            '/api/import/export',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        wb, manifest, package_members = _load_export_package(resp.data)
+        daily_ws = wb['Daily']
+        asset_ref = daily_ws.cell(2, 6).value
+
+        assert asset_ref
+        assert asset_ref in manifest['assets']
+        assert manifest['assets'][asset_ref]['image_source'] == 'ai'
+        assert manifest['assets'][asset_ref]['image_position_x'] == '44'
+        assert manifest['assets'][asset_ref]['image_position_y'] == '62'
+        assert any(name.startswith(f'media/{asset_ref}/') for name in package_members)
 
     def test_export_invalid_date_format(self, client):
         token = _register_and_login(client)

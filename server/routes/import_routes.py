@@ -1,8 +1,10 @@
 # server/routes/import_routes.py
 # Import blueprint: file upload, history, template download, and data export
 import io
+import json
 import sqlite3
-from datetime import datetime
+import zipfile
+from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -11,7 +13,7 @@ from services.import_service import (
     DAILY_IMPORT_HEADERS,
     DREAM_IMPORT_HEADERS,
     validate_file,
-    parse_excel,
+    parse_import_file,
     preview_import_entries,
     commit_import_preview,
     ensure_history_table,
@@ -24,6 +26,7 @@ from services.import_service import (
     record_export_history,
     get_import_history,
 )
+from services.media_storage import read_image_bytes
 
 import_bp = Blueprint('import', __name__)
 
@@ -37,6 +40,17 @@ def get_db():
     return conn
 
 
+def _build_entry_asset_ref(entry_type: str, row: sqlite3.Row) -> str:
+    safe_date = str(row['entry_date'] or '').replace('-', '')
+    return f"{entry_type}_{safe_date}_{row['entry_number']}_{row['id']}"
+
+
+def _image_filename_for_storage_key(storage_key: str | None) -> str:
+    if not storage_key:
+        return ''
+    return storage_key.rsplit('/', 1)[-1]
+
+
 # ---------------------------------------------------------------------------
 # POST /api/import/upload
 # ---------------------------------------------------------------------------
@@ -45,7 +59,7 @@ def get_db():
 @jwt_required()
 def upload_import():
     """
-    Accept an Excel workbook (.xlsx), validate it, parse entries,
+    Accept an Excel workbook (.xlsx) or export package (.zip), validate it, parse entries,
     and either import immediately or stage duplicate review before commit.
 
     Multipart form field: ``file``
@@ -89,16 +103,16 @@ def upload_import():
     if errors:
         return jsonify({'status': 'error', 'errors': errors}), 422
 
-    # --- Parse Excel ---
+    # --- Parse workbook / package ---
     try:
-        parsed = parse_excel(file_bytes)
+        parsed = parse_import_file(file_bytes, filename=filename)
     except ValueError as exc:
         current_app.logger.warning('Excel parse error for user %s: %s', user_id, exc)
-        return jsonify({'status': 'error', 'errors': ['The file could not be parsed. Please ensure it is a valid .xlsx workbook.']}), 422
+        return jsonify({'status': 'error', 'errors': ['The file could not be parsed. Please ensure it is a valid .xlsx workbook or .zip export package.']}), 422
     except RuntimeError as exc:
         # pandas / openpyxl not installed
         current_app.logger.error('Import dependency missing: %s', exc)
-        return jsonify({'status': 'error', 'errors': ['Excel import is not available on this server.']}), 500
+        return jsonify({'status': 'error', 'errors': ['Workbook import is not available on this server.']}), 500
 
     parse_errors: list[str] = parsed.get('errors', [])
     if parse_errors:
@@ -470,7 +484,9 @@ def export_entries():
 
     if include_daily:
         daily_query = '''
-            SELECT entry_date, entry_time, title, user_message, ai_response
+            SELECT id, entry_date, entry_time, entry_number, title, user_message, ai_response,
+                   image_storage_key, image_source, image_position_x, image_position_y,
+                   image_prompt, recycled_image_prompt
             FROM dailydiary_entries
             WHERE user_id = ?
         '''
@@ -489,8 +505,10 @@ def export_entries():
 
     if include_dreams:
         dream_query = '''
-            SELECT entry_date, entry_time, title, plot, "cast", location, period,
-                   emotion, symbols_and_imagery, insight, action, other, tags
+            SELECT id, entry_date, entry_time, entry_number, title, plot, "cast", location, period,
+                   emotion, symbols_and_imagery, insight, action, other, tags,
+                   image_storage_key, image_source, image_position_x, image_position_y,
+                   image_prompt, recycled_image_prompt
             FROM dreamdiary_entries
             WHERE user_id = ?
         '''
@@ -520,6 +538,7 @@ def export_entries():
                 row['title'] or '',
                 row['user_message'] or '',
                 row['ai_response'] or '',
+                '',
             ])
 
         if include_dreams:
@@ -540,6 +559,7 @@ def export_entries():
                     row['action'] or '',
                     row['other'] or '',
                     row['tags'] or '',
+                    '',
                 ])
     else:
         ws_dreams = wb.active
@@ -560,11 +580,8 @@ def export_entries():
                 row['action'] or '',
                 row['other'] or '',
                 row['tags'] or '',
+                '',
             ])
-
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
 
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     has_filters = (
@@ -573,9 +590,9 @@ def export_entries():
         or not include_daily
         or not include_dreams
     )
-    filename = f'aidiary_export_{stamp}.xlsx'
+    filename = f'aidiary_export_{stamp}.zip'
     if has_filters:
-        filename = f'aidiary_export_filtered_{stamp}.xlsx'
+        filename = f'aidiary_export_filtered_{stamp}.zip'
 
     ensure_export_history_table(conn)
     is_full_range = bool(
@@ -603,9 +620,94 @@ def export_entries():
     )
     conn.close()
 
+    manifest_assets: dict[str, dict[str, str | None]] = {}
+    if include_daily:
+        for row_index, row in enumerate(daily_rows, start=2):
+            storage_key = row['image_storage_key']
+            if not storage_key:
+                continue
+            image_bytes = read_image_bytes(storage_key)
+            if not image_bytes:
+                continue
+            asset_ref = _build_entry_asset_ref('daily', row)
+            image_filename = _image_filename_for_storage_key(storage_key)
+            ws_daily.cell(row=row_index, column=len(DAILY_IMPORT_HEADERS)).value = asset_ref
+            manifest_assets[asset_ref] = {
+                'entry_type': 'daily',
+                'image_filename': image_filename,
+                'image_source': row['image_source'],
+                'image_position_x': row['image_position_x'],
+                'image_position_y': row['image_position_y'],
+                'image_prompt': row['image_prompt'],
+                'recycled_image_prompt': row['recycled_image_prompt'],
+            }
+
+    if include_dreams:
+        ws_target = wb['Dreams']
+        for row_index, row in enumerate(dream_rows, start=2):
+            storage_key = row['image_storage_key']
+            if not storage_key:
+                continue
+            image_bytes = read_image_bytes(storage_key)
+            if not image_bytes:
+                continue
+            asset_ref = _build_entry_asset_ref('dream', row)
+            image_filename = _image_filename_for_storage_key(storage_key)
+            ws_target.cell(row=row_index, column=len(DREAM_IMPORT_HEADERS)).value = asset_ref
+            manifest_assets[asset_ref] = {
+                'entry_type': 'dream',
+                'image_filename': image_filename,
+                'image_source': row['image_source'],
+                'image_position_x': row['image_position_x'],
+                'image_position_y': row['image_position_y'],
+                'image_prompt': row['image_prompt'],
+                'recycled_image_prompt': row['recycled_image_prompt'],
+            }
+
+    final_workbook_buffer = io.BytesIO()
+    wb.save(final_workbook_buffer)
+    final_workbook_buffer.seek(0)
+
+    package_buffer = io.BytesIO()
+    with zipfile.ZipFile(package_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as package_zip:
+        package_zip.writestr('entries.xlsx', final_workbook_buffer.getvalue())
+        for asset_ref, asset_meta in manifest_assets.items():
+            image_filename = asset_meta['image_filename']
+            if not image_filename:
+                continue
+            source_rows = daily_rows if asset_meta['entry_type'] == 'daily' else dream_rows
+            storage_key = next(
+                (
+                    row['image_storage_key']
+                    for row in source_rows
+                    if _build_entry_asset_ref(asset_meta['entry_type'], row) == asset_ref
+                ),
+                None,
+            )
+            image_bytes = read_image_bytes(storage_key)
+            if not image_bytes:
+                continue
+            package_zip.writestr(f'media/{asset_ref}/{image_filename}', image_bytes)
+
+        package_zip.writestr(
+            'manifest.json',
+            json.dumps(
+                {
+                    'package_type': 'aidiary_export',
+                    'version': 1,
+                    'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'assets': manifest_assets,
+                },
+                ensure_ascii=True,
+                indent=2,
+            ),
+        )
+
+    package_buffer.seek(0)
+
     response = send_file(
-        buffer,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        package_buffer,
+        mimetype='application/zip',
         as_attachment=True,
         download_name=filename,
     )

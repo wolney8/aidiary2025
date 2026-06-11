@@ -67,6 +67,7 @@ export interface ExportFilters {
 export interface ExportDownloadResult {
   blob: Blob;
   guardToken?: string;
+  filename?: string;
 }
 
 export interface BulkDeleteReadiness {
@@ -137,12 +138,14 @@ export class ImportService {
 
   private readonly primaryBaseUrl = "http://localhost:5001/api";
   private readonly fallbackBaseUrl = "http://localhost:500/api";
-  private readonly maxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+  private readonly maxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
   private readonly allowedMimeTypes = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
+    "application/zip",
+    "application/x-zip-compressed",
   ];
-  private readonly allowedExtensions = [".xlsx", ".xls"];
+  private readonly allowedExtensions = [".xlsx", ".zip"];
 
   /** Download the Excel import template. */
   downloadTemplate(): Observable<Blob> {
@@ -172,6 +175,10 @@ export class ImportService {
             blob: response.body ?? new Blob(),
             guardToken:
               response.headers.get("X-AiDiary-Export-Token") ?? undefined,
+            filename:
+              this.parseDownloadFilename(
+                response.headers.get("Content-Disposition"),
+              ) ?? undefined,
           })),
         ),
     );
@@ -376,13 +383,13 @@ export class ImportService {
     const extension = `.${file.name.split(".").pop()?.toLowerCase()}`;
 
     if (!this.allowedExtensions.includes(extension)) {
-      return `Invalid file type. Only Excel files (.xlsx, .xls) are accepted.`;
+      return `Invalid file type. Only Excel files (.xlsx) or export packages (.zip) are accepted.`;
     }
 
     if (!this.allowedMimeTypes.includes(file.type) && file.type !== "") {
       // Some browsers report empty MIME type for Excel — allow it if extension is correct
       if (file.type !== "") {
-        return `Invalid file type. Only Excel files (.xlsx, .xls) are accepted.`;
+        return `Invalid file type. Only Excel files (.xlsx) or export packages (.zip) are accepted.`;
       }
     }
 
@@ -393,10 +400,24 @@ export class ImportService {
     }
 
     if (file.size === 0) {
-      return "The selected file is empty. Please choose a valid Excel file.";
+      return "The selected file is empty. Please choose a valid workbook or export package.";
     }
 
     return null;
+  }
+
+  private parseDownloadFilename(contentDisposition: string | null): string | null {
+    if (!contentDisposition) {
+      return null;
+    }
+
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      return decodeURIComponent(utf8Match[1]).trim();
+    }
+
+    const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+    return basicMatch?.[1]?.trim() || null;
   }
 
   private getAuthHeaders(): HttpHeaders {
