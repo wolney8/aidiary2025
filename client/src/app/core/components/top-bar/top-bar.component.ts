@@ -5,8 +5,11 @@ import {
   inject,
   OnDestroy,
   OnInit,
+  computed,
+  signal,
 } from "@angular/core";
 import { CommonModule } from "@angular/common";
+import { BreakpointObserver } from "@angular/cdk/layout";
 import { MatToolbarModule } from "@angular/material/toolbar";
 import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
@@ -64,14 +67,30 @@ import { Location } from "@angular/common";
     ]),
   ],
   template: `
-    <mat-toolbar color="primary">
-      <button mat-icon-button (click)="toggleSidenav.emit()">
+    <mat-toolbar
+      color="primary"
+      [class.compact-toolbar]="isCompact()"
+      [class.compact-search-mode]="isCompactSearchOpen()"
+    >
+      <button mat-icon-button (click)="toggleSidenav.emit()" aria-label="Open navigation">
         <mat-icon>menu</mat-icon>
       </button>
 
-      <button class="logo" (click)="goHome()" aria-label="Home">LOGO</button>
+      <button
+        class="logo"
+        (click)="goHome()"
+        aria-label="Home"
+        *ngIf="!isCompactSearchOpen()"
+      >
+        LOGO
+      </button>
 
-      <div class="search-wrapper">
+      <div
+        class="search-wrapper"
+        [class.search-wrapper-compact]="isCompact()"
+        [class.search-wrapper-hidden]="isCompact() && !isCompactSearchOpen()"
+        [class.search-wrapper-expanded]="isCompact() && isCompactSearchOpen()"
+      >
         <form
           [formGroup]="searchForm"
           (ngSubmit)="filterResults()"
@@ -102,12 +121,22 @@ import { Location } from "@angular/common";
               (blur)="onSearchInputBlur()"
               (input)="onSearchInputChange($event)"
             />
+            <button
+              *ngIf="isCompact()"
+              type="button"
+              class="compact-search-close"
+              (click)="closeCompactSearch()"
+              aria-label="Close search"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
           </div>
 
           <!-- Search History Dropdown (Google-style) -->
           <div
             class="search-history-dropdown"
             *ngIf="
+              (!isCompact() || isCompactSearchOpen()) &&
               showSearchHistory &&
               (filteredSearchHistory.length > 0 ||
                 (searchInputFocused && currentSearchQuery.length === 0))
@@ -161,14 +190,32 @@ import { Location } from "@angular/common";
         </form>
       </div>
 
-      <span class="spacer"></span>
+      <span class="spacer" *ngIf="!isCompactSearchOpen()"></span>
 
-      <div class="user-section">
-        <span class="user-name" *ngIf="userName$ | async as name">{{
-          name
+      <div class="compact-actions" *ngIf="isCompact() && !isCompactSearchOpen()">
+        <button
+          mat-icon-button
+          type="button"
+          (click)="openCompactSearch()"
+          aria-label="Open search"
+          [attr.aria-expanded]="isCompactSearchOpen()"
+        >
+          <mat-icon>search</mat-icon>
+        </button>
+      </div>
+
+      <div class="user-section" *ngIf="!isCompactSearchOpen()">
+        <ng-container *ngIf="userName$ | async as name">
+          <span class="user-name" *ngIf="showUserName()">{{ name }}</span>
+        </ng-container>
+        <span class="version-label" *ngIf="showVersionLabel()">{{
+          versionLabel
         }}</span>
-        <span class="version-label">{{ versionLabel }}</span>
-        <button mat-icon-button [matMenuTriggerFor]="userMenu">
+        <button
+          mat-icon-button
+          [matMenuTriggerFor]="userMenu"
+          aria-label="Open account menu"
+        >
           <mat-icon>account_circle</mat-icon>
         </button>
       </div>
@@ -176,6 +223,7 @@ import { Location } from "@angular/common";
       <mat-menu #userMenu="matMenu">
         <button mat-menu-item routerLink="/profile">Profile</button>
         <button mat-menu-item routerLink="/settings">Settings</button>
+        <button mat-menu-item disabled>{{ versionLabel }}</button>
         <button mat-menu-item (click)="logout()">Logout</button>
       </mat-menu>
     </mat-toolbar>
@@ -184,6 +232,16 @@ import { Location } from "@angular/common";
     `
       mat-toolbar {
         gap: var(--spacing-sm);
+        min-height: 72px;
+        padding-inline: clamp(0.5rem, 2vw, 1rem);
+        position: relative;
+        flex-wrap: nowrap;
+      }
+      .compact-toolbar {
+        min-height: 64px;
+      }
+      .compact-search-mode {
+        gap: 0.5rem;
       }
       .logo {
         background: var(--colour-secondary);
@@ -204,11 +262,21 @@ import { Location } from "@angular/common";
         align-items: center;
         flex: 1;
         gap: var(--spacing-sm);
+        min-width: 0;
+      }
+      .search-wrapper-hidden {
+        display: none;
+      }
+      .search-wrapper-expanded {
+        flex: 1 1 auto;
       }
       .search-form {
         width: 100%;
         max-width: 540px;
         position: relative;
+      }
+      .search-wrapper-compact .search-form {
+        max-width: none;
       }
       .search-shell {
         display: flex;
@@ -219,6 +287,17 @@ import { Location } from "@angular/common";
         border: 1px solid var(--colour-border);
         padding: 6px 12px;
         box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+      }
+      .compact-search-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--colour-text-secondary);
+        padding: 4px;
+        margin-left: 6px;
+        cursor: pointer;
       }
       .search-shell:focus-within {
         border-color: var(--colour-primary);
@@ -247,6 +326,15 @@ import { Location } from "@angular/common";
         display: flex;
         align-items: center;
         gap: var(--spacing-sm);
+        flex-shrink: 0;
+      }
+      .compact-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+      .user-name {
+        white-space: nowrap;
       }
       .version-label {
         font-size: 12px;
@@ -255,6 +343,16 @@ import { Location } from "@angular/common";
         border-radius: var(--radius-pill);
         border: 1px solid rgba(255, 255, 255, 0.35);
         color: #ffffff;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 767px) {
+        mat-toolbar {
+          padding-inline: 0.5rem;
+        }
+        .logo {
+          padding: 8px 12px;
+        }
       }
 
       /* Search History Dropdown - Google Style */
@@ -400,6 +498,16 @@ import { Location } from "@angular/common";
   ],
 })
 export class TopBarComponent implements OnInit, OnDestroy {
+  private readonly breakpointObserver = inject(BreakpointObserver);
+  private readonly isCompactViewport = signal(false);
+  private readonly isMediumViewport = signal(false);
+
+  readonly isCompact = computed(() => this.isCompactViewport());
+  readonly isCompactSearchOpen = signal(false);
+  readonly showUserName = computed(
+    () => !this.isCompactViewport() && !this.isMediumViewport(),
+  );
+  readonly showVersionLabel = computed(() => !this.isCompactViewport());
   @Output() toggleSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
   private searchService = inject(SearchService);
@@ -457,6 +565,9 @@ export class TopBarComponent implements OnInit, OnDestroy {
   filterResults(): void {
     const query = this.searchForm.value.query?.trim() || "";
     if (!query) return;
+
+    this.isCompactSearchOpen.set(false);
+    this.showSearchHistory = false;
 
     const currentPath = this.location.path() || "";
     if (!currentPath.includes("/entries")) {
@@ -550,6 +661,20 @@ export class TopBarComponent implements OnInit, OnDestroy {
   // Search History Methods
 
   ngOnInit(): void {
+    this.breakpointObserver
+      .observe(["(max-width: 767px)", "(min-width: 768px) and (max-width: 1023px)"])
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((state) => {
+        this.isCompactViewport.set(state.breakpoints["(max-width: 767px)"] === true);
+        this.isMediumViewport.set(
+          state.breakpoints["(min-width: 768px) and (max-width: 1023px)"] === true,
+        );
+
+        if (!this.isCompactViewport()) {
+          this.isCompactSearchOpen.set(false);
+        }
+      });
+
     // Subscribe to search history changes
     this.searchService.searchHistory$
       .pipe(takeUntil(this.destroy$))
@@ -569,6 +694,23 @@ export class TopBarComponent implements OnInit, OnDestroy {
           this.updateFilteredHistory();
         }
       });
+  }
+
+  openCompactSearch(): void {
+    this.isCompactSearchOpen.set(true);
+    this.showSearchHistory = false;
+    queueMicrotask(() => {
+      const input = document.querySelector<HTMLInputElement>(
+        ".search-wrapper .search-input",
+      );
+      input?.focus();
+      input?.select();
+    });
+  }
+
+  closeCompactSearch(): void {
+    this.isCompactSearchOpen.set(false);
+    this.showSearchHistory = false;
   }
 
   onSearchInputFocus(): void {
