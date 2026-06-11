@@ -31,6 +31,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 type UploadState =
   | "idle"
   | "uploading"
+  | "processing"
   | "review"
   | "success"
   | "partial"
@@ -74,7 +75,7 @@ type UploadState =
     <input
       #fileInput
       type="file"
-      accept=".xlsx,.xls"
+      accept=".xlsx,.zip"
       class="sr-only"
       aria-hidden="true"
       (change)="onFileSelected($event)"
@@ -87,15 +88,16 @@ type UploadState =
           <mat-icon mat-card-avatar class="step-icon">download</mat-icon>
           <mat-card-title>Step 1 — Download Template</mat-card-title>
           <mat-card-subtitle>
-            Get the Excel template, fill it with your entries, then upload
-            below.
+            Get the Excel template, fill it with your entries, then upload a
+            workbook or full export package below.
           </mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
           <p class="hint-text">
             The template contains separate sheets for <strong>Daily</strong> and
             <strong>Dream</strong> entries with all required columns
-            pre-defined.
+            pre-defined. You can also import a full .zip export package to
+            restore bundled entry images.
           </p>
 
           <div
@@ -128,7 +130,8 @@ type UploadState =
           <mat-icon mat-card-avatar class="step-icon">upload_file</mat-icon>
           <mat-card-title>Step 2 — Upload Completed Template</mat-card-title>
           <mat-card-subtitle>
-            Select your completed Excel file (.xlsx or .xls, max 5 MB).
+            Select your completed workbook or export package (.xlsx or
+            .zip, max 50 MB).
           </mat-card-subtitle>
         </mat-card-header>
 
@@ -141,7 +144,7 @@ type UploadState =
             [class.drop-zone--dragging]="isDragging"
             role="button"
             tabindex="0"
-            aria-label="Choose an Excel file for import"
+            aria-label="Choose a workbook or export package for import"
             [attr.aria-describedby]="validationError ? validationErrorId : null"
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
@@ -157,7 +160,7 @@ type UploadState =
             <ng-container *ngIf="!selectedFile; else fileSelected">
               <p class="drop-primary">Click to choose a file</p>
               <p class="drop-secondary">
-                Accepts .xlsx and .xls — maximum 5 MB
+                Accepts .xlsx and .zip — maximum 50 MB
               </p>
             </ng-container>
 
@@ -185,23 +188,29 @@ type UploadState =
 
           <!-- Upload progress bar -->
           <div
-            *ngIf="uploadState === 'uploading'"
+            *ngIf="uploadState === 'uploading' || uploadState === 'processing'"
             class="progress-wrapper"
             role="status"
             aria-live="polite"
             [@fadeSlideIn]
           >
             <mat-progress-bar
+              *ngIf="uploadState === 'uploading'"
               mode="determinate"
               [value]="uploadProgress.percent"
               aria-label="Upload progress"
             ></mat-progress-bar>
-            <p class="progress-label">
+            <p class="progress-label" *ngIf="uploadState === 'uploading'">
               Uploading… {{ uploadProgress.percent }}% ({{
                 formatFileSize(uploadProgress.loaded)
               }}
               of {{ formatFileSize(uploadProgress.total) }})
             </p>
+            <div class="processing-indicator" *ngIf="uploadState === 'processing'">
+              <div class="processing-spinner" aria-hidden="true"></div>
+              <p class="processing-title">This may take a moment…</p>
+              <p class="processing-copy">{{ getProcessingStatusMessage() }}</p>
+            </div>
           </div>
 
           <!-- Result feedback — review required -->
@@ -344,7 +353,10 @@ type UploadState =
             mat-stroked-button
             (click)="clearSelection()"
             [disabled]="
-              !selectedFile || uploadState === 'uploading' || isCommittingReview
+              !selectedFile ||
+              uploadState === 'uploading' ||
+              uploadState === 'processing' ||
+              isCommittingReview
             "
             aria-label="Clear selected file"
           >
@@ -360,13 +372,20 @@ type UploadState =
               !selectedFile ||
               !!validationError ||
               uploadState === 'uploading' ||
+              uploadState === 'processing' ||
               uploadState === 'review' ||
               isCommittingReview
             "
             aria-label="Upload selected file and import entries"
           >
             <mat-icon>cloud_upload</mat-icon>
-            {{ uploadState === "uploading" ? "Uploading…" : "Import Entries" }}
+            {{
+              uploadState === "uploading"
+                ? "Uploading…"
+                : uploadState === "processing"
+                  ? "Processing…"
+                  : "Import Entries"
+            }}
           </button>
         </mat-card-actions>
       </mat-card>
@@ -715,6 +734,46 @@ type UploadState =
         text-align: right;
       }
 
+      .processing-indicator {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 1rem 0 0.15rem;
+        text-align: center;
+      }
+
+      .processing-spinner {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 999px;
+        border: 3px solid rgba(99, 102, 241, 0.18);
+        border-top-color: var(--colour-primary);
+        animation: import-processing-spin 900ms linear infinite;
+      }
+
+      .processing-title {
+        margin: 0;
+        font-weight: 700;
+        color: var(--colour-text-primary);
+      }
+
+      .processing-copy {
+        margin: 0;
+        font-size: 0.92rem;
+        color: var(--colour-text-secondary);
+      }
+
+      @keyframes import-processing-spin {
+        from {
+          transform: rotate(0deg);
+        }
+
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       /* ── Feedback banners ── */
       .feedback {
         display: flex;
@@ -977,6 +1036,15 @@ export class ImportComponent implements OnInit {
   isDuplicateModalOpen = false;
   isCommittingReview = false;
   selectedDuplicateRowIds = new Set<string>();
+  private processingMessageIndex = 0;
+  private processingMessageTimerId: number | null = null;
+  private readonly processingMessages = [
+    "Setting up the analysis engine…",
+    "Reading files…",
+    "Preparing images and package data…",
+    "Comparing entries and checking duplicates…",
+    "Uploading to database…",
+  ];
 
   // Template download
   isDownloading = false;
@@ -1058,6 +1126,7 @@ export class ImportComponent implements OnInit {
   uploadFile(): void {
     if (!this.selectedFile || this.validationError) return;
 
+    this.stopProcessingIndicator();
     this.uploadState = "uploading";
     this.uploadProgress = {
       percent: 0,
@@ -1078,7 +1147,15 @@ export class ImportComponent implements OnInit {
           if (!event) return;
           if (event.type === "progress") {
             this.uploadProgress = event.progress;
+            if (
+              event.progress.total > 0 &&
+              event.progress.loaded >= event.progress.total &&
+              this.uploadState === "uploading"
+            ) {
+              this.startProcessingIndicator();
+            }
           } else if (event.type === "result") {
+            this.stopProcessingIndicator();
             this.importResult = event.result;
             const resultStatus = event.result.status;
             this.importSessionId = event.result.import_session_id ?? null;
@@ -1096,6 +1173,7 @@ export class ImportComponent implements OnInit {
           }
         },
         error: (err: Error) => {
+          this.stopProcessingIndicator();
           this.uploadState = "error";
           this.importErrorMessage =
             err.message || "Upload failed. Please try again.";
@@ -1251,6 +1329,7 @@ export class ImportComponent implements OnInit {
       .commitImportSession(this.importSessionId, acceptedDuplicateRowIds)
       .subscribe({
         next: (result) => {
+          this.stopProcessingIndicator();
           this.importResult = result;
           this.uploadState = result.status === "failed" ? "error" : result.status;
           this.importSessionId = null;
@@ -1262,6 +1341,7 @@ export class ImportComponent implements OnInit {
           }
         },
         error: (err: Error) => {
+          this.stopProcessingIndicator();
           this.isCommittingReview = false;
           this.uploadState = "error";
           this.importErrorMessage =
@@ -1284,6 +1364,7 @@ export class ImportComponent implements OnInit {
   }
 
   private resetImportFeedback(): void {
+    this.stopProcessingIndicator();
     this.uploadState = "idle";
     this.importResult = null;
     this.importErrorMessage = "";
@@ -1298,5 +1379,35 @@ export class ImportComponent implements OnInit {
     this.validationError = null;
     this.resetImportFeedback();
     this.uploadProgress = { percent: 0, loaded: 0, total: 0 };
+  }
+
+  getProcessingStatusMessage(): string {
+    return (
+      this.processingMessages[this.processingMessageIndex] ??
+      "Working on your import…"
+    );
+  }
+
+  private startProcessingIndicator(): void {
+    if (this.uploadState === "processing") {
+      return;
+    }
+    this.uploadState = "processing";
+    this.processingMessageIndex = 0;
+    if (this.processingMessageTimerId !== null) {
+      window.clearInterval(this.processingMessageTimerId);
+    }
+    this.processingMessageTimerId = window.setInterval(() => {
+      this.processingMessageIndex =
+        (this.processingMessageIndex + 1) % this.processingMessages.length;
+    }, 1800);
+  }
+
+  private stopProcessingIndicator(): void {
+    this.processingMessageIndex = 0;
+    if (this.processingMessageTimerId !== null) {
+      window.clearInterval(this.processingMessageTimerId);
+      this.processingMessageTimerId = null;
+    }
   }
 }

@@ -22,6 +22,7 @@ _MIME_TO_EXTENSION: Final[dict[str, str]] = {
     "image/png": "png",
     "image/webp": "webp",
 }
+_ALLOWED_EXTENSIONS: Final[set[str]] = {"jpg", "jpeg", "png", "webp"}
 
 
 def ensure_media_root(media_root: str) -> None:
@@ -47,6 +48,28 @@ def store_uploaded_image(image_bytes: bytes, *, user_id: int, entry_kind: str) -
         user_id=user_id,
         entry_kind=entry_kind,
         extension="jpg",
+    )
+
+
+def store_imported_image(
+    image_bytes: bytes,
+    *,
+    user_id: int,
+    entry_kind: str,
+    filename: str,
+) -> str:
+    extension = Path(filename or "").suffix.lower().lstrip(".")
+    if extension not in _ALLOWED_EXTENSIONS:
+        raise ValueError(f"Unsupported imported image extension: {extension or 'unknown'}")
+
+    if extension == "jpeg":
+        extension = "jpg"
+
+    return _store_image_bytes(
+        image_bytes,
+        user_id=user_id,
+        entry_kind=entry_kind,
+        extension=extension,
     )
 
 
@@ -100,6 +123,15 @@ def media_path_exists(storage_key: str | None) -> bool:
     if not storage_key:
         return False
     return _storage_key_to_path(storage_key).exists()
+
+
+def read_image_bytes(storage_key: str | None) -> bytes | None:
+    if not storage_key:
+        return None
+    image_path = _storage_key_to_path(storage_key)
+    if not image_path.exists():
+        return None
+    return image_path.read_bytes()
 
 
 def _store_image_bytes(

@@ -31,14 +31,14 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         <mat-icon mat-card-avatar>download</mat-icon>
         <mat-card-title>Export Entries</mat-card-title>
         <mat-card-subtitle>
-          Download all your daily and dream entries as a single Excel file.
+          Download all your daily and dream entries as a package containing the workbook and any bundled hero images.
         </mat-card-subtitle>
       </mat-card-header>
 
       <mat-card-content>
         <p class="hint">
-          The export file contains two sheets: <strong>Daily</strong> and
-          <strong>Dreams</strong>.
+          The export package contains an <strong>entries.xlsx</strong> workbook
+          plus any bundled Daily and Dream hero images.
         </p>
 
         <div class="filters" aria-label="Export filters">
@@ -340,7 +340,7 @@ export class ExportComponent implements OnInit {
 
     this.importService.downloadExport(filters).subscribe({
       next: (result) => {
-        this.handleDownloadSuccess(result.blob);
+        this.handleDownloadSuccess(result.blob, result.filename);
         this.bulkDeleteGuardToken = result.guardToken ?? this.bulkDeleteGuardToken;
         this.isDownloading = false;
         this.successMessage = "Export downloaded successfully.";
@@ -374,7 +374,7 @@ export class ExportComponent implements OnInit {
       })
       .subscribe({
         next: (result) => {
-          this.handleDownloadSuccess(result.blob);
+          this.handleDownloadSuccess(result.blob, result.filename);
           this.bulkDeleteGuardToken = result.guardToken ?? "";
           this.isDownloading = false;
           this.successMessage =
@@ -471,12 +471,12 @@ export class ExportComponent implements OnInit {
       });
   }
 
-  private handleDownloadSuccess(blob: Blob): void {
+  private handleDownloadSuccess(blob: Blob, filename?: string): void {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     const stamp = new Date().toISOString().slice(0, 10);
     anchor.href = url;
-    anchor.download = `aidiary_export_${stamp}.xlsx`;
+    anchor.download = filename || `aidiary_export_${stamp}.zip`;
     anchor.click();
     window.URL.revokeObjectURL(url);
   }

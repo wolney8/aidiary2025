@@ -4,30 +4,38 @@ import io
 import json
 import logging
 import math
+import os
 import re
+import shutil
 import sqlite3
 import secrets
+import tempfile
+import zipfile
+from pathlib import Path
 from datetime import datetime, date, time, timezone
 from collections import Counter
 from services.nltk_enrichment import (
     derive_daily_nltk_fields as _runtime_derive_daily_nltk_fields,
     derive_dream_nltk_fields as _runtime_derive_dream_nltk_fields,
 )
+from services.media_storage import store_imported_image
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-ALLOWED_EXTENSIONS = {'.xlsx'}
-MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+ALLOWED_EXTENSIONS = {'.xlsx', '.zip'}
+MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 ALLOWED_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  # .xlsx
     'application/octet-stream',  # generic binary used by some clients
+    'application/zip',
+    'application/x-zip-compressed',
 }
 
 DAILY_REQUIRED_HEADERS = ('date', 'title', 'user_entry', 'ai_response')
-DAILY_OPTIONAL_HEADERS = ('entry_time',)
-DAILY_IMPORT_HEADERS = ('date', 'entry_time', 'title', 'user_entry', 'ai_response')
+DAILY_OPTIONAL_HEADERS = ('entry_time', 'entry_asset_ref')
+DAILY_IMPORT_HEADERS = ('date', 'entry_time', 'title', 'user_entry', 'ai_response', 'entry_asset_ref')
 DREAM_IMPORT_HEADERS = (
     'date',
     'entry_time',
@@ -42,9 +50,10 @@ DREAM_IMPORT_HEADERS = (
     'action',
     'other',
     'tags',
+    'entry_asset_ref',
 )
 _DREAM_REQUIRED_HEADERS = tuple(
-    header for header in DREAM_IMPORT_HEADERS if header != 'entry_time'
+    header for header in DREAM_IMPORT_HEADERS if header not in {'entry_time', 'entry_asset_ref'}
 )
 
 # Script-injection patterns to strip from cell values
@@ -55,6 +64,8 @@ _DEFAULT_IMPORT_TIMES = {
     'daily': '19:00',
     'dream': '08:00',
 }
+_PACKAGE_WORKBOOK_NAME = 'entries.xlsx'
+_PACKAGE_MANIFEST_NAME = 'manifest.json'
 
 
 # ---------------------------------------------------------------------------
@@ -71,12 +82,12 @@ def validate_file(filename: str, content_type: str, file_size: int) -> list[str]
     ext = _file_extension(filename)
     if ext not in ALLOWED_EXTENSIONS:
         errors.append(
-            f'Invalid file type "{ext}". Only .xlsx files are accepted.'
+            f'Invalid file type "{ext}". Only .xlsx spreadsheets or .zip export packages are accepted.'
         )
 
     if content_type and content_type not in ALLOWED_MIME_TYPES:
         errors.append(
-            f'Invalid content type "{content_type}". Please upload an .xlsx file.'
+            f'Invalid content type "{content_type}". Please upload an .xlsx spreadsheet or .zip export package.'
         )
 
     if file_size > MAX_FILE_SIZE_BYTES:
@@ -260,26 +271,132 @@ def _derive_dream_nltk_fields(row_data: dict[str, str]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Excel parsing
+# Excel / package parsing
 # ---------------------------------------------------------------------------
 
-def parse_excel(file_bytes: bytes) -> dict:
-    """
-    Parse the uploaded Excel workbook.
+def _get_package_staging_root() -> str:
+    return tempfile.mkdtemp(prefix='aidiary-import-package-')
 
-        Expected sheets (case-insensitive):
-            - 'Daily'  — strict columns: date, title, user_entry, ai_response
-      - 'Dreams' — columns: date, title, plot, cast, location, period,
-                             emotion, symbols_and_imagery, insight, action, other, tags
 
-    Returns:
-                {
-                    'daily':    [{'entry_date', 'title', 'user_message', 'ai_response'}, ...],
-                    'dreams':   [{'entry_date', 'title', 'plot', ...}, ...],
-                    'errors':   [str, ...],   # strict schema violations
-                    'warnings': [str, ...],   # non-fatal parsing issues
-                }
-    """
+def _load_package_manifest(zip_file: zipfile.ZipFile) -> dict:
+    if _PACKAGE_MANIFEST_NAME not in zip_file.namelist():
+        return {}
+
+    try:
+        return json.loads(zip_file.read(_PACKAGE_MANIFEST_NAME).decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f'Could not read {_PACKAGE_MANIFEST_NAME}: {exc}') from exc
+
+
+def _stage_package_asset(
+    zip_file: zipfile.ZipFile,
+    staging_root: str,
+    asset_ref: str,
+    image_filename: str,
+) -> str | None:
+    package_path = f'media/{asset_ref}/{image_filename}'
+    try:
+        image_bytes = zip_file.read(package_path)
+    except KeyError:
+        return None
+
+    staged_dir = Path(staging_root) / asset_ref
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    staged_path = staged_dir / Path(image_filename).name
+    staged_path.write_bytes(image_bytes)
+    return str(staged_path)
+
+
+def _attach_package_asset_metadata(
+    rows: list[dict],
+    *,
+    entry_type: str,
+    manifest_assets: dict,
+    zip_file: zipfile.ZipFile,
+    staging_root: str,
+    warnings: list[str],
+) -> None:
+    for row in rows:
+        asset_ref = _sanitise(row.get('entry_asset_ref', ''))
+        if not asset_ref:
+            continue
+
+        asset_meta = manifest_assets.get(asset_ref)
+        if not isinstance(asset_meta, dict):
+            warnings.append(
+                f'{entry_type.title()} entry "{row.get("title", "") or row.get("entry_date", "")}": '
+                f'missing manifest metadata for asset ref "{asset_ref}".'
+            )
+            continue
+
+        image_filename = _sanitise(asset_meta.get('image_filename', ''))
+        if not image_filename:
+            continue
+
+        staged_path = _stage_package_asset(zip_file, staging_root, asset_ref, image_filename)
+        if not staged_path:
+            warnings.append(
+                f'{entry_type.title()} entry "{row.get("title", "") or row.get("entry_date", "")}": '
+                f'missing packaged image file "{image_filename}".'
+            )
+            continue
+
+        row['import_image_path'] = staged_path
+        row['image_source'] = _sanitise(asset_meta.get('image_source', '')) or 'upload'
+        row['image_position_x'] = _sanitise(asset_meta.get('image_position_x', '')) or '50'
+        row['image_position_y'] = _sanitise(asset_meta.get('image_position_y', '')) or '50'
+        row['image_prompt'] = _sanitise(asset_meta.get('image_prompt', ''))
+        row['recycled_image_prompt'] = _sanitise(asset_meta.get('recycled_image_prompt', ''))
+
+
+def parse_import_file(file_bytes: bytes, *, filename: str) -> dict:
+    extension = _file_extension(filename)
+    if extension == '.zip':
+        return parse_import_package(file_bytes)
+    return parse_excel_workbook(file_bytes)
+
+
+def parse_import_package(file_bytes: bytes) -> dict:
+    try:
+        zip_buffer = io.BytesIO(file_bytes)
+        with zipfile.ZipFile(zip_buffer) as zip_file:
+            if _PACKAGE_WORKBOOK_NAME not in zip_file.namelist():
+                raise ValueError(f'Zip package must contain {_PACKAGE_WORKBOOK_NAME}.')
+
+            workbook_bytes = zip_file.read(_PACKAGE_WORKBOOK_NAME)
+            parsed = parse_excel_workbook(workbook_bytes)
+            if parsed.get('errors'):
+                return parsed
+
+            manifest = _load_package_manifest(zip_file)
+            manifest_assets = manifest.get('assets', {}) if isinstance(manifest, dict) else {}
+            staging_root = _get_package_staging_root()
+
+            _attach_package_asset_metadata(
+                parsed.get('daily', []),
+                entry_type='daily',
+                manifest_assets=manifest_assets,
+                zip_file=zip_file,
+                staging_root=staging_root,
+                warnings=parsed.setdefault('warnings', []),
+            )
+            _attach_package_asset_metadata(
+                parsed.get('dreams', []),
+                entry_type='dream',
+                manifest_assets=manifest_assets,
+                zip_file=zip_file,
+                staging_root=staging_root,
+                warnings=parsed.setdefault('warnings', []),
+            )
+
+            parsed['package_staging_root'] = staging_root
+            return parsed
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f'Could not open zip package: {exc}') from exc
+
+
+def parse_excel_workbook(file_bytes: bytes) -> dict:
+    """Parse a workbook into normalised daily/dream row dictionaries."""
     try:
         import pandas as pd
     except ImportError:
@@ -335,6 +452,7 @@ def parse_excel(file_bytes: bytes) -> dict:
                     'title': _sanitise(row.get('title', '')),
                     'user_message': _sanitise(row.get('user_entry', row.get('user_message', ''))),
                     'ai_response': _sanitise(row.get('ai_response', '')),
+                    'entry_asset_ref': _sanitise(row.get('entry_asset_ref', '')),
                 })
     else:
         warnings.append("No 'Daily' sheet found; daily entries not imported.")
@@ -351,7 +469,7 @@ def parse_excel(file_bytes: bytes) -> dict:
                 'Dreams',
                 df.columns.tolist(),
                 _DREAM_REQUIRED_HEADERS,
-                ('entry_time',),
+                ('entry_time', 'entry_asset_ref'),
             )
         )
         for idx, row in df.iterrows():
@@ -390,6 +508,7 @@ def parse_excel(file_bytes: bytes) -> dict:
                 'action': _sanitise(row.get('action', '')),
                 'other': _sanitise(row.get('other', '')),
                 'tags': _sanitise(row.get('tags', '')),
+                'entry_asset_ref': _sanitise(row.get('entry_asset_ref', '')),
             }
             
             # Derive NLTK enrichment for dreams
@@ -710,6 +829,68 @@ def _merge_tags(*tag_groups: str) -> str:
     return ','.join(merged)
 
 
+def _cleanup_import_package_staging(preview_payload: dict) -> None:
+    staging_root = str(preview_payload.get('package_staging_root') or '').strip()
+    if not staging_root:
+        return
+    shutil.rmtree(staging_root, ignore_errors=True)
+
+
+def _normalise_position_value(value: str, *, default: str = '50') -> str:
+    text = str(value or '').strip()
+    if not text:
+        return default
+    try:
+        numeric = float(text)
+    except ValueError:
+        return default
+    return str(max(0.0, min(100.0, numeric))).rstrip('0').rstrip('.') or default
+
+
+def _attach_imported_media_to_entry(
+    cursor: sqlite3.Cursor,
+    *,
+    table_name: str,
+    entry_id: int,
+    user_id: int,
+    entry_kind: str,
+    row: dict[str, str],
+) -> None:
+    import_image_path = str(row.get('import_image_path') or '').strip()
+    if not import_image_path:
+        return
+
+    image_bytes = Path(import_image_path).read_bytes()
+    storage_key = store_imported_image(
+        image_bytes,
+        user_id=user_id,
+        entry_kind=entry_kind,
+        filename=Path(import_image_path).name,
+    )
+
+    cursor.execute(
+        f'''UPDATE {table_name}
+            SET image_storage_key = ?,
+                image_url = NULL,
+                image_prompt = ?,
+                recycled_image_prompt = ?,
+                image_position_x = ?,
+                image_position_y = ?,
+                image_source = ?
+            WHERE id = ? AND user_id = ?''',
+        (
+            storage_key,
+            row.get('image_prompt') or None,
+            row.get('recycled_image_prompt') or None,
+            _normalise_position_value(row.get('image_position_x', '50')),
+            _normalise_position_value(row.get('image_position_y', '50')),
+            (row.get('image_source') or 'upload').strip() or 'upload',
+            entry_id,
+            user_id,
+        ),
+    )
+
+
 def _insert_daily_import_row(
     cursor: sqlite3.Cursor,
     user_id: int,
@@ -748,6 +929,14 @@ def _insert_daily_import_row(
             derived_fields['daily_places'],
             tags,
         ),
+    )
+    _attach_imported_media_to_entry(
+        cursor,
+        table_name='dailydiary_entries',
+        entry_id=cursor.lastrowid,
+        user_id=user_id,
+        entry_kind='daily',
+        row=row,
     )
 
 
@@ -791,6 +980,14 @@ def _insert_dream_import_row(
             row.get('dream_places', ''),
         ),
     )
+    _attach_imported_media_to_entry(
+        cursor,
+        table_name='dreamdiary_entries',
+        entry_id=cursor.lastrowid,
+        user_id=user_id,
+        entry_kind='dream',
+        row=row,
+    )
 
 
 def commit_import_preview(
@@ -808,46 +1005,49 @@ def commit_import_preview(
     accepted_duplicate_daily = 0
     accepted_duplicate_dreams = 0
 
-    for row in preview_payload.get('ready_daily_rows', []):
-        _insert_daily_import_row(cursor, user_id, row)
-        inserted_daily += 1
-
-    for row in preview_payload.get('ready_dream_rows', []):
-        _insert_dream_import_row(cursor, user_id, row)
-        inserted_dreams += 1
-
-    duplicate_rows = preview_payload.get('duplicate_rows', [])
-    for duplicate in duplicate_rows:
-        if duplicate.get('row_id') not in accepted_duplicate_row_ids:
-            continue
-        entry_type = duplicate.get('entry_type')
-        row_data = duplicate.get('row_data')
-        if not isinstance(row_data, dict):
-            continue
-        if entry_type == 'daily':
-            _insert_daily_import_row(cursor, user_id, row_data, mark_duplicate=True)
+    try:
+        for row in preview_payload.get('ready_daily_rows', []):
+            _insert_daily_import_row(cursor, user_id, row)
             inserted_daily += 1
-            accepted_duplicate_daily += 1
-        elif entry_type == 'dream':
-            _insert_dream_import_row(cursor, user_id, row_data, mark_duplicate=True)
+
+        for row in preview_payload.get('ready_dream_rows', []):
+            _insert_dream_import_row(cursor, user_id, row)
             inserted_dreams += 1
-            accepted_duplicate_dreams += 1
 
-    skipped_daily = preview_payload.get('summary', {}).get('duplicate_daily', 0) - accepted_duplicate_daily
-    skipped_dreams = preview_payload.get('summary', {}).get('duplicate_dreams', 0) - accepted_duplicate_dreams
-    conn.commit()
+        duplicate_rows = preview_payload.get('duplicate_rows', [])
+        for duplicate in duplicate_rows:
+            if duplicate.get('row_id') not in accepted_duplicate_row_ids:
+                continue
+            entry_type = duplicate.get('entry_type')
+            row_data = duplicate.get('row_data')
+            if not isinstance(row_data, dict):
+                continue
+            if entry_type == 'daily':
+                _insert_daily_import_row(cursor, user_id, row_data, mark_duplicate=True)
+                inserted_daily += 1
+                accepted_duplicate_daily += 1
+            elif entry_type == 'dream':
+                _insert_dream_import_row(cursor, user_id, row_data, mark_duplicate=True)
+                inserted_dreams += 1
+                accepted_duplicate_dreams += 1
 
-    return {
-        'inserted_daily': inserted_daily,
-        'skipped_daily': max(0, skipped_daily),
-        'inserted_dreams': inserted_dreams,
-        'skipped_dreams': max(0, skipped_dreams),
-        'duplicate_dates_daily': preview_payload.get('summary', {}).get('duplicate_dates_daily', []),
-        'duplicate_dates_dreams': preview_payload.get('summary', {}).get('duplicate_dates_dreams', []),
-        'duplicate_entries': [],
-        'accepted_duplicate_daily': accepted_duplicate_daily,
-        'accepted_duplicate_dreams': accepted_duplicate_dreams,
-    }
+        skipped_daily = preview_payload.get('summary', {}).get('duplicate_daily', 0) - accepted_duplicate_daily
+        skipped_dreams = preview_payload.get('summary', {}).get('duplicate_dreams', 0) - accepted_duplicate_dreams
+        conn.commit()
+
+        return {
+            'inserted_daily': inserted_daily,
+            'skipped_daily': max(0, skipped_daily),
+            'inserted_dreams': inserted_dreams,
+            'skipped_dreams': max(0, skipped_dreams),
+            'duplicate_dates_daily': preview_payload.get('summary', {}).get('duplicate_dates_daily', []),
+            'duplicate_dates_dreams': preview_payload.get('summary', {}).get('duplicate_dates_dreams', []),
+            'duplicate_entries': [],
+            'accepted_duplicate_daily': accepted_duplicate_daily,
+            'accepted_duplicate_dreams': accepted_duplicate_dreams,
+        }
+    finally:
+        _cleanup_import_package_staging(preview_payload)
 
 
 def backfill_nltk_enrichment(conn: sqlite3.Connection, logger=None) -> None:
