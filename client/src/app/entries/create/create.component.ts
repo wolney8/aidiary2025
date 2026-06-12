@@ -1,9 +1,18 @@
 // Create entry with support for daily and dream flows
-import { Component, HostListener, inject, OnInit } from "@angular/core";
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  inject,
+} from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { HttpErrorResponse } from "@angular/common/http";
 import { Router, ActivatedRoute } from "@angular/router";
+import { firstValueFrom } from "rxjs";
 import { MatCardModule } from "@angular/material/card";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatInputModule } from "@angular/material/input";
@@ -31,6 +40,7 @@ import {
 import {
   DailyAnalysisResponse,
   DreamAnalysisResponse,
+  EntryAsset,
   MoodOption,
   AIStyleOption,
   DreamFieldOptions,
@@ -47,6 +57,29 @@ const UK_DATE_FORMATS = {
     monthYearA11yLabel: "MMMM yyyy",
   },
 };
+
+interface PendingAttachment {
+  file: File;
+  previewUrl: string | null;
+  kind: "image" | "pdf" | "audio" | "other";
+}
+
+const MAX_ATTACHMENTS_PER_ENTRY = 3;
+const MAX_IMAGE_OR_PDF_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "pdf",
+  "mp3",
+  "wav",
+  "m4a",
+  "ogg",
+  "webm",
+  "aiff",
+]);
 
 @Component({
   selector: "app-create",
@@ -402,6 +435,184 @@ const UK_DATE_FORMATS = {
             </mat-chip-grid>
           </mat-form-field>
 
+          <section class="entry-attachments" aria-label="Pending attachments">
+            <div class="entry-attachments-header">
+              <div>
+                <h3>Attachments</h3>
+                <p>
+                  Add up to {{ maxAttachmentsPerEntry }} files. Images and PDFs
+                  up to 10 MB, audio up to 25 MB.
+                </p>
+              </div>
+              <div class="entry-attachments-actions">
+                <input
+                  #pendingAttachmentInput
+                  type="file"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.mp3,.wav,.m4a,.ogg,.webm,.aiff,image/png,image/jpeg,image/webp,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/x-m4a,audio/webm,audio/aiff,audio/x-aiff,application/pdf"
+                  class="hidden"
+                  (change)="onPendingAttachmentSelected($event)"
+                />
+                <button
+                  mat-stroked-button
+                  type="button"
+                  (click)="triggerPendingAttachmentSelection()"
+                  [disabled]="!canAddPendingAttachment() || isSaving"
+                >
+                  <mat-icon>attach_file</mat-icon>
+                  Add attachment
+                </button>
+              </div>
+            </div>
+
+            <p class="attachment-limit-copy">
+              {{ getTotalAttachmentCount() }} / {{ maxAttachmentsPerEntry }}
+              attachments selected
+            </p>
+
+            <div
+              class="entry-attachments-list"
+              *ngIf="pendingAttachments.length || existingAttachments.length; else noPendingAttachments"
+            >
+              <article
+                class="entry-attachment-row existing"
+                *ngFor="let attachment of existingAttachments"
+              >
+                <a
+                  class="entry-attachment-preview"
+                  [href]="attachment.url"
+                  target="_blank"
+                  rel="noopener"
+                  [attr.aria-label]="'Open ' + attachment.original_filename"
+                  [class.image]="attachment.is_image"
+                  [class.audio]="attachment.is_audio"
+                  [class.pdf]="attachment.is_pdf"
+                >
+                  <img
+                    *ngIf="attachment.is_image"
+                    [src]="attachment.url"
+                    [alt]="attachment.original_filename"
+                  />
+                  <div class="entry-attachment-pdf-tile" *ngIf="attachment.is_pdf">
+                    <mat-icon>picture_as_pdf</mat-icon>
+                    <span>PDF</span>
+                  </div>
+                  <div class="entry-attachment-audio-tile" *ngIf="attachment.is_audio">
+                    <mat-icon>graphic_eq</mat-icon>
+                    <span>Audio</span>
+                  </div>
+                </a>
+                <div class="entry-attachment-copy">
+                  <h4>{{ attachment.original_filename }}</h4>
+                  <p>
+                    Existing attachment
+                    <span *ngIf="attachment.file_size_bytes">
+                      · {{ formatAttachmentFileSize(attachment.file_size_bytes) }}
+                    </span>
+                  </p>
+                </div>
+                <div class="entry-attachment-row-actions">
+                  <a
+                    class="entry-attachment-open-link"
+                    [href]="attachment.url"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    <mat-icon>open_in_new</mat-icon>
+                    Open
+                  </a>
+                  <button
+                    mat-stroked-button
+                    color="warn"
+                    type="button"
+                    (click)="markAttachmentForRemoval(attachment)"
+                    [disabled]="isSaving"
+                  >
+                    <mat-icon>delete</mat-icon>
+                    Remove
+                  </button>
+                </div>
+              </article>
+
+              <article
+                class="entry-attachment-row pending"
+                *ngFor="let attachment of pendingAttachments; let index = index"
+              >
+                <div
+                  class="entry-attachment-preview"
+                  [class.image]="attachment.kind === 'image'"
+                  [class.audio]="attachment.kind === 'audio'"
+                  [class.pdf]="attachment.kind === 'pdf'"
+                >
+                  <img
+                    *ngIf="attachment.kind === 'image' && attachment.previewUrl"
+                    [src]="attachment.previewUrl"
+                    [alt]="attachment.file.name"
+                  />
+                  <div class="entry-attachment-pdf-tile" *ngIf="attachment.kind === 'pdf'">
+                    <mat-icon>picture_as_pdf</mat-icon>
+                    <span>PDF</span>
+                  </div>
+                  <div class="entry-attachment-audio-tile" *ngIf="attachment.kind === 'audio'">
+                    <mat-icon>graphic_eq</mat-icon>
+                    <span>Audio</span>
+                  </div>
+                </div>
+                <div class="entry-attachment-copy">
+                  <h4>{{ attachment.file.name }}</h4>
+                  <p>
+                    {{ getPendingAttachmentTypeLabel(attachment) }} · Pending upload ·
+                    {{ formatAttachmentFileSize(attachment.file.size) }}
+                  </p>
+                </div>
+                <button
+                  mat-stroked-button
+                  color="warn"
+                  type="button"
+                  (click)="removePendingAttachment(index)"
+                  [disabled]="isSaving"
+                >
+                  <mat-icon>close</mat-icon>
+                  Remove
+                </button>
+              </article>
+
+              <article
+                class="entry-attachment-row removal"
+                *ngFor="let attachment of attachmentsMarkedForRemoval"
+              >
+                <div class="entry-attachment-preview removal-state">
+                  <mat-icon>delete_outline</mat-icon>
+                </div>
+                <div class="entry-attachment-copy">
+                  <h4>{{ attachment.original_filename }}</h4>
+                  <p>
+                    Marked for deletion on save
+                    <span *ngIf="attachment.file_size_bytes">
+                      · {{ formatAttachmentFileSize(attachment.file_size_bytes) }}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  mat-stroked-button
+                  type="button"
+                  (click)="restoreMarkedAttachment(attachment)"
+                  [disabled]="isSaving"
+                >
+                  <mat-icon>undo</mat-icon>
+                  Undo
+                </button>
+              </article>
+            </div>
+
+            <ng-template #noPendingAttachments>
+              <div class="entry-attachments-empty">
+                <mat-icon>attachment</mat-icon>
+                <p>No attachments selected yet.</p>
+              </div>
+            </ng-template>
+          </section>
+
           <div class="actions">
             <button
               mat-stroked-button
@@ -499,6 +710,152 @@ const UK_DATE_FORMATS = {
         margin-top: var(--spacing-sm);
       }
 
+      .entry-attachments {
+        margin: var(--spacing-md) 0;
+        padding: 0.85rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .entry-attachments-header {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+        align-items: flex-start;
+      }
+
+      .entry-attachments-header h3,
+      .entry-attachment-copy h4 {
+        margin: 0;
+      }
+
+      .entry-attachments-header p,
+      .attachment-limit-copy,
+      .entry-attachment-copy p {
+        margin: 0;
+        color: var(--colour-text-secondary);
+      }
+
+      .entry-attachments-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .attachment-limit-copy {
+        margin-top: var(--spacing-sm);
+        font-size: 0.92rem;
+      }
+
+      .entry-attachments-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        margin-top: var(--spacing-sm);
+      }
+
+      .entry-attachment-row {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        padding: 0.55rem 0.65rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+      }
+
+      .entry-attachment-preview {
+        width: 3rem;
+        min-width: 3rem;
+        height: 3rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--colour-border);
+        background:
+          linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.18)),
+          var(--colour-surface-muted);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        color: inherit;
+      }
+
+      .entry-attachment-preview:focus-visible {
+        outline: 2px solid var(--colour-primary);
+        outline-offset: 2px;
+      }
+
+      .entry-attachment-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .entry-attachment-pdf-tile,
+      .entry-attachment-audio-tile {
+        display: flex;
+        flex-direction: column;
+        gap: 0.12rem;
+        align-items: center;
+        color: var(--colour-text-primary);
+        font-size: 0.72rem;
+      }
+
+      .entry-attachment-pdf-tile mat-icon,
+      .entry-attachment-audio-tile mat-icon {
+        width: 1rem;
+        height: 1rem;
+        font-size: 1rem;
+      }
+
+      .entry-attachment-copy {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .entry-attachments-empty {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        margin-top: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface);
+        border: 1px dashed var(--colour-border);
+        color: var(--colour-text-secondary);
+        font-size: 0.92rem;
+      }
+
+      .entry-attachment-row-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .entry-attachment-preview.removal-state {
+        color: var(--colour-text-secondary);
+      }
+
+      .entry-attachment-open-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        color: var(--colour-primary);
+        text-decoration: underline;
+        text-underline-offset: 0.12rem;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .entry-attachment-open-link:focus-visible {
+        outline: 2px solid var(--colour-primary);
+        outline-offset: 2px;
+        border-radius: var(--radius-sm);
+      }
+
       .hidden {
         display: none;
       }
@@ -544,17 +901,41 @@ const UK_DATE_FORMATS = {
         .header-back {
           align-self: flex-start;
         }
+
+        .entry-attachments-header {
+          flex-direction: column;
+        }
+
+        .entry-attachments-actions {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .entry-attachment-row {
+          align-items: flex-start;
+        }
+
+        .entry-attachment-row-actions {
+          width: 100%;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
       }
     `,
   ],
 })
-export class CreateComponent implements OnInit {
+export class CreateComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
+  @ViewChild("pendingAttachmentInput")
+  pendingAttachmentInput?: ElementRef<HTMLInputElement>;
 
   backQueryParams: Record<string, string | number> = {};
+  readonly maxAttachmentsPerEntry = MAX_ATTACHMENTS_PER_ENTRY;
 
   entryDate: Date | string | null = new Date();
   entryTime = this.getCurrentLocalTime();
@@ -571,6 +952,9 @@ export class CreateComponent implements OnInit {
   maxDate = new Date();
   isEditing = false;
   editingId: number | null = null;
+  existingAttachments: EntryAsset[] = [];
+  attachmentsMarkedForRemoval: EntryAsset[] = [];
+  pendingAttachments: PendingAttachment[] = [];
 
   // Enhanced fields for both entry types
   selectedMood = "";
@@ -665,6 +1049,8 @@ export class CreateComponent implements OnInit {
   };
 
   ngOnInit(): void {
+    this.captureBackQueryParams();
+
     // Check for pre-populated date and type from query params
     this.route.queryParamMap.subscribe((params) => {
       const dateParam = params.get("date");
@@ -702,6 +1088,10 @@ export class CreateComponent implements OnInit {
     }
   }
 
+  ngOnDestroy(): void {
+    this.clearPendingAttachments();
+  }
+
   loadEntryForEditing(id: number): void {
     // Try loading as daily first
     this.entriesService.getDailyEntry(id).subscribe({
@@ -719,6 +1109,11 @@ export class CreateComponent implements OnInit {
   populateForm(entry: any, type: "daily" | "dream"): void {
     this.selectedType = type;
     this.previousSelectedType = type;
+    this.clearPendingAttachments();
+    this.attachmentsMarkedForRemoval = [];
+    this.existingAttachments = Array.isArray(entry.attachments)
+      ? [...entry.attachments]
+      : [];
     this.entryDate = this.parseApiDateAsLocal(entry.entry_date) ?? new Date();
     this.entryTime = this.coerceEntryTime(entry.entry_time) ?? this.getCurrentLocalTime();
     this.initialDate = this.describeEntryDate(this.entryDate);
@@ -845,13 +1240,12 @@ export class CreateComponent implements OnInit {
         this.entriesService
           .updateDailyEntry(this.editingId, updatePayload)
           .subscribe({
-            next: () => {
-              if (shouldAnalyse) {
-                this.runDailyAnalysis(this.editingId!);
-              } else {
-                this.finishNavigation(this.editingId!);
-              }
-            },
+            next: () =>
+              void this.handleEntrySaved(
+                this.editingId!,
+                "daily",
+                shouldAnalyse,
+              ),
             error: (error) =>
               this.handleSaveError(
                 error,
@@ -860,13 +1254,8 @@ export class CreateComponent implements OnInit {
           });
       } else {
         this.entriesService.createDailyEntry(createPayload).subscribe({
-          next: (created) => {
-            if (shouldAnalyse) {
-              this.runDailyAnalysis(created.id!);
-            } else {
-              this.finishNavigation(created.id!);
-            }
-          },
+          next: (created) =>
+            void this.handleEntrySaved(created.id!, "daily", shouldAnalyse),
           error: (error) =>
             this.handleSaveError(error, "Failed to save your daily entry."),
         });
@@ -918,13 +1307,12 @@ export class CreateComponent implements OnInit {
         this.entriesService
           .updateDreamEntry(this.editingId, updatePayload)
           .subscribe({
-            next: () => {
-              if (shouldAnalyse) {
-                this.runDreamAnalysis(this.editingId!);
-              } else {
-                this.finishNavigation(this.editingId!);
-              }
-            },
+            next: () =>
+              void this.handleEntrySaved(
+                this.editingId!,
+                "dream",
+                shouldAnalyse,
+              ),
             error: (error) =>
               this.handleSaveError(
                 error,
@@ -933,13 +1321,8 @@ export class CreateComponent implements OnInit {
           });
       } else {
         this.entriesService.createDreamEntry(createPayload).subscribe({
-          next: (created) => {
-            if (shouldAnalyse) {
-              this.runDreamAnalysis(created.id!);
-            } else {
-              this.finishNavigation(created.id!);
-            }
-          },
+          next: (created) =>
+            void this.handleEntrySaved(created.id!, "dream", shouldAnalyse),
           error: (error) =>
             this.handleSaveError(error, "Failed to save your dream entry."),
         });
@@ -947,49 +1330,84 @@ export class CreateComponent implements OnInit {
     }
   }
 
-  private runDailyAnalysis(entryId: number): void {
+  private async handleEntrySaved(
+    entryId: number,
+    entryType: "daily" | "dream",
+    shouldAnalyse: boolean,
+  ): Promise<void> {
+    const failedDeletedAttachmentNames =
+      await this.deleteMarkedAttachments(entryId, entryType);
+    const failedAttachmentNames = await this.uploadPendingAttachments(
+      entryId,
+      entryType,
+    );
+    const analysisWarning = shouldAnalyse
+      ? await (entryType === "daily"
+          ? this.runDailyAnalysis(entryId)
+          : this.runDreamAnalysis(entryId))
+      : undefined;
+
+    const attachmentMessages: string[] = [];
+    if (failedAttachmentNames.length) {
+      attachmentMessages.push(
+        `these attachments failed to upload: ${failedAttachmentNames.join(", ")}`,
+      );
+    }
+    if (failedDeletedAttachmentNames.length) {
+      attachmentMessages.push(
+        `these attachments could not be deleted: ${failedDeletedAttachmentNames.join(", ")}`,
+      );
+    }
+    const attachmentWarning = attachmentMessages.length
+      ? `Your entry was saved, but ${attachmentMessages.join("; ")}.`
+      : undefined;
+
+    this.finishNavigation(entryId, { analysisWarning, attachmentWarning });
+  }
+
+  private async runDailyAnalysis(entryId: number): Promise<string | undefined> {
     const analysisDate = this.coerceEntryDate(this.entryDate);
     const referenceDate = analysisDate
       ? this.serialiseDateAsLocalIso(analysisDate)
       : undefined;
 
-    this.analysisService
-      .analyseText({
-        mode: "daily",
-        text: this.content,
-        reference_date: referenceDate,
-      })
-      .subscribe({
-        next: (analysis) => {
-          const dailyAnalysis = analysis as DailyAnalysisResponse;
-          this.entriesService
-            .updateDailyEntry(entryId, {
-              ai_response: dailyAnalysis.ai_response,
-              tags: this.tags.length ? this.tags.join(",") : dailyAnalysis.tags,
-              daily_people_names: this.peopleNames.length
-                ? this.peopleNames.join(",")
-                : dailyAnalysis.daily_people_names,
-              daily_places: this.places.length
-                ? this.places.join(",")
-                : dailyAnalysis.daily_places,
-            })
-            .subscribe({
-              next: () => this.finishNavigation(entryId),
-              error: () => this.finishNavigation(entryId, "ai-save-failed"),
-            });
-        },
-        error: (error) => {
-          if (this.isRateLimitAnalysisError(error)) {
-            this.finishNavigation(entryId, "ai-rate-limit");
-            return;
-          }
+    try {
+      const analysis = await firstValueFrom(
+        this.analysisService.analyseText({
+          mode: "daily",
+          text: this.content,
+          reference_date: referenceDate,
+        }),
+      );
 
-          this.finishNavigation(entryId);
-        },
-      });
+      const dailyAnalysis = analysis as DailyAnalysisResponse;
+      try {
+        await firstValueFrom(
+          this.entriesService.updateDailyEntry(entryId, {
+            ai_response: dailyAnalysis.ai_response,
+            tags: this.tags.length ? this.tags.join(",") : dailyAnalysis.tags,
+            daily_people_names: this.peopleNames.length
+              ? this.peopleNames.join(",")
+              : dailyAnalysis.daily_people_names,
+            daily_places: this.places.length
+              ? this.places.join(",")
+              : dailyAnalysis.daily_places,
+          }),
+        );
+        return undefined;
+      } catch {
+        return "ai-save-failed";
+      }
+    } catch (error) {
+      if (this.isRateLimitAnalysisError(error)) {
+        return "ai-rate-limit";
+      }
+
+      return undefined;
+    }
   }
 
-  private runDreamAnalysis(entryId: number): void {
+  private async runDreamAnalysis(entryId: number): Promise<string | undefined> {
     // For dream analysis, use the plot field or combine dream fields
     const analysisText =
       this.dreamPlot.trim() ||
@@ -999,49 +1417,65 @@ export class CreateComponent implements OnInit {
       ? this.serialiseDateAsLocalIso(analysisDate)
       : undefined;
 
-    this.analysisService
-      .analyseText({
-        mode: "dream",
-        text: analysisText,
-        reference_date: referenceDate,
-      })
-      .subscribe({
-        next: (analysis) => {
-          const dreamAnalysis = analysis as DreamAnalysisResponse;
-          this.entriesService
-            .updateDreamEntry(entryId, {
-              summary: dreamAnalysis.summary,
-              interpretation: dreamAnalysis.interpretation,
-              image_prompt: dreamAnalysis.image_prompt,
-              tags: this.tags.length ? this.tags.join(",") : dreamAnalysis.tags,
-              dream_people_names: this.peopleNames.length
-                ? this.peopleNames.join(",")
-                : dreamAnalysis.dream_people_names,
-              dream_places: this.places.length
-                ? this.places.join(",")
-                : dreamAnalysis.dream_places,
-            })
-            .subscribe({
-              next: () => this.finishNavigation(entryId),
-              error: () => this.finishNavigation(entryId, "ai-save-failed"),
-            });
-        },
-        error: (error) => {
-          if (this.isRateLimitAnalysisError(error)) {
-            this.finishNavigation(entryId, "ai-rate-limit");
-            return;
-          }
+    try {
+      const analysis = await firstValueFrom(
+        this.analysisService.analyseText({
+          mode: "dream",
+          text: analysisText,
+          reference_date: referenceDate,
+        }),
+      );
 
-          this.finishNavigation(entryId);
-        },
-      });
+      const dreamAnalysis = analysis as DreamAnalysisResponse;
+      try {
+        await firstValueFrom(
+          this.entriesService.updateDreamEntry(entryId, {
+            summary: dreamAnalysis.summary,
+            interpretation: dreamAnalysis.interpretation,
+            image_prompt: dreamAnalysis.image_prompt,
+            tags: this.tags.length ? this.tags.join(",") : dreamAnalysis.tags,
+            dream_people_names: this.peopleNames.length
+              ? this.peopleNames.join(",")
+              : dreamAnalysis.dream_people_names,
+            dream_places: this.places.length
+              ? this.places.join(",")
+              : dreamAnalysis.dream_places,
+          }),
+        );
+        return undefined;
+      } catch {
+        return "ai-save-failed";
+      }
+    } catch (error) {
+      if (this.isRateLimitAnalysisError(error)) {
+        return "ai-rate-limit";
+      }
+
+      return undefined;
+    }
   }
 
-  private finishNavigation(entryId: number, analysisWarning?: string): void {
+  private finishNavigation(
+    entryId: number,
+    warnings?: {
+      analysisWarning?: string;
+      attachmentWarning?: string;
+    },
+  ): void {
     this.isSaving = false;
     this.resetForm();
 
-    const queryParams = analysisWarning ? { analysisWarning } : undefined;
+    const queryParams =
+      warnings?.analysisWarning || warnings?.attachmentWarning
+        ? {
+            ...(warnings.analysisWarning
+              ? { analysisWarning: warnings.analysisWarning }
+              : {}),
+            ...(warnings.attachmentWarning
+              ? { attachmentWarning: warnings.attachmentWarning }
+              : {}),
+          }
+        : undefined;
 
     this.router.navigate(["/entries", entryId], { queryParams });
   }
@@ -1077,6 +1511,111 @@ export class CreateComponent implements OnInit {
       return title;
     }
     return body;
+  }
+
+  triggerPendingAttachmentSelection(): void {
+    if (!this.canAddPendingAttachment()) {
+      return;
+    }
+
+    this.pendingAttachmentInput?.nativeElement.click();
+  }
+
+  onPendingAttachmentSelected(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const files = Array.from(input?.files ?? []);
+    if (input) {
+      input.value = "";
+    }
+
+    if (!files.length) {
+      return;
+    }
+
+    for (const file of files) {
+      if (this.getTotalAttachmentCount() >= this.maxAttachmentsPerEntry) {
+        this.errorMessage = `Each entry can have up to ${this.maxAttachmentsPerEntry} attachments.`;
+        break;
+      }
+
+      const validationMessage = this.validateAttachmentFile(file);
+      if (validationMessage) {
+        this.errorMessage = validationMessage;
+        continue;
+      }
+
+      this.pendingAttachments = [
+        ...this.pendingAttachments,
+        {
+          file,
+          previewUrl: this.createPendingAttachmentPreviewUrl(file),
+          kind: this.getPendingAttachmentKind(file),
+        },
+      ];
+      this.errorMessage = "";
+    }
+  }
+
+  removePendingAttachment(index: number): void {
+    const pending = this.pendingAttachments[index];
+    if (!pending) {
+      return;
+    }
+
+    this.releasePendingAttachment(pending);
+    this.pendingAttachments = this.pendingAttachments.filter(
+      (_, itemIndex) => itemIndex !== index,
+    );
+  }
+
+  getTotalAttachmentCount(): number {
+    return this.existingAttachments.length + this.pendingAttachments.length;
+  }
+
+  canAddPendingAttachment(): boolean {
+    return this.getTotalAttachmentCount() < this.maxAttachmentsPerEntry;
+  }
+
+  formatAttachmentFileSize(sizeBytes: number): string {
+    if (!sizeBytes || sizeBytes < 1024) {
+      return `${sizeBytes || 0} B`;
+    }
+    if (sizeBytes < 1024 * 1024) {
+      return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  getPendingAttachmentTypeLabel(attachment: PendingAttachment): string {
+    if (attachment.kind === "pdf") {
+      return "PDF";
+    }
+    if (attachment.kind === "audio") {
+      return "Audio";
+    }
+    if (attachment.kind === "image") {
+      return "Image";
+    }
+    return "Attachment";
+  }
+
+  markAttachmentForRemoval(attachment: EntryAsset): void {
+    this.attachmentsMarkedForRemoval = [
+      ...this.attachmentsMarkedForRemoval,
+      attachment,
+    ];
+    this.existingAttachments = this.existingAttachments.filter(
+      (item) => Number(item.id) !== Number(attachment.id),
+    );
+  }
+
+  restoreMarkedAttachment(attachment: EntryAsset): void {
+    this.attachmentsMarkedForRemoval = this.attachmentsMarkedForRemoval.filter(
+      (item) => Number(item.id) !== Number(attachment.id),
+    );
+    this.existingAttachments = [...this.existingAttachments, attachment].sort(
+      (left, right) => Number(left.id || 0) - Number(right.id || 0),
+    );
   }
 
   cancelCreate(): void {
@@ -1184,6 +1723,130 @@ export class CreateComponent implements OnInit {
 
   private canLeaveCreateScreen(): boolean {
     return !this.hasUnsavedChanges() || confirm("Discard this entry?");
+  }
+
+  private async uploadPendingAttachments(
+    entryId: number,
+    entryType: "daily" | "dream",
+  ): Promise<string[]> {
+    if (!this.pendingAttachments.length) {
+      return [];
+    }
+
+    const failedFiles: string[] = [];
+    const pending = [...this.pendingAttachments];
+
+    for (const attachment of pending) {
+      try {
+        const request =
+          entryType === "dream"
+            ? this.entriesService.uploadDreamAttachment(entryId, attachment.file)
+            : this.entriesService.uploadDailyAttachment(entryId, attachment.file);
+        await firstValueFrom(request);
+      } catch {
+        failedFiles.push(attachment.file.name);
+      }
+    }
+
+    this.clearPendingAttachments();
+    this.existingAttachments = [];
+    return failedFiles;
+  }
+
+  private async deleteMarkedAttachments(
+    entryId: number,
+    entryType: "daily" | "dream",
+  ): Promise<string[]> {
+    if (!this.attachmentsMarkedForRemoval.length) {
+      return [];
+    }
+
+    const failedFiles: string[] = [];
+    const markedAttachments = [...this.attachmentsMarkedForRemoval];
+
+    for (const attachment of markedAttachments) {
+      try {
+        const request =
+          entryType === "dream"
+            ? this.entriesService.deleteDreamAttachment(entryId, attachment.id)
+            : this.entriesService.deleteDailyAttachment(entryId, attachment.id);
+        await firstValueFrom(request);
+      } catch {
+        failedFiles.push(attachment.original_filename);
+      }
+    }
+
+    this.attachmentsMarkedForRemoval = failedFiles.length
+      ? markedAttachments.filter((attachment) =>
+          failedFiles.includes(attachment.original_filename),
+        )
+      : [];
+    return failedFiles;
+  }
+
+  private validateAttachmentFile(file: File): string | null {
+    const extension = this.getAttachmentExtension(file.name);
+    if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) {
+      return "Unsupported attachment type. Use PDF, JPG, PNG, WEBP, MP3, WAV, M4A, OGG, WEBM, or AIFF.";
+    }
+
+    const kind = this.getPendingAttachmentKind(file);
+    const sizeLimit =
+      kind === "audio"
+        ? MAX_AUDIO_ATTACHMENT_BYTES
+        : MAX_IMAGE_OR_PDF_ATTACHMENT_BYTES;
+    if (file.size > sizeLimit) {
+      return kind === "audio"
+        ? "Audio attachments must be 25 MB or smaller."
+        : "Image and PDF attachments must be 10 MB or smaller.";
+    }
+
+    return null;
+  }
+
+  private getPendingAttachmentKind(
+    file: File,
+  ): PendingAttachment["kind"] {
+    const mimeType = file.type.toLowerCase();
+    const extension = this.getAttachmentExtension(file.name);
+
+    if (
+      mimeType.startsWith("image/") ||
+      ["jpg", "jpeg", "png", "webp"].includes(extension)
+    ) {
+      return "image";
+    }
+    if (mimeType.startsWith("audio/") || ["mp3", "wav", "m4a", "ogg", "webm", "aiff"].includes(extension)) {
+      return "audio";
+    }
+    if (mimeType === "application/pdf" || extension === "pdf") {
+      return "pdf";
+    }
+    return "other";
+  }
+
+  private getAttachmentExtension(filename: string): string {
+    const segments = filename.toLowerCase().split(".");
+    return segments.length > 1 ? segments.at(-1) ?? "" : "";
+  }
+
+  private createPendingAttachmentPreviewUrl(file: File): string | null {
+    return this.getPendingAttachmentKind(file) === "image"
+      ? URL.createObjectURL(file)
+      : null;
+  }
+
+  private releasePendingAttachment(attachment: PendingAttachment): void {
+    if (attachment.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+  }
+
+  private clearPendingAttachments(): void {
+    this.pendingAttachments.forEach((attachment) =>
+      this.releasePendingAttachment(attachment),
+    );
+    this.pendingAttachments = [];
   }
 
   private captureBackQueryParams(): void {
@@ -1326,7 +1989,12 @@ export class CreateComponent implements OnInit {
         this.dreamOther.trim(),
       );
 
-    return hasBasicChanges || hasDreamChanges;
+    return (
+      hasBasicChanges ||
+      hasDreamChanges ||
+      this.pendingAttachments.length > 0 ||
+      this.attachmentsMarkedForRemoval.length > 0
+    );
   }
 
   private hasTypeSpecificContent(type: "daily" | "dream"): boolean {
@@ -1350,6 +2018,9 @@ export class CreateComponent implements OnInit {
   private resetForm(): void {
     this.isSaving = false;
     this.errorMessage = "";
+    this.clearPendingAttachments();
+    this.existingAttachments = [];
+    this.attachmentsMarkedForRemoval = [];
     this.entryDate = new Date();
     this.entryTime = this.getCurrentLocalTime();
     this.initialDate = this.entryDate.toDateString();

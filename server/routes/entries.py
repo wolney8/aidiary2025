@@ -1,6 +1,6 @@
 # server/routes/entries.py
 # CRUD routes for diary entries
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import os
 import sqlite3
@@ -23,7 +23,9 @@ from services.media_storage import (
     is_legacy_data_url,
     media_path_exists,
     migrate_legacy_data_url,
+    read_image_bytes,
     resolve_image_url,
+    store_entry_asset,
     store_generated_image,
     store_uploaded_image,
 )
@@ -36,7 +38,27 @@ ALLOWED_ENTRY_IMAGE_MIME_TYPES = {
     'image/png',
     'image/webp',
 }
+ALLOWED_ENTRY_ATTACHMENT_MIME_TYPES = {
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/x-m4a',
+    'audio/webm',
+    'audio/aiff',
+    'audio/x-aiff',
+}
 MAX_ENTRY_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_ENTRY_ATTACHMENT_UPLOAD_BYTES = 15 * 1024 * 1024
+MAX_ENTRY_IMAGE_OR_PDF_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_ENTRY_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024
+MAX_ATTACHMENTS_PER_ENTRY = 3
 ENTRY_IMAGE_TARGET_SIZE = (933, 705)
 ENTRY_IMAGE_JPEG_QUALITY = 85
 
@@ -303,7 +325,289 @@ def _serialise_entry_row(
             table_name=table_name,
             entry_kind=entry_kind,
         )
+    if entry.get('id') is not None and entry.get('user_id') is not None:
+        entry['attachments'] = _serialise_entry_assets(
+            conn,
+            user_id=int(entry['user_id']),
+            entry_type=entry_kind,
+            entry_id=int(entry['id']),
+        )
     return entry
+
+
+def _serialise_entry_assets(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    entry_type: str,
+    entry_id: int,
+) -> list[dict]:
+    rows = conn.execute(
+        '''
+        SELECT id, asset_role, storage_key, original_filename, mime_type,
+               file_size_bytes, sort_order, created_at
+        FROM entry_assets
+        WHERE user_id = ? AND entry_type = ? AND entry_id = ?
+        ORDER BY sort_order ASC, id ASC
+        ''',
+        (user_id, entry_type, entry_id),
+    ).fetchall()
+
+    attachments: list[dict] = []
+    for row in rows:
+        storage_key = str(row['storage_key'] or '').strip()
+        if not storage_key:
+            continue
+        if not media_path_exists(storage_key):
+            current_app.logger.warning(
+                'Entry attachment missing on disk for %s %s asset %s: %s',
+                entry_type,
+                entry_id,
+                row['id'],
+                storage_key,
+            )
+            continue
+
+        mime_type = str(row['mime_type'] or '').strip().lower()
+        attachments.append(
+            {
+                'id': row['id'],
+                'asset_role': row['asset_role'],
+                'original_filename': row['original_filename'],
+                'mime_type': mime_type,
+                'file_size_bytes': int(row['file_size_bytes'] or 0),
+                'sort_order': int(row['sort_order'] or 0),
+                'created_at': row['created_at'],
+                'url': resolve_image_url(storage_key),
+                'is_image': mime_type.startswith('image/'),
+                'is_audio': mime_type.startswith('audio/'),
+                'is_pdf': mime_type == 'application/pdf',
+            }
+        )
+
+    return attachments
+
+
+def _delete_entry_assets(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    entry_type: str,
+    entry_id: int,
+) -> list[str]:
+    rows = conn.execute(
+        '''
+        SELECT storage_key
+        FROM entry_assets
+        WHERE user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (user_id, entry_type, entry_id),
+    ).fetchall()
+    conn.execute(
+        '''
+        DELETE FROM entry_assets
+        WHERE user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (user_id, entry_type, entry_id),
+    )
+    return [str(row['storage_key'] or '').strip() for row in rows if row['storage_key']]
+
+
+def _get_attachment_limit_for_mime_type(mime_type: str) -> int:
+    if mime_type.startswith('audio/'):
+        return MAX_ENTRY_AUDIO_ATTACHMENT_BYTES
+    return MAX_ENTRY_IMAGE_OR_PDF_ATTACHMENT_BYTES
+
+
+def _upload_entry_attachment(
+    *,
+    table_name: str,
+    entry_type: str,
+    entry_id: int,
+    user_id: int,
+) -> tuple[dict, int]:
+    if 'attachment' not in request.files:
+        return {'error': 'Upload a file using the "attachment" field.'}, 400
+
+    uploaded_file = request.files['attachment']
+    if not uploaded_file or not uploaded_file.filename:
+        return {'error': 'No attachment file was selected.'}, 400
+
+    content_type = (uploaded_file.content_type or '').lower().strip()
+    if content_type not in ALLOWED_ENTRY_ATTACHMENT_MIME_TYPES:
+        return {
+            'error': 'Unsupported attachment type. Use PDF, JPG, PNG, WEBP, MP3, WAV, M4A, OGG, WEBM, or AIFF.'
+        }, 400
+
+    file_bytes = uploaded_file.read()
+    if not file_bytes:
+        return {'error': 'The selected attachment file is empty.'}, 400
+    if len(file_bytes) > MAX_ENTRY_ATTACHMENT_UPLOAD_BYTES:
+        return {'error': 'Attachment files must be 15 MB or smaller.'}, 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        f'SELECT id FROM {table_name} WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return {'error': 'Entry not found'}, 404
+
+    existing_count = cursor.execute(
+        '''
+        SELECT COUNT(*) AS asset_count
+        FROM entry_assets
+        WHERE user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (user_id, entry_type, entry_id),
+    ).fetchone()
+    if int(existing_count['asset_count'] or 0) >= MAX_ATTACHMENTS_PER_ENTRY:
+        conn.close()
+        return {
+            'error': f'Each entry can have up to {MAX_ATTACHMENTS_PER_ENTRY} attachments.'
+        }, 400
+
+    size_limit = _get_attachment_limit_for_mime_type(content_type)
+    if len(file_bytes) > size_limit:
+        conn.close()
+        size_limit_mb = int(size_limit / (1024 * 1024))
+        file_group = 'Audio files' if content_type.startswith('audio/') else 'Image and PDF files'
+        return {'error': f'{file_group} must be {size_limit_mb} MB or smaller.'}, 400
+
+    try:
+        storage_key = store_entry_asset(
+            file_bytes,
+            user_id=user_id,
+            entry_kind=entry_type,
+            filename=uploaded_file.filename,
+        )
+    except ValueError as exc:
+        conn.close()
+        return {'error': str(exc)}, 400
+
+    cursor.execute(
+        '''
+        INSERT INTO entry_assets
+        (user_id, entry_type, entry_id, asset_role, storage_key, original_filename, mime_type, file_size_bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''',
+        (
+            user_id,
+            entry_type,
+            entry_id,
+            'attachment',
+            storage_key,
+            uploaded_file.filename,
+            content_type,
+            len(file_bytes),
+        ),
+    )
+    asset_id = int(cursor.lastrowid)
+    conn.commit()
+    attachment = _serialise_entry_assets(
+        conn,
+        user_id=user_id,
+        entry_type=entry_type,
+        entry_id=entry_id,
+    )
+    conn.close()
+
+    created = next((item for item in attachment if item['id'] == asset_id), None)
+    return {
+        'entry_id': entry_id,
+        'entry_type': entry_type,
+        'attachment': created,
+    }, 201
+
+
+def _delete_entry_attachment(
+    *,
+    entry_type: str,
+    table_name: str,
+    entry_id: int,
+    asset_id: int,
+    user_id: int,
+) -> tuple[dict, int]:
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        f'SELECT id FROM {table_name} WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return {'error': 'Entry not found'}, 404
+
+    asset = cursor.execute(
+        '''
+        SELECT id, storage_key
+        FROM entry_assets
+        WHERE id = ? AND user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (asset_id, user_id, entry_type, entry_id),
+    ).fetchone()
+    if not asset:
+        conn.close()
+        return {'error': 'Attachment not found'}, 404
+
+    cursor.execute(
+        'DELETE FROM entry_assets WHERE id = ? AND user_id = ?',
+        (asset_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+    delete_image(asset['storage_key'])
+
+    return {
+        'entry_id': entry_id,
+        'entry_type': entry_type,
+        'deleted_attachment_id': asset_id,
+    }, 200
+
+
+def _download_entry_attachment(
+    *,
+    entry_type: str,
+    table_name: str,
+    entry_id: int,
+    asset_id: int,
+    user_id: int,
+):
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        f'SELECT id FROM {table_name} WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Entry not found'}), 404
+
+    asset = cursor.execute(
+        '''
+        SELECT storage_key, original_filename, mime_type
+        FROM entry_assets
+        WHERE id = ? AND user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (asset_id, user_id, entry_type, entry_id),
+    ).fetchone()
+    conn.close()
+    if not asset:
+        return jsonify({'error': 'Attachment not found'}), 404
+
+    file_bytes = read_image_bytes(asset['storage_key'])
+    if file_bytes is None:
+        return jsonify({'error': 'Attachment file is missing.'}), 404
+
+    return send_file(
+        BytesIO(file_bytes),
+        mimetype=str(asset['mime_type'] or 'application/octet-stream'),
+        as_attachment=True,
+        download_name=str(asset['original_filename'] or f'attachment-{asset_id}'),
+    )
 
 
 def _get_entry_range_summary(conn: sqlite3.Connection, user_id: int) -> dict[str, int | str | None | bool]:
@@ -646,6 +950,13 @@ def delete_daily_entry(entry_id):
         conn.close()
         return jsonify({'error': 'Entry not found'}), 404
 
+    attachment_keys = _delete_entry_assets(
+        conn,
+        user_id=user_id,
+        entry_type='daily',
+        entry_id=entry_id,
+    )
+
     cursor.execute('''
         DELETE FROM dailydiary_entries
         WHERE id = ? AND user_id = ?
@@ -659,6 +970,8 @@ def delete_daily_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
 
     delete_image(entry['image_storage_key'])
+    for storage_key in attachment_keys:
+        delete_image(storage_key)
     
     return '', 204
 
@@ -855,6 +1168,46 @@ def delete_daily_image(entry_id):
         'image_position_y': 50.0,
         'image_source': None,
     }), 200
+
+
+@entries_bp.route('/daily/<int:entry_id>/attachments', methods=['POST'])
+@jwt_required()
+def upload_daily_attachment(entry_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _upload_entry_attachment(
+        table_name='dailydiary_entries',
+        entry_type='daily',
+        entry_id=entry_id,
+        user_id=user_id,
+    )
+    return jsonify(payload), status_code
+
+
+@entries_bp.route('/daily/<int:entry_id>/attachments/<int:asset_id>', methods=['DELETE'])
+@jwt_required()
+def delete_daily_attachment(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _delete_entry_attachment(
+        entry_type='daily',
+        table_name='dailydiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+    )
+    return jsonify(payload), status_code
+
+
+@entries_bp.route('/daily/<int:entry_id>/attachments/<int:asset_id>/download', methods=['GET'])
+@jwt_required()
+def download_daily_attachment(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    return _download_entry_attachment(
+        entry_type='daily',
+        table_name='dailydiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+    )
 
 # Dream entries endpoints
 @entries_bp.route('/dreams', methods=['GET'])
@@ -1084,6 +1437,13 @@ def delete_dream_entry(entry_id):
         conn.close()
         return jsonify({'error': 'Entry not found'}), 404
 
+    attachment_keys = _delete_entry_assets(
+        conn,
+        user_id=user_id,
+        entry_type='dream',
+        entry_id=entry_id,
+    )
+
     cursor.execute('''
         DELETE FROM dreamdiary_entries
         WHERE id = ? AND user_id = ?
@@ -1097,6 +1457,8 @@ def delete_dream_entry(entry_id):
         return jsonify({'error': 'Entry not found'}), 404
 
     delete_image(entry['image_storage_key'])
+    for storage_key in attachment_keys:
+        delete_image(storage_key)
     
     return '', 204
 
@@ -1283,6 +1645,46 @@ def delete_dream_image(entry_id):
     }), 200
 
 
+@entries_bp.route('/dreams/<int:entry_id>/attachments', methods=['POST'])
+@jwt_required()
+def upload_dream_attachment(entry_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _upload_entry_attachment(
+        table_name='dreamdiary_entries',
+        entry_type='dream',
+        entry_id=entry_id,
+        user_id=user_id,
+    )
+    return jsonify(payload), status_code
+
+
+@entries_bp.route('/dreams/<int:entry_id>/attachments/<int:asset_id>', methods=['DELETE'])
+@jwt_required()
+def delete_dream_attachment(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _delete_entry_attachment(
+        entry_type='dream',
+        table_name='dreamdiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+    )
+    return jsonify(payload), status_code
+
+
+@entries_bp.route('/dreams/<int:entry_id>/attachments/<int:asset_id>/download', methods=['GET'])
+@jwt_required()
+def download_dream_attachment(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    return _download_entry_attachment(
+        entry_type='dream',
+        table_name='dreamdiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+    )
+
+
 @entries_bp.route('/entries/bulk-delete-readiness', methods=['GET'])
 @jwt_required()
 def get_bulk_delete_readiness():
@@ -1319,6 +1721,18 @@ def bulk_delete_entries():
         }), 409
 
     guard_record = get_latest_bulk_delete_guard(conn, user_id, guard_token)
+    image_rows = conn.execute(
+        '''
+        SELECT image_storage_key AS storage_key FROM dailydiary_entries WHERE user_id = ? AND image_storage_key IS NOT NULL
+        UNION ALL
+        SELECT image_storage_key AS storage_key FROM dreamdiary_entries WHERE user_id = ? AND image_storage_key IS NOT NULL
+        UNION ALL
+        SELECT storage_key FROM entry_assets WHERE user_id = ?
+        ''',
+        (user_id, user_id, user_id),
+    ).fetchall()
+    storage_keys = [str(row['storage_key'] or '').strip() for row in image_rows if row['storage_key']]
+    conn.execute('DELETE FROM entry_assets WHERE user_id = ?', (user_id,))
     daily_deleted = conn.execute(
         'DELETE FROM dailydiary_entries WHERE user_id = ?',
         (user_id,),
@@ -1332,6 +1746,9 @@ def bulk_delete_entries():
     else:
         conn.commit()
     conn.close()
+
+    for storage_key in storage_keys:
+        delete_image(storage_key)
 
     return jsonify({
         'message': 'All entries deleted.',

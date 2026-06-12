@@ -210,9 +210,9 @@ This naming overlap requires care when discussing priorities.
 - Prefer milestone title plus issue number when referring to work, not milestone number alone.
 - Treat GitHub as authoritative for open/closed state.
 - Note that `#87` is currently assigned to the closed milestone `M8: AI reliability and context quality`, so milestone governance may need tidying if future AI analysis work should remain visibly open in GitHub.
-- `#93` was the last import-reporting branch and is expected to merge before the staged review flow.
-- `#94` is now the active local implementation branch: `feat/94-import-manual-readd`.
-- Local implementation scope for `#94` has shifted from direct "manual re-add" navigation to a staged duplicate-review-and-commit flow that keeps the user on the import screen.
+- `#93` and `#94` were completed local implementation steps in the import-review track and should no longer be treated as the current active branch by local handoff notes.
+- `#98` is now the active local implementation branch: `feat/98-entry-assets`.
+- Local implementation focus has moved to attachment foundations and UX on top of the `entry_assets` model, with attachment portability and AI-aware attachment work as the recommended follow-on lane.
 
 ## To confirm
 

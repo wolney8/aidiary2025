@@ -1,4 +1,18 @@
 // Entry models mapping to database schema exactly
+export interface EntryAsset {
+  id: number;
+  asset_role: string;
+  original_filename: string;
+  mime_type: string;
+  file_size_bytes: number;
+  sort_order: number;
+  created_at: string;
+  url: string;
+  is_image?: boolean;
+  is_audio?: boolean;
+  is_pdf?: boolean;
+}
+
 export interface DailyEntry {
   id?: number;
   user_id?: number;
@@ -19,6 +33,7 @@ export interface DailyEntry {
   recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;
+  attachments?: EntryAsset[];
 }
 
 export interface DreamEntry {
@@ -45,6 +60,7 @@ export interface DreamEntry {
   recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;
+  attachments?: EntryAsset[];
   dream_people_names?: string; // Comma-separated
   dream_places?: string; // Comma-separated
   tags?: string; // Comma-separated
