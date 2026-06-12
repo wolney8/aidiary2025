@@ -111,6 +111,7 @@ def client():
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         ''')
+
         
         conn.commit()
         conn.close()
@@ -164,8 +165,8 @@ def client_schema_without_mood_columns():
             daily_people_names TEXT,
             daily_places TEXT,
             tags TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        )
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
     ''')
 
     conn.execute('''
@@ -192,9 +193,10 @@ def client_schema_without_mood_columns():
             dream_people_names TEXT,
             dream_places TEXT,
             tags TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        )
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
     ''')
+
 
     conn.commit()
     conn.close()
@@ -1985,6 +1987,183 @@ def test_delete_daily_image_clears_only_image(client):
     assert row[2] is None
     assert row[3] == 50.0
     assert row[4] == 50.0
+
+
+def test_upload_daily_attachment_is_serialised_on_entry_detail(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-21',
+            'title': 'Attachment daily',
+            'user_message': 'Daily content with attachment',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/daily/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'notes.pdf', 'application/pdf')},
+        content_type='multipart/form-data'
+    )
+
+    assert upload_response.status_code == 201
+    attachment = json.loads(upload_response.data)['attachment']
+    assert attachment['original_filename'] == 'notes.pdf'
+    assert attachment['mime_type'] == 'application/pdf'
+    assert attachment['is_pdf'] is True
+    assert attachment['url'].startswith('http://localhost/media/')
+
+    detail_response = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert detail_response.status_code == 200
+    detail_data = json.loads(detail_response.data)
+    assert len(detail_data['attachments']) == 1
+    assert detail_data['attachments'][0]['original_filename'] == 'notes.pdf'
+
+
+def test_delete_dream_attachment_removes_stored_file(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-22',
+            'title': 'Attachment dream',
+            'plot': 'A dream with a recording.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/dreams/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'attachment': (BytesIO(b'ID3 pretend mp3 bytes'), 'voice-note.mp3', 'audio/mpeg')},
+        content_type='multipart/form-data'
+    )
+    assert upload_response.status_code == 201
+    attachment = json.loads(upload_response.data)['attachment']
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT storage_key FROM entry_assets WHERE id = ?',
+        (attachment['id'],),
+    ).fetchone()
+    conn.close()
+    assert row and os.path.exists(os.path.join(os.environ['MEDIA_ROOT'], row[0]))
+
+    delete_response = client.delete(
+        f'/api/dreams/{entry_id}/attachments/{attachment["id"]}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert delete_response.status_code == 200
+
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    deleted_row = conn.execute(
+        'SELECT storage_key FROM entry_assets WHERE id = ?',
+        (attachment['id'],),
+    ).fetchone()
+    conn.close()
+    assert deleted_row is None
+    assert not os.path.exists(os.path.join(os.environ['MEDIA_ROOT'], row[0]))
+
+
+def test_attachment_limit_rejects_fourth_file(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-23',
+            'title': 'Attachment limit',
+            'user_message': 'Testing attachment limit',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    for file_number in range(3):
+        upload_response = client.post(
+            f'/api/daily/{entry_id}/attachments',
+            headers={'Authorization': f'Bearer {token}'},
+            data={
+                'attachment': (
+                    BytesIO(f'%PDF-1.4 file {file_number}'.encode('utf-8')),
+                    f'notes-{file_number}.pdf',
+                    'application/pdf',
+                )
+            },
+            content_type='multipart/form-data'
+        )
+        assert upload_response.status_code == 201
+
+    fourth_response = client.post(
+        f'/api/daily/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={
+            'attachment': (
+                BytesIO(b'%PDF-1.4 overflow'),
+                'overflow.pdf',
+                'application/pdf',
+            )
+        },
+        content_type='multipart/form-data'
+    )
+
+    assert fourth_response.status_code == 400
+    payload = json.loads(fourth_response.data)
+    assert 'up to 3 attachments' in payload['error']
+
+
+def test_attachment_download_uses_attachment_headers(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-24',
+            'title': 'Attachment download',
+            'plot': 'Dream attachment download.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/dreams/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={
+            'attachment': (
+                BytesIO(b'ID3 pretend mp3 bytes'),
+                'voice-note.mp3',
+                'audio/mpeg',
+            )
+        },
+        content_type='multipart/form-data'
+    )
+    attachment = json.loads(upload_response.data)['attachment']
+
+    download_response = client.get(
+        f'/api/dreams/{entry_id}/attachments/{attachment["id"]}/download',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert download_response.status_code == 200
+    assert download_response.headers['Content-Type'] == 'audio/mpeg'
+    assert 'attachment;' in download_response.headers['Content-Disposition']
+    assert 'voice-note.mp3' in download_response.headers['Content-Disposition']
+    assert download_response.data == b'ID3 pretend mp3 bytes'
 
 
 def test_update_daily_image_position_persists(client):

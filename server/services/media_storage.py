@@ -22,7 +22,19 @@ _MIME_TO_EXTENSION: Final[dict[str, str]] = {
     "image/png": "png",
     "image/webp": "webp",
 }
-_ALLOWED_EXTENSIONS: Final[set[str]] = {"jpg", "jpeg", "png", "webp"}
+_ALLOWED_EXTENSIONS: Final[set[str]] = {
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "pdf",
+    "mp3",
+    "wav",
+    "m4a",
+    "ogg",
+    "webm",
+    "aiff",
+}
 
 
 def ensure_media_root(media_root: str) -> None:
@@ -69,6 +81,28 @@ def store_imported_image(
         image_bytes,
         user_id=user_id,
         entry_kind=entry_kind,
+        extension=extension,
+    )
+
+
+def store_entry_asset(
+    file_bytes: bytes,
+    *,
+    user_id: int,
+    entry_kind: str,
+    filename: str,
+) -> str:
+    extension = Path(filename or "").suffix.lower().lstrip(".")
+    if extension not in _ALLOWED_EXTENSIONS:
+        raise ValueError(f"Unsupported asset extension: {extension or 'unknown'}")
+
+    if extension == "jpeg":
+        extension = "jpg"
+
+    return _store_image_bytes(
+        file_bytes,
+        user_id=user_id,
+        entry_kind=f"{entry_kind}-assets",
         extension=extension,
     )
 

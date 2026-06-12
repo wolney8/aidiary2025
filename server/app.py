@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 from services.runtime_migrations import (
     ensure_entry_ai_metadata_table,
+    ensure_entry_assets_table,
     ensure_entry_mood_style_columns,
     ensure_export_history_table,
     ensure_import_sessions_table,
@@ -96,6 +97,11 @@ def create_app():
         ensure_import_sessions_table(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime import session migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_entry_assets_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime entry assets migration skipped due to error: %s', migration_exc)
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')

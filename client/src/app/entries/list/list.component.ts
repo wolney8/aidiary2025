@@ -281,10 +281,19 @@ type CalendarPreviewState = {
                   <mat-icon mat-card-avatar>
                     {{ entry.type === "dream" ? "nights_stay" : "book" }}
                   </mat-icon>
-                  <mat-card-title>{{ getEntryTitle(entry) }}</mat-card-title>
+                  <mat-card-title>{{
+                    getEntryTitle(entry)
+                  }}</mat-card-title>
                   <mat-card-subtitle>{{
                     getEntryDateTimeSubtitle(entry)
                   }}</mat-card-subtitle>
+                  <mat-icon
+                    class="entry-attachment-indicator"
+                    *ngIf="hasEntryAttachments(entry)"
+                    aria-hidden="true"
+                  >
+                    attach_file
+                  </mat-icon>
                 </mat-card-header>
 
                 <mat-card-content>
@@ -492,7 +501,16 @@ type CalendarPreviewState = {
                         entry.type === "dream" ? "nights_stay" : "book"
                       }}</mat-icon>
                       <div>
-                        <span>{{ getEntryTitle(entry) }}</span>
+                        <span>
+                          {{ getEntryTitle(entry) }}
+                          <mat-icon
+                            class="calendar-preview-attachment-indicator"
+                            *ngIf="hasEntryAttachments(entry)"
+                            aria-hidden="true"
+                          >
+                            attach_file
+                          </mat-icon>
+                        </span>
                         <small *ngIf="getEntryTimeLabel(entry)">{{
                           getEntryTimeLabel(entry)
                         }}</small>
@@ -1451,6 +1469,10 @@ export class ListComponent implements OnInit, OnDestroy {
         : entry.plot || entry.user_message || "";
 
     return rawText.replace(/\s+/g, " ").trim();
+  }
+
+  hasEntryAttachments(entry: EntryItem): boolean {
+    return Array.isArray(entry.attachments) && entry.attachments.length > 0;
   }
 
   getCalendarPreviewPrimaryLabel(entry: EntryItem): string {

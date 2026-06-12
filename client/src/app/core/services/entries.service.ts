@@ -1,10 +1,11 @@
 // Service for diary entries CRUD operations
 import { Injectable, inject } from "@angular/core";
-import { HttpClient, HttpHeaders } from "@angular/common/http";
+import { HttpClient, HttpHeaders, HttpResponse } from "@angular/common/http";
 import { Observable, of, throwError } from "rxjs";
 import {
   DailyEntry,
   DreamEntry,
+  EntryAsset,
 } from "../models/entry.model";
 import { AuthService } from "./auth.service";
 
@@ -182,6 +183,69 @@ export class EntriesService {
     );
   }
 
+  uploadDailyAttachment(
+    id: number,
+    file: File,
+  ): Observable<{
+    entry_id: number;
+    entry_type: string;
+    attachment: EntryAsset;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    const formData = new FormData();
+    formData.append("attachment", file);
+
+    return this.http.post<{
+      entry_id: number;
+      entry_type: string;
+      attachment: EntryAsset;
+    }>(
+      `${this.apiUrl}/daily/${id}/attachments`,
+      formData,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
+  deleteDailyAttachment(
+    entryId: number,
+    assetId: number,
+  ): Observable<{
+    entry_id: number;
+    entry_type: string;
+    deleted_attachment_id: number;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.delete<{
+      entry_id: number;
+      entry_type: string;
+      deleted_attachment_id: number;
+    }>(
+      `${this.apiUrl}/daily/${entryId}/attachments/${assetId}`,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
+  downloadDailyAttachment(
+    entryId: number,
+    assetId: number,
+  ): Observable<HttpResponse<Blob>> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.get(`${this.apiUrl}/daily/${entryId}/attachments/${assetId}/download`, {
+      headers: this.getHeaders(false),
+      observe: "response",
+      responseType: "blob",
+    });
+  }
+
   // Dream entries
   getDreamEntries(): Observable<DreamEntry[]> {
     if (!this.authService.isAuthenticated()) {
@@ -330,5 +394,68 @@ export class EntriesService {
       `${this.apiUrl}/dreams/${id}/image`,
       { headers: this.getHeaders(false) },
     );
+  }
+
+  uploadDreamAttachment(
+    id: number,
+    file: File,
+  ): Observable<{
+    entry_id: number;
+    entry_type: string;
+    attachment: EntryAsset;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    const formData = new FormData();
+    formData.append("attachment", file);
+
+    return this.http.post<{
+      entry_id: number;
+      entry_type: string;
+      attachment: EntryAsset;
+    }>(
+      `${this.apiUrl}/dreams/${id}/attachments`,
+      formData,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
+  deleteDreamAttachment(
+    entryId: number,
+    assetId: number,
+  ): Observable<{
+    entry_id: number;
+    entry_type: string;
+    deleted_attachment_id: number;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.delete<{
+      entry_id: number;
+      entry_type: string;
+      deleted_attachment_id: number;
+    }>(
+      `${this.apiUrl}/dreams/${entryId}/attachments/${assetId}`,
+      { headers: this.getHeaders(false) },
+    );
+  }
+
+  downloadDreamAttachment(
+    entryId: number,
+    assetId: number,
+  ): Observable<HttpResponse<Blob>> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.get(`${this.apiUrl}/dreams/${entryId}/attachments/${assetId}/download`, {
+      headers: this.getHeaders(false),
+      observe: "response",
+      responseType: "blob",
+    });
   }
 }

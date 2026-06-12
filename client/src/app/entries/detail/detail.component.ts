@@ -18,8 +18,13 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { EntriesService } from "../../core/services/entries.service";
+import { EntryAsset } from "../../core/models/entry.model";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
 import { formatReadableLongDate } from "../../shared/utils/date-display";
+
+const MAX_ATTACHMENTS_PER_ENTRY = 3;
+const MAX_IMAGE_OR_PDF_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 @Component({
   selector: "app-detail",
@@ -290,6 +295,106 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             </button>
           </div>
         </div>
+      </section>
+
+      <section class="entry-attachments" aria-label="Entry attachments">
+        <button
+          class="entry-attachments-toggle"
+          type="button"
+          (click)="toggleAttachmentsExpanded()"
+          [attr.aria-expanded]="isAttachmentsExpanded"
+          aria-controls="entry-attachments-panel"
+        >
+          <span class="entry-attachments-toggle-copy">
+            <span class="entry-attachments-toggle-title">Attachments</span>
+            <span class="entry-attachments-toggle-status">
+              {{ getAttachments().length }} / {{ maxAttachmentsPerEntry }}
+            </span>
+          </span>
+          <mat-icon>{{ isAttachmentsExpanded ? "expand_less" : "expand_more" }}</mat-icon>
+        </button>
+
+        <div
+          id="entry-attachments-panel"
+          class="entry-attachments-panel"
+          *ngIf="isAttachmentsExpanded"
+        >
+          <p class="entry-attachments-status">
+            Click an attachment tile to open it. Changes happen in edit mode.
+          </p>
+
+          <div
+            class="entry-attachments-list"
+            *ngIf="getAttachments().length; else noAttachments"
+          >
+            <article
+              class="entry-attachment-card"
+              *ngFor="let attachment of getAttachments()"
+            >
+              <a
+                class="entry-attachment-preview"
+                [href]="attachment.url"
+                target="_blank"
+                rel="noopener"
+                [attr.aria-label]="getAttachmentOpenLabel(attachment)"
+                [class.image]="attachment.is_image"
+                [class.audio]="attachment.is_audio"
+                [class.pdf]="attachment.is_pdf"
+              >
+                <img
+                  *ngIf="attachment.is_image"
+                  [src]="attachment.url"
+                  [alt]="attachment.original_filename"
+                />
+                <div class="entry-attachment-pdf-tile" *ngIf="attachment.is_pdf">
+                  <mat-icon>picture_as_pdf</mat-icon>
+                  <span>PDF</span>
+                </div>
+                <div class="entry-attachment-audio-tile" *ngIf="attachment.is_audio">
+                  <mat-icon>graphic_eq</mat-icon>
+                  <span>Audio</span>
+                </div>
+              </a>
+              <div class="entry-attachment-meta">
+                <div class="entry-attachment-copy">
+                  <h4>{{ attachment.original_filename }}</h4>
+                  <p>
+                    {{ getAttachmentTypeLabel(attachment) }}
+                    <span *ngIf="attachment.file_size_bytes">
+                      · {{ formatAttachmentFileSize(attachment.file_size_bytes) }}
+                    </span>
+                  </p>
+                </div>
+                <div class="entry-attachment-actions">
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="downloadAttachment(attachment)"
+                    [attr.aria-label]="'Download ' + attachment.original_filename"
+                  >
+                    <mat-icon>download</mat-icon>
+                    Download
+                  </button>
+                </div>
+              </div>
+              <audio
+                class="entry-attachment-audio-player"
+                *ngIf="attachment.is_audio"
+                [src]="attachment.url"
+                controls
+                preload="none"
+                [attr.aria-label]="'Audio attachment player for ' + attachment.original_filename"
+              ></audio>
+            </article>
+          </div>
+        </div>
+
+        <ng-template #noAttachments>
+          <div class="entry-attachments-empty">
+            <mat-icon>attachment</mat-icon>
+            <p>No attachments yet.</p>
+          </div>
+        </ng-template>
       </section>
 
       <div class="detail-columns">
@@ -856,6 +961,186 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         margin: 0;
       }
 
+      .entry-attachments {
+        margin-bottom: var(--spacing-md);
+        padding: 0.55rem 0.75rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface);
+      }
+
+      .entry-attachments-toggle {
+        width: 100%;
+        min-height: 2.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .entry-attachments-toggle:focus-visible {
+        outline: 2px solid var(--colour-primary);
+        outline-offset: 2px;
+        border-radius: var(--radius-sm);
+      }
+
+      .entry-attachments-toggle-copy {
+        display: flex;
+        align-items: baseline;
+        gap: 0.55rem;
+        min-width: 0;
+      }
+
+      .entry-attachments-toggle-title {
+        font-weight: 700;
+      }
+
+      .entry-attachments-toggle-status {
+        margin: 0;
+        color: var(--colour-text-secondary);
+        font-size: 0.85rem;
+      }
+
+      .entry-attachments-status {
+        margin: 0 0 0.55rem 0;
+        color: var(--colour-text-secondary);
+        font-size: 0.82rem;
+      }
+
+      .entry-attachments-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.5rem;
+      }
+
+      .entry-attachments-panel {
+        margin-top: 0.55rem;
+      }
+
+      .entry-attachment-card {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+        padding: 0.55rem;
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+        border: 1px solid var(--colour-border);
+      }
+
+      .entry-attachment-preview {
+        min-height: 58px;
+        max-height: 58px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--colour-border);
+        background:
+          linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.18)),
+          var(--colour-surface);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        transition:
+          border-color 160ms ease,
+          box-shadow 160ms ease,
+          transform 160ms ease;
+      }
+
+      .entry-attachment-preview:hover {
+        border-color: var(--colour-primary);
+      }
+
+      .entry-attachment-preview:focus-visible {
+        outline: 2px solid var(--colour-primary);
+        outline-offset: 2px;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+      }
+
+      .entry-attachment-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .entry-attachment-pdf-tile,
+      .entry-attachment-audio-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+        justify-content: center;
+        color: var(--colour-text-primary);
+        font-size: 0.82rem;
+      }
+
+      .entry-attachment-pdf-tile mat-icon,
+      .entry-attachment-audio-tile mat-icon {
+        width: 1.35rem;
+        height: 1.35rem;
+        font-size: 1.35rem;
+      }
+
+      .entry-attachment-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .entry-attachment-copy {
+        min-width: 0;
+      }
+
+      .entry-attachment-copy h4 {
+        margin: 0 0 0.2rem 0;
+        font-size: 0.84rem;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .entry-attachment-copy p {
+        margin: 0;
+        color: var(--colour-text-secondary);
+        font-size: 0.76rem;
+      }
+
+      .entry-attachment-audio-player {
+        width: 100%;
+        min-height: 2rem;
+      }
+
+      .entry-attachment-actions {
+        display: flex;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+      }
+
+      .entry-attachments-empty {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        color: var(--colour-text-secondary);
+        padding: 0.35rem 0.2rem 0.1rem;
+        font-size: 0.92rem;
+      }
+
+      .entry-attachments-empty p {
+        margin: 0;
+      }
+
       .section {
         margin-bottom: var(--spacing-md);
       }
@@ -879,6 +1164,14 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 
       @media (max-width: 768px) {
         .detail-columns {
+          grid-template-columns: 1fr;
+        }
+
+        .entry-attachment-actions {
+          justify-content: flex-start;
+        }
+
+        .entry-attachments-list {
           grid-template-columns: 1fr;
         }
 
@@ -976,21 +1269,25 @@ export class DetailComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private entriesService = inject(EntriesService);
   @ViewChild("dreamImageInput") dreamImageInput?: ElementRef<HTMLInputElement>;
+  @ViewChild("attachmentInput") attachmentInput?: ElementRef<HTMLInputElement>;
   @ViewChild("entryImageSurface") entryImageSurface?: ElementRef<HTMLDivElement>;
   @ViewChild("entryImageElement") entryImageElement?: ElementRef<HTMLImageElement>;
 
   private readonly collapsedItemsLimit = 8;
+  readonly maxAttachmentsPerEntry = MAX_ATTACHMENTS_PER_ENTRY;
 
   entry: any;
   entryType: "daily" | "dream" = "daily";
   backQueryParams: Record<string, string | number> = {};
   analysisWarningMessage = "";
+  isAttachmentsExpanded = false;
   isGeneratingDreamImage = false;
   isUploadingDreamImage = false;
   isDreamImageExpanded = false;
   isAdjustingDreamImagePosition = false;
   isEditingDreamPrompt = false;
   isSavingDreamPrompt = false;
+  isUploadingAttachment = false;
   hasHorizontalDreamImageAdjustment = false;
   dreamImagePositionX = 50;
   dreamImagePositionY = 50;
@@ -1119,6 +1416,222 @@ export class DetailComponent implements OnInit, OnDestroy {
 
     const value = raw.trim();
     return value.length > 0 ? value : null;
+  }
+
+  getAttachments(): EntryAsset[] {
+    return Array.isArray(this.entry?.attachments) ? this.entry.attachments : [];
+  }
+
+  canAddMoreAttachments(): boolean {
+    return this.getAttachments().length < this.maxAttachmentsPerEntry;
+  }
+
+  triggerAttachmentUpload(): void {
+    if (!this.canAddMoreAttachments()) {
+      return;
+    }
+
+    this.attachmentInput?.nativeElement.click();
+  }
+
+  onAttachmentSelected(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file || !this.entry?.id) {
+      if (input) {
+        input.value = "";
+      }
+      return;
+    }
+
+    const validationMessage = this.validateAttachmentFile(file);
+    if (validationMessage) {
+      alert(validationMessage);
+      if (input) {
+        input.value = "";
+      }
+      return;
+    }
+
+    this.isUploadingAttachment = true;
+    const request = this.isDream()
+      ? this.entriesService.uploadDreamAttachment(this.entry.id, file)
+      : this.entriesService.uploadDailyAttachment(this.entry.id, file);
+
+    request.subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          attachments: [...this.getAttachments(), result.attachment].sort(
+            (left, right) => Number(left.id || 0) - Number(right.id || 0),
+          ),
+        };
+        this.isUploadingAttachment = false;
+        if (input) {
+          input.value = "";
+        }
+      },
+      error: (error) => {
+        console.error("Failed to upload attachment:", error);
+        alert(
+          error?.error?.error ||
+            "Failed to upload the attachment. Please try again.",
+        );
+        this.isUploadingAttachment = false;
+        if (input) {
+          input.value = "";
+        }
+      },
+    });
+  }
+
+  async downloadAttachment(attachment: EntryAsset): Promise<void> {
+    if (!this.entry?.id || !attachment?.id) {
+      return;
+    }
+
+    try {
+      const response = await new Promise<any>((resolve, reject) => {
+        const request = this.isDream()
+          ? this.entriesService.downloadDreamAttachment(this.entry.id, attachment.id)
+          : this.entriesService.downloadDailyAttachment(this.entry.id, attachment.id);
+        request.subscribe({
+          next: resolve,
+          error: reject,
+        });
+      });
+      const blob = response.body as Blob;
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = this.getAttachmentDownloadFilename(
+        response.headers.get("content-disposition"),
+        attachment.original_filename,
+      );
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error("Failed to download attachment:", error);
+      alert("Failed to download the attachment. Please try again.");
+    }
+  }
+
+  deleteAttachment(attachment: EntryAsset): void {
+    if (!this.entry?.id || !attachment?.id) {
+      return;
+    }
+
+    const confirmed = confirm(
+      `Remove attachment "${attachment.original_filename || "attachment"}"?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const request = this.isDream()
+      ? this.entriesService.deleteDreamAttachment(this.entry.id, attachment.id)
+      : this.entriesService.deleteDailyAttachment(this.entry.id, attachment.id);
+
+    request.subscribe({
+      next: () => {
+        this.entry = {
+          ...this.entry,
+          attachments: this.getAttachments().filter(
+            (item) => Number(item.id) !== Number(attachment.id),
+          ),
+        };
+      },
+      error: (error) => {
+        console.error("Failed to delete attachment:", error);
+        alert(
+          error?.error?.error ||
+            "Failed to delete the attachment. Please try again.",
+        );
+      },
+    });
+  }
+
+  getAttachmentIcon(attachment: EntryAsset): string {
+    const mimeType = String(attachment?.mime_type || "").toLowerCase();
+    if (mimeType === "application/pdf") {
+      return "picture_as_pdf";
+    }
+    if (mimeType.startsWith("audio/")) {
+      return "graphic_eq";
+    }
+    if (mimeType.startsWith("image/")) {
+      return "image";
+    }
+    return "attach_file";
+  }
+
+  getAttachmentTypeLabel(attachment: EntryAsset): string {
+    if (attachment?.is_pdf) {
+      return "PDF";
+    }
+    if (attachment?.is_audio) {
+      return "Audio";
+    }
+    if (attachment?.is_image) {
+      return "Image";
+    }
+    return "Attachment";
+  }
+
+  getAttachmentOpenLabel(attachment: EntryAsset): string {
+    return `Open ${attachment.original_filename}`;
+  }
+
+  toggleAttachmentsExpanded(): void {
+    this.isAttachmentsExpanded = !this.isAttachmentsExpanded;
+  }
+
+  formatAttachmentFileSize(sizeBytes: number): string {
+    if (!sizeBytes || sizeBytes < 1024) {
+      return `${sizeBytes || 0} B`;
+    }
+    if (sizeBytes < 1024 * 1024) {
+      return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  private validateAttachmentFile(file: File): string | null {
+    const extension = file.name.toLowerCase().split(".").pop() || "";
+    const isImage =
+      file.type.startsWith("image/") ||
+      ["jpg", "jpeg", "png", "webp"].includes(extension);
+    const isAudio =
+      file.type.startsWith("audio/") ||
+      ["mp3", "wav", "m4a", "ogg", "webm", "aiff"].includes(extension);
+    const isPdf = file.type === "application/pdf" || extension === "pdf";
+
+    if (!isImage && !isAudio && !isPdf) {
+      return "Unsupported attachment type. Use PDF, JPG, PNG, WEBP, MP3, WAV, M4A, OGG, WEBM, or AIFF.";
+    }
+
+    if (!this.canAddMoreAttachments()) {
+      return `Each entry can have up to ${this.maxAttachmentsPerEntry} attachments.`;
+    }
+
+    const sizeLimit = isAudio
+      ? MAX_AUDIO_ATTACHMENT_BYTES
+      : MAX_IMAGE_OR_PDF_ATTACHMENT_BYTES;
+    if (file.size > sizeLimit) {
+      return isAudio
+        ? "Audio attachments must be 25 MB or smaller."
+        : "Image and PDF attachments must be 10 MB or smaller.";
+    }
+
+    return null;
+  }
+
+  private getAttachmentDownloadFilename(
+    contentDisposition: string | null,
+    fallback: string,
+  ): string {
+    const match = contentDisposition?.match(/filename="?([^"]+)"?/i);
+    return match?.[1] || fallback;
   }
 
   isCurrentEntryAiImage(): boolean {
@@ -1825,8 +2338,15 @@ export class DetailComponent implements OnInit, OnDestroy {
   }
 
   private captureAnalysisWarning(): void {
+    const attachmentWarning =
+      this.route.snapshot.queryParamMap.get("attachmentWarning");
     const warningCode =
       this.route.snapshot.queryParamMap.get("analysisWarning");
+
+    if (attachmentWarning?.trim()) {
+      this.analysisWarningMessage = attachmentWarning.trim();
+      return;
+    }
 
     if (warningCode === "ai-rate-limit") {
       this.analysisWarningMessage =

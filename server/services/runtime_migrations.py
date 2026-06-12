@@ -78,6 +78,23 @@ CREATE TABLE IF NOT EXISTS import_sessions (
 )
 """
 
+_ENTRY_ASSETS_DDL = """
+CREATE TABLE IF NOT EXISTS entry_assets (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    entry_type        TEXT NOT NULL,
+    entry_id          INTEGER NOT NULL,
+    asset_role        TEXT NOT NULL DEFAULT 'attachment',
+    storage_key       TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    mime_type         TEXT NOT NULL,
+    file_size_bytes   INTEGER NOT NULL DEFAULT 0,
+    sort_order        INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -215,5 +232,25 @@ def ensure_import_sessions_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'import_sessions')
+
+    return True
+
+
+def ensure_entry_assets_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime entry-assets table exists for non-hero attachments."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_ENTRY_ASSETS_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_entry_assets_lookup
+            ON entry_assets(user_id, entry_type, entry_id, sort_order, id)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'entry_assets')
 
     return True
