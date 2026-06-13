@@ -91,6 +91,7 @@ ANALYSE_TEXT_MAX_LENGTH = 10000
 RECENT_CONTEXT_MAX_ENTRIES = 5
 RECENT_CONTEXT_MAX_ENTRY_CHARS = 500
 RECENT_CONTEXT_MAX_TOTAL_CHARS = 1800
+ATTACHMENT_CONTEXT_MAX_CHARS = 900
 
 
 def get_db():
@@ -430,6 +431,69 @@ def _build_recent_context(user_id: int, mode: str, reference_date: str | None = 
 
     return "\n\n".join(context_chunks)
 
+
+def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> str | None:
+    entry_type = 'daily' if mode == 'daily' else 'dream'
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            '''
+            SELECT original_filename, mime_type, derived_text
+            FROM entry_assets
+            WHERE user_id = ? AND entry_type = ? AND entry_id = ?
+            ORDER BY sort_order ASC, id ASC
+            LIMIT 3
+            ''',
+            (user_id, entry_type, entry_id),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return None
+
+    lines: list[str] = []
+    current_chars = 0
+    for row in rows:
+        mime_type = str(row['mime_type'] or '').strip().lower()
+        if mime_type.startswith('audio/'):
+            type_label = 'audio'
+        elif mime_type == 'application/pdf':
+            type_label = 'pdf'
+        elif mime_type.startswith('image/'):
+            type_label = 'image'
+        else:
+            type_label = 'attachment'
+
+        line = f"- {type_label}: {str(row['original_filename'] or 'attachment').strip()}"
+        derived_text = _truncate_text(str(row['derived_text'] or '').strip(), 260)
+        if derived_text:
+            line += f"\n  derived text: {derived_text}"
+        projected = current_chars + len(line) + (1 if lines else 0)
+        if projected > ATTACHMENT_CONTEXT_MAX_CHARS:
+            break
+        lines.append(line)
+        current_chars = projected
+
+    if not lines:
+        return None
+
+    return "Attachment context:\n" + "\n".join(lines)
+
+
+def _merge_analysis_context(
+    recent_context: str | None,
+    attachment_context: str | None,
+) -> str | None:
+    parts = [
+        part.strip()
+        for part in (recent_context, attachment_context)
+        if isinstance(part, str) and part.strip()
+    ]
+    if not parts:
+        return None
+    return "\n\n".join(parts)
+
 @analyse_bp.route('/analyse', methods=['POST'])
 @jwt_required()
 def analyse_text():
@@ -441,6 +505,8 @@ def analyse_text():
     mode = data.get('mode', 'daily')  # 'daily' or 'dream'
     text = data.get('text', '')
     reference_date_raw = data.get('reference_date')
+    entry_id_raw = data.get('entry_id')
+    include_attachment_context = bool(data.get('include_attachment_context'))
 
     if mode not in ['daily', 'dream']:
         return jsonify({'error': 'Invalid mode. Use "daily" or "dream"'}), 400
@@ -460,11 +526,22 @@ def analyse_text():
     except ValueError:
         return jsonify({'error': 'Invalid reference_date format. Use YYYY-MM-DD'}), 400
 
+    entry_id = None
+    if include_attachment_context:
+        try:
+            entry_id = int(entry_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'entry_id is required when include_attachment_context is enabled'}), 400
+
     recent_context = None
+    attachment_context = None
     user_id = None
     try:
         user_id = int(get_jwt_identity())
         recent_context = _build_recent_context(user_id, mode, reference_date)
+        if include_attachment_context and entry_id is not None:
+            attachment_context = _build_attachment_context(user_id, mode, entry_id)
+        recent_context = _merge_analysis_context(recent_context, attachment_context)
     except Exception:
         current_app.logger.exception('Recent analysis context lookup failed; continuing without context')
     

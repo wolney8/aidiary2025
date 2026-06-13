@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 from html import escape
 from io import BytesIO
@@ -16,6 +16,7 @@ from services.import_service import (
 from services.openai_svc import (
     DAILY_IMAGE_STYLE_PREFIX,
     DREAM_IMAGE_STYLE_PREFIX,
+    AnalysisRateLimitError,
     OpenAIService,
 )
 from services.media_storage import (
@@ -345,7 +346,8 @@ def _serialise_entry_assets(
     rows = conn.execute(
         '''
         SELECT id, asset_role, storage_key, original_filename, mime_type,
-               file_size_bytes, sort_order, created_at
+               file_size_bytes, sort_order, created_at,
+               derived_text, derived_text_source, derived_text_updated_at
         FROM entry_assets
         WHERE user_id = ? AND entry_type = ? AND entry_id = ?
         ORDER BY sort_order ASC, id ASC
@@ -378,6 +380,10 @@ def _serialise_entry_assets(
                 'file_size_bytes': int(row['file_size_bytes'] or 0),
                 'sort_order': int(row['sort_order'] or 0),
                 'created_at': row['created_at'],
+                'derived_text': str(row['derived_text'] or ''),
+                'derived_text_source': str(row['derived_text_source'] or ''),
+                'derived_text_updated_at': row['derived_text_updated_at'],
+                'has_derived_text': bool(str(row['derived_text'] or '').strip()),
                 'url': resolve_image_url(storage_key),
                 'is_image': mime_type.startswith('image/'),
                 'is_audio': mime_type.startswith('audio/'),
@@ -608,6 +614,89 @@ def _download_entry_attachment(
         as_attachment=True,
         download_name=str(asset['original_filename'] or f'attachment-{asset_id}'),
     )
+
+
+def _transcribe_entry_attachment(
+    *,
+    entry_type: str,
+    table_name: str,
+    entry_id: int,
+    asset_id: int,
+    user_id: int,
+) -> tuple[dict, int]:
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        f'SELECT id FROM {table_name} WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return {'error': 'Entry not found'}, 404
+
+    asset = cursor.execute(
+        '''
+        SELECT id, storage_key, original_filename, mime_type
+        FROM entry_assets
+        WHERE id = ? AND user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (asset_id, user_id, entry_type, entry_id),
+    ).fetchone()
+    if not asset:
+        conn.close()
+        return {'error': 'Attachment not found'}, 404
+
+    mime_type = str(asset['mime_type'] or '').strip().lower()
+    if not mime_type.startswith('audio/'):
+        conn.close()
+        return {'error': 'Only audio attachments can be transcribed.'}, 400
+
+    file_bytes = read_image_bytes(asset['storage_key'])
+    if file_bytes is None:
+        conn.close()
+        return {'error': 'Attachment file is missing.'}, 404
+
+    try:
+        transcript_text = OpenAIService().transcribe_audio_attachment(
+            file_bytes,
+            filename=str(asset['original_filename'] or f'attachment-{asset_id}'),
+            mime_type=mime_type,
+        )
+    except AnalysisRateLimitError:
+        conn.close()
+        return {'error': 'Audio transcription is temporarily rate-limited. Please try again later.'}, 429
+    except ValueError as exc:
+        conn.close()
+        return {'error': str(exc)}, 400
+    except Exception:
+        conn.close()
+        current_app.logger.exception('Attachment transcription failed for %s attachment %s', entry_type, asset_id)
+        return {'error': 'Audio transcription failed.'}, 502
+
+    updated_at = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    cursor.execute(
+        '''
+        UPDATE entry_assets
+        SET derived_text = ?, derived_text_source = ?, derived_text_updated_at = ?
+        WHERE id = ? AND user_id = ?
+        ''',
+        (transcript_text, 'audio-transcription', updated_at, asset_id, user_id),
+    )
+    conn.commit()
+    attachments = _serialise_entry_assets(
+        conn,
+        user_id=user_id,
+        entry_type=entry_type,
+        entry_id=entry_id,
+    )
+    conn.close()
+
+    updated_attachment = next((item for item in attachments if item['id'] == asset_id), None)
+    return {
+        'entry_id': entry_id,
+        'entry_type': entry_type,
+        'attachment': updated_attachment,
+    }, 200
 
 
 def _get_entry_range_summary(conn: sqlite3.Connection, user_id: int) -> dict[str, int | str | None | bool]:
@@ -1209,6 +1298,20 @@ def download_daily_attachment(entry_id, asset_id):
         user_id=user_id,
     )
 
+
+@entries_bp.route('/daily/<int:entry_id>/attachments/<int:asset_id>/transcribe', methods=['POST'])
+@jwt_required()
+def transcribe_daily_attachment(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _transcribe_entry_attachment(
+        entry_type='daily',
+        table_name='dailydiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+    )
+    return jsonify(payload), status_code
+
 # Dream entries endpoints
 @entries_bp.route('/dreams', methods=['GET'])
 @jwt_required()
@@ -1683,6 +1786,20 @@ def download_dream_attachment(entry_id, asset_id):
         asset_id=asset_id,
         user_id=user_id,
     )
+
+
+@entries_bp.route('/dreams/<int:entry_id>/attachments/<int:asset_id>/transcribe', methods=['POST'])
+@jwt_required()
+def transcribe_dream_attachment(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _transcribe_entry_attachment(
+        entry_type='dream',
+        table_name='dreamdiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+    )
+    return jsonify(payload), status_code
 
 
 @entries_bp.route('/entries/bulk-delete-readiness', methods=['GET'])

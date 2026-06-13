@@ -1,6 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { Component, OnInit, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import { RouterModule } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import { MatCheckboxModule } from "@angular/material/checkbox";
@@ -16,6 +17,7 @@ import { User } from "../../core/models/user.model";
   imports: [
     CommonModule,
     FormsModule,
+    RouterModule,
     MatButtonModule,
     MatCardModule,
     MatCheckboxModule,
@@ -128,6 +130,18 @@ import { User } from "../../core/models/user.model";
                 Allow AI to reference past entries
               </mat-checkbox>
             </div>
+
+            <div class="checkbox-row checkbox-row-wide">
+              <mat-checkbox
+                [(ngModel)]="settings.allow_ai_attachment_context"
+                name="allow_ai_attachment_context"
+              >
+                Allow AI to use attachment context by default
+              </mat-checkbox>
+              <p class="checkbox-hint">
+                This affects the default toggle on create and edit entry forms.
+              </p>
+            </div>
           </mat-card-content>
         </mat-card>
 
@@ -236,8 +250,25 @@ import { User } from "../../core/models/user.model";
 
       .checkbox-row {
         display: flex;
-        align-items: center;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 0.35rem;
         min-height: 56px;
+      }
+
+      .checkbox-row-wide {
+        grid-column: 1 / -1;
+      }
+
+      .checkbox-hint {
+        margin: 0;
+        color: var(--colour-text-secondary);
+        font-size: 0.9rem;
+      }
+
+      .checkbox-row mat-checkbox {
+        align-items: center;
       }
 
       .actions {
@@ -280,6 +311,10 @@ export class PersonalisationComponent implements OnInit {
             profile.allow_ai_history === undefined
               ? true
               : Boolean(profile.allow_ai_history),
+          allow_ai_attachment_context:
+            profile.allow_ai_attachment_context === undefined
+              ? true
+              : Boolean(profile.allow_ai_attachment_context),
         };
       },
       error: () => {

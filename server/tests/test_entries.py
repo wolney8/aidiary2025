@@ -1144,6 +1144,98 @@ def test_analyse_daily_recent_context_deduplicates_duplicate_metadata_headers(mo
     assert recent_context.count('Repeated metadata header') == 1
     assert 'Distinct metadata header' in recent_context
 
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_can_include_attachment_context(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-28',
+            'title': 'Attachment context daily',
+            'user_message': 'Daily content with reference material',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/daily/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'notes.pdf', 'application/pdf')},
+        content_type='multipart/form-data'
+    )
+    attachment_id = json.loads(upload_response.data)['attachment']['id']
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    conn.execute(
+        '''
+        UPDATE entry_assets
+        SET derived_text = ?, derived_text_source = ?
+        WHERE id = ?
+        ''',
+        ('PDF summary about a difficult meeting', 'manual-note', attachment_id),
+    )
+    conn.commit()
+    conn.close()
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Attachment-aware response',
+        'tags': 'attachment,analysis',
+        'people_names': '',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Current analysis text',
+            'entry_id': entry_id,
+            'include_attachment_context': True,
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert recent_context is not None
+    assert 'Attachment context:' in recent_context
+    assert 'notes.pdf' in recent_context
+    assert 'PDF summary about a difficult meeting' in recent_context
+
+
+def test_analyse_rejects_attachment_context_without_entry_id(client):
+    token = get_auth_token(client)
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Current analysis text',
+            'include_attachment_context': True,
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'entry_id is required when include_attachment_context is enabled'
+
 def test_unauthorised_access(client):
     """Test accessing protected endpoint without token."""
     response = client.get('/api/daily')
@@ -2164,6 +2256,94 @@ def test_attachment_download_uses_attachment_headers(client):
     assert 'attachment;' in download_response.headers['Content-Disposition']
     assert 'voice-note.mp3' in download_response.headers['Content-Disposition']
     assert download_response.data == b'ID3 pretend mp3 bytes'
+
+
+@patch('routes.entries.OpenAIService')
+def test_transcribe_dream_audio_attachment_persists_derived_text(mock_openai_service_cls, client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-25',
+            'title': 'Attachment transcription',
+            'plot': 'Dream attachment transcription.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/dreams/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={
+            'attachment': (
+                BytesIO(b'ID3 pretend mp3 bytes'),
+                'voice-note.mp3',
+                'audio/mpeg',
+            )
+        },
+        content_type='multipart/form-data'
+    )
+    attachment = json.loads(upload_response.data)['attachment']
+
+    mock_service = MagicMock()
+    mock_service.transcribe_audio_attachment.return_value = 'Transcript text from audio'
+    mock_openai_service_cls.return_value = mock_service
+
+    transcribe_response = client.post(
+        f'/api/dreams/{entry_id}/attachments/{attachment["id"]}/transcribe',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert transcribe_response.status_code == 200
+    payload = json.loads(transcribe_response.data)
+    assert payload['attachment']['derived_text'] == 'Transcript text from audio'
+    assert payload['attachment']['derived_text_source'] == 'audio-transcription'
+    assert payload['attachment']['has_derived_text'] is True
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT derived_text, derived_text_source FROM entry_assets WHERE id = ?',
+        (attachment['id'],),
+    ).fetchone()
+    conn.close()
+    assert row == ('Transcript text from audio', 'audio-transcription')
+
+
+def test_transcribe_attachment_rejects_non_audio_file(client):
+    token = get_auth_token(client)
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-26',
+            'title': 'PDF only',
+            'user_message': 'Daily content with pdf attachment',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/daily/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'notes.pdf', 'application/pdf')},
+        content_type='multipart/form-data'
+    )
+    attachment = json.loads(upload_response.data)['attachment']
+
+    response = client.post(
+        f'/api/daily/{entry_id}/attachments/{attachment["id"]}/transcribe',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 400
+    payload = json.loads(response.data)
+    assert payload['error'] == 'Only audio attachments can be transcribed.'
 
 
 def test_update_daily_image_position_persists(client):

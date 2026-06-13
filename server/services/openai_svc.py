@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import base64
+from io import BytesIO
 from typing import Dict, Generator
 from openai import OpenAI
 
@@ -342,6 +343,35 @@ Additional requirements for this retry:
             max_tokens=self.max_output_tokens,
             timeout=self.request_timeout_seconds,
         )
+
+    def transcribe_audio_attachment(
+        self,
+        file_bytes: bytes,
+        *,
+        filename: str,
+        mime_type: str,
+    ) -> str:
+        if not file_bytes:
+            raise ValueError('No audio data was provided for transcription.')
+
+        try:
+            audio_file = BytesIO(file_bytes)
+            audio_file.name = filename or 'attachment-audio'
+
+            response = self.client.audio.transcriptions.create(
+                model='gpt-4o-mini-transcribe',
+                file=audio_file,
+                timeout=self.request_timeout_seconds,
+            )
+
+            transcript_text = str(getattr(response, 'text', '') or '').strip()
+            if not transcript_text:
+                raise ValueError('Audio transcription returned no text.')
+            return transcript_text
+        except Exception as exc:
+            if self._is_rate_limit_like_error(exc):
+                raise AnalysisRateLimitError('Audio transcription rate-limited') from exc
+            raise
 
     @staticmethod
     def _is_daily_generic_fallback_like(result: Dict, fallback: Dict) -> bool:

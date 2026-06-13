@@ -71,6 +71,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["ai_verbosity"] == "balanced"
     assert data["ai_focus"] == "reflective"
     assert data["allow_ai_history"] == 1
+    assert data["allow_ai_attachment_context"] == 1
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -85,6 +86,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "ai_verbosity" in columns
     assert "ai_focus" in columns
     assert "allow_ai_history" in columns
+    assert "allow_ai_attachment_context" in columns
 
 
 def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_schema):
@@ -103,6 +105,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
                 "ai_verbosity": "detailed",
                 "ai_focus": "creative-prompts",
                 "allow_ai_history": False,
+                "allow_ai_attachment_context": False,
                 "chatgpt_daily_diary_coachname": "Sage",
             }
         ),
@@ -119,6 +122,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     assert data["user"]["ai_verbosity"] == "detailed"
     assert data["user"]["ai_focus"] == "creative-prompts"
     assert data["user"]["allow_ai_history"] == 0
+    assert data["user"]["allow_ai_attachment_context"] == 0
     assert data["user"]["chatgpt_daily_diary_coachname"] == "Sage"
 
 

@@ -368,6 +368,28 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
                 </div>
                 <div class="entry-attachment-actions">
                   <button
+                    *ngIf="attachment.is_audio"
+                    mat-stroked-button
+                    type="button"
+                    (click)="transcribeAttachment(attachment)"
+                    [disabled]="isTranscribingAttachment(attachment)"
+                    [attr.aria-label]="
+                      (attachment.has_derived_text ? 'Re-transcribe ' : 'Transcribe ') +
+                      attachment.original_filename
+                    "
+                  >
+                    <mat-icon>{{
+                      isTranscribingAttachment(attachment) ? "hourglass_top" : "subtitles"
+                    }}</mat-icon>
+                    {{
+                      isTranscribingAttachment(attachment)
+                        ? "Transcribing…"
+                        : attachment.has_derived_text
+                          ? "Re-transcribe"
+                          : "Transcribe"
+                    }}
+                  </button>
+                  <button
                     mat-stroked-button
                     type="button"
                     (click)="downloadAttachment(attachment)"
@@ -386,6 +408,34 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
                 preload="none"
                 [attr.aria-label]="'Audio attachment player for ' + attachment.original_filename"
               ></audio>
+              <div
+                class="entry-attachment-transcript"
+                *ngIf="attachment.has_derived_text && attachment.derived_text"
+              >
+                <p class="entry-attachment-transcript-label">
+                  {{ getAttachmentDerivedTextLabel(attachment) }}
+                </p>
+                <p>{{ getAttachmentDerivedTextPreview(attachment) }}</p>
+                <button
+                  *ngIf="shouldShowFullAttachmentTranscript(attachment)"
+                  mat-button
+                  type="button"
+                  class="entry-attachment-transcript-toggle"
+                  (click)="openAttachmentTranscript(attachment)"
+                >
+                  Read full transcript
+                </button>
+              </div>
+              <div
+                class="entry-attachment-transcript entry-attachment-transcript-note"
+                *ngIf="attachment.is_audio && !attachment.has_derived_text"
+              >
+                <p class="entry-attachment-transcript-label">AI usage</p>
+                <p>
+                  This audio will only be used in AI analysis after you
+                  transcribe it.
+                </p>
+              </div>
             </article>
           </div>
         </div>
@@ -1122,6 +1172,42 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         min-height: 2rem;
       }
 
+      .entry-attachment-transcript {
+        margin-top: 0.25rem;
+        padding: 0.6rem 0.7rem;
+        border-radius: var(--radius-sm);
+        background: var(--colour-surface-muted);
+        border: 1px solid var(--colour-border);
+      }
+
+      .entry-attachment-transcript-label {
+        margin: 0 0 0.3rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--colour-text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .entry-attachment-transcript p:last-child {
+        margin: 0;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      .entry-attachment-transcript-toggle {
+        margin-top: 0.35rem;
+        padding: 0;
+        min-width: 0;
+        font-weight: 600;
+      }
+
+      .entry-attachment-transcript-note {
+        background: rgba(25, 118, 210, 0.06);
+        border-color: rgba(25, 118, 210, 0.18);
+      }
+
       .entry-attachment-actions {
         display: flex;
         gap: 0.35rem;
@@ -1276,6 +1362,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   @ViewChild("entryImageElement") entryImageElement?: ElementRef<HTMLImageElement>;
 
   private readonly collapsedItemsLimit = 8;
+  private readonly transcriptPreviewLength = 280;
   readonly maxAttachmentsPerEntry = MAX_ATTACHMENTS_PER_ENTRY;
 
   entry: any;
@@ -1290,6 +1377,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   isEditingDreamPrompt = false;
   isSavingDreamPrompt = false;
   isUploadingAttachment = false;
+  transcribingAttachmentIds = new Set<number>();
   hasHorizontalDreamImageAdjustment = false;
   dreamImagePositionX = 50;
   dreamImagePositionY = 50;
@@ -1529,6 +1617,37 @@ export class DetailComponent implements OnInit, OnDestroy {
     }
   }
 
+  async transcribeAttachment(attachment: EntryAsset): Promise<void> {
+    if (!this.entry?.id || !attachment?.id || !attachment.is_audio) {
+      return;
+    }
+
+    this.transcribingAttachmentIds.add(Number(attachment.id));
+    const request = this.isDream()
+      ? this.entriesService.transcribeDreamAttachment(this.entry.id, attachment.id)
+      : this.entriesService.transcribeDailyAttachment(this.entry.id, attachment.id);
+
+    request.subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          attachments: this.getAttachments().map((item) =>
+            Number(item.id) === Number(attachment.id) ? result.attachment : item,
+          ),
+        };
+        this.transcribingAttachmentIds.delete(Number(attachment.id));
+      },
+      error: (error) => {
+        console.error("Failed to transcribe attachment:", error);
+        this.transcribingAttachmentIds.delete(Number(attachment.id));
+        void this.showErrorDialog(
+          "Transcription failed",
+          error?.error?.error || "Failed to transcribe the audio attachment.",
+        );
+      },
+    });
+  }
+
   async deleteAttachment(attachment: EntryAsset): Promise<void> {
     if (!this.entry?.id || !attachment?.id) {
       return;
@@ -1598,6 +1717,43 @@ export class DetailComponent implements OnInit, OnDestroy {
 
   getAttachmentOpenLabel(attachment: EntryAsset): string {
     return `Open ${attachment.original_filename}`;
+  }
+
+  isTranscribingAttachment(attachment: EntryAsset): boolean {
+    return this.transcribingAttachmentIds.has(Number(attachment.id));
+  }
+
+  getAttachmentDerivedTextLabel(attachment: EntryAsset): string {
+    return attachment.derived_text_source === "audio-transcription"
+      ? "Transcript"
+      : "Derived text";
+  }
+
+  getAttachmentDerivedTextPreview(attachment: EntryAsset): string {
+    const transcript = String(attachment.derived_text || "").trim();
+    if (transcript.length <= this.transcriptPreviewLength) {
+      return transcript;
+    }
+    return `${transcript.slice(0, this.transcriptPreviewLength).trimEnd()}…`;
+  }
+
+  shouldShowFullAttachmentTranscript(attachment: EntryAsset): boolean {
+    const transcript = String(attachment.derived_text || "").trim();
+    return transcript.length > this.transcriptPreviewLength;
+  }
+
+  openAttachmentTranscript(attachment: EntryAsset): void {
+    const transcript = String(attachment.derived_text || "").trim();
+    if (!transcript) {
+      return;
+    }
+
+    void this.appDialog.alert({
+      title: `${this.getAttachmentDerivedTextLabel(attachment)}: ${attachment.original_filename}`,
+      message: transcript,
+      confirmText: "Close",
+      variant: "info",
+    });
   }
 
   toggleAttachmentsExpanded(): void {
