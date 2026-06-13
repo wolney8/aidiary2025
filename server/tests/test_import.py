@@ -90,6 +90,20 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             tags TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        CREATE TABLE IF NOT EXISTS entry_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            entry_type TEXT NOT NULL,
+            entry_id INTEGER NOT NULL,
+            asset_role TEXT NOT NULL DEFAULT 'attachment',
+            storage_key TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            file_size_bytes INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
     ''')
     conn.commit()
 
@@ -791,6 +805,72 @@ class TestMalformedData:
         assert row['image_position_y'] == '77'
         assert row['image_prompt'] == 'City lights reflected on wet pavement'
 
+    def test_zip_package_import_restores_attachment_assets(self, client):
+        token = _register_and_login(client)
+        asset_ref = 'dream_20241107_1'
+        package_bytes = _make_zip_package(
+            dream_rows=[[
+                '2024-11-07', '07:40', 'Packaged dream', 'River crossing', 'Mara',
+                'Bridge', 'Present', 'Uneasy', 'Mist', 'Face the change',
+                'Kept walking', 'None', 'river', asset_ref,
+            ]],
+            manifest_assets={
+                asset_ref: {
+                    'entry_type': 'dream',
+                    'image_filename': '',
+                    'attachments': [
+                        {
+                            'package_filename': '01_note.pdf',
+                            'original_filename': 'note.pdf',
+                            'mime_type': 'application/pdf',
+                            'asset_role': 'attachment',
+                            'file_size_bytes': 14,
+                            'sort_order': 0,
+                        },
+                        {
+                            'package_filename': '02_audio.m4a',
+                            'original_filename': 'audio.m4a',
+                            'mime_type': 'audio/mp4',
+                            'asset_role': 'attachment',
+                            'file_size_bytes': 12,
+                            'sort_order': 1,
+                        },
+                    ],
+                }
+            },
+            media_files={
+                f'media/{asset_ref}/01_note.pdf': b'%PDF-1.4 test\n',
+                f'media/{asset_ref}/02_audio.m4a': b'FAKEAUDIO123',
+            },
+        )
+
+        resp = _upload(client, token, package_bytes, filename='package.zip', content_type='application/zip')
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_dreams'] == 1
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        asset_rows = conn.execute(
+            """
+            SELECT original_filename, mime_type, asset_role, file_size_bytes, sort_order, storage_key
+            FROM entry_assets
+            WHERE entry_type = 'dream'
+            ORDER BY sort_order ASC, id ASC
+            """
+        ).fetchall()
+        conn.close()
+
+        assert len(asset_rows) == 2
+        assert asset_rows[0]['original_filename'] == 'note.pdf'
+        assert asset_rows[0]['mime_type'] == 'application/pdf'
+        assert asset_rows[0]['asset_role'] == 'attachment'
+        assert asset_rows[0]['sort_order'] == 0
+        assert asset_rows[0]['storage_key']
+        assert asset_rows[1]['original_filename'] == 'audio.m4a'
+        assert asset_rows[1]['mime_type'] == 'audio/mp4'
+        assert asset_rows[1]['sort_order'] == 1
+
 
 # ---------------------------------------------------------------------------
 # Schema contract regression coverage (Issue #39)
@@ -1432,6 +1512,50 @@ class TestExportDownload:
         assert manifest['assets'][asset_ref]['image_position_x'] == '44'
         assert manifest['assets'][asset_ref]['image_position_y'] == '62'
         assert any(name.startswith(f'media/{asset_ref}/') for name in package_members)
+
+    def test_export_package_includes_entry_attachments(self, client):
+        token = _register_and_login(client)
+        db_path = os.environ['DB_PATH']
+        self._seed_export_rows(db_path)
+
+        media_root = os.environ['MEDIA_ROOT']
+        attachment_key = 'assets/daily/1/receipt.pdf'
+        attachment_path = os.path.join(media_root, *attachment_key.split('/'))
+        os.makedirs(os.path.dirname(attachment_path), exist_ok=True)
+        with open(attachment_path, 'wb') as attachment_file:
+            attachment_file.write(b'%PDF-1.4 receipt\n')
+
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            INSERT INTO entry_assets
+            (user_id, entry_type, entry_id, asset_role, storage_key, original_filename,
+             mime_type, file_size_bytes, sort_order, created_at)
+            VALUES (?, 'daily', ?, 'attachment', ?, 'receipt.pdf', 'application/pdf', ?, 0, ?)
+            """,
+            (1, 1, attachment_key, 17, '2026-06-12T10:00:00Z'),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.get(
+            '/api/import/export',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        wb, manifest, package_members = _load_export_package(resp.data)
+        daily_ws = wb['Daily']
+        asset_ref = daily_ws.cell(2, 6).value
+
+        assert asset_ref
+        assert asset_ref in manifest['assets']
+        attachments = manifest['assets'][asset_ref]['attachments']
+        assert len(attachments) == 1
+        assert attachments[0]['original_filename'] == 'receipt.pdf'
+        assert attachments[0]['mime_type'] == 'application/pdf'
+        assert attachments[0]['package_filename'] == '01_receipt.pdf'
+        assert f'media/{asset_ref}/01_receipt.pdf' in package_members
 
     def test_export_invalid_date_format(self, client):
         token = _register_and_login(client)

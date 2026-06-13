@@ -30,6 +30,7 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatSelectModule } from "@angular/material/select";
 import { COMMA, ENTER } from "@angular/cdk/keycodes";
 import { MatButtonToggleChange } from "@angular/material/button-toggle";
+import { AppDialogService } from "../../core/services/app-dialog.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
@@ -929,6 +930,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
 export class CreateComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private appDialog = inject(AppDialogService);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
   @ViewChild("pendingAttachmentInput")
@@ -1622,8 +1624,8 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.goBack();
   }
 
-  goBack(): void {
-    if (!this.canLeaveCreateScreen()) {
+  async goBack(): Promise<void> {
+    if (!(await this.canLeaveCreateScreen())) {
       return;
     }
 
@@ -1661,7 +1663,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.places = this.places.filter((p) => p !== place);
   }
 
-  onTypeChange(event: MatButtonToggleChange) {
+  async onTypeChange(event: MatButtonToggleChange): Promise<void> {
     const nextType = event.value as "daily" | "dream";
     const previousType = this.previousSelectedType;
 
@@ -1670,9 +1672,14 @@ export class CreateComponent implements OnInit, OnDestroy {
     }
 
     if (this.hasTypeSpecificContent(previousType)) {
-      const confirmed = confirm(
-        "Switching entry type will clear the current type-specific content. Continue?",
-      );
+      const confirmed = await this.appDialog.confirm({
+        title: "Switch entry type?",
+        message:
+          "Switching entry type will clear the current type-specific content.",
+        confirmText: "Switch type",
+        cancelText: "Keep current type",
+        variant: "warning",
+      });
 
       if (!confirmed) {
         this.selectedType = previousType;
@@ -1701,7 +1708,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.dreamOther = "";
   }
 
-  canDeactivate(): boolean {
+  canDeactivate(): boolean | Promise<boolean> {
     return this.canLeaveCreateScreen();
   }
 
@@ -1721,8 +1728,19 @@ export class CreateComponent implements OnInit, OnDestroy {
     event.chipInput?.clear();
   }
 
-  private canLeaveCreateScreen(): boolean {
-    return !this.hasUnsavedChanges() || confirm("Discard this entry?");
+  private canLeaveCreateScreen(): boolean | Promise<boolean> {
+    if (!this.hasUnsavedChanges()) {
+      return true;
+    }
+
+    return this.appDialog.confirm({
+      title: "Discard this entry?",
+      message:
+        "You have unsaved changes. Leaving now will discard this entry draft.",
+      confirmText: "Discard changes",
+      cancelText: "Stay here",
+      variant: "danger",
+    });
   }
 
   private async uploadPendingAttachments(

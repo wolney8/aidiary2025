@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { ActivatedRoute, Router, convertToParamMap } from "@angular/router";
 import { of, throwError } from "rxjs";
 import { CreateComponent } from "./create.component";
+import { AppDialogService } from "../../core/services/app-dialog.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import {
@@ -16,11 +17,18 @@ describe("CreateComponent save reliability", () => {
   let fixture: ComponentFixture<CreateComponent>;
   let component: CreateComponent;
   let routerMock: jasmine.SpyObj<Router>;
+  let appDialogMock: jasmine.SpyObj<AppDialogService>;
   let entriesServiceMock: jasmine.SpyObj<EntriesService>;
   let analysisServiceMock: jasmine.SpyObj<AnalysisService>;
 
   beforeEach(async () => {
     routerMock = jasmine.createSpyObj<Router>("Router", ["navigate"]);
+    appDialogMock = jasmine.createSpyObj<AppDialogService>("AppDialogService", [
+      "confirm",
+      "alert",
+    ]);
+    appDialogMock.confirm.and.resolveTo(true);
+    appDialogMock.alert.and.resolveTo();
 
     entriesServiceMock = jasmine.createSpyObj<EntriesService>(
       "EntriesService",
@@ -43,6 +51,7 @@ describe("CreateComponent save reliability", () => {
       imports: [CreateComponent],
       providers: [
         { provide: Router, useValue: routerMock },
+        { provide: AppDialogService, useValue: appDialogMock },
         { provide: EntriesService, useValue: entriesServiceMock },
         { provide: AnalysisService, useValue: analysisServiceMock },
         {
@@ -234,6 +243,40 @@ describe("CreateComponent save reliability", () => {
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 55], {
       queryParams: undefined,
     });
+  });
+
+  it("uses app dialog confirmation before leaving with unsaved changes", async () => {
+    component.entryDate = new Date("2026-05-30T10:00:00.000Z");
+    component.content = "Unsaved content";
+    appDialogMock.confirm.and.resolveTo(false);
+
+    const result = await component.canDeactivate();
+
+    expect(result).toBeFalse();
+    expect(appDialogMock.confirm).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        title: "Discard this entry?",
+        confirmText: "Discard changes",
+        variant: "danger",
+      }),
+    );
+  });
+
+  it("uses app dialog confirmation before switching entry type with filled fields", async () => {
+    component.selectedType = "daily";
+    (component as any).previousSelectedType = "daily";
+    component.content = "Daily only content";
+    appDialogMock.confirm.and.resolveTo(false);
+
+    await component.onTypeChange({ value: "dream" } as any);
+
+    expect(component.selectedType).toBe("daily");
+    expect(appDialogMock.confirm).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        title: "Switch entry type?",
+        confirmText: "Switch type",
+      }),
+    );
   });
 
   it("adds a warning query param when analysis fails with 429 rate-limit", () => {

@@ -26,7 +26,7 @@ from services.import_service import (
     record_export_history,
     get_import_history,
 )
-from services.media_storage import read_image_bytes
+from services.media_storage import read_media_bytes
 
 import_bp = Blueprint('import', __name__)
 
@@ -49,6 +49,44 @@ def _image_filename_for_storage_key(storage_key: str | None) -> str:
     if not storage_key:
         return ''
     return storage_key.rsplit('/', 1)[-1]
+
+
+def _package_attachment_filename(attachment_row: sqlite3.Row, index: int) -> str:
+    base_name = _image_filename_for_storage_key(attachment_row['storage_key'])
+    if not base_name:
+        original_name = str(attachment_row['original_filename'] or '').strip()
+        base_name = original_name.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]
+    if not base_name:
+        base_name = f'attachment-{index}'
+    return f'{index:02d}_{base_name}'
+
+
+def _load_attachment_export_rows(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    entry_type: str,
+    entry_ids: list[int],
+) -> dict[int, list[sqlite3.Row]]:
+    if not entry_ids:
+        return {}
+
+    placeholders = ','.join('?' for _ in entry_ids)
+    rows = conn.execute(
+        f'''
+        SELECT entry_id, asset_role, storage_key, original_filename, mime_type,
+               file_size_bytes, sort_order
+        FROM entry_assets
+        WHERE user_id = ? AND entry_type = ? AND entry_id IN ({placeholders})
+        ORDER BY entry_id ASC, sort_order ASC, id ASC
+        ''',
+        (user_id, entry_type, *entry_ids),
+    ).fetchall()
+
+    grouped: dict[int, list[sqlite3.Row]] = {}
+    for row in rows:
+        grouped.setdefault(int(row['entry_id']), []).append(row)
+    return grouped
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +564,18 @@ def export_entries():
         dream_rows = conn.execute(dream_query, tuple(dream_params)).fetchall()
 
     wb = openpyxl.Workbook()
+    daily_attachment_rows = _load_attachment_export_rows(
+        conn,
+        user_id=user_id,
+        entry_type='daily',
+        entry_ids=[int(row['id']) for row in daily_rows],
+    ) if include_daily else {}
+    dream_attachment_rows = _load_attachment_export_rows(
+        conn,
+        user_id=user_id,
+        entry_type='dream',
+        entry_ids=[int(row['id']) for row in dream_rows],
+    ) if include_dreams else {}
 
     if include_daily:
         ws_daily = wb.active
@@ -620,18 +670,19 @@ def export_entries():
     )
     conn.close()
 
-    manifest_assets: dict[str, dict[str, str | None]] = {}
+    manifest_assets: dict[str, dict[str, object]] = {}
     if include_daily:
         for row_index, row in enumerate(daily_rows, start=2):
             storage_key = row['image_storage_key']
-            if not storage_key:
+            entry_attachments = daily_attachment_rows.get(int(row['id']), [])
+            if not storage_key and not entry_attachments:
                 continue
-            image_bytes = read_image_bytes(storage_key)
-            if not image_bytes:
+            image_bytes = read_media_bytes(storage_key)
+            if storage_key and not image_bytes:
                 continue
             asset_ref = _build_entry_asset_ref('daily', row)
-            image_filename = _image_filename_for_storage_key(storage_key)
             ws_daily.cell(row=row_index, column=len(DAILY_IMPORT_HEADERS)).value = asset_ref
+            image_filename = _image_filename_for_storage_key(storage_key)
             manifest_assets[asset_ref] = {
                 'entry_type': 'daily',
                 'image_filename': image_filename,
@@ -640,20 +691,33 @@ def export_entries():
                 'image_position_y': row['image_position_y'],
                 'image_prompt': row['image_prompt'],
                 'recycled_image_prompt': row['recycled_image_prompt'],
+                'attachments': [
+                    {
+                        'package_filename': _package_attachment_filename(attachment, index),
+                        'original_filename': attachment['original_filename'],
+                        'mime_type': attachment['mime_type'],
+                        'asset_role': attachment['asset_role'],
+                        'file_size_bytes': int(attachment['file_size_bytes'] or 0),
+                        'sort_order': int(attachment['sort_order'] or 0),
+                    }
+                    for index, attachment in enumerate(entry_attachments, start=1)
+                    if attachment['storage_key'] and read_media_bytes(attachment['storage_key'])
+                ],
             }
 
     if include_dreams:
         ws_target = wb['Dreams']
         for row_index, row in enumerate(dream_rows, start=2):
             storage_key = row['image_storage_key']
-            if not storage_key:
+            entry_attachments = dream_attachment_rows.get(int(row['id']), [])
+            if not storage_key and not entry_attachments:
                 continue
-            image_bytes = read_image_bytes(storage_key)
-            if not image_bytes:
+            image_bytes = read_media_bytes(storage_key)
+            if storage_key and not image_bytes:
                 continue
             asset_ref = _build_entry_asset_ref('dream', row)
-            image_filename = _image_filename_for_storage_key(storage_key)
             ws_target.cell(row=row_index, column=len(DREAM_IMPORT_HEADERS)).value = asset_ref
+            image_filename = _image_filename_for_storage_key(storage_key)
             manifest_assets[asset_ref] = {
                 'entry_type': 'dream',
                 'image_filename': image_filename,
@@ -662,6 +726,18 @@ def export_entries():
                 'image_position_y': row['image_position_y'],
                 'image_prompt': row['image_prompt'],
                 'recycled_image_prompt': row['recycled_image_prompt'],
+                'attachments': [
+                    {
+                        'package_filename': _package_attachment_filename(attachment, index),
+                        'original_filename': attachment['original_filename'],
+                        'mime_type': attachment['mime_type'],
+                        'asset_role': attachment['asset_role'],
+                        'file_size_bytes': int(attachment['file_size_bytes'] or 0),
+                        'sort_order': int(attachment['sort_order'] or 0),
+                    }
+                    for index, attachment in enumerate(entry_attachments, start=1)
+                    if attachment['storage_key'] and read_media_bytes(attachment['storage_key'])
+                ],
             }
 
     final_workbook_buffer = io.BytesIO()
@@ -673,21 +749,49 @@ def export_entries():
         package_zip.writestr('entries.xlsx', final_workbook_buffer.getvalue())
         for asset_ref, asset_meta in manifest_assets.items():
             image_filename = asset_meta['image_filename']
-            if not image_filename:
-                continue
             source_rows = daily_rows if asset_meta['entry_type'] == 'daily' else dream_rows
-            storage_key = next(
+            source_row = next(
                 (
-                    row['image_storage_key']
+                    row
                     for row in source_rows
                     if _build_entry_asset_ref(asset_meta['entry_type'], row) == asset_ref
                 ),
                 None,
             )
-            image_bytes = read_image_bytes(storage_key)
-            if not image_bytes:
+            if source_row is None:
                 continue
-            package_zip.writestr(f'media/{asset_ref}/{image_filename}', image_bytes)
+
+            if image_filename:
+                image_bytes = read_media_bytes(source_row['image_storage_key'])
+                if image_bytes:
+                    package_zip.writestr(f'media/{asset_ref}/{image_filename}', image_bytes)
+
+            for attachment_meta in asset_meta.get('attachments', []):
+                if not isinstance(attachment_meta, dict):
+                    continue
+                package_filename = str(attachment_meta.get('package_filename') or '').strip()
+                if not package_filename:
+                    continue
+                attachment_rows = (
+                    daily_attachment_rows.get(int(source_row['id']), [])
+                    if asset_meta['entry_type'] == 'daily'
+                    else dream_attachment_rows.get(int(source_row['id']), [])
+                )
+                attachment_storage_key = next(
+                    (
+                        attachment_row['storage_key']
+                        for index, attachment_row in enumerate(attachment_rows, start=1)
+                        if _package_attachment_filename(attachment_row, index) == package_filename
+                    ),
+                    None,
+                )
+                attachment_bytes = read_media_bytes(attachment_storage_key)
+                if not attachment_bytes:
+                    continue
+                package_zip.writestr(
+                    f'media/{asset_ref}/{package_filename}',
+                    attachment_bytes,
+                )
 
         package_zip.writestr(
             'manifest.json',
