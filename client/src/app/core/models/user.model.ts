@@ -15,6 +15,7 @@ export interface User {
   ai_verbosity?: string;
   ai_focus?: string;
   allow_ai_history?: boolean;
+  allow_ai_attachment_context?: boolean;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;

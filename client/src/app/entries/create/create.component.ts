@@ -11,7 +11,7 @@ import {
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { HttpErrorResponse } from "@angular/common/http";
-import { Router, ActivatedRoute } from "@angular/router";
+import { Router, ActivatedRoute, RouterModule } from "@angular/router";
 import { firstValueFrom } from "rxjs";
 import { MatCardModule } from "@angular/material/card";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -28,9 +28,11 @@ import { MatButtonToggleModule } from "@angular/material/button-toggle";
 import { MatChipsModule, MatChipInputEvent } from "@angular/material/chips";
 import { MatIconModule } from "@angular/material/icon";
 import { MatSelectModule } from "@angular/material/select";
+import { MatCheckboxModule } from "@angular/material/checkbox";
 import { COMMA, ENTER } from "@angular/cdk/keycodes";
 import { MatButtonToggleChange } from "@angular/material/button-toggle";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import { AuthService } from "../../core/services/auth.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
@@ -88,6 +90,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   imports: [
     CommonModule,
     FormsModule,
+    RouterModule,
     MatCardModule,
     MatFormFieldModule,
     MatInputModule,
@@ -99,6 +102,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
     MatChipsModule,
     MatIconModule,
     MatSelectModule,
+    MatCheckboxModule,
     BackToTopComponent,
   ],
   providers: [
@@ -145,6 +149,26 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
           <p class="hint" *ngIf="leaveItToAI">
             We'll run an AI analysis straight after saving this entry.
           </p>
+          <div
+            class="analysis-attachment-opt-in"
+            *ngIf="leaveItToAI && hasAttachmentContextCandidates()"
+          >
+            <mat-checkbox
+              [(ngModel)]="allowAiAttachmentContext"
+              name="allowAiAttachmentContext"
+            >
+              Allow AI to use attachment context for this analysis
+            </mat-checkbox>
+            <p class="hint">
+              Uses attachment filenames and any saved derived text, including
+              audio transcripts. Change the default in
+              <a routerLink="/settings/personalisation">Settings</a>.
+            </p>
+            <p class="hint subtle-hint">
+              Audio attachments only count for AI after they have been
+              transcribed from the saved entry view.
+            </p>
+          </div>
 
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Date</mat-label>
@@ -511,6 +535,21 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                       · {{ formatAttachmentFileSize(attachment.file_size_bytes) }}
                     </span>
                   </p>
+                  <audio
+                    *ngIf="attachment.is_audio"
+                    class="entry-attachment-inline-audio"
+                    controls
+                    preload="metadata"
+                    [src]="attachment.url"
+                    [attr.aria-label]="'Audio preview for ' + attachment.original_filename"
+                  ></audio>
+                  <p
+                    class="entry-attachment-audio-note"
+                    *ngIf="attachment.is_audio && !attachment.has_derived_text"
+                  >
+                    AI can only use this audio after you transcribe it from the
+                    saved entry view.
+                  </p>
                 </div>
                 <div class="entry-attachment-row-actions">
                   <a
@@ -564,6 +603,21 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                   <p>
                     {{ getPendingAttachmentTypeLabel(attachment) }} · Pending upload ·
                     {{ formatAttachmentFileSize(attachment.file.size) }}
+                  </p>
+                  <audio
+                    *ngIf="attachment.kind === 'audio' && attachment.previewUrl"
+                    class="entry-attachment-inline-audio"
+                    controls
+                    preload="metadata"
+                    [src]="attachment.previewUrl"
+                    [attr.aria-label]="'Audio preview for ' + attachment.file.name"
+                  ></audio>
+                  <p
+                    class="entry-attachment-audio-note"
+                    *ngIf="attachment.kind === 'audio'"
+                  >
+                    AI can only use this audio after you save the entry and
+                    transcribe it from the entry view.
                   </p>
                 </div>
                 <button
@@ -704,6 +758,11 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         color: var(--colour-text-secondary);
       }
 
+      .subtle-hint {
+        margin-top: calc(var(--spacing-sm) * -0.5);
+        font-size: 0.92rem;
+      }
+
       .actions {
         display: flex;
         gap: var(--spacing-sm);
@@ -814,6 +873,19 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
       .entry-attachment-copy {
         flex: 1;
         min-width: 0;
+      }
+
+      .entry-attachment-inline-audio {
+        display: block;
+        width: min(100%, 18rem);
+        margin-top: 0.45rem;
+      }
+
+      .entry-attachment-audio-note {
+        margin-top: 0.45rem;
+        font-size: 0.8rem;
+        line-height: 1.4;
+        color: var(--colour-text-secondary);
       }
 
       .entry-attachments-empty {
@@ -931,6 +1003,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private appDialog = inject(AppDialogService);
+  private authService = inject(AuthService);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
   @ViewChild("pendingAttachmentInput")
@@ -947,6 +1020,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   peopleNames: string[] = [];
   places: string[] = [];
   leaveItToAI = false;
+  allowAiAttachmentContext = false;
   selectedType: "daily" | "dream" = "daily";
   private previousSelectedType: "daily" | "dream" = "daily";
   isSaving = false;
@@ -1051,6 +1125,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   };
 
   ngOnInit(): void {
+    this.applyAttachmentContextDefault();
     this.captureBackQueryParams();
 
     // Check for pre-populated date and type from query params
@@ -1116,6 +1191,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.existingAttachments = Array.isArray(entry.attachments)
       ? [...entry.attachments]
       : [];
+    this.applyAttachmentContextDefault();
     this.entryDate = this.parseApiDateAsLocal(entry.entry_date) ?? new Date();
     this.entryTime = this.coerceEntryTime(entry.entry_time) ?? this.getCurrentLocalTime();
     this.initialDate = this.describeEntryDate(this.entryDate);
@@ -1379,6 +1455,8 @@ export class CreateComponent implements OnInit, OnDestroy {
           mode: "daily",
           text: this.content,
           reference_date: referenceDate,
+          entry_id: entryId,
+          include_attachment_context: this.allowAiAttachmentContext,
         }),
       );
 
@@ -1425,6 +1503,8 @@ export class CreateComponent implements OnInit, OnDestroy {
           mode: "dream",
           text: analysisText,
           reference_date: referenceDate,
+          entry_id: entryId,
+          include_attachment_context: this.allowAiAttachmentContext,
         }),
       );
 
@@ -1849,7 +1929,8 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   private createPendingAttachmentPreviewUrl(file: File): string | null {
-    return this.getPendingAttachmentKind(file) === "image"
+    const kind = this.getPendingAttachmentKind(file);
+    return kind === "image" || kind === "audio"
       ? URL.createObjectURL(file)
       : null;
   }
@@ -1980,17 +2061,20 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   private hasUnsavedChanges(): boolean {
-    const hasBasicChanges = Boolean(
-      (this.entryTitle && this.entryTitle.trim()) ||
-      (this.content && this.content.trim()) ||
-      this.tags.length ||
-      this.peopleNames.length ||
-      this.places.length ||
-      this.selectedMood ||
-      this.selectedAIStyle !== "friendly" ||
-      this.leaveItToAI ||
-      this.describeEntryDate(this.entryDate) !== this.initialDate ||
-      this.entryTime !== this.initialTime
+      const hasBasicChanges = Boolean(
+        (this.entryTitle && this.entryTitle.trim()) ||
+        (this.content && this.content.trim()) ||
+        this.tags.length ||
+        this.peopleNames.length ||
+        this.places.length ||
+        this.selectedMood ||
+        this.selectedAIStyle !== "friendly" ||
+        this.leaveItToAI ||
+        (this.leaveItToAI &&
+          this.allowAiAttachmentContext !==
+            this.getAttachmentContextDefaultValue()) ||
+        this.describeEntryDate(this.entryDate) !== this.initialDate ||
+        this.entryTime !== this.initialTime
     );
 
     const hasDreamChanges =
@@ -2049,10 +2133,26 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.peopleNames = [];
     this.places = [];
     this.leaveItToAI = false;
+    this.applyAttachmentContextDefault();
     this.selectedType = "daily";
     this.previousSelectedType = "daily";
     this.selectedMood = "";
     this.selectedAIStyle = "friendly";
     this.resetDreamFields();
+  }
+
+  hasAttachmentContextCandidates(): boolean {
+    return this.getTotalAttachmentCount() > 0;
+  }
+
+  private applyAttachmentContextDefault(): void {
+    this.allowAiAttachmentContext = this.getAttachmentContextDefaultValue();
+  }
+
+  private getAttachmentContextDefaultValue(): boolean {
+    const currentUser = this.authService.getCurrentUser();
+    return currentUser?.allow_ai_attachment_context === undefined
+      ? true
+      : Boolean(currentUser.allow_ai_attachment_context);
   }
 }

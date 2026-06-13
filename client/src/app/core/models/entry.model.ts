@@ -7,6 +7,10 @@ export interface EntryAsset {
   file_size_bytes: number;
   sort_order: number;
   created_at: string;
+  derived_text?: string;
+  derived_text_source?: string;
+  derived_text_updated_at?: string;
+  has_derived_text?: boolean;
   url: string;
   is_image?: boolean;
   is_audio?: boolean;
@@ -73,6 +77,8 @@ export interface AnalysisRequest {
   mode: "daily" | "dream";
   text: string;
   reference_date?: string;
+  entry_id?: number;
+  include_attachment_context?: boolean;
   ai_style?: string;
   existing_content?: Partial<DailyEntry | DreamEntry>; // For extracting people/places
 }

@@ -69,6 +69,8 @@ def _normalise_profile_update(field: str, value):
         return _normalise_choice(value, allowed=ALLOWED_AI_FOCUS, field_label='AI focus')
     if field == 'allow_ai_history':
         return 1 if bool(value) else 0
+    if field == 'allow_ai_attachment_context':
+        return 1 if bool(value) else 0
 
     return value
 
@@ -86,7 +88,7 @@ def get_profile():
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
                display_name, pronouns, timezone, ai_tone, ai_verbosity,
-               ai_focus, allow_ai_history
+               ai_focus, allow_ai_history, allow_ai_attachment_context
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
     
@@ -110,7 +112,7 @@ def update_profile():
         'dailydiary_api_key', 'dreamdiary_api_key',
         'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname',
         'display_name', 'pronouns', 'timezone', 'ai_tone', 'ai_verbosity',
-        'ai_focus', 'allow_ai_history'
+        'ai_focus', 'allow_ai_history', 'allow_ai_attachment_context'
     ]
     
     updates = []
@@ -145,7 +147,7 @@ def update_profile():
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
                display_name, pronouns, timezone, ai_tone, ai_verbosity,
-               ai_focus, allow_ai_history
+               ai_focus, allow_ai_history, allow_ai_attachment_context
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
 

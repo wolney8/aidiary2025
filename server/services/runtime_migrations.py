@@ -44,6 +44,7 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'ai_verbosity': "TEXT DEFAULT 'balanced'",
     'ai_focus': "TEXT DEFAULT 'reflective'",
     'allow_ai_history': 'INTEGER DEFAULT 1',
+    'allow_ai_attachment_context': 'INTEGER DEFAULT 1',
 }
 
 _EXPORT_HISTORY_DDL = """
@@ -94,6 +95,12 @@ CREATE TABLE IF NOT EXISTS entry_assets (
     FOREIGN KEY (user_id) REFERENCES users(id)
 )
 """
+
+_ENTRY_ASSET_COLUMNS: dict[str, str] = {
+    'derived_text': 'TEXT',
+    'derived_text_source': 'TEXT',
+    'derived_text_updated_at': 'TEXT',
+}
 
 
 def ensure_entry_mood_style_columns(
@@ -249,6 +256,18 @@ def ensure_entry_assets_table(
             ON entry_assets(user_id, entry_type, entry_id, sort_order, id)
             """
         )
+        table_columns = {
+            row[1]
+            for row in conn.execute('PRAGMA table_info(entry_assets)').fetchall()
+        }
+        for column_name, column_definition in _ENTRY_ASSET_COLUMNS.items():
+            if column_name in table_columns:
+                continue
+            conn.execute(
+                f'ALTER TABLE entry_assets ADD COLUMN {column_name} {column_definition}'
+            )
+            if log:
+                log('Runtime migration added column %s.%s', 'entry_assets', column_name)
 
     if log:
         log('Runtime migration ensured table exists: %s', 'entry_assets')
