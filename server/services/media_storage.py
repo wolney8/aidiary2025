@@ -159,13 +159,17 @@ def media_path_exists(storage_key: str | None) -> bool:
     return _storage_key_to_path(storage_key).exists()
 
 
-def read_image_bytes(storage_key: str | None) -> bytes | None:
+def read_media_bytes(storage_key: str | None) -> bytes | None:
     if not storage_key:
         return None
     image_path = _storage_key_to_path(storage_key)
     if not image_path.exists():
         return None
     return image_path.read_bytes()
+
+
+def read_image_bytes(storage_key: str | None) -> bytes | None:
+    return read_media_bytes(storage_key)
 
 
 def _store_image_bytes(

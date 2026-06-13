@@ -17,6 +17,7 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { AppDialogService } from "../../core/services/app-dialog.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { EntryAsset } from "../../core/models/entry.model";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
@@ -1267,6 +1268,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export class DetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private appDialog = inject(AppDialogService);
   private entriesService = inject(EntriesService);
   @ViewChild("dreamImageInput") dreamImageInput?: ElementRef<HTMLInputElement>;
   @ViewChild("attachmentInput") attachmentInput?: ElementRef<HTMLInputElement>;
@@ -1337,11 +1339,15 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.router.navigate(["/entries"]);
   }
 
-  deleteEntry(): void {
+  async deleteEntry(): Promise<void> {
     const entryType = this.isDream() ? "dream" : "daily";
-    const confirmed = confirm(
-      `Are you sure you want to delete this ${entryType} entry? This action cannot be undone.`,
-    );
+    const confirmed = await this.appDialog.confirm({
+      title: `Delete this ${entryType} entry?`,
+      message: "This action cannot be undone.",
+      confirmText: "Delete entry",
+      cancelText: "Keep entry",
+      variant: "danger",
+    });
 
     if (confirmed && this.entry) {
       const deleteObservable = this.isDream()
@@ -1354,7 +1360,10 @@ export class DetailComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error("Failed to delete entry:", error);
-          alert("Failed to delete entry. Please try again.");
+          void this.showErrorDialog(
+            "Delete failed",
+            "Failed to delete entry. Please try again.",
+          );
         },
       });
     }
@@ -1434,7 +1443,7 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.attachmentInput?.nativeElement.click();
   }
 
-  onAttachmentSelected(event: Event): void {
+  async onAttachmentSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement | null;
     const file = input?.files?.[0];
     if (!file || !this.entry?.id) {
@@ -1446,7 +1455,7 @@ export class DetailComponent implements OnInit, OnDestroy {
 
     const validationMessage = this.validateAttachmentFile(file);
     if (validationMessage) {
-      alert(validationMessage);
+      await this.showErrorDialog("Attachment not accepted", validationMessage);
       if (input) {
         input.value = "";
       }
@@ -1473,7 +1482,8 @@ export class DetailComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         console.error("Failed to upload attachment:", error);
-        alert(
+        void this.showErrorDialog(
+          "Upload failed",
           error?.error?.error ||
             "Failed to upload the attachment. Please try again.",
         );
@@ -1512,18 +1522,25 @@ export class DetailComponent implements OnInit, OnDestroy {
       URL.revokeObjectURL(objectUrl);
     } catch (error) {
       console.error("Failed to download attachment:", error);
-      alert("Failed to download the attachment. Please try again.");
+      await this.showErrorDialog(
+        "Download failed",
+        "Failed to download the attachment. Please try again.",
+      );
     }
   }
 
-  deleteAttachment(attachment: EntryAsset): void {
+  async deleteAttachment(attachment: EntryAsset): Promise<void> {
     if (!this.entry?.id || !attachment?.id) {
       return;
     }
 
-    const confirmed = confirm(
-      `Remove attachment "${attachment.original_filename || "attachment"}"?`,
-    );
+    const confirmed = await this.appDialog.confirm({
+      title: "Remove attachment?",
+      message: `Remove attachment "${attachment.original_filename || "attachment"}"?`,
+      confirmText: "Remove attachment",
+      cancelText: "Keep attachment",
+      variant: "danger",
+    });
     if (!confirmed) {
       return;
     }
@@ -1543,7 +1560,8 @@ export class DetailComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         console.error("Failed to delete attachment:", error);
-        alert(
+        void this.showErrorDialog(
+          "Remove failed",
           error?.error?.error ||
             "Failed to delete the attachment. Please try again.",
         );
@@ -1828,7 +1846,10 @@ export class DetailComponent implements OnInit, OnDestroy {
         console.error("Failed to generate dream image from edited prompt:", error);
         this.isGeneratingDreamImage = false;
         this.isSavingDreamPrompt = false;
-        alert("Failed to generate a new image from this prompt. Please try again.");
+        void this.showErrorDialog(
+          "Image generation failed",
+          "Failed to generate a new image from this prompt. Please try again.",
+        );
       },
     });
     this.isGeneratingDreamImage = true;
@@ -1866,7 +1887,10 @@ export class DetailComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error("Failed to generate dream image:", error);
         this.isGeneratingDreamImage = false;
-        alert("Failed to generate dream image. Please try again.");
+        void this.showErrorDialog(
+          "Image generation failed",
+          "Failed to generate dream image. Please try again.",
+        );
       },
     });
   }
@@ -1912,19 +1936,30 @@ export class DetailComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error("Failed to upload dream image:", error);
         this.isUploadingDreamImage = false;
-        alert(this.extractDreamImageError(error, "Failed to upload image. Please try again."));
+        void this.showErrorDialog(
+          "Image upload failed",
+          this.extractDreamImageError(
+            error,
+            "Failed to upload image. Please try again.",
+          ),
+        );
       },
     });
   }
 
-  deleteDreamImage(): void {
+  async deleteDreamImage(): Promise<void> {
     if (!this.entry?.id || this.isDreamImageBusy()) {
       return;
     }
 
-    const confirmed = confirm(
-      "Delete the current image? Your saved image prompt will be kept so you can generate again later.",
-    );
+    const confirmed = await this.appDialog.confirm({
+      title: "Delete the current image?",
+      message:
+        "Your saved image prompt will be kept so you can generate again later.",
+      confirmText: "Delete image",
+      cancelText: "Keep image",
+      variant: "danger",
+    });
 
     if (!confirmed) {
       return;
@@ -1952,8 +1987,23 @@ export class DetailComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error("Failed to delete dream image:", error);
         this.isUploadingDreamImage = false;
-        alert(this.extractDreamImageError(error, "Failed to delete image. Please try again."));
+        void this.showErrorDialog(
+          "Image delete failed",
+          this.extractDreamImageError(
+            error,
+            "Failed to delete image. Please try again.",
+          ),
+        );
       },
+    });
+  }
+
+  private showErrorDialog(title: string, message: string): Promise<void> {
+    return this.appDialog.alert({
+      title,
+      message,
+      confirmText: "OK",
+      variant: "error",
     });
   }
 

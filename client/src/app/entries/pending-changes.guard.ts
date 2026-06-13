@@ -1,7 +1,8 @@
-import { CanDeactivateFn } from '@angular/router';
+import { CanDeactivateFn } from "@angular/router";
+import { Observable } from "rxjs";
 
 type PendingChangesComponent = {
-  canDeactivate: () => boolean;
+  canDeactivate: () => boolean | Promise<boolean> | Observable<boolean>;
 };
 
 export const pendingChangesGuard: CanDeactivateFn<PendingChangesComponent> = (component) => {

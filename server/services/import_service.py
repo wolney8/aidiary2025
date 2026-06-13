@@ -18,7 +18,7 @@ from services.nltk_enrichment import (
     derive_daily_nltk_fields as _runtime_derive_daily_nltk_fields,
     derive_dream_nltk_fields as _runtime_derive_dream_nltk_fields,
 )
-from services.media_storage import store_imported_image
+from services.media_storage import store_entry_asset, store_imported_image
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -292,18 +292,18 @@ def _stage_package_asset(
     zip_file: zipfile.ZipFile,
     staging_root: str,
     asset_ref: str,
-    image_filename: str,
+    package_filename: str,
 ) -> str | None:
-    package_path = f'media/{asset_ref}/{image_filename}'
+    package_path = f'media/{asset_ref}/{package_filename}'
     try:
-        image_bytes = zip_file.read(package_path)
+        package_bytes = zip_file.read(package_path)
     except KeyError:
         return None
 
     staged_dir = Path(staging_root) / asset_ref
     staged_dir.mkdir(parents=True, exist_ok=True)
-    staged_path = staged_dir / Path(image_filename).name
-    staged_path.write_bytes(image_bytes)
+    staged_path = staged_dir / Path(package_filename).name
+    staged_path.write_bytes(package_bytes)
     return str(staged_path)
 
 
@@ -330,23 +330,61 @@ def _attach_package_asset_metadata(
             continue
 
         image_filename = _sanitise(asset_meta.get('image_filename', ''))
-        if not image_filename:
+        if image_filename:
+            staged_path = _stage_package_asset(zip_file, staging_root, asset_ref, image_filename)
+            if not staged_path:
+                warnings.append(
+                    f'{entry_type.title()} entry "{row.get("title", "") or row.get("entry_date", "")}": '
+                    f'missing packaged image file "{image_filename}".'
+                )
+            else:
+                row['import_image_path'] = staged_path
+                row['image_source'] = _sanitise(asset_meta.get('image_source', '')) or 'upload'
+                row['image_position_x'] = _sanitise(asset_meta.get('image_position_x', '')) or '50'
+                row['image_position_y'] = _sanitise(asset_meta.get('image_position_y', '')) or '50'
+                row['image_prompt'] = _sanitise(asset_meta.get('image_prompt', ''))
+                row['recycled_image_prompt'] = _sanitise(asset_meta.get('recycled_image_prompt', ''))
+
+        attachment_items = asset_meta.get('attachments', [])
+        if not isinstance(attachment_items, list):
             continue
 
-        staged_path = _stage_package_asset(zip_file, staging_root, asset_ref, image_filename)
-        if not staged_path:
-            warnings.append(
-                f'{entry_type.title()} entry "{row.get("title", "") or row.get("entry_date", "")}": '
-                f'missing packaged image file "{image_filename}".'
+        staged_attachments: list[dict[str, str | int]] = []
+        for attachment_meta in attachment_items:
+            if not isinstance(attachment_meta, dict):
+                continue
+
+            attachment_filename = _sanitise(attachment_meta.get('package_filename', ''))
+            if not attachment_filename:
+                continue
+
+            staged_attachment_path = _stage_package_asset(
+                zip_file,
+                staging_root,
+                asset_ref,
+                attachment_filename,
             )
-            continue
+            if not staged_attachment_path:
+                warnings.append(
+                    f'{entry_type.title()} entry "{row.get("title", "") or row.get("entry_date", "")}": '
+                    f'missing packaged attachment file "{attachment_filename}".'
+                )
+                continue
 
-        row['import_image_path'] = staged_path
-        row['image_source'] = _sanitise(asset_meta.get('image_source', '')) or 'upload'
-        row['image_position_x'] = _sanitise(asset_meta.get('image_position_x', '')) or '50'
-        row['image_position_y'] = _sanitise(asset_meta.get('image_position_y', '')) or '50'
-        row['image_prompt'] = _sanitise(asset_meta.get('image_prompt', ''))
-        row['recycled_image_prompt'] = _sanitise(asset_meta.get('recycled_image_prompt', ''))
+            staged_attachments.append(
+                {
+                    'staged_path': staged_attachment_path,
+                    'original_filename': _sanitise(attachment_meta.get('original_filename', ''))
+                    or Path(attachment_filename).name,
+                    'mime_type': _sanitise(attachment_meta.get('mime_type', '')),
+                    'asset_role': _sanitise(attachment_meta.get('asset_role', '')) or 'attachment',
+                    'sort_order': int(attachment_meta.get('sort_order', 0) or 0),
+                    'file_size_bytes': int(attachment_meta.get('file_size_bytes', 0) or 0),
+                }
+            )
+
+        if staged_attachments:
+            row['import_attachment_files'] = staged_attachments
 
 
 def parse_import_file(file_bytes: bytes, *, filename: str) -> dict:
@@ -891,6 +929,54 @@ def _attach_imported_media_to_entry(
     )
 
 
+def _attach_imported_entry_assets_to_entry(
+    cursor: sqlite3.Cursor,
+    *,
+    entry_id: int,
+    user_id: int,
+    entry_kind: str,
+    row: dict[str, str],
+) -> None:
+    attachment_items = row.get('import_attachment_files', [])
+    if not isinstance(attachment_items, list):
+        return
+
+    for attachment_meta in attachment_items:
+        if not isinstance(attachment_meta, dict):
+            continue
+
+        staged_path = str(attachment_meta.get('staged_path') or '').strip()
+        if not staged_path:
+            continue
+
+        file_bytes = Path(staged_path).read_bytes()
+        original_filename = str(attachment_meta.get('original_filename') or '').strip() or Path(staged_path).name
+        storage_key = store_entry_asset(
+            file_bytes,
+            user_id=user_id,
+            entry_kind=entry_kind,
+            filename=original_filename,
+        )
+        cursor.execute(
+            '''INSERT INTO entry_assets
+               (user_id, entry_type, entry_id, asset_role, storage_key, original_filename,
+                mime_type, file_size_bytes, sort_order, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (
+                user_id,
+                entry_kind,
+                entry_id,
+                str(attachment_meta.get('asset_role') or 'attachment').strip() or 'attachment',
+                storage_key,
+                original_filename,
+                str(attachment_meta.get('mime_type') or '').strip().lower(),
+                int(attachment_meta.get('file_size_bytes', 0) or 0),
+                int(attachment_meta.get('sort_order', 0) or 0),
+                datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            ),
+        )
+
+
 def _insert_daily_import_row(
     cursor: sqlite3.Cursor,
     user_id: int,
@@ -930,10 +1016,18 @@ def _insert_daily_import_row(
             tags,
         ),
     )
+    entry_id = int(cursor.lastrowid)
     _attach_imported_media_to_entry(
         cursor,
         table_name='dailydiary_entries',
-        entry_id=cursor.lastrowid,
+        entry_id=entry_id,
+        user_id=user_id,
+        entry_kind='daily',
+        row=row,
+    )
+    _attach_imported_entry_assets_to_entry(
+        cursor,
+        entry_id=entry_id,
         user_id=user_id,
         entry_kind='daily',
         row=row,
@@ -980,10 +1074,18 @@ def _insert_dream_import_row(
             row.get('dream_places', ''),
         ),
     )
+    entry_id = int(cursor.lastrowid)
     _attach_imported_media_to_entry(
         cursor,
         table_name='dreamdiary_entries',
-        entry_id=cursor.lastrowid,
+        entry_id=entry_id,
+        user_id=user_id,
+        entry_kind='dream',
+        row=row,
+    )
+    _attach_imported_entry_assets_to_entry(
+        cursor,
+        entry_id=entry_id,
         user_id=user_id,
         entry_kind='dream',
         row=row,

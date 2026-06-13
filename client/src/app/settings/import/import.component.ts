@@ -20,6 +20,7 @@ import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { MatTableModule } from "@angular/material/table";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { filter } from "rxjs/operators";
+import { AppDialogService } from "../../core/services/app-dialog.service";
 import {
   type ImportHistoryItem,
   type ImportResult,
@@ -1020,6 +1021,7 @@ export class ImportComponent implements OnInit {
   @ViewChild("fileInput") fileInputRef!: ElementRef<HTMLInputElement>;
 
   private importService = inject(ImportService);
+  private appDialog = inject(AppDialogService);
 
   // File selection state
   selectedFile: File | null = null;
@@ -1066,13 +1068,18 @@ export class ImportComponent implements OnInit {
     this.loadHistory();
   }
 
-  canDeactivate(): boolean {
+  canDeactivate(): boolean | Promise<boolean> {
     if (!this.hasPendingReview()) {
       return true;
     }
-    return confirm(
-      "This import review will be cancelled and lost if you leave now. Continue?",
-    );
+    return this.appDialog.confirm({
+      title: "Leave import review?",
+      message:
+        "This import review will be cancelled and lost if you leave now.",
+      confirmText: "Leave review",
+      cancelText: "Stay here",
+      variant: "danger",
+    });
   }
 
   @HostListener("window:beforeunload", ["$event"])
@@ -1088,7 +1095,7 @@ export class ImportComponent implements OnInit {
     this.fileInputRef.nativeElement.click();
   }
 
-  onFileSelected(event: Event): void {
+  async onFileSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
 
@@ -1096,7 +1103,7 @@ export class ImportComponent implements OnInit {
     input.value = "";
 
     if (!file) return;
-    this.applySelectedFile(file);
+    await this.applySelectedFile(file);
   }
 
   onDragOver(event: DragEvent): void {
@@ -1108,16 +1115,16 @@ export class ImportComponent implements OnInit {
     this.isDragging = false;
   }
 
-  onDrop(event: DragEvent): void {
+  async onDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
     this.isDragging = false;
     const file = event.dataTransfer?.files?.[0] ?? null;
     if (!file) return;
-    this.applySelectedFile(file);
+    await this.applySelectedFile(file);
   }
 
-  clearSelection(): void {
-    if (!this.confirmResetPendingReview()) {
+  async clearSelection(): Promise<void> {
+    if (!(await this.confirmResetPendingReview())) {
       return;
     }
     this.resetImportState();
@@ -1280,8 +1287,8 @@ export class ImportComponent implements OnInit {
     return formatReadableLongDate(value) || value;
   }
 
-  private applySelectedFile(file: File): void {
-    if (!this.confirmResetPendingReview()) {
+  private async applySelectedFile(file: File): Promise<void> {
+    if (!(await this.confirmResetPendingReview())) {
       return;
     }
     this.selectedFile = file;
@@ -1354,13 +1361,18 @@ export class ImportComponent implements OnInit {
     return this.uploadState === "review" && !!this.importSessionId;
   }
 
-  private confirmResetPendingReview(): boolean {
+  private confirmResetPendingReview(): boolean | Promise<boolean> {
     if (!this.hasPendingReview()) {
       return true;
     }
-    return confirm(
-      "The current import review will be cancelled and lost if you continue. Continue?",
-    );
+    return this.appDialog.confirm({
+      title: "Discard current import review?",
+      message:
+        "The current import review will be cancelled and lost if you continue.",
+      confirmText: "Discard review",
+      cancelText: "Keep reviewing",
+      variant: "danger",
+    });
   }
 
   private resetImportFeedback(): void {
