@@ -10,10 +10,13 @@ export interface User {
   goals?: string;
   display_name?: string;
   pronouns?: string;
+  gender?: string;
+  custom_guidance?: string;
   timezone?: string;
   ai_tone?: string;
   ai_verbosity?: string;
   ai_focus?: string;
+  ai_model?: string;
   allow_ai_history?: boolean;
   allow_ai_attachment_context?: boolean;
   dailydiary_api_key?: string;

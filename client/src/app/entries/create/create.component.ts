@@ -29,6 +29,7 @@ import { MatChipsModule, MatChipInputEvent } from "@angular/material/chips";
 import { MatIconModule } from "@angular/material/icon";
 import { MatSelectModule } from "@angular/material/select";
 import { MatCheckboxModule } from "@angular/material/checkbox";
+import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { COMMA, ENTER } from "@angular/cdk/keycodes";
 import { MatButtonToggleChange } from "@angular/material/button-toggle";
 import { AppDialogService } from "../../core/services/app-dialog.service";
@@ -103,6 +104,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
     MatIconModule,
     MatSelectModule,
     MatCheckboxModule,
+    MatProgressSpinnerModule,
     BackToTopComponent,
   ],
   providers: [
@@ -129,17 +131,18 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
             >{{ isEditing ? "Edit" : "New" }} Diary Entry</mat-card-title
           >
 
-          <mat-slide-toggle [(ngModel)]="leaveItToAI">
+          <mat-slide-toggle [(ngModel)]="leaveItToAI" [disabled]="isSaving">
             Respond with AI
           </mat-slide-toggle>
         </mat-card-header>
 
         <mat-card-content>
+          <fieldset class="entry-form-shell" [disabled]="isSaving">
           <mat-button-toggle-group
             class="entry-type-toggle"
             [(ngModel)]="selectedType"
             name="entryType"
-            [disabled]="isEditing"
+            [disabled]="isEditing || isSaving"
             aria-label="Entry type toggle"
             (change)="onTypeChange($event)"
           >
@@ -157,16 +160,20 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               [(ngModel)]="allowAiAttachmentContext"
               name="allowAiAttachmentContext"
             >
-              Allow AI to use attachment context for this analysis
+              {{ getAttachmentContextCheckboxLabel() }}
             </mat-checkbox>
             <p class="hint">
-              Uses attachment filenames and any saved derived text, including
-              audio transcripts. Change the default in
+              {{ getAttachmentContextSummary() }} Change the default in
               <a routerLink="/settings/personalisation">Settings</a>.
             </p>
-            <p class="hint subtle-hint">
-              Audio attachments only count for AI after they have been
-              transcribed from the saved entry view.
+            <p
+              class="hint subtle-hint"
+              *ngIf="getAttachmentContextBlockedCount() > 0"
+            >
+              {{ getAttachmentContextBlockedCount() }} audio attachment{{
+                getAttachmentContextBlockedCount() === 1 ? "" : "s"
+              }}
+              will only count after transcription from the saved entry view.
             </p>
           </div>
 
@@ -209,17 +216,25 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
           >
             <mat-label>AI Response Style</mat-label>
             <mat-select [(ngModel)]="selectedAIStyle" name="aiStyle">
+              <mat-select-trigger>
+                {{ getSelectedAIStyleLabel() }}
+              </mat-select-trigger>
               <mat-option
                 *ngFor="let style of aiStyleOptions"
                 [value]="style.value"
               >
-                <div>
-                  <strong>{{ style.label }}</strong>
-                  <br />
-                  <small>{{ style.description }}</small>
+                <div class="ai-style-option">
+                  <span class="ai-style-option-label">{{ style.label }}</span>
+                  <span class="ai-style-option-description">{{
+                    style.description
+                  }}</span>
                 </div>
               </mat-option>
             </mat-select>
+            <mat-hint class="ai-style-hint">
+              Style changes the type of response. Depth is controlled by AI
+              Verbosity in Personalisation.
+            </mat-hint>
           </mat-form-field>
 
           <!-- Mood Selection -->
@@ -412,6 +427,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                 [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
                 [matChipInputAddOnBlur]="true"
                 (matChipInputTokenEnd)="addTag($event)"
+                (keydown.tab)="handleChipInputTab($event, tags)"
               />
             </mat-chip-grid>
           </mat-form-field>
@@ -434,6 +450,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                 [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
                 [matChipInputAddOnBlur]="true"
                 (matChipInputTokenEnd)="addPeopleName($event)"
+                (keydown.tab)="handleChipInputTab($event, peopleNames)"
               />
             </mat-chip-grid>
           </mat-form-field>
@@ -456,6 +473,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                 [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
                 [matChipInputAddOnBlur]="true"
                 (matChipInputTokenEnd)="addPlace($event)"
+                (keydown.tab)="handleChipInputTab($event, places)"
               />
             </mat-chip-grid>
           </mat-form-field>
@@ -543,6 +561,23 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                     [src]="attachment.url"
                     [attr.aria-label]="'Audio preview for ' + attachment.original_filename"
                   ></audio>
+                  <div
+                    class="entry-attachment-derived-text"
+                    *ngIf="attachment.has_derived_text && attachment.derived_text"
+                  >
+                    <p class="entry-attachment-derived-text-label">
+                      {{ getAttachmentDerivedTextLabel(attachment) }}
+                    </p>
+                    <p>{{ getAttachmentDerivedTextPreview(attachment) }}</p>
+                    <button
+                      mat-button
+                      type="button"
+                      class="entry-attachment-derived-text-toggle"
+                      (click)="openAttachmentDerivedText(attachment)"
+                    >
+                      View derived text
+                    </button>
+                  </div>
                   <p
                     class="entry-attachment-audio-note"
                     *ngIf="attachment.is_audio && !attachment.has_derived_text"
@@ -550,8 +585,32 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                     AI can only use this audio after you transcribe it from the
                     saved entry view.
                   </p>
+                  <p
+                    class="entry-attachment-audio-note"
+                    *ngIf="attachment.is_pdf && !attachment.has_derived_text"
+                  >
+                    No derived text is saved for this PDF yet.
+                  </p>
                 </div>
                 <div class="entry-attachment-row-actions">
+                  <button
+                    *ngIf="attachment.is_pdf"
+                    mat-stroked-button
+                    type="button"
+                    (click)="deriveAttachmentText(attachment)"
+                    [disabled]="isSaving || isDerivingAttachmentText(attachment)"
+                  >
+                    <mat-icon>{{
+                      isDerivingAttachmentText(attachment) ? "hourglass_top" : "find_in_page"
+                    }}</mat-icon>
+                    {{
+                      isDerivingAttachmentText(attachment)
+                        ? "Refreshing…"
+                        : attachment.has_derived_text
+                          ? "Refresh derived text"
+                          : "Derive text"
+                    }}
+                  </button>
                   <a
                     class="entry-attachment-open-link"
                     [href]="attachment.url"
@@ -667,6 +726,19 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               </div>
             </ng-template>
           </section>
+          </fieldset>
+
+          <div class="save-progress" *ngIf="isSaving" aria-live="polite">
+            <mat-progress-spinner
+              mode="indeterminate"
+              diameter="22"
+              strokeWidth="3"
+            ></mat-progress-spinner>
+            <div class="save-progress-copy">
+              <strong>{{ getSaveProgressTitle() }}</strong>
+              <span>{{ getSaveProgressDescription() }}</span>
+            </div>
+          </div>
 
           <div class="actions">
             <button
@@ -685,7 +757,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                 (click)="saveAsDraft()"
                 [disabled]="isSaving"
               >
-                Save Entry
+                {{ isSaving ? "Saving…" : "Save Entry" }}
               </button>
             </ng-container>
 
@@ -696,7 +768,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                 (click)="saveAndAnalyse()"
                 [disabled]="isSaving"
               >
-                Save & Analyse
+                {{ isSaving ? "Saving & analysing…" : "Save & Analyse" }}
               </button>
             </ng-template>
           </div>
@@ -739,6 +811,17 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         font-weight: 600;
       }
 
+      .entry-form-shell {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        min-width: 0;
+      }
+
+      .entry-form-shell[disabled] {
+        opacity: 0.78;
+      }
+
       .dream-row {
         display: flex;
         gap: var(--spacing-md);
@@ -768,6 +851,56 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         gap: var(--spacing-sm);
         justify-content: flex-end;
         margin-top: var(--spacing-sm);
+      }
+
+      .save-progress {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: var(--spacing-sm);
+        padding: 0.8rem 0.9rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .save-progress-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+
+      .save-progress-copy strong {
+        font-size: 0.95rem;
+      }
+
+      .save-progress-copy span {
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+        line-height: 1.4;
+      }
+
+      .ai-style-option {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        padding: 0.15rem 0;
+        white-space: normal;
+      }
+
+      .ai-style-option-label {
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .ai-style-option-description {
+        color: var(--colour-text-secondary);
+        font-size: 0.86rem;
+        line-height: 1.35;
+      }
+
+      .ai-style-hint {
+        line-height: 1.35;
       }
 
       .entry-attachments {
@@ -1031,6 +1164,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   existingAttachments: EntryAsset[] = [];
   attachmentsMarkedForRemoval: EntryAsset[] = [];
   pendingAttachments: PendingAttachment[] = [];
+  derivingAttachmentTextIds = new Set<number>();
 
   // Enhanced fields for both entry types
   selectedMood = "";
@@ -1093,6 +1227,13 @@ export class CreateComponent implements OnInit, OnDestroy {
       description: "Metaphorical, artistic interpretation",
     },
   ];
+
+  getSelectedAIStyleLabel(): string {
+    return (
+      this.aiStyleOptions.find((style) => style.value === this.selectedAIStyle)
+        ?.label || "Friendly & Supportive"
+    );
+  }
 
   // Dream field options with common values
   dreamFieldOptions: DreamFieldOptions = {
@@ -1413,6 +1554,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     entryType: "daily" | "dream",
     shouldAnalyse: boolean,
   ): Promise<void> {
+    const shouldRevealAttachments = this.pendingAttachments.length > 0;
     const failedDeletedAttachmentNames =
       await this.deleteMarkedAttachments(entryId, entryType);
     const failedAttachmentNames = await this.uploadPendingAttachments(
@@ -1440,7 +1582,11 @@ export class CreateComponent implements OnInit, OnDestroy {
       ? `Your entry was saved, but ${attachmentMessages.join("; ")}.`
       : undefined;
 
-    this.finishNavigation(entryId, { analysisWarning, attachmentWarning });
+    this.finishNavigation(entryId, {
+      analysisWarning,
+      attachmentWarning,
+      showAttachments: shouldRevealAttachments,
+    });
   }
 
   private async runDailyAnalysis(entryId: number): Promise<string | undefined> {
@@ -1457,14 +1603,19 @@ export class CreateComponent implements OnInit, OnDestroy {
           reference_date: referenceDate,
           entry_id: entryId,
           include_attachment_context: this.allowAiAttachmentContext,
+          ai_style: this.selectedAIStyle,
         }),
       );
 
       const dailyAnalysis = analysis as DailyAnalysisResponse;
+      const analysisAttachmentRefs = this.serialiseAnalysisAttachmentRefs(
+        dailyAnalysis.attachment_context_refs,
+      );
       try {
         await firstValueFrom(
           this.entriesService.updateDailyEntry(entryId, {
             ai_response: dailyAnalysis.ai_response,
+            analysis_attachment_refs: analysisAttachmentRefs,
             tags: this.tags.length ? this.tags.join(",") : dailyAnalysis.tags,
             daily_people_names: this.peopleNames.length
               ? this.peopleNames.join(",")
@@ -1505,16 +1656,21 @@ export class CreateComponent implements OnInit, OnDestroy {
           reference_date: referenceDate,
           entry_id: entryId,
           include_attachment_context: this.allowAiAttachmentContext,
+          ai_style: this.selectedAIStyle,
         }),
       );
 
       const dreamAnalysis = analysis as DreamAnalysisResponse;
+      const analysisAttachmentRefs = this.serialiseAnalysisAttachmentRefs(
+        dreamAnalysis.attachment_context_refs,
+      );
       try {
         await firstValueFrom(
           this.entriesService.updateDreamEntry(entryId, {
             summary: dreamAnalysis.summary,
             interpretation: dreamAnalysis.interpretation,
             image_prompt: dreamAnalysis.image_prompt,
+            analysis_attachment_refs: analysisAttachmentRefs,
             tags: this.tags.length ? this.tags.join(",") : dreamAnalysis.tags,
             dream_people_names: this.peopleNames.length
               ? this.peopleNames.join(",")
@@ -1542,13 +1698,16 @@ export class CreateComponent implements OnInit, OnDestroy {
     warnings?: {
       analysisWarning?: string;
       attachmentWarning?: string;
+      showAttachments?: boolean;
     },
   ): void {
     this.isSaving = false;
     this.resetForm();
 
     const queryParams =
-      warnings?.analysisWarning || warnings?.attachmentWarning
+      warnings?.analysisWarning ||
+      warnings?.attachmentWarning ||
+      warnings?.showAttachments
         ? {
             ...(warnings.analysisWarning
               ? { analysisWarning: warnings.analysisWarning }
@@ -1556,6 +1715,7 @@ export class CreateComponent implements OnInit, OnDestroy {
             ...(warnings.attachmentWarning
               ? { attachmentWarning: warnings.attachmentWarning }
               : {}),
+            ...(warnings.showAttachments ? { showAttachments: "1" } : {}),
           }
         : undefined;
 
@@ -1681,6 +1841,70 @@ export class CreateComponent implements OnInit, OnDestroy {
     return "Attachment";
   }
 
+  getAttachmentDerivedTextLabel(attachment: EntryAsset): string {
+    return attachment.derived_text_source === "audio-transcription"
+      ? "Transcript"
+      : "Derived text";
+  }
+
+  getAttachmentDerivedTextPreview(attachment: EntryAsset): string {
+    const text = String(attachment.derived_text || "").trim();
+    if (text.length <= 220) {
+      return text;
+    }
+    return `${text.slice(0, 220).trimEnd()}…`;
+  }
+
+  isDerivingAttachmentText(attachment: EntryAsset): boolean {
+    return this.derivingAttachmentTextIds.has(Number(attachment.id));
+  }
+
+  async openAttachmentDerivedText(attachment: EntryAsset): Promise<void> {
+    const text = String(attachment.derived_text || "").trim();
+    if (!text) {
+      return;
+    }
+
+    await this.appDialog.alert({
+      title: `${this.getAttachmentDerivedTextLabel(attachment)}: ${attachment.original_filename}`,
+      message: text,
+      confirmText: "Close",
+      variant: "info",
+    });
+  }
+
+  deriveAttachmentText(attachment: EntryAsset): void {
+    if (!this.editingId || !attachment?.id || !attachment.is_pdf) {
+      return;
+    }
+
+    this.derivingAttachmentTextIds.add(Number(attachment.id));
+    const request =
+      this.selectedType === "dream"
+        ? this.entriesService.deriveDreamAttachmentText(this.editingId, attachment.id)
+        : this.entriesService.deriveDailyAttachmentText(this.editingId, attachment.id);
+
+    request.subscribe({
+      next: (result) => {
+        this.existingAttachments = this.existingAttachments.map((item) =>
+          Number(item.id) === Number(attachment.id) ? result.attachment : item,
+        );
+        this.derivingAttachmentTextIds.delete(Number(attachment.id));
+      },
+      error: async (error) => {
+        console.error("Failed to derive attachment text:", error);
+        this.derivingAttachmentTextIds.delete(Number(attachment.id));
+        await this.appDialog.alert({
+          title: "Text extraction failed",
+          message:
+            error?.error?.error || "Failed to derive text from the PDF attachment.",
+          confirmText: "Close",
+          variant: "warning",
+        });
+      },
+    });
+  }
+
   markAttachmentForRemoval(attachment: EntryAsset): void {
     this.attachmentsMarkedForRemoval = [
       ...this.attachmentsMarkedForRemoval,
@@ -1737,6 +1961,25 @@ export class CreateComponent implements OnInit, OnDestroy {
 
   addPlace(event: MatChipInputEvent): void {
     this.addChipValue(this.places, event);
+  }
+
+  handleChipInputTab(event: Event, target: string[]): void {
+    const keyboardEvent = event as KeyboardEvent;
+    if (keyboardEvent.shiftKey || this.isSaving) {
+      return;
+    }
+
+    const input = keyboardEvent.target as HTMLInputElement | null;
+    const value = input?.value?.trim() || "";
+    if (!value) {
+      return;
+    }
+
+    keyboardEvent.preventDefault();
+    this.addChipString(target, value);
+    if (input) {
+      input.value = "";
+    }
   }
 
   removePlace(place: string): void {
@@ -1802,10 +2045,14 @@ export class CreateComponent implements OnInit, OnDestroy {
 
   private addChipValue(target: string[], event: MatChipInputEvent): void {
     const value = (event.value || "").trim();
+    this.addChipString(target, value);
+    event.chipInput?.clear();
+  }
+
+  private addChipString(target: string[], value: string): void {
     if (value && !target.includes(value)) {
       target.push(value);
     }
-    event.chipInput?.clear();
   }
 
   private canLeaveCreateScreen(): boolean | Promise<boolean> {
@@ -2145,6 +2392,45 @@ export class CreateComponent implements OnInit, OnDestroy {
     return this.getTotalAttachmentCount() > 0;
   }
 
+  getAttachmentContextEligibleCount(): number {
+    return this.getAttachmentContextEligibleAttachments().length;
+  }
+
+  getAttachmentContextBlockedCount(): number {
+    return this.getAttachmentContextBlockedAttachmentCount();
+  }
+
+  getAttachmentContextCheckboxLabel(): string {
+    const eligibleCount = this.getAttachmentContextEligibleCount();
+    if (eligibleCount > 0) {
+      return `Use ${eligibleCount} attachment${
+        eligibleCount === 1 ? "" : "s"
+      } in this AI analysis`;
+    }
+    return "Use attachment context in this AI analysis";
+  }
+
+  getAttachmentContextSummary(): string {
+    const eligibleCount = this.getAttachmentContextEligibleCount();
+    if (eligibleCount <= 0) {
+      return "No current attachments can add useful AI context.";
+    }
+
+    return `${eligibleCount} attachment${
+      eligibleCount === 1 ? "" : "s"
+    } can contribute filenames, extracted PDF text, image references, or saved transcripts to this analysis.`;
+  }
+
+  getSaveProgressTitle(): string {
+    return this.leaveItToAI ? "Saving entry and running AI analysis" : "Saving entry";
+  }
+
+  getSaveProgressDescription(): string {
+    return this.leaveItToAI
+      ? "This can take a moment while the app saves your entry, gathers context, and generates the response."
+      : "This can take a moment while the app saves your entry and attachments.";
+  }
+
   private applyAttachmentContextDefault(): void {
     this.allowAiAttachmentContext = this.getAttachmentContextDefaultValue();
   }
@@ -2154,5 +2440,56 @@ export class CreateComponent implements OnInit, OnDestroy {
     return currentUser?.allow_ai_attachment_context === undefined
       ? true
       : Boolean(currentUser.allow_ai_attachment_context);
+  }
+
+  private serialiseAnalysisAttachmentRefs(refs: string[] | undefined): string {
+    if (!Array.isArray(refs)) {
+      return "";
+    }
+
+    return refs
+      .map((ref) => String(ref || "").trim())
+      .filter((ref) => ref.length > 0)
+      .join("\n");
+  }
+
+  private getAttachmentContextEligibleAttachments(): Array<EntryAsset | PendingAttachment> {
+    return [
+      ...this.existingAttachments.filter((attachment) =>
+        this.isExistingAttachmentEligibleForAiContext(attachment),
+      ),
+      ...this.pendingAttachments.filter((attachment) =>
+        this.isPendingAttachmentEligibleForAiContext(attachment),
+      ),
+    ];
+  }
+
+  private getAttachmentContextBlockedAttachmentCount(): number {
+    const existingBlocked = this.existingAttachments.filter(
+      (attachment) => this.isExistingAttachmentBlockedForAiContext(attachment),
+    ).length;
+    const pendingBlocked = this.pendingAttachments.filter(
+      (attachment) => this.isPendingAttachmentBlockedForAiContext(attachment),
+    ).length;
+    return existingBlocked + pendingBlocked;
+  }
+
+  private isExistingAttachmentEligibleForAiContext(attachment: EntryAsset): boolean {
+    if (attachment.is_audio) {
+      return Boolean(attachment.has_derived_text);
+    }
+    return true;
+  }
+
+  private isExistingAttachmentBlockedForAiContext(attachment: EntryAsset): boolean {
+    return Boolean(attachment.is_audio && !attachment.has_derived_text);
+  }
+
+  private isPendingAttachmentEligibleForAiContext(attachment: PendingAttachment): boolean {
+    return attachment.kind !== "audio";
+  }
+
+  private isPendingAttachmentBlockedForAiContext(attachment: PendingAttachment): boolean {
+    return attachment.kind === "audio";
   }
 }

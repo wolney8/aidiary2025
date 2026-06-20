@@ -298,156 +298,6 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         </div>
       </section>
 
-      <section class="entry-attachments" aria-label="Entry attachments">
-        <button
-          class="entry-attachments-toggle"
-          type="button"
-          (click)="toggleAttachmentsExpanded()"
-          [attr.aria-expanded]="isAttachmentsExpanded"
-          aria-controls="entry-attachments-panel"
-        >
-          <span class="entry-attachments-toggle-copy">
-            <span class="entry-attachments-toggle-title">Attachments</span>
-            <span class="entry-attachments-toggle-status">
-              {{ getAttachments().length }} / {{ maxAttachmentsPerEntry }}
-            </span>
-          </span>
-          <mat-icon>{{ isAttachmentsExpanded ? "expand_less" : "expand_more" }}</mat-icon>
-        </button>
-
-        <div
-          id="entry-attachments-panel"
-          class="entry-attachments-panel"
-          *ngIf="isAttachmentsExpanded"
-        >
-          <p class="entry-attachments-status">
-            Click an attachment tile to open it. Changes happen in edit mode.
-          </p>
-
-          <div
-            class="entry-attachments-list"
-            *ngIf="getAttachments().length; else noAttachments"
-          >
-            <article
-              class="entry-attachment-card"
-              *ngFor="let attachment of getAttachments()"
-            >
-              <a
-                class="entry-attachment-preview"
-                [href]="attachment.url"
-                target="_blank"
-                rel="noopener"
-                [attr.aria-label]="getAttachmentOpenLabel(attachment)"
-                [class.image]="attachment.is_image"
-                [class.audio]="attachment.is_audio"
-                [class.pdf]="attachment.is_pdf"
-              >
-                <img
-                  *ngIf="attachment.is_image"
-                  [src]="attachment.url"
-                  [alt]="attachment.original_filename"
-                />
-                <div class="entry-attachment-pdf-tile" *ngIf="attachment.is_pdf">
-                  <mat-icon>picture_as_pdf</mat-icon>
-                  <span>PDF</span>
-                </div>
-                <div class="entry-attachment-audio-tile" *ngIf="attachment.is_audio">
-                  <mat-icon>graphic_eq</mat-icon>
-                  <span>Audio</span>
-                </div>
-              </a>
-              <div class="entry-attachment-meta">
-                <div class="entry-attachment-copy">
-                  <h4>{{ attachment.original_filename }}</h4>
-                  <p>
-                    {{ getAttachmentTypeLabel(attachment) }}
-                    <span *ngIf="attachment.file_size_bytes">
-                      · {{ formatAttachmentFileSize(attachment.file_size_bytes) }}
-                    </span>
-                  </p>
-                </div>
-                <div class="entry-attachment-actions">
-                  <button
-                    *ngIf="attachment.is_audio"
-                    mat-stroked-button
-                    type="button"
-                    (click)="transcribeAttachment(attachment)"
-                    [disabled]="isTranscribingAttachment(attachment)"
-                    [attr.aria-label]="
-                      (attachment.has_derived_text ? 'Re-transcribe ' : 'Transcribe ') +
-                      attachment.original_filename
-                    "
-                  >
-                    <mat-icon>{{
-                      isTranscribingAttachment(attachment) ? "hourglass_top" : "subtitles"
-                    }}</mat-icon>
-                    {{
-                      isTranscribingAttachment(attachment)
-                        ? "Transcribing…"
-                        : attachment.has_derived_text
-                          ? "Re-transcribe"
-                          : "Transcribe"
-                    }}
-                  </button>
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    (click)="downloadAttachment(attachment)"
-                    [attr.aria-label]="'Download ' + attachment.original_filename"
-                  >
-                    <mat-icon>download</mat-icon>
-                    Download
-                  </button>
-                </div>
-              </div>
-              <audio
-                class="entry-attachment-audio-player"
-                *ngIf="attachment.is_audio"
-                [src]="attachment.url"
-                controls
-                preload="none"
-                [attr.aria-label]="'Audio attachment player for ' + attachment.original_filename"
-              ></audio>
-              <div
-                class="entry-attachment-transcript"
-                *ngIf="attachment.has_derived_text && attachment.derived_text"
-              >
-                <p class="entry-attachment-transcript-label">
-                  {{ getAttachmentDerivedTextLabel(attachment) }}
-                </p>
-                <p>{{ getAttachmentDerivedTextPreview(attachment) }}</p>
-                <button
-                  *ngIf="shouldShowFullAttachmentTranscript(attachment)"
-                  mat-button
-                  type="button"
-                  class="entry-attachment-transcript-toggle"
-                  (click)="openAttachmentTranscript(attachment)"
-                >
-                  Read full transcript
-                </button>
-              </div>
-              <div
-                class="entry-attachment-transcript entry-attachment-transcript-note"
-                *ngIf="attachment.is_audio && !attachment.has_derived_text"
-              >
-                <p class="entry-attachment-transcript-label">AI usage</p>
-                <p>
-                  This audio will only be used in AI analysis after you
-                  transcribe it.
-                </p>
-              </div>
-            </article>
-          </div>
-        </div>
-
-        <ng-template #noAttachments>
-          <div class="entry-attachments-empty">
-            <mat-icon>attachment</mat-icon>
-            <p>No attachments yet.</p>
-          </div>
-        </ng-template>
-      </section>
-
       <div class="detail-columns">
         <mat-card>
           <mat-card-header>
@@ -592,9 +442,204 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
                 No AI response was recorded for this entry.
               </p>
             </div>
+            <div
+              class="section ai-attachment-context"
+              *ngIf="getAnalysisAttachmentRefs().length > 0"
+            >
+              <mat-chip-listbox>
+                <mat-chip-option
+                  *ngFor="let ref of getAnalysisAttachmentRefs()"
+                  disabled
+                >
+                  {{ ref }}
+                </mat-chip-option>
+              </mat-chip-listbox>
+            </div>
           </mat-card-content>
         </mat-card>
       </div>
+
+      <section class="entry-attachments" aria-label="Entry attachments">
+        <button
+          class="entry-attachments-toggle"
+          type="button"
+          (click)="toggleAttachmentsExpanded()"
+          [attr.aria-expanded]="isAttachmentsExpanded"
+          aria-controls="entry-attachments-panel"
+        >
+          <span class="entry-attachments-toggle-copy">
+            <span class="entry-attachments-toggle-title">Attachments</span>
+            <span class="entry-attachments-toggle-status">
+              {{ getAttachments().length }} / {{ maxAttachmentsPerEntry }}
+            </span>
+          </span>
+          <mat-icon>{{ isAttachmentsExpanded ? "expand_less" : "expand_more" }}</mat-icon>
+        </button>
+
+        <div
+          id="entry-attachments-panel"
+          class="entry-attachments-panel"
+          *ngIf="isAttachmentsExpanded"
+        >
+          <p class="entry-attachments-status">
+            Click an attachment tile to open it. Changes happen in edit mode.
+          </p>
+
+          <div
+            class="entry-attachments-list"
+            *ngIf="getAttachments().length; else noAttachments"
+          >
+            <article
+              class="entry-attachment-card"
+              *ngFor="let attachment of getAttachments()"
+            >
+              <a
+                class="entry-attachment-preview"
+                [href]="attachment.url"
+                target="_blank"
+                rel="noopener"
+                [attr.aria-label]="getAttachmentOpenLabel(attachment)"
+                [class.image]="attachment.is_image"
+                [class.audio]="attachment.is_audio"
+                [class.pdf]="attachment.is_pdf"
+              >
+                <img
+                  *ngIf="attachment.is_image"
+                  [src]="attachment.url"
+                  [alt]="attachment.original_filename"
+                />
+                <div class="entry-attachment-pdf-tile" *ngIf="attachment.is_pdf">
+                  <mat-icon>picture_as_pdf</mat-icon>
+                  <span>PDF</span>
+                </div>
+                <div class="entry-attachment-audio-tile" *ngIf="attachment.is_audio">
+                  <mat-icon>graphic_eq</mat-icon>
+                  <span>Audio</span>
+                </div>
+              </a>
+              <div class="entry-attachment-meta">
+                <div class="entry-attachment-copy">
+                  <h4>{{ attachment.original_filename }}</h4>
+                  <p>
+                    {{ getAttachmentTypeLabel(attachment) }}
+                    <span *ngIf="attachment.file_size_bytes">
+                      · {{ formatAttachmentFileSize(attachment.file_size_bytes) }}
+                    </span>
+                  </p>
+                </div>
+                <div class="entry-attachment-actions">
+                  <button
+                    *ngIf="attachment.is_audio"
+                    mat-stroked-button
+                    type="button"
+                    (click)="transcribeAttachment(attachment)"
+                    [disabled]="isTranscribingAttachment(attachment)"
+                    [attr.aria-label]="
+                      (attachment.has_derived_text ? 'Re-transcribe ' : 'Transcribe ') +
+                      attachment.original_filename
+                    "
+                  >
+                    <mat-icon>{{
+                      isTranscribingAttachment(attachment) ? "hourglass_top" : "subtitles"
+                    }}</mat-icon>
+                    {{
+                      isTranscribingAttachment(attachment)
+                        ? "Transcribing…"
+                        : attachment.has_derived_text
+                          ? "Re-transcribe"
+                          : "Transcribe"
+                    }}
+                  </button>
+                  <button
+                    *ngIf="attachment.is_pdf"
+                    mat-stroked-button
+                    type="button"
+                    (click)="deriveAttachmentText(attachment)"
+                    [disabled]="isDerivingAttachmentText(attachment)"
+                    [attr.aria-label]="
+                      (attachment.has_derived_text ? 'Refresh derived text for ' : 'Derive text for ') +
+                      attachment.original_filename
+                    "
+                  >
+                    <mat-icon>{{
+                      isDerivingAttachmentText(attachment) ? "hourglass_top" : "find_in_page"
+                    }}</mat-icon>
+                    {{
+                      isDerivingAttachmentText(attachment)
+                        ? "Refreshing…"
+                        : attachment.has_derived_text
+                          ? "Refresh derived text"
+                          : "Derive text"
+                    }}
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="downloadAttachment(attachment)"
+                    [attr.aria-label]="'Download ' + attachment.original_filename"
+                  >
+                    <mat-icon>download</mat-icon>
+                    Download
+                  </button>
+                </div>
+              </div>
+              <audio
+                class="entry-attachment-audio-player"
+                *ngIf="attachment.is_audio"
+                [src]="attachment.url"
+                controls
+                preload="none"
+                [attr.aria-label]="'Audio attachment player for ' + attachment.original_filename"
+              ></audio>
+              <div
+                class="entry-attachment-transcript"
+                *ngIf="attachment.has_derived_text && attachment.derived_text"
+              >
+                <p class="entry-attachment-transcript-label">
+                  {{ getAttachmentDerivedTextLabel(attachment) }}
+                </p>
+                <p>{{ getAttachmentDerivedTextPreview(attachment) }}</p>
+                <button
+                  *ngIf="attachment.has_derived_text && attachment.derived_text"
+                  mat-button
+                  type="button"
+                  class="entry-attachment-transcript-toggle"
+                  (click)="openAttachmentTranscript(attachment)"
+                >
+                  {{ getAttachmentFullTextActionLabel(attachment) }}
+                </button>
+              </div>
+              <div
+                class="entry-attachment-transcript entry-attachment-transcript-note"
+                *ngIf="attachment.is_audio && !attachment.has_derived_text"
+              >
+                <p class="entry-attachment-transcript-label">AI usage</p>
+                <p>
+                  This audio will only be used in AI analysis after you
+                  transcribe it.
+                </p>
+              </div>
+              <div
+                class="entry-attachment-transcript entry-attachment-transcript-note"
+                *ngIf="attachment.is_pdf && !attachment.has_derived_text"
+              >
+                <p class="entry-attachment-transcript-label">AI usage</p>
+                <p>
+                  No extractable PDF text was found, so AI can only reference
+                  this file by name.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <ng-template #noAttachments>
+          <div class="entry-attachments-empty">
+            <mat-icon>attachment</mat-icon>
+            <p>No attachments yet.</p>
+          </div>
+        </ng-template>
+      </section>
 
       <div class="metadata-bar">
         <div class="metadata-section">
@@ -1348,6 +1393,10 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         font-style: italic;
         margin: 0;
       }
+
+      .ai-attachment-context mat-chip-listbox {
+        display: block;
+      }
     `,
   ],
 })
@@ -1378,12 +1427,14 @@ export class DetailComponent implements OnInit, OnDestroy {
   isSavingDreamPrompt = false;
   isUploadingAttachment = false;
   transcribingAttachmentIds = new Set<number>();
+  derivingAttachmentTextIds = new Set<number>();
   hasHorizontalDreamImageAdjustment = false;
   dreamImagePositionX = 50;
   dreamImagePositionY = 50;
   dreamPromptDraft = "";
   dreamPromptOverride = "";
   recycledDreamPrompt = "";
+  private shouldExpandAttachmentsOnLoad = false;
   private dreamImagePositionSaveHandle: ReturnType<typeof setTimeout> | null =
     null;
 
@@ -1394,18 +1445,21 @@ export class DetailComponent implements OnInit, OnDestroy {
     const id = Number(this.route.snapshot.paramMap.get("id"));
     this.captureBackQueryParams();
     this.captureAnalysisWarning();
+    this.captureInitialAttachmentExpansion();
 
     // Try loading as daily first, then dream if not found
     this.entriesService.getDailyEntry(id).subscribe({
       next: (entry) => {
         this.entry = entry;
         this.entryType = "daily";
+        this.applyInitialAttachmentExpansion();
         this.syncDreamImageUiFromEntry();
       },
       error: () => {
         this.entriesService.getDreamEntry(id).subscribe((entry) => {
           this.entry = entry;
           this.entryType = "dream";
+          this.applyInitialAttachmentExpansion();
           this.syncDreamImageUiFromEntry();
         });
       },
@@ -1648,6 +1702,37 @@ export class DetailComponent implements OnInit, OnDestroy {
     });
   }
 
+  async deriveAttachmentText(attachment: EntryAsset): Promise<void> {
+    if (!this.entry?.id || !attachment?.id || !attachment.is_pdf) {
+      return;
+    }
+
+    this.derivingAttachmentTextIds.add(Number(attachment.id));
+    const request = this.isDream()
+      ? this.entriesService.deriveDreamAttachmentText(this.entry.id, attachment.id)
+      : this.entriesService.deriveDailyAttachmentText(this.entry.id, attachment.id);
+
+    request.subscribe({
+      next: (result) => {
+        this.entry = {
+          ...this.entry,
+          attachments: this.getAttachments().map((item) =>
+            Number(item.id) === Number(attachment.id) ? result.attachment : item,
+          ),
+        };
+        this.derivingAttachmentTextIds.delete(Number(attachment.id));
+      },
+      error: (error) => {
+        console.error("Failed to derive attachment text:", error);
+        this.derivingAttachmentTextIds.delete(Number(attachment.id));
+        void this.showErrorDialog(
+          "Text extraction failed",
+          error?.error?.error || "Failed to derive text from the PDF attachment.",
+        );
+      },
+    });
+  }
+
   async deleteAttachment(attachment: EntryAsset): Promise<void> {
     if (!this.entry?.id || !attachment?.id) {
       return;
@@ -1723,10 +1808,18 @@ export class DetailComponent implements OnInit, OnDestroy {
     return this.transcribingAttachmentIds.has(Number(attachment.id));
   }
 
+  isDerivingAttachmentText(attachment: EntryAsset): boolean {
+    return this.derivingAttachmentTextIds.has(Number(attachment.id));
+  }
+
   getAttachmentDerivedTextLabel(attachment: EntryAsset): string {
     return attachment.derived_text_source === "audio-transcription"
       ? "Transcript"
       : "Derived text";
+  }
+
+  getAttachmentFullTextActionLabel(attachment: EntryAsset): string {
+    return "View derived text";
   }
 
   getAttachmentDerivedTextPreview(attachment: EntryAsset): string {
@@ -1758,6 +1851,18 @@ export class DetailComponent implements OnInit, OnDestroy {
 
   toggleAttachmentsExpanded(): void {
     this.isAttachmentsExpanded = !this.isAttachmentsExpanded;
+  }
+
+  getAnalysisAttachmentRefs(): string[] {
+    const raw =
+      typeof this.entry?.analysis_attachment_refs === "string"
+        ? this.entry.analysis_attachment_refs
+        : "";
+
+    return raw
+      .split("\n")
+      .map((item: string) => item.trim())
+      .filter((item: string) => item.length > 0);
   }
 
   formatAttachmentFileSize(sizeBytes: number): string {
@@ -2567,6 +2672,20 @@ export class DetailComponent implements OnInit, OnDestroy {
     }
 
     this.analysisWarningMessage = "";
+  }
+
+  private captureInitialAttachmentExpansion(): void {
+    this.shouldExpandAttachmentsOnLoad =
+      this.route.snapshot.queryParamMap.get("showAttachments") === "1";
+  }
+
+  private applyInitialAttachmentExpansion(): void {
+    if (!this.shouldExpandAttachmentsOnLoad) {
+      return;
+    }
+
+    this.isAttachmentsExpanded = this.getAttachments().length > 0;
+    this.shouldExpandAttachmentsOnLoad = false;
   }
 
   private splitDailyMessage(message: string): [string, string] {

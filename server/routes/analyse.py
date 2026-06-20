@@ -2,9 +2,15 @@
 # AI analysis endpoint
 from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime
+from datetime import datetime, timezone
 import difflib
+import re
 import sqlite3
+from services.attachment_text import (
+    extract_pdf_attachment_content,
+    looks_like_low_quality_ocr_text,
+)
+from services.media_storage import read_media_bytes
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 from services.nltk_enrichment import (
     derive_daily_nltk_fields,
@@ -86,12 +92,41 @@ def _normalise_places(raw: str) -> str:
 
     return ",".join(cleaned)
 
+
+def _format_human_reference_date(value: str | None) -> str:
+    if not value:
+        return 'an earlier date'
+
+    try:
+        parsed = datetime.strptime(str(value), '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return str(value)
+
+    return f'{parsed.day} {parsed.strftime("%B %Y")}'
+
 analyse_bp = Blueprint('analyse', __name__)
 ANALYSE_TEXT_MAX_LENGTH = 10000
 RECENT_CONTEXT_MAX_ENTRIES = 5
 RECENT_CONTEXT_MAX_ENTRY_CHARS = 500
 RECENT_CONTEXT_MAX_TOTAL_CHARS = 1800
 ATTACHMENT_CONTEXT_MAX_CHARS = 900
+RELATED_CONTEXT_MAX_ENTRIES = 3
+RELATED_CONTEXT_SCAN_LIMIT = 24
+LEXICAL_STOP_WORDS = {
+    'the', 'and', 'that', 'with', 'from', 'have', 'this', 'your', 'about',
+    'were', 'when', 'then', 'just', 'into', 'there', 'their', 'would', 'could',
+    'should', 'been', 'after', 'before', 'because', 'while', 'what', 'where',
+    'which', 'they', 'them', 'felt', 'feel', 'like', 'today', 'dream', 'daily',
+    'entry', 'very', 'really', 'some', 'more', 'than', 'also', 'only', 'over',
+}
+DEFAULT_ANALYSIS_SETTINGS = {
+    'ai_tone': 'friendly',
+    'ai_verbosity': 'balanced',
+    'ai_focus': 'reflective',
+    'ai_model': 'gpt-4.1-mini',
+    'allow_ai_history': True,
+    'personal_context': None,
+}
 
 
 def get_db():
@@ -108,6 +143,35 @@ def _truncate_text(value: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars].rstrip() + '...'
+
+
+def _parse_csv_tokens(raw: object) -> list[str]:
+    if not isinstance(raw, str):
+        return []
+
+    values: list[str] = []
+    seen: set[str] = set()
+    for token in raw.split(','):
+        candidate = token.strip()
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(candidate)
+
+    return values
+
+
+def _tokenise_similarity_text(*parts: object) -> set[str]:
+    combined = ' '.join(str(part or '') for part in parts)
+    tokens = {
+        token
+        for token in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", combined.lower())
+        if token not in LEXICAL_STOP_WORDS
+    }
+    return tokens
 
 
 def _compact_csv_hint(raw: object, label: str, max_items: int = 3, max_chars: int = 60) -> str:
@@ -192,6 +256,74 @@ def _build_metadata_summary_header(mode: str, text: str, result: dict) -> str:
     if not hint_text:
         return _truncate_text(base, 280)
     return _truncate_text(f"{base} | {hint_text}", 280)
+
+
+def _load_user_analysis_settings(conn: sqlite3.Connection, user_id: int) -> dict[str, object]:
+    settings = dict(DEFAULT_ANALYSIS_SETTINGS)
+    try:
+        row = conn.execute(
+            '''
+            SELECT ai_tone, ai_verbosity, ai_focus, ai_model, allow_ai_history,
+                   display_name, pronouns, gender, custom_guidance, sex, goals
+            FROM users
+            WHERE id = ?
+            ''',
+            (user_id,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return settings
+
+    if not row:
+        return settings
+
+    settings['ai_tone'] = str(row['ai_tone'] or settings['ai_tone']).strip() or settings['ai_tone']
+    settings['ai_verbosity'] = str(row['ai_verbosity'] or settings['ai_verbosity']).strip() or settings['ai_verbosity']
+    settings['ai_focus'] = str(row['ai_focus'] or settings['ai_focus']).strip() or settings['ai_focus']
+    settings['ai_model'] = str(row['ai_model'] or settings['ai_model']).strip() or settings['ai_model']
+    settings['allow_ai_history'] = bool(row['allow_ai_history']) if row['allow_ai_history'] is not None else True
+    personal_bits: list[str] = []
+    display_name = str(row['display_name'] or '').strip()
+    pronouns = str(row['pronouns'] or '').strip()
+    gender = str(row['gender'] or row['sex'] or '').strip()
+    custom_guidance = str(row['custom_guidance'] or row['goals'] or '').strip()
+
+    if display_name:
+        personal_bits.append(f'Display name: {display_name}')
+    if pronouns:
+        personal_bits.append(f'Pronouns: {pronouns}')
+    if gender:
+        personal_bits.append(f'Gender: {gender}')
+    if custom_guidance:
+        personal_bits.append(f'Custom guidance: {custom_guidance}')
+
+    settings['personal_context'] = '\n'.join(personal_bits) if personal_bits else None
+    return settings
+
+
+def _load_current_entry_memory_details(
+    conn: sqlite3.Connection,
+    user_id: int,
+    mode: str,
+    entry_id: int | None,
+) -> dict[str, object] | None:
+    if entry_id is None:
+        return None
+
+    if mode == 'daily':
+        query = '''
+            SELECT id, title, tags, daily_people_names AS people_names, daily_places AS places, user_message AS body
+            FROM dailydiary_entries
+            WHERE user_id = ? AND id = ?
+        '''
+    else:
+        query = '''
+            SELECT id, title, tags, dream_people_names AS people_names, dream_places AS places, plot AS body
+            FROM dreamdiary_entries
+            WHERE user_id = ? AND id = ?
+        '''
+
+    row = conn.execute(query, (user_id, entry_id)).fetchone()
+    return dict(row) if row else None
 
 
 def _merge_daily_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
@@ -304,141 +436,148 @@ def _persist_analysis_metadata(
         conn.close()
 
 
-def _build_recent_context(user_id: int, mode: str, reference_date: str | None = None) -> str | None:
-    conn = get_db()
-
-    metadata_rows = []
-    try:
-        metadata_query = """
-            SELECT reference_date, summary_header
-            FROM entry_ai_metadata
-            WHERE user_id = ?
-              AND mode = ?
-        """
-        metadata_params: list[object] = [user_id, mode]
-
-        if reference_date:
-            metadata_query += """
-                ORDER BY
-                    CASE WHEN reference_date IS NULL THEN 1 ELSE 0 END,
-                    ABS(julianday(reference_date) - julianday(?)) ASC,
-                    reference_date DESC,
-                    id DESC
-            """
-            metadata_params.append(reference_date)
-        else:
-            metadata_query += " ORDER BY reference_date DESC, id DESC"
-
-        metadata_query += " LIMIT ?"
-        metadata_params.append(RECENT_CONTEXT_MAX_ENTRIES * 3)
-
-        metadata_rows = conn.execute(metadata_query, tuple(metadata_params)).fetchall()
-    except sqlite3.OperationalError:
-        metadata_rows = []
-
-    if metadata_rows:
-        context_chunks: list[str] = []
-        selected_headers: list[str] = []
-        current_chars = 0
-
-        for index, row in enumerate(metadata_rows, start=1):
-            snippet = _truncate_text(row['summary_header'] or '', RECENT_CONTEXT_MAX_ENTRY_CHARS)
-            if not snippet:
-                continue
-
-            if _is_highly_similar_header(snippet, selected_headers):
-                continue
-
-            selected_headers.append(snippet)
-
-            header = f"[{len(context_chunks) + 1}] ref_date={row['reference_date'] or ''}"
-            section = f"{header}\n{snippet}"
-            projected_chars = current_chars + len(section)
-            if context_chunks:
-                projected_chars += 2
-
-            if projected_chars > RECENT_CONTEXT_MAX_TOTAL_CHARS:
-                break
-
-            context_chunks.append(section)
-            current_chars = projected_chars
-
-            if len(context_chunks) >= RECENT_CONTEXT_MAX_ENTRIES:
-                break
-
-        if context_chunks:
-            conn.close()
-            return "\n\n".join(context_chunks)
+def _build_related_history_context(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    mode: str,
+    current_text: str,
+    current_entry_id: int | None,
+    reference_date: str | None,
+) -> str | None:
+    current_entry = _load_current_entry_memory_details(conn, user_id, mode, current_entry_id)
+    current_title = str((current_entry or {}).get('title') or '')
+    current_tags = set(token.lower() for token in _parse_csv_tokens((current_entry or {}).get('tags')))
+    current_people = set(token.lower() for token in _parse_csv_tokens((current_entry or {}).get('people_names')))
+    current_places = set(token.lower() for token in _parse_csv_tokens((current_entry or {}).get('places')))
+    current_tokens = _tokenise_similarity_text(current_text, current_title, (current_entry or {}).get('body', ''))
 
     if mode == 'daily':
-        query = """
-            SELECT entry_date, entry_number, title, user_message
+        rows = conn.execute(
+            '''
+            SELECT id, entry_date, entry_number, title, user_message AS body,
+                   tags, daily_people_names AS people_names, daily_places AS places
             FROM dailydiary_entries
             WHERE user_id = ?
               AND (? IS NULL OR entry_date <= ?)
+              AND (? IS NULL OR id != ?)
             ORDER BY entry_date DESC, entry_number DESC, id DESC
             LIMIT ?
-        """
-        text_key = 'user_message'
-        params = (user_id, reference_date, reference_date, RECENT_CONTEXT_MAX_ENTRIES)
+            ''',
+            (user_id, reference_date, reference_date, current_entry_id, current_entry_id, RELATED_CONTEXT_SCAN_LIMIT),
+        ).fetchall()
     else:
-        query = """
-            SELECT entry_date, entry_number, title, plot, summary, interpretation
+        rows = conn.execute(
+            '''
+            SELECT id, entry_date, entry_number, title,
+                   COALESCE(plot, summary, interpretation, '') AS body,
+                   tags, dream_people_names AS people_names, dream_places AS places
             FROM dreamdiary_entries
             WHERE user_id = ?
               AND (? IS NULL OR entry_date <= ?)
+              AND (? IS NULL OR id != ?)
             ORDER BY entry_date DESC, entry_number DESC, id DESC
             LIMIT ?
-        """
-        text_key = 'plot'
-        params = (user_id, reference_date, reference_date, RECENT_CONTEXT_MAX_ENTRIES)
+            ''',
+            (user_id, reference_date, reference_date, current_entry_id, current_entry_id, RELATED_CONTEXT_SCAN_LIMIT),
+        ).fetchall()
 
-    try:
-        rows = conn.execute(query, params).fetchall()
-    finally:
-        conn.close()
+    ranked: list[tuple[float, sqlite3.Row, dict[str, list[str] | float]]] = []
+    for row in rows:
+        row_tags = _parse_csv_tokens(row['tags'])
+        row_people = _parse_csv_tokens(row['people_names'])
+        row_places = _parse_csv_tokens(row['places'])
+        row_tokens = _tokenise_similarity_text(row['title'], row['body'])
+
+        tag_overlap = sorted(current_tags.intersection(token.lower() for token in row_tags))
+        people_overlap = sorted(current_people.intersection(token.lower() for token in row_people))
+        place_overlap = sorted(current_places.intersection(token.lower() for token in row_places))
+        lexical_overlap = sorted(current_tokens.intersection(row_tokens))
+
+        score = (
+            len(people_overlap) * 5.0 +
+            len(tag_overlap) * 4.0 +
+            len(place_overlap) * 4.0 +
+            min(len(lexical_overlap), 5) * 1.3
+        )
+        if score <= 0:
+            continue
+
+        if reference_date and row['entry_date']:
+            try:
+                distance = abs((datetime.strptime(reference_date, '%Y-%m-%d') - datetime.strptime(row['entry_date'], '%Y-%m-%d')).days)
+                score += max(0.0, 1.5 - min(distance, 30) / 20.0)
+            except ValueError:
+                pass
+
+        ranked.append((
+            score,
+            row,
+            {
+                'tags': tag_overlap,
+                'people': people_overlap,
+                'places': place_overlap,
+                'lexical_overlap': lexical_overlap,
+            },
+        ))
+
+    ranked.sort(key=lambda item: (item[0], str(item[1]['entry_date'] or '')), reverse=True)
+    if not ranked:
+        return None
 
     context_chunks: list[str] = []
     current_chars = 0
-
-    for index, row in enumerate(rows, start=1):
-        primary_text = row[text_key] if text_key in row.keys() else ''
-        if mode == 'dream' and not primary_text:
-            primary_text = row['summary'] or row['interpretation'] or ''
-
-        snippet = _truncate_text(primary_text, RECENT_CONTEXT_MAX_ENTRY_CHARS)
-        if not snippet:
-            continue
-
-        title = _truncate_text(row['title'] or '', 80)
-        header = f"[{index}] date={row['entry_date'] or ''} entry={row['entry_number'] or ''}"
+    for index, (_score, row, overlaps) in enumerate(ranked[:RELATED_CONTEXT_MAX_ENTRIES], start=1):
+        theme_candidates = overlaps['people'][:1] + overlaps['tags'][:2] + overlaps['places'][:1]
+        theme_text = ', '.join(theme_candidates[:3]) or ', '.join(overlaps['lexical_overlap'][:3]) or 'related pattern'
+        snippet = _truncate_text(str(row['body'] or ''), 240)
+        title = _truncate_text(str(row['title'] or ''), 80)
+        date_label = _format_human_reference_date(row['entry_date'])
+        header = f"[related {index}] On {date_label}, shared theme: {theme_text}"
         if title:
-            header += f" title={title}"
-
-        section = f"{header}\n{snippet}"
-        projected_chars = current_chars + len(section)
-        if context_chunks:
-            projected_chars += 2  # Extra separator between sections.
-
+            header += f" | title: {title}"
+        section = f"{header}\nSnapshot: {snippet}"
+        projected_chars = current_chars + len(section) + (2 if context_chunks else 0)
         if projected_chars > RECENT_CONTEXT_MAX_TOTAL_CHARS:
             break
-
         context_chunks.append(section)
         current_chars = projected_chars
 
     if not context_chunks:
         return None
 
-    return "\n\n".join(context_chunks)
+    return "Related entry memory:\n" + "\n\n".join(context_chunks)
 
 
-def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> str | None:
+def _build_attachment_ref_label(
+    filename: str,
+    mime_type: str,
+    *,
+    has_derived_text: bool,
+    derived_text_source: str = '',
+) -> str:
+    if mime_type == 'application/pdf' and has_derived_text:
+        if derived_text_source == 'pdf-ocr':
+            return f'{filename} (PDF OCR text)'
+        return f'{filename} (PDF text extracted)'
+    if mime_type == 'application/pdf':
+        return f'{filename} (PDF filename only)'
+    if mime_type.startswith('audio/') and has_derived_text:
+        return f'{filename} (audio transcript)'
+    if mime_type.startswith('audio/'):
+        return f'{filename} (audio filename only)'
+    if mime_type.startswith('image/'):
+        return f'{filename} (image reference)'
+    return f'{filename} (filename reference)'
+
+
+def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> tuple[str | None, list[str]]:
     entry_type = 'daily' if mode == 'daily' else 'dream'
     conn = get_db()
     try:
         rows = conn.execute(
             '''
-            SELECT original_filename, mime_type, derived_text
+            SELECT id, storage_key, original_filename, mime_type, derived_text, derived_text_source
             FROM entry_assets
             WHERE user_id = ? AND entry_type = ? AND entry_id = ?
             ORDER BY sort_order ASC, id ASC
@@ -446,39 +585,103 @@ def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> str | N
             ''',
             (user_id, entry_type, entry_id),
         ).fetchall()
+
+        if not rows:
+            return None, []
+
+        lines: list[str] = []
+        refs: list[str] = []
+        current_chars = 0
+        did_update = False
+        for row in rows:
+            mime_type = str(row['mime_type'] or '').strip().lower()
+            if mime_type.startswith('audio/'):
+                type_label = 'audio attachment'
+            elif mime_type == 'application/pdf':
+                type_label = 'PDF attachment'
+            elif mime_type.startswith('image/'):
+                type_label = 'image attachment'
+            else:
+                type_label = 'attachment'
+
+            filename = str(row['original_filename'] or 'attachment').strip() or 'attachment'
+            derived_text_raw = str(row['derived_text'] or '').strip()
+            derived_text_source = str(row['derived_text_source'] or '').strip()
+            should_refresh_pdf_text = (
+                mime_type == 'application/pdf' and (
+                    not derived_text_raw
+                    or (
+                        derived_text_source == 'pdf-ocr'
+                        and looks_like_low_quality_ocr_text(derived_text_raw)
+                    )
+                )
+            )
+            if should_refresh_pdf_text:
+                file_bytes = read_media_bytes(str(row['storage_key'] or '').strip())
+                extracted_text, extracted_text_source = extract_pdf_attachment_content(file_bytes or b'')
+                if extracted_text:
+                    if extracted_text_source == 'pdf-ocr':
+                        try:
+                            extracted_text = OpenAIService().clean_ocr_extracted_text(extracted_text)
+                        except AnalysisRateLimitError:
+                            current_app.logger.warning(
+                                'PDF OCR cleanup rate-limited during analysis for %s attachment "%s"; using raw OCR text.',
+                                entry_type,
+                                filename,
+                            )
+                        except Exception:
+                            current_app.logger.exception(
+                                'PDF OCR cleanup failed during analysis for %s attachment "%s"; using raw OCR text.',
+                                entry_type,
+                                filename,
+                            )
+                    derived_text_raw = extracted_text
+                    derived_text_source = extracted_text_source or 'pdf-text-extraction'
+                    conn.execute(
+                        '''
+                        UPDATE entry_assets
+                        SET derived_text = ?, derived_text_source = ?, derived_text_updated_at = ?
+                        WHERE id = ? AND user_id = ?
+                        ''',
+                        (
+                            extracted_text,
+                            derived_text_source,
+                            datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            int(row['id']),
+                            user_id,
+                        ),
+                    )
+                    did_update = True
+            else:
+                derived_text_source = ''
+
+            line = f'- Your {type_label} "{filename}"'
+            derived_text = _truncate_text(derived_text_raw, 260)
+            if derived_text:
+                line += f"\n  Derived text summary: {derived_text}"
+            projected = current_chars + len(line) + (1 if lines else 0)
+            if projected > ATTACHMENT_CONTEXT_MAX_CHARS:
+                break
+            refs.append(
+                _build_attachment_ref_label(
+                    filename,
+                    mime_type,
+                    has_derived_text=bool(derived_text_raw),
+                    derived_text_source=derived_text_source,
+                )
+            )
+            lines.append(line)
+            current_chars = projected
+
+        if did_update:
+            conn.commit()
+
+        if not lines:
+            return None, refs
+
+        return "Attachment context:\n" + "\n".join(lines), refs
     finally:
         conn.close()
-
-    if not rows:
-        return None
-
-    lines: list[str] = []
-    current_chars = 0
-    for row in rows:
-        mime_type = str(row['mime_type'] or '').strip().lower()
-        if mime_type.startswith('audio/'):
-            type_label = 'audio'
-        elif mime_type == 'application/pdf':
-            type_label = 'pdf'
-        elif mime_type.startswith('image/'):
-            type_label = 'image'
-        else:
-            type_label = 'attachment'
-
-        line = f"- {type_label}: {str(row['original_filename'] or 'attachment').strip()}"
-        derived_text = _truncate_text(str(row['derived_text'] or '').strip(), 260)
-        if derived_text:
-            line += f"\n  derived text: {derived_text}"
-        projected = current_chars + len(line) + (1 if lines else 0)
-        if projected > ATTACHMENT_CONTEXT_MAX_CHARS:
-            break
-        lines.append(line)
-        current_chars = projected
-
-    if not lines:
-        return None
-
-    return "Attachment context:\n" + "\n".join(lines)
 
 
 def _merge_analysis_context(
@@ -507,6 +710,7 @@ def analyse_text():
     reference_date_raw = data.get('reference_date')
     entry_id_raw = data.get('entry_id')
     include_attachment_context = bool(data.get('include_attachment_context'))
+    ai_style = str(data.get('ai_style') or 'friendly').strip() or 'friendly'
 
     if mode not in ['daily', 'dream']:
         return jsonify({'error': 'Invalid mode. Use "daily" or "dream"'}), 400
@@ -527,29 +731,66 @@ def analyse_text():
         return jsonify({'error': 'Invalid reference_date format. Use YYYY-MM-DD'}), 400
 
     entry_id = None
-    if include_attachment_context:
+    if entry_id_raw is not None:
+        try:
+            entry_id = int(entry_id_raw)
+        except (TypeError, ValueError):
+            if not include_attachment_context:
+                entry_id = None
+            else:
+                return jsonify({'error': 'entry_id is required when include_attachment_context is enabled'}), 400
+    if include_attachment_context and entry_id is None:
         try:
             entry_id = int(entry_id_raw)
         except (TypeError, ValueError):
             return jsonify({'error': 'entry_id is required when include_attachment_context is enabled'}), 400
 
-    recent_context = None
+    related_context = None
     attachment_context = None
+    attachment_context_refs: list[str] = []
     user_id = None
+    analysis_settings = dict(DEFAULT_ANALYSIS_SETTINGS)
     try:
         user_id = int(get_jwt_identity())
-        recent_context = _build_recent_context(user_id, mode, reference_date)
+        conn = get_db()
+        try:
+            analysis_settings = _load_user_analysis_settings(conn, user_id)
+            if bool(analysis_settings.get('allow_ai_history')):
+                related_context = _build_related_history_context(
+                    conn,
+                    user_id=user_id,
+                    mode=mode,
+                    current_text=text,
+                    current_entry_id=entry_id,
+                    reference_date=reference_date,
+                )
+        finally:
+            conn.close()
         if include_attachment_context and entry_id is not None:
-            attachment_context = _build_attachment_context(user_id, mode, entry_id)
-        recent_context = _merge_analysis_context(recent_context, attachment_context)
+            attachment_context, attachment_context_refs = _build_attachment_context(user_id, mode, entry_id)
+        recent_context = _merge_analysis_context(related_context, attachment_context)
     except Exception:
         current_app.logger.exception('Recent analysis context lookup failed; continuing without context')
-    
+        recent_context = _merge_analysis_context(related_context, attachment_context)
+
     try:
         ai_service = OpenAIService()
+        analysis_options = {
+            'ai_style': ai_style,
+            'ai_tone': analysis_settings.get('ai_tone', DEFAULT_ANALYSIS_SETTINGS['ai_tone']),
+            'ai_verbosity': analysis_settings.get('ai_verbosity', DEFAULT_ANALYSIS_SETTINGS['ai_verbosity']),
+            'ai_focus': analysis_settings.get('ai_focus', DEFAULT_ANALYSIS_SETTINGS['ai_focus']),
+            'ai_model': analysis_settings.get('ai_model', DEFAULT_ANALYSIS_SETTINGS['ai_model']),
+            'has_related_context': bool(related_context),
+            'personal_context': analysis_settings.get('personal_context'),
+        }
         
         if mode == 'daily':
-            result = ai_service.analyse_daily_entry(text, recent_context=recent_context)
+            result = ai_service.analyse_daily_entry(
+                text,
+                recent_context=recent_context,
+                analysis_options=analysis_options,
+            )
             merged_result = _merge_daily_analysis_with_nltk(text, result)
             if user_id is not None:
                 _persist_analysis_metadata(
@@ -565,10 +806,19 @@ def analyse_text():
                 'ai_response': merged_result['ai_response'],
                 'tags': merged_result['tags'],
                 'daily_people_names': _normalise_people_names(merged_result.get('people_names', '')),
-                'daily_places': merged_result['places']
+                'daily_places': merged_result['places'],
+                **(
+                    {'attachment_context_refs': attachment_context_refs}
+                    if include_attachment_context
+                    else {}
+                ),
             }), 200
         else:  # dream mode
-            result = ai_service.analyse_dream_entry(text, recent_context=recent_context)
+            result = ai_service.analyse_dream_entry(
+                text,
+                recent_context=recent_context,
+                analysis_options=analysis_options,
+            )
             merged_result = _merge_dream_analysis_with_nltk(text, result)
             if user_id is not None:
                 _persist_analysis_metadata(
@@ -586,7 +836,12 @@ def analyse_text():
                 'image_prompt': merged_result['image_prompt'],
                 'tags': merged_result['tags'],
                 'dream_people_names': _normalise_people_names(merged_result.get('people_names', '')),
-                'dream_places': merged_result['places']
+                'dream_places': merged_result['places'],
+                **(
+                    {'attachment_context_refs': attachment_context_refs}
+                    if include_attachment_context
+                    else {}
+                ),
             }), 200
             
     except AnalysisRateLimitError:

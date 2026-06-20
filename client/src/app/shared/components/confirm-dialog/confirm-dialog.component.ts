@@ -125,6 +125,9 @@ export interface ConfirmDialogData {
         color: var(--colour-text-secondary, #5f6368);
         line-height: 1.5;
         white-space: pre-line;
+        max-height: min(60vh, 32rem);
+        overflow-y: auto;
+        padding-right: 0.25rem;
       }
 
       mat-dialog-actions {

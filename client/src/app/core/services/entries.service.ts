@@ -269,6 +269,29 @@ export class EntriesService {
     );
   }
 
+  deriveDailyAttachmentText(
+    entryId: number,
+    assetId: number,
+  ): Observable<{
+    entry_id: number;
+    entry_type: string;
+    attachment: EntryAsset;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.post<{
+      entry_id: number;
+      entry_type: string;
+      attachment: EntryAsset;
+    }>(
+      `${this.apiUrl}/daily/${entryId}/attachments/${assetId}/derive-text`,
+      {},
+      { headers: this.getHeaders() },
+    );
+  }
+
   // Dream entries
   getDreamEntries(): Observable<DreamEntry[]> {
     if (!this.authService.isAuthenticated()) {
@@ -500,6 +523,29 @@ export class EntriesService {
       attachment: EntryAsset;
     }>(
       `${this.apiUrl}/dreams/${entryId}/attachments/${assetId}/transcribe`,
+      {},
+      { headers: this.getHeaders() },
+    );
+  }
+
+  deriveDreamAttachmentText(
+    entryId: number,
+    assetId: number,
+  ): Observable<{
+    entry_id: number;
+    entry_type: string;
+    attachment: EntryAsset;
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.post<{
+      entry_id: number;
+      entry_type: string;
+      attachment: EntryAsset;
+    }>(
+      `${this.apiUrl}/dreams/${entryId}/attachments/${assetId}/derive-text`,
       {},
       { headers: this.getHeaders() },
     );

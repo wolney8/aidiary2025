@@ -605,6 +605,10 @@ export class ListComponent implements OnInit, OnDestroy {
 
   exitSearch(): void {
     this.searchService.clear();
+    this.router.navigate(["/entries"], {
+      queryParams: this.getListQueryParamsWithoutSearch(),
+      replaceUrl: true,
+    });
   }
 
   ngOnInit(): void {
@@ -1650,19 +1654,20 @@ export class ListComponent implements OnInit, OnDestroy {
 
   private updateListQueryParams(): void {
     const queryParams: Record<string, string | number> = {
-      ...this.getDetailContextParams(),
+      ...this.getListQueryParamsWithoutSearch(),
     };
-
-    const searchQuery = this.route.snapshot.queryParamMap.get("search");
-    if (searchQuery) {
-      queryParams["search"] = searchQuery;
-    }
 
     this.router.navigate([], {
       relativeTo: this.route,
       queryParams,
       replaceUrl: true,
     });
+  }
+
+  private getListQueryParamsWithoutSearch(): Record<string, string | number> {
+    return {
+      ...this.getDetailContextParams(),
+    };
   }
 
   private applyInitialMonthSelection(): void {

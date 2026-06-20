@@ -361,6 +361,37 @@ def test_create_daily_entry(client):
     assert data['entry_number'] == 1
 
 
+def test_create_daily_entry_persists_mood_and_ai_style(client):
+    """POST /api/daily should persist mood and ai_style on initial save."""
+    token = get_auth_token(client)
+
+    create_response = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-01-16',
+            'entry_time': '18:25',
+            'user_message': 'Checking create persistence',
+            'mood': 'thoughtful',
+            'ai_style': 'reflective',
+        }),
+        content_type='application/json',
+    )
+
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    detail_response = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert detail_response.status_code == 200
+    payload = json.loads(detail_response.data)
+    assert payload['mood'] == 'thoughtful'
+    assert payload['ai_style'] == 'reflective'
+
+
 def test_bulk_delete_readiness_requires_guarded_export(client):
     token = get_auth_token(client)
     seed_bulk_delete_entries(client, token)
@@ -696,6 +727,89 @@ def test_analyse_daily_entry_merges_user_and_ai_nltk_tags(
 
 @patch('routes.analyse.derive_daily_nltk_fields')
 @patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_passes_ai_style_and_user_preferences_to_service(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    for statement in (
+        "ALTER TABLE users ADD COLUMN ai_tone TEXT",
+        "ALTER TABLE users ADD COLUMN ai_verbosity TEXT",
+        "ALTER TABLE users ADD COLUMN ai_focus TEXT",
+        "ALTER TABLE users ADD COLUMN ai_model TEXT",
+        "ALTER TABLE users ADD COLUMN allow_ai_history INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN display_name TEXT",
+        "ALTER TABLE users ADD COLUMN pronouns TEXT",
+        "ALTER TABLE users ADD COLUMN gender TEXT",
+        "ALTER TABLE users ADD COLUMN custom_guidance TEXT",
+    ):
+        try:
+            conn.execute(statement)
+        except sqlite3.OperationalError:
+            pass
+    conn.execute(
+        '''
+        UPDATE users
+        SET ai_tone = ?, ai_verbosity = ?, ai_focus = ?, ai_model = ?, allow_ai_history = 1,
+            display_name = ?, pronouns = ?, gender = ?, custom_guidance = ?
+        WHERE username = ?
+        ''',
+        (
+            'analytical',
+            'detailed',
+            'practical-advice',
+            'gpt-4.1',
+            'Alex',
+            'they/them',
+            'non-binary',
+            'Help me focus on evidence',
+            'testuser',
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Preference-aware response',
+        'tags': 'analysis',
+        'people_names': '',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Current analysis text',
+            'ai_style': 'creative',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    assert analysis_options['ai_style'] == 'creative'
+    assert analysis_options['ai_tone'] == 'analytical'
+    assert analysis_options['ai_verbosity'] == 'detailed'
+    assert analysis_options['ai_focus'] == 'practical-advice'
+    assert analysis_options['ai_model'] == 'gpt-4.1'
+    assert 'Display name: Alex' in analysis_options['personal_context']
+    assert 'Pronouns: they/them' in analysis_options['personal_context']
+    assert 'Gender: non-binary' in analysis_options['personal_context']
+    assert 'Custom guidance: Help me focus on evidence' in analysis_options['personal_context']
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
 def test_analyse_daily_entry_passes_recent_context_without_contract_change(
     mock_service_cls,
     mock_daily_nltk,
@@ -706,14 +820,26 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(
 
     first_entry_response = client.post('/api/daily',
         headers={'Authorization': f'Bearer {token}'},
-        data=json.dumps({'entry_date': '2026-05-28', 'user_message': 'Earlier daily entry'}),
+        data=json.dumps({
+            'entry_date': '2026-05-28',
+            'title': 'Earlier Alex entry',
+            'user_message': 'Earlier daily entry about Alex at the library',
+            'daily_people_names': 'Alex',
+            'tags': 'reflection,friendship',
+        }),
         content_type='application/json'
     )
     assert first_entry_response.status_code == 201
 
     second_entry_response = client.post('/api/daily',
         headers={'Authorization': f'Bearer {token}'},
-        data=json.dumps({'entry_date': '2026-05-29', 'user_message': 'Most recent daily entry'}),
+        data=json.dumps({
+            'entry_date': '2026-05-29',
+            'title': 'Most recent Alex entry',
+            'user_message': 'Most recent daily entry about Alex at the library',
+            'daily_people_names': 'Alex',
+            'tags': 'reflection,library',
+        }),
         content_type='application/json'
     )
     assert second_entry_response.status_code == 201
@@ -733,7 +859,7 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(
 
     response = client.post('/api/analyse',
         headers={'Authorization': f'Bearer {token}'},
-        data=json.dumps({'mode': 'daily', 'text': 'Current analysis text'}),
+        data=json.dumps({'mode': 'daily', 'text': 'Current analysis text about Alex at the library'}),
         content_type='application/json'
     )
 
@@ -745,11 +871,75 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(
     assert data['daily_people_names'] == 'Alex'
     assert data['daily_places'] == 'Library'
 
-    assert mock_service.analyse_daily_entry.call_args.args[0] == 'Current analysis text'
+    assert mock_service.analyse_daily_entry.call_args.args[0] == 'Current analysis text about Alex at the library'
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
     assert recent_context is not None
-    assert 'Most recent daily entry' in recent_context
-    assert 'Earlier daily entry' in recent_context
+    assert 'Related entry memory:' in recent_context
+    assert 'On 29 May 2026' in recent_context
+    assert 'On 28 May 2026' in recent_context
+    assert 'Most recent daily entry about Alex at the library' in recent_context
+    assert 'Earlier daily entry about Alex at the library' in recent_context
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_suppresses_history_when_user_setting_disabled(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    for statement in (
+        "ALTER TABLE users ADD COLUMN ai_tone TEXT",
+        "ALTER TABLE users ADD COLUMN ai_verbosity TEXT",
+        "ALTER TABLE users ADD COLUMN ai_focus TEXT",
+        "ALTER TABLE users ADD COLUMN ai_model TEXT",
+        "ALTER TABLE users ADD COLUMN allow_ai_history INTEGER DEFAULT 1",
+    ):
+        try:
+            conn.execute(statement)
+        except sqlite3.OperationalError:
+            pass
+    conn.execute(
+        '''
+        UPDATE users
+        SET allow_ai_history = 0
+        WHERE username = ?
+        ''',
+        ('testuser',),
+    )
+    conn.commit()
+    conn.close()
+
+    client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'entry_date': '2026-05-28', 'user_message': 'Earlier daily entry'}),
+        content_type='application/json'
+    )
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'History-off response',
+        'tags': 'history,off',
+        'people_names': '',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'Current analysis text'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    assert mock_service.analyse_daily_entry.call_args.kwargs['recent_context'] is None
 
 
 @patch('services.openai_svc.OpenAI')
@@ -1040,98 +1230,90 @@ def test_analyse_daily_entry_accepts_valid_reference_date_without_contract_chang
 
 @patch('routes.analyse.OpenAIService')
 def test_analyse_daily_recent_context_prefers_metadata_near_reference_date(mock_service_cls, client):
-    """Metadata-backed recent context should prioritise rows nearest to reference_date."""
+    """Related-entry memory should still use recency as a tie-breaker among similarly relevant entries."""
     token = get_auth_token(client)
 
     mock_service = MagicMock()
     mock_service_cls.return_value = mock_service
 
-    def _daily_payload(label: str) -> dict:
-        return {
-            'ai_response': f'Header {label}',
-            'tags': f'tag-{label}',
-            'people_names': '',
-            'places': '',
-        }
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Date-aware response',
+        'tags': 'dated,analysis',
+        'people_names': 'Alex',
+        'places': 'Library',
+    }
 
-    mock_service.analyse_daily_entry.side_effect = [
-        _daily_payload('old'),
-        _daily_payload('near'),
-        _daily_payload('far_future'),
-        _daily_payload('final'),
-    ]
-
-    seed_payloads = [
-        ('2026-05-01', 'seed old'),
-        ('2026-05-15', 'seed near'),
-        ('2026-05-30', 'seed far future'),
-    ]
-    for reference_date, text in seed_payloads:
-        seed_response = client.post('/api/analyse',
+    for entry_date, title in [('2026-05-01', 'Older Alex entry'), ('2026-05-15', 'Nearer Alex entry')]:
+        seed_response = client.post('/api/daily',
             headers={'Authorization': f'Bearer {token}'},
-            data=json.dumps({'mode': 'daily', 'text': text, 'reference_date': reference_date}),
+            data=json.dumps({
+                'entry_date': entry_date,
+                'title': title,
+                'user_message': f'{title} about Alex at the library',
+                'daily_people_names': 'Alex',
+                'tags': 'reflection,library',
+            }),
             content_type='application/json'
         )
-        assert seed_response.status_code == 200
+        assert seed_response.status_code == 201
 
     final_response = client.post('/api/analyse',
         headers={'Authorization': f'Bearer {token}'},
-        data=json.dumps({'mode': 'daily', 'text': 'target text', 'reference_date': '2026-05-16'}),
+        data=json.dumps({'mode': 'daily', 'text': 'target text about Alex at the library', 'reference_date': '2026-05-16'}),
         content_type='application/json'
     )
 
     assert final_response.status_code == 200
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
     assert recent_context is not None
-    assert 'ref_date=2026-05-15' in recent_context
-    assert recent_context.find('ref_date=2026-05-15') < recent_context.find('ref_date=2026-05-30')
+    assert 'On 15 May 2026' in recent_context
+    assert 'On 1 May 2026' in recent_context
+    assert recent_context.find('On 15 May 2026') < recent_context.find('On 1 May 2026')
 
 
 @patch('routes.analyse.OpenAIService')
 def test_analyse_daily_recent_context_deduplicates_duplicate_metadata_headers(mock_service_cls, client):
-    """Duplicate metadata summary headers should not dominate recent context."""
+    """Unrelated recent entries should not dominate related-entry memory."""
     token = get_auth_token(client)
 
     mock_service = MagicMock()
     mock_service_cls.return_value = mock_service
-    mock_service.analyse_daily_entry.side_effect = [
-        {
-            'ai_response': 'Repeated metadata header',
-            'tags': 'repeat,stable',
-            'people_names': 'Alex',
-            'places': 'Library',
-        },
-        {
-            'ai_response': 'Repeated metadata header',
-            'tags': 'repeat,stable',
-            'people_names': 'Alex',
-            'places': 'Library',
-        },
-        {
-            'ai_response': 'Distinct metadata header',
-            'tags': 'distinct',
-            'people_names': '',
-            'places': '',
-        },
-        {
-            'ai_response': 'Final response',
-            'tags': 'final',
-            'people_names': '',
-            'places': '',
-        },
-    ]
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Final response',
+        'tags': 'final',
+        'people_names': '',
+        'places': '',
+    }
 
-    for reference_date in ['2026-05-10', '2026-05-11', '2026-05-12']:
-        seed_response = client.post('/api/analyse',
-            headers={'Authorization': f'Bearer {token}'},
-            data=json.dumps({'mode': 'daily', 'text': 'seed text', 'reference_date': reference_date}),
-            content_type='application/json'
-        )
-        assert seed_response.status_code == 200
+    related_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-10',
+            'title': 'Alex library reflection',
+            'user_message': 'A related entry about Alex and the library.',
+            'daily_people_names': 'Alex',
+            'tags': 'reflection,library',
+        }),
+        content_type='application/json'
+    )
+    assert related_response.status_code == 201
+
+    unrelated_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-12',
+            'title': 'Gym day',
+            'user_message': 'An unrelated recent entry about the gym.',
+            'daily_people_names': 'Tom',
+            'tags': 'fitness,routine',
+        }),
+        content_type='application/json'
+    )
+    assert unrelated_response.status_code == 201
 
     final_response = client.post('/api/analyse',
         headers={'Authorization': f'Bearer {token}'},
-        data=json.dumps({'mode': 'daily', 'text': 'current text', 'reference_date': '2026-05-13'}),
+        data=json.dumps({'mode': 'daily', 'text': 'current text about Alex at the library', 'reference_date': '2026-05-13'}),
         content_type='application/json'
     )
 
@@ -1141,8 +1323,90 @@ def test_analyse_daily_recent_context_deduplicates_duplicate_metadata_headers(mo
 
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
     assert recent_context is not None
-    assert recent_context.count('Repeated metadata header') == 1
-    assert 'Distinct metadata header' in recent_context
+    assert 'Alex library reflection' in recent_context
+    assert 'Gym day' not in recent_context
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_related_history_prefers_shared_people_and_theme_over_recency(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    older_related_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-06-05',
+            'title': 'Katie uncertainty',
+            'user_message': 'I felt upset after hearing from Katie again.',
+            'tags': 'relationships,uncertainty',
+            'daily_people_names': 'Katie',
+        }),
+        content_type='application/json'
+    )
+    assert older_related_response.status_code == 201
+
+    recent_unrelated_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-06-11',
+            'title': 'Gym routine',
+            'user_message': 'I went to the gym and felt productive.',
+            'tags': 'fitness,routine',
+            'daily_people_names': 'Tom',
+        }),
+        content_type='application/json'
+    )
+    assert recent_unrelated_response.status_code == 201
+
+    current_entry_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-06-12',
+            'title': 'Thinking about Katie again',
+            'user_message': 'I keep thinking about Katie and whether I should reach out.',
+            'tags': 'relationships,reflection',
+            'daily_people_names': 'Katie',
+        }),
+        content_type='application/json'
+    )
+    assert current_entry_response.status_code == 201
+    current_entry_id = json.loads(current_entry_response.data)['id']
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Related-memory response',
+        'tags': 'memory,analysis',
+        'people_names': 'Katie',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'I keep thinking about Katie and whether I should reach out.',
+            'entry_id': current_entry_id,
+            'reference_date': '2026-06-12',
+            'ai_style': 'reflective',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert recent_context is not None
+    assert 'Related entry memory:' in recent_context
+    assert 'On 5 June 2026' in recent_context
+    assert 'shared theme: katie' in recent_context
 
 
 @patch('routes.analyse.derive_daily_nltk_fields')
@@ -1212,10 +1476,12 @@ def test_analyse_daily_entry_can_include_attachment_context(
     )
 
     assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert payload['attachment_context_refs'] == ['notes.pdf (PDF text extracted)']
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
     assert recent_context is not None
     assert 'Attachment context:' in recent_context
-    assert 'notes.pdf' in recent_context
+    assert 'Your PDF attachment "notes.pdf"' in recent_context
     assert 'PDF summary about a difficult meeting' in recent_context
 
 
@@ -1531,6 +1797,38 @@ def test_create_dream_entry_rejects_future_date(client):
     assert response.status_code == 400
     data = json.loads(response.data)
     assert data['error'] == 'Future entry dates are not allowed'
+
+
+def test_create_dream_entry_persists_mood_and_ai_style(client):
+    """POST /api/dreams should persist mood and ai_style on initial save."""
+    token = get_auth_token(client)
+
+    create_response = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-09',
+            'entry_time': '07:45',
+            'title': 'Persist mood dream',
+            'plot': 'A dream for persistence checks',
+            'mood': 'peaceful',
+            'ai_style': 'creative',
+        }),
+        content_type='application/json',
+    )
+
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    detail_response = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert detail_response.status_code == 200
+    payload = json.loads(detail_response.data)
+    assert payload['mood'] == 'peaceful'
+    assert payload['ai_style'] == 'creative'
 
 def test_update_dream_entry_rejects_future_entry_date(client):
     """PUT /api/dreams/:id should reject future dates."""
@@ -2081,8 +2379,16 @@ def test_delete_daily_image_clears_only_image(client):
     assert row[4] == 50.0
 
 
-def test_upload_daily_attachment_is_serialised_on_entry_detail(client):
+@patch('routes.entries.extract_pdf_attachment_content')
+def test_upload_daily_attachment_is_serialised_on_entry_detail(
+    mock_extract_pdf_attachment_content,
+    client,
+):
     token = get_auth_token(client)
+    mock_extract_pdf_attachment_content.return_value = (
+        'Meeting notes about feeling uncertain after the conversation.',
+        'pdf-text-extraction',
+    )
 
     create_resp = client.post(
         '/api/daily',
@@ -2108,6 +2414,11 @@ def test_upload_daily_attachment_is_serialised_on_entry_detail(client):
     assert attachment['original_filename'] == 'notes.pdf'
     assert attachment['mime_type'] == 'application/pdf'
     assert attachment['is_pdf'] is True
+    assert attachment['derived_text'] == (
+        'Meeting notes about feeling uncertain after the conversation.'
+    )
+    assert attachment['derived_text_source'] == 'pdf-text-extraction'
+    assert attachment['has_derived_text'] is True
     assert attachment['url'].startswith('http://localhost/media/')
 
     detail_response = client.get(
@@ -2118,6 +2429,191 @@ def test_upload_daily_attachment_is_serialised_on_entry_detail(client):
     detail_data = json.loads(detail_response.data)
     assert len(detail_data['attachments']) == 1
     assert detail_data['attachments'][0]['original_filename'] == 'notes.pdf'
+    assert detail_data['attachments'][0]['derived_text_source'] == 'pdf-text-extraction'
+
+
+@patch('routes.entries.OpenAIService')
+@patch('routes.entries.extract_pdf_attachment_content')
+def test_upload_daily_pdf_attachment_cleans_ocr_text_before_persisting(
+    mock_extract_pdf_attachment_content,
+    mock_openai_service_cls,
+    client,
+):
+    token = get_auth_token(client)
+    mock_extract_pdf_attachment_content.return_value = (
+        "‘Strong. commived, restive? (tos) fun ooking bear saricu",
+        'pdf-ocr',
+    )
+    mock_service = MagicMock()
+    mock_service.clean_ocr_extracted_text.return_value = (
+        'Strong, committed, creative. Fun-looking and serious.'
+    )
+    mock_openai_service_cls.return_value = mock_service
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-21',
+            'title': 'OCR attachment daily',
+            'user_message': 'Daily content with OCR attachment',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    upload_response = client.post(
+        f'/api/daily/{entry_id}/attachments',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'survey.pdf', 'application/pdf')},
+        content_type='multipart/form-data'
+    )
+
+    assert upload_response.status_code == 201
+    attachment = json.loads(upload_response.data)['attachment']
+    assert attachment['derived_text'] == 'Strong, committed, creative. Fun-looking and serious.'
+    assert attachment['derived_text_source'] == 'pdf-ocr'
+    mock_service.clean_ocr_extracted_text.assert_called_once()
+
+
+@patch('routes.entries.OpenAIService')
+@patch('routes.entries.extract_pdf_attachment_content')
+def test_derive_daily_pdf_attachment_text_refreshes_saved_text(
+    mock_extract_pdf_attachment_content,
+    mock_openai_service_cls,
+    client,
+):
+    token = get_auth_token(client)
+    mock_extract_pdf_attachment_content.return_value = (
+        "‘Strong. commived, restive? (tos) fun ooking bear saricu",
+        'pdf-ocr',
+    )
+    mock_service = MagicMock()
+    mock_service.clean_ocr_extracted_text.return_value = (
+        'Strong, committed, creative. Fun-looking and serious.'
+    )
+    mock_openai_service_cls.return_value = mock_service
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-21',
+            'title': 'Refresh OCR attachment daily',
+            'user_message': 'Daily content with OCR attachment',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    with patch('routes.entries.extract_pdf_attachment_content', return_value=(None, None)):
+        upload_response = client.post(
+            f'/api/daily/{entry_id}/attachments',
+            headers={'Authorization': f'Bearer {token}'},
+            data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'survey.pdf', 'application/pdf')},
+            content_type='multipart/form-data'
+        )
+    assert upload_response.status_code == 201
+    attachment_id = json.loads(upload_response.data)['attachment']['id']
+
+    refresh_response = client.post(
+        f'/api/daily/{entry_id}/attachments/{attachment_id}/derive-text',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert refresh_response.status_code == 200
+    attachment = json.loads(refresh_response.data)['attachment']
+    assert attachment['derived_text'] == 'Strong, committed, creative. Fun-looking and serious.'
+    assert attachment['derived_text_source'] == 'pdf-ocr'
+
+
+@patch('routes.analyse.extract_pdf_attachment_content')
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_refreshes_low_quality_saved_pdf_ocr_text(
+    mock_service_cls,
+    mock_daily_nltk,
+    mock_extract_pdf_attachment_content,
+    client,
+):
+    token = get_auth_token(client)
+    mock_extract_pdf_attachment_content.return_value = (
+        'Strong committed creative and confident with a serious presence.',
+        'pdf-ocr',
+    )
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-29',
+            'title': 'Low-quality OCR entry',
+            'user_message': 'Daily entry with a noisy OCR attachment.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    with patch('routes.entries.extract_pdf_attachment_content', return_value=(
+        'Strong. commived, restive? (tos) fun ooking bear saricu',
+        'pdf-ocr',
+    )), patch('routes.entries.OpenAIService') as mock_upload_openai_cls:
+        mock_upload_service = MagicMock()
+        mock_upload_service.clean_ocr_extracted_text.return_value = (
+            'Strong. commived, restive? (tos) fun ooking bear saricu'
+        )
+        mock_upload_openai_cls.return_value = mock_upload_service
+        upload_response = client.post(
+            f'/api/daily/{entry_id}/attachments',
+            headers={'Authorization': f'Bearer {token}'},
+            data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'older-notes.pdf', 'application/pdf')},
+            content_type='multipart/form-data'
+        )
+    assert upload_response.status_code == 201
+    attachment_id = json.loads(upload_response.data)['attachment']['id']
+
+    mock_service = MagicMock()
+    mock_service.clean_ocr_extracted_text.return_value = (
+        'Strong committed creative and confident with a serious presence.'
+    )
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Attachment-aware response',
+        'tags': 'attachment,analysis',
+        'people_names': '',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Current analysis text',
+            'entry_id': entry_id,
+            'include_attachment_context': True,
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert 'Strong committed creative and confident with a serious presence.' in recent_context
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT derived_text, derived_text_source FROM entry_assets WHERE id = ?',
+        (attachment_id,),
+    ).fetchone()
+    conn.close()
+    assert row == (
+        'Strong committed creative and confident with a serious presence.',
+        'pdf-ocr',
+    )
 
 
 def test_delete_dream_attachment_removes_stored_file(client):
@@ -2344,6 +2840,91 @@ def test_transcribe_attachment_rejects_non_audio_file(client):
     assert response.status_code == 400
     payload = json.loads(response.data)
     assert payload['error'] == 'Only audio attachments can be transcribed.'
+
+
+@patch('routes.analyse.extract_pdf_attachment_content')
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_lazily_extracts_pdf_text_for_older_attachment(
+    mock_service_cls,
+    mock_daily_nltk,
+    mock_extract_pdf_attachment_content,
+    client,
+):
+    token = get_auth_token(client)
+    mock_extract_pdf_attachment_content.return_value = (
+        'Recovered PDF text about an old difficult meeting and next steps.',
+        'pdf-ocr',
+    )
+
+    create_resp = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-05-29',
+            'title': 'Older PDF entry',
+            'user_message': 'Daily entry with an older PDF attachment.',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    with patch('routes.entries.extract_pdf_attachment_content', return_value=(None, None)):
+        upload_response = client.post(
+            f'/api/daily/{entry_id}/attachments',
+            headers={'Authorization': f'Bearer {token}'},
+            data={'attachment': (BytesIO(b'%PDF-1.4 sample pdf bytes'), 'older-notes.pdf', 'application/pdf')},
+            content_type='multipart/form-data'
+        )
+    assert upload_response.status_code == 201
+    attachment_id = json.loads(upload_response.data)['attachment']['id']
+
+    mock_service = MagicMock()
+    mock_service.clean_ocr_extracted_text.return_value = (
+        'Recovered PDF text about an old difficult meeting and next steps.'
+    )
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Attachment-aware response',
+        'tags': 'attachment,analysis',
+        'people_names': '',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Current analysis text',
+            'entry_id': entry_id,
+            'include_attachment_context': True,
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert payload['attachment_context_refs'] == ['older-notes.pdf (PDF OCR text)']
+    recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    assert recent_context is not None
+    assert 'Your PDF attachment "older-notes.pdf"' in recent_context
+    assert 'Recovered PDF text about an old difficult meeting and next steps.' in recent_context
+
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    row = conn.execute(
+        'SELECT derived_text, derived_text_source FROM entry_assets WHERE id = ?',
+        (attachment_id,),
+    ).fetchone()
+    conn.close()
+    assert row == (
+        'Recovered PDF text about an old difficult meeting and next steps.',
+        'pdf-ocr',
+    )
 
 
 def test_update_daily_image_position_persists(client):
