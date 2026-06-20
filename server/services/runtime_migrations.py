@@ -19,6 +19,7 @@ _TARGET_COLUMNS: dict[str, dict[str, str]] = {
         'recycled_image_prompt': 'TEXT',
         'image_position_x': 'REAL DEFAULT 50',
         'image_position_y': 'REAL DEFAULT 50',
+        'analysis_attachment_refs': 'TEXT',
     },
     'dreamdiary_entries': {
         'entry_time': 'TEXT',
@@ -33,16 +34,20 @@ _TARGET_COLUMNS: dict[str, dict[str, str]] = {
         'recycled_image_prompt': 'TEXT',
         'image_position_x': 'REAL DEFAULT 50',
         'image_position_y': 'REAL DEFAULT 50',
+        'analysis_attachment_refs': 'TEXT',
     },
 }
 
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'display_name': 'TEXT',
     'pronouns': 'TEXT',
+    'gender': 'TEXT',
+    'custom_guidance': 'TEXT',
     'timezone': "TEXT DEFAULT 'UTC'",
     'ai_tone': "TEXT DEFAULT 'friendly'",
     'ai_verbosity': "TEXT DEFAULT 'balanced'",
     'ai_focus': "TEXT DEFAULT 'reflective'",
+    'ai_model': "TEXT DEFAULT 'gpt-4.1-mini'",
     'allow_ai_history': 'INTEGER DEFAULT 1',
     'allow_ai_attachment_context': 'INTEGER DEFAULT 1',
 }

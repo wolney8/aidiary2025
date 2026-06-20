@@ -73,6 +73,14 @@ describe("ProfileComponent", () => {
     expect(backButton?.textContent).toContain("Back");
   });
 
+  it("shows that AI-facing identity and context moved to personalisation", () => {
+    const host = fixture.nativeElement as HTMLElement;
+    const note = host.querySelector(".profile-note");
+
+    expect(note?.textContent).toContain("Personalisation moved");
+    expect(note?.textContent).toContain("pronouns");
+  });
+
   it("uses browser history when available", () => {
     spyOn<any>(component, "canGoBack").and.returnValue(true);
     const backSpy = spyOn(location, "back");

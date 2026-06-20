@@ -39,6 +39,8 @@ describe("CreateComponent save reliability", () => {
         "updateDreamEntry",
         "getDailyEntry",
         "getDreamEntry",
+        "uploadDailyAttachment",
+        "uploadDreamAttachment",
       ],
     );
 
@@ -245,6 +247,68 @@ describe("CreateComponent save reliability", () => {
     });
   });
 
+  it("reveals attachments after create flow saves pending files", () => {
+    component.selectedType = "daily";
+    component.entryDate = new Date("2026-05-30T10:00:00.000Z");
+    component.content = "Created daily entry with attachments";
+    component.leaveItToAI = true;
+    component.isEditing = false;
+    (component as any).pendingAttachments = [
+      {
+        file: new File(["attachment"], "notes.pdf", {
+          type: "application/pdf",
+        }),
+        previewUrl: null,
+        kind: "pdf",
+      },
+    ];
+
+    const createdDailyEntry: DailyEntry = {
+      id: 56,
+      entry_date: "2026-05-30",
+    };
+    const dailyAnalysis: DailyAnalysisResponse = {
+      ai_response: "analysis",
+      tags: "daily,reflection",
+      daily_people_names: "",
+      daily_places: "",
+    };
+
+    entriesServiceMock.createDailyEntry.and.returnValue(of(createdDailyEntry));
+    entriesServiceMock.uploadDailyAttachment.and.returnValue(
+      of({
+        entry_id: 56,
+        entry_type: "daily",
+        attachment: {
+          id: 1,
+          original_filename: "notes.pdf",
+          mime_type: "application/pdf",
+          file_size_bytes: 10,
+          sort_order: 0,
+          created_at: "",
+          derived_text: "",
+          derived_text_source: "",
+          derived_text_updated_at: "",
+          has_derived_text: false,
+          url: "http://localhost/media/notes.pdf",
+          is_image: false,
+          is_audio: false,
+          is_pdf: true,
+          asset_role: "attachment",
+        },
+      }),
+    );
+    analysisServiceMock.analyseText.and.returnValue(of(dailyAnalysis));
+    entriesServiceMock.updateDailyEntry.and.returnValue(of(createdDailyEntry));
+
+    component.saveAndAnalyse();
+
+    expect(entriesServiceMock.uploadDailyAttachment).toHaveBeenCalledTimes(1);
+    expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 56], {
+      queryParams: { showAttachments: "1" },
+    });
+  });
+
   it("uses app dialog confirmation before leaving with unsaved changes", async () => {
     component.entryDate = new Date("2026-05-30T10:00:00.000Z");
     component.content = "Unsaved content";
@@ -344,6 +408,54 @@ describe("CreateComponent save reliability", () => {
     component.entryDate = new Date(2026, 4, 1);
 
     expect(component.getReadableEntryDateLabel()).toBe("Friday 1st May 2026");
+  });
+
+  it("locks the form controls while saving", () => {
+    component.isSaving = true;
+    fixture.detectChanges();
+
+    const formShell = fixture.nativeElement.querySelector(
+      ".entry-form-shell",
+    ) as HTMLFieldSetElement | null;
+
+    expect(formShell?.disabled).toBeTrue();
+  });
+
+  it("uses tab to commit chip input text without moving on when text is present", () => {
+    const preventDefault = jasmine.createSpy("preventDefault");
+    const input = document.createElement("input");
+    input.value = "Katie";
+
+    component.handleChipInputTab(
+      {
+        shiftKey: false,
+        target: input,
+        preventDefault,
+      } as unknown as KeyboardEvent,
+      component.peopleNames,
+    );
+
+    expect(component.peopleNames).toEqual(["Katie"]);
+    expect(input.value).toBe("");
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it("allows normal tab navigation when a chip input is empty", () => {
+    const preventDefault = jasmine.createSpy("preventDefault");
+    const input = document.createElement("input");
+    input.value = "   ";
+
+    component.handleChipInputTab(
+      {
+        shiftKey: false,
+        target: input,
+        preventDefault,
+      } as unknown as KeyboardEvent,
+      component.tags,
+    );
+
+    expect(component.tags).toEqual([]);
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   it("uses the correct ordinal suffixes for teen dates", () => {

@@ -47,6 +47,14 @@ import { User } from "../core/models/user.model";
 
         <mat-card-content>
           <form (ngSubmit)="onSubmit()">
+            <div class="profile-note" role="note">
+              <h3>Personalisation moved</h3>
+              <p>
+                AI-facing identity, pronouns, gender, and custom guidance now
+                live in Personalisation.
+              </p>
+            </div>
+
             <div class="field-grid">
               <mat-form-field appearance="outline">
                 <mat-label>First Name</mat-label>
@@ -74,28 +82,6 @@ import { User } from "../core/models/user.model";
                   [(ngModel)]="profile.age"
                   name="age"
                 />
-              </mat-form-field>
-
-              <mat-form-field appearance="outline">
-                <mat-label>Sex</mat-label>
-                <mat-select [(ngModel)]="profile.sex" name="sex">
-                  <mat-option value="female">Female</mat-option>
-                  <mat-option value="male">Male</mat-option>
-                  <mat-option value="non-binary">Non-binary</mat-option>
-                  <mat-option value="prefer-not-to-say"
-                    >Prefer not to say</mat-option
-                  >
-                </mat-select>
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" class="goals-field">
-                <mat-label>Goals</mat-label>
-                <textarea
-                  matInput
-                  rows="3"
-                  [(ngModel)]="profile.goals"
-                  name="goals"
-                ></textarea>
               </mat-form-field>
             </div>
 
@@ -152,8 +138,21 @@ import { User } from "../core/models/user.model";
         grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       }
 
-      .goals-field {
-        grid-column: 1 / -1;
+      .profile-note {
+        margin-bottom: var(--spacing-md);
+        padding: 0.95rem 1rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .profile-note h3,
+      .profile-note p {
+        margin: 0;
+      }
+
+      .profile-note h3 {
+        margin-bottom: 0.35rem;
       }
 
       .actions {

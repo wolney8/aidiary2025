@@ -13,6 +13,10 @@ from services.import_service import (
     get_latest_bulk_delete_guard,
     mark_export_guard_used,
 )
+from services.attachment_text import (
+    extract_pdf_attachment_content,
+    looks_like_low_quality_ocr_text,
+)
 from services.openai_svc import (
     DAILY_IMAGE_STYLE_PREFIX,
     DREAM_IMAGE_STYLE_PREFIX,
@@ -493,11 +497,44 @@ def _upload_entry_attachment(
         conn.close()
         return {'error': str(exc)}, 400
 
+    derived_text = None
+    derived_text_source = None
+    derived_text_updated_at = None
+    if content_type == 'application/pdf':
+        try:
+            extracted_text, extracted_text_source = extract_pdf_attachment_content(file_bytes)
+            if extracted_text:
+                if extracted_text_source == 'pdf-ocr':
+                    try:
+                        extracted_text = OpenAIService().clean_ocr_extracted_text(extracted_text)
+                    except AnalysisRateLimitError:
+                        current_app.logger.warning(
+                            'PDF OCR cleanup rate-limited for uploaded %s attachment "%s"; using raw OCR text.',
+                            entry_type,
+                            uploaded_file.filename,
+                        )
+                    except Exception:
+                        current_app.logger.exception(
+                            'PDF OCR cleanup failed for uploaded %s attachment "%s"; using raw OCR text.',
+                            entry_type,
+                            uploaded_file.filename,
+                        )
+                derived_text = extracted_text
+                derived_text_source = extracted_text_source or 'pdf-text-extraction'
+                derived_text_updated_at = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        except Exception:
+            current_app.logger.exception(
+                'PDF text extraction failed for uploaded %s attachment "%s"',
+                entry_type,
+                uploaded_file.filename,
+            )
+
     cursor.execute(
         '''
         INSERT INTO entry_assets
-        (user_id, entry_type, entry_id, asset_role, storage_key, original_filename, mime_type, file_size_bytes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, entry_type, entry_id, asset_role, storage_key, original_filename, mime_type, file_size_bytes,
+         derived_text, derived_text_source, derived_text_updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         (
             user_id,
@@ -508,6 +545,9 @@ def _upload_entry_attachment(
             uploaded_file.filename,
             content_type,
             len(file_bytes),
+            derived_text,
+            derived_text_source,
+            derived_text_updated_at,
         ),
     )
     asset_id = int(cursor.lastrowid)
@@ -681,6 +721,116 @@ def _transcribe_entry_attachment(
         WHERE id = ? AND user_id = ?
         ''',
         (transcript_text, 'audio-transcription', updated_at, asset_id, user_id),
+    )
+    conn.commit()
+    attachments = _serialise_entry_assets(
+        conn,
+        user_id=user_id,
+        entry_type=entry_type,
+        entry_id=entry_id,
+    )
+    conn.close()
+
+    updated_attachment = next((item for item in attachments if item['id'] == asset_id), None)
+    return {
+        'entry_id': entry_id,
+        'entry_type': entry_type,
+        'attachment': updated_attachment,
+    }, 200
+
+
+def _derive_pdf_attachment_text(
+    *,
+    entry_type: str,
+    table_name: str,
+    entry_id: int,
+    asset_id: int,
+    user_id: int,
+    force_refresh: bool = True,
+) -> tuple[dict, int]:
+    conn = get_db()
+    cursor = conn.cursor()
+    entry = cursor.execute(
+        f'SELECT id FROM {table_name} WHERE id = ? AND user_id = ?',
+        (entry_id, user_id),
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return {'error': 'Entry not found'}, 404
+
+    asset = cursor.execute(
+        '''
+        SELECT id, storage_key, original_filename, mime_type, derived_text, derived_text_source
+        FROM entry_assets
+        WHERE id = ? AND user_id = ? AND entry_type = ? AND entry_id = ?
+        ''',
+        (asset_id, user_id, entry_type, entry_id),
+    ).fetchone()
+    if not asset:
+        conn.close()
+        return {'error': 'Attachment not found'}, 404
+
+    mime_type = str(asset['mime_type'] or '').strip().lower()
+    if mime_type != 'application/pdf':
+        conn.close()
+        return {'error': 'Only PDF attachments can derive text.'}, 400
+
+    existing_text = str(asset['derived_text'] or '').strip()
+    existing_source = str(asset['derived_text_source'] or '').strip()
+    if existing_text and not force_refresh and not (
+        existing_source == 'pdf-ocr' and looks_like_low_quality_ocr_text(existing_text)
+    ):
+        attachments = _serialise_entry_assets(
+            conn,
+            user_id=user_id,
+            entry_type=entry_type,
+            entry_id=entry_id,
+        )
+        conn.close()
+        updated_attachment = next((item for item in attachments if item['id'] == asset_id), None)
+        return {
+            'entry_id': entry_id,
+            'entry_type': entry_type,
+            'attachment': updated_attachment,
+        }, 200
+
+    file_bytes = read_image_bytes(asset['storage_key'])
+    if file_bytes is None:
+        conn.close()
+        return {'error': 'Attachment file is missing.'}, 404
+
+    try:
+        extracted_text, extracted_text_source = extract_pdf_attachment_content(file_bytes)
+        if not extracted_text:
+            conn.close()
+            return {'error': 'No extractable PDF text was found.'}, 422
+        if extracted_text_source == 'pdf-ocr':
+            extracted_text = OpenAIService().clean_ocr_extracted_text(extracted_text)
+    except AnalysisRateLimitError:
+        conn.close()
+        return {'error': 'PDF text cleanup is temporarily rate-limited. Please try again later.'}, 429
+    except ValueError as exc:
+        conn.close()
+        return {'error': str(exc)}, 400
+    except Exception:
+        conn.close()
+        current_app.logger.exception('PDF text extraction failed for %s attachment %s', entry_type, asset_id)
+        return {'error': 'PDF text extraction failed.'}, 502
+
+    updated_at = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    cursor.execute(
+        '''
+        UPDATE entry_assets
+        SET derived_text = ?, derived_text_source = ?, derived_text_updated_at = ?
+        WHERE id = ? AND user_id = ?
+        ''',
+        (
+            extracted_text,
+            extracted_text_source or 'pdf-text-extraction',
+            updated_at,
+            asset_id,
+            user_id,
+        ),
     )
     conn.commit()
     attachments = _serialise_entry_assets(
@@ -914,8 +1064,8 @@ def create_daily_entry():
     
     cursor.execute('''
         INSERT INTO dailydiary_entries 
-        (user_id, entry_date, entry_time, entry_number, title, user_message, tags, daily_people_names, daily_places)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, entry_date, entry_time, entry_number, title, user_message, tags, mood, ai_style, daily_people_names, daily_places)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id,
         entry_date,
@@ -924,6 +1074,8 @@ def create_daily_entry():
         title,
         user_message,
         data.get('tags', ''),
+        data.get('mood', ''),
+        data.get('ai_style', ''),
         data.get('daily_people_names', ''),
         data.get('daily_places', ''),
     ))
@@ -964,7 +1116,7 @@ def update_daily_entry(entry_id):
     allowed_fields = [
         'title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places',
         'tags', 'mood', 'ai_style', 'image_prompt', 'recycled_image_prompt',
-        'image_url', 'image_position_x', 'image_position_y'
+        'image_url', 'image_position_x', 'image_position_y', 'analysis_attachment_refs'
     ]
     updates = []
     values = []
@@ -1312,6 +1464,21 @@ def transcribe_daily_attachment(entry_id, asset_id):
     )
     return jsonify(payload), status_code
 
+
+@entries_bp.route('/daily/<int:entry_id>/attachments/<int:asset_id>/derive-text', methods=['POST'])
+@jwt_required()
+def derive_daily_attachment_text(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _derive_pdf_attachment_text(
+        entry_type='daily',
+        table_name='dailydiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+        force_refresh=True,
+    )
+    return jsonify(payload), status_code
+
 # Dream entries endpoints
 @entries_bp.route('/dreams', methods=['GET'])
 @jwt_required()
@@ -1408,8 +1575,8 @@ def create_dream_entry():
         INSERT INTO dreamdiary_entries 
         (user_id, entry_date, entry_time, entry_number, title, cast, location, 
          period, emotion, plot, symbols_and_imagery, insight, action, other, tags,
-         dream_people_names, dream_places)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         mood, ai_style, dream_people_names, dream_places)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         user_id, entry_date, entry_time, entry_number,
         data.get('title', ''),
@@ -1423,6 +1590,8 @@ def create_dream_entry():
         data.get('action', ''),
         data.get('other', ''),
         data.get('tags', ''),
+        data.get('mood', ''),
+        data.get('ai_style', ''),
         data.get('dream_people_names', ''),
         data.get('dream_places', ''),
     ))
@@ -1464,7 +1633,7 @@ def update_dream_entry(entry_id):
         'symbols_and_imagery', 'insight', 'action', 'other',
         'summary', 'interpretation', 'image_prompt', 'image_url',
         'dream_people_names', 'dream_places', 'tags', 'mood', 'ai_style',
-        'image_position_x', 'image_position_y',
+        'image_position_x', 'image_position_y', 'analysis_attachment_refs',
     ]
     
     updates = []
@@ -1798,6 +1967,21 @@ def transcribe_dream_attachment(entry_id, asset_id):
         entry_id=entry_id,
         asset_id=asset_id,
         user_id=user_id,
+    )
+    return jsonify(payload), status_code
+
+
+@entries_bp.route('/dreams/<int:entry_id>/attachments/<int:asset_id>/derive-text', methods=['POST'])
+@jwt_required()
+def derive_dream_attachment_text(entry_id, asset_id):
+    user_id = int(get_jwt_identity())
+    payload, status_code = _derive_pdf_attachment_text(
+        entry_type='dream',
+        table_name='dreamdiary_entries',
+        entry_id=entry_id,
+        asset_id=asset_id,
+        user_id=user_id,
+        force_refresh=True,
     )
     return jsonify(payload), status_code
 

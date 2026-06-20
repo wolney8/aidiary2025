@@ -65,6 +65,7 @@ export class SearchService {
   });
 
   results$ = this.resultsSubject.asObservable();
+  private requestVersion = 0;
 
   // Search History Management (Session Storage)
   private readonly MAX_HISTORY_SIZE = 6;
@@ -80,6 +81,7 @@ export class SearchService {
       this.clear();
       return new Observable((subscriber) => subscriber.complete());
     }
+    const requestVersion = ++this.requestVersion;
 
     const filtersArray: string[] = [];
     if (filters) {
@@ -118,6 +120,9 @@ export class SearchService {
     return this.http.get<SearchResponse>(this.apiUrl, { params, headers }).pipe(
       timeout(8000), // 8 second timeout (Google UX standard for search)
       tap((response) => {
+        if (requestVersion !== this.requestVersion) {
+          return;
+        }
         console.log("Search API Response:", response);
         // Add to search history on successful search
         this.addToHistory(query.trim());
@@ -134,6 +139,9 @@ export class SearchService {
         );
       }),
       catchError((error) => {
+        if (requestVersion !== this.requestVersion) {
+          throw error;
+        }
         console.error("Search API Error:", error);
         let errorMessage: string;
 
@@ -168,6 +176,7 @@ export class SearchService {
   }
 
   clear(): void {
+    this.requestVersion += 1;
     this.resultsSubject.next({
       query: "",
       filters: [],

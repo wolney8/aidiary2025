@@ -46,23 +46,41 @@ import { User } from "../../core/models/user.model";
           </mat-card-header>
           <mat-card-content class="field-grid">
             <mat-form-field appearance="outline">
-              <mat-label>Display Name</mat-label>
+              <mat-label>Display name</mat-label>
               <input
                 matInput
                 [(ngModel)]="settings.display_name"
                 name="display_name"
-                maxlength="80"
+                maxlength="8"
               />
+              <mat-hint>Up to 8 letters. No numbers.</mat-hint>
             </mat-form-field>
 
             <mat-form-field appearance="outline">
               <mat-label>Pronouns</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.pronouns"
-                name="pronouns"
-                maxlength="40"
-              />
+              <mat-select [(ngModel)]="settings.pronouns" name="pronouns">
+                <mat-option value="he/him">he/him</mat-option>
+                <mat-option value="she/her">she/her</mat-option>
+                <mat-option value="they/them">they/them</mat-option>
+                <mat-option value="he/they">he/they</mat-option>
+                <mat-option value="she/they">she/they</mat-option>
+                <mat-option value="prefer not to say"
+                  >prefer not to say</mat-option
+                >
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Gender</mat-label>
+              <mat-select [(ngModel)]="settings.gender" name="gender">
+                <mat-option value="man">man</mat-option>
+                <mat-option value="woman">woman</mat-option>
+                <mat-option value="non-binary">non-binary</mat-option>
+                <mat-option value="agender">agender</mat-option>
+                <mat-option value="other / prefer not to say"
+                  >other / prefer not to say</mat-option
+                >
+              </mat-select>
             </mat-form-field>
 
             <mat-form-field appearance="outline">
@@ -75,6 +93,19 @@ import { User } from "../../core/models/user.model";
                 maxlength="64"
               />
             </mat-form-field>
+
+            <mat-form-field appearance="outline" class="identity-guidance-field">
+              <mat-label>Goals and custom AI guidance</mat-label>
+              <textarea
+                matInput
+                rows="3"
+                maxlength="100"
+                [(ngModel)]="settings.custom_guidance"
+                name="custom_guidance"
+                placeholder="Short background such as what support helps most."
+              ></textarea>
+              <mat-hint>Up to 100 characters of plain text.</mat-hint>
+            </mat-form-field>
           </mat-card-content>
         </mat-card>
 
@@ -85,7 +116,16 @@ import { User } from "../../core/models/user.model";
               Control tone, depth, and how much context the AI may use.
             </mat-card-subtitle>
           </mat-card-header>
-          <mat-card-content class="field-grid">
+          <mat-card-content class="field-grid ai-behaviour-grid">
+            <div class="ai-behaviour-note checkbox-row-wide">
+              <strong>Cost and depth</strong>
+              <p>
+                Detailed responses and stronger models can produce more
+                comprehensive analysis, but they usually increase token usage
+                and cost.
+              </p>
+            </div>
+
             <mat-form-field appearance="outline">
               <mat-label>AI Tone</mat-label>
               <mat-select [(ngModel)]="settings.ai_tone" name="ai_tone">
@@ -94,6 +134,7 @@ import { User } from "../../core/models/user.model";
                 <mat-option value="analytical">Analytical</mat-option>
                 <mat-option value="formal">Formal</mat-option>
               </mat-select>
+              <mat-hint>Sets the overall voice of the response.</mat-hint>
             </mat-form-field>
 
             <mat-form-field appearance="outline">
@@ -106,6 +147,9 @@ import { User } from "../../core/models/user.model";
                 <mat-option value="balanced">Balanced</mat-option>
                 <mat-option value="detailed">Detailed</mat-option>
               </mat-select>
+              <mat-hint>
+                Controls response depth. Brief response styles remain shorter.
+              </mat-hint>
             </mat-form-field>
 
             <mat-form-field appearance="outline">
@@ -120,27 +164,50 @@ import { User } from "../../core/models/user.model";
                 >
                 <mat-option value="creative-prompts">Creative prompts</mat-option>
               </mat-select>
+              <mat-hint>Biases what the AI pays most attention to.</mat-hint>
             </mat-form-field>
 
-            <div class="checkbox-row">
-              <mat-checkbox
-                [(ngModel)]="settings.allow_ai_history"
-                name="allow_ai_history"
-              >
-                Allow AI to reference past entries
-              </mat-checkbox>
-            </div>
+            <mat-form-field appearance="outline">
+              <mat-label>AI Analysis Model</mat-label>
+              <mat-select [(ngModel)]="settings.ai_model" name="ai_model">
+                <mat-option value="gpt-4o-mini">GPT-4o mini</mat-option>
+                <mat-option value="gpt-4.1-mini">GPT-4.1 mini</mat-option>
+                <mat-option value="gpt-4.1">GPT-4.1</mat-option>
+              </mat-select>
+              <mat-hint>
+                Higher-tier models usually cost more per analysis.
+              </mat-hint>
+            </mat-form-field>
 
-            <div class="checkbox-row checkbox-row-wide">
-              <mat-checkbox
-                [(ngModel)]="settings.allow_ai_attachment_context"
-                name="allow_ai_attachment_context"
-              >
-                Allow AI to use attachment context by default
-              </mat-checkbox>
-              <p class="checkbox-hint">
-                This affects the default toggle on create and edit entry forms.
-              </p>
+            <div class="ai-behaviour-group checkbox-row-wide">
+              <h3 class="ai-behaviour-group-title">Context permissions</h3>
+              <div class="checkbox-stack">
+                <div class="checkbox-row">
+                  <mat-checkbox
+                    [(ngModel)]="settings.allow_ai_history"
+                    name="allow_ai_history"
+                  >
+                    Allow AI to reference past entries
+                  </mat-checkbox>
+                  <p class="checkbox-hint">
+                    Lets analysis call back relevant earlier entries when that
+                    helps.
+                  </p>
+                </div>
+
+                <div class="checkbox-row">
+                  <mat-checkbox
+                    [(ngModel)]="settings.allow_ai_attachment_context"
+                    name="allow_ai_attachment_context"
+                  >
+                    Allow AI to use attachment context by default
+                  </mat-checkbox>
+                  <p class="checkbox-hint">
+                    This affects the default toggle on create and edit entry
+                    forms.
+                  </p>
+                </div>
+              </div>
             </div>
           </mat-card-content>
         </mat-card>
@@ -248,6 +315,44 @@ import { User } from "../../core/models/user.model";
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       }
 
+      .identity-guidance-field {
+        grid-column: 1 / -1;
+      }
+
+      .ai-behaviour-grid {
+        align-items: start;
+      }
+
+      .ai-behaviour-note,
+      .ai-behaviour-group {
+        grid-column: 1 / -1;
+        padding: 0.9rem 1rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .ai-behaviour-note strong,
+      .ai-behaviour-group-title {
+        display: block;
+        margin: 0 0 0.35rem;
+        font-size: 0.98rem;
+      }
+
+      .ai-behaviour-note p,
+      .ai-behaviour-group p {
+        margin: 0;
+      }
+
+      .ai-behaviour-group-title {
+        font-weight: 700;
+      }
+
+      .checkbox-stack {
+        display: grid;
+        gap: 0.8rem;
+      }
+
       .checkbox-row {
         display: flex;
         flex-direction: column;
@@ -269,6 +374,13 @@ import { User } from "../../core/models/user.model";
 
       .checkbox-row mat-checkbox {
         align-items: center;
+      }
+
+      @media (max-width: 720px) {
+        .ai-behaviour-note,
+        .ai-behaviour-group {
+          padding: 0.8rem 0.85rem;
+        }
       }
 
       .actions {
@@ -303,10 +415,15 @@ export class PersonalisationComponent implements OnInit {
       next: (profile) => {
         this.settings = {
           ...profile,
+          display_name: profile.display_name || "",
+          pronouns: profile.pronouns || "prefer not to say",
+          gender: profile.gender || profile.sex || "other / prefer not to say",
+          custom_guidance: profile.custom_guidance || profile.goals || "",
           timezone: profile.timezone || "UTC",
           ai_tone: profile.ai_tone || "friendly",
           ai_verbosity: profile.ai_verbosity || "balanced",
           ai_focus: profile.ai_focus || "reflective",
+          ai_model: profile.ai_model || "gpt-4.1-mini",
           allow_ai_history:
             profile.allow_ai_history === undefined
               ? true
@@ -325,6 +442,13 @@ export class PersonalisationComponent implements OnInit {
 
   saveSettings(): void {
     if (!this.settings) {
+      return;
+    }
+
+    const validationError = this.validateSettings(this.settings);
+    if (validationError) {
+      this.errorMessage = validationError;
+      this.successMessage = "";
       return;
     }
 
@@ -354,5 +478,25 @@ export class PersonalisationComponent implements OnInit {
         this.saving = false;
       },
     });
+  }
+
+  private validateSettings(settings: User): string | null {
+    const displayName = String(settings.display_name || "").trim();
+    if (displayName && displayName.length > 8) {
+      return "Display name must be 8 characters or fewer.";
+    }
+    if (displayName && !/^[A-Za-z][A-Za-z '\-]{0,7}$/.test(displayName)) {
+      return "Display name may only use letters, spaces, apostrophes, and hyphens.";
+    }
+
+    const customGuidance = String(settings.custom_guidance || "").trim();
+    if (
+      customGuidance &&
+      !/^[A-Za-z0-9 ,.?!'"()&/\-:]{1,100}$/.test(customGuidance)
+    ) {
+      return "Goals and custom AI guidance must use plain text and basic punctuation only.";
+    }
+
+    return null;
   }
 }

@@ -37,6 +37,7 @@ export interface DailyEntry {
   recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;
+  analysis_attachment_refs?: string;
   attachments?: EntryAsset[];
 }
 
@@ -64,6 +65,7 @@ export interface DreamEntry {
   recycled_image_prompt?: string;
   image_position_x?: number;
   image_position_y?: number;
+  analysis_attachment_refs?: string;
   attachments?: EntryAsset[];
   dream_people_names?: string; // Comma-separated
   dream_places?: string; // Comma-separated
@@ -88,6 +90,7 @@ export interface DailyAnalysisResponse {
   tags: string;
   daily_people_names: string;
   daily_places: string;
+  attachment_context_refs?: string[];
 }
 
 export interface DreamAnalysisResponse {
@@ -97,6 +100,7 @@ export interface DreamAnalysisResponse {
   tags: string;
   dream_people_names: string;
   dream_places: string;
+  attachment_context_refs?: string[];
 }
 
 // New interfaces for enhanced functionality

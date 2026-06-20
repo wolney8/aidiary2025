@@ -6,6 +6,7 @@ import pytest
 from services.openai_svc import (
     AnalysisRateLimitError,
     DAILY_IMAGE_STYLE_PREFIX,
+    DEFAULT_OPENAI_ANALYSIS_MODEL,
     DEFAULT_OPENAI_MAX_RETRIES,
     DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
@@ -138,6 +139,136 @@ def test_openai_service_uses_valid_output_token_cap_env_value(mock_openai):
 
         assert service.max_output_tokens == 321
         assert mock_client.chat.completions.create.call_args.kwargs['max_tokens'] == 321
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_uses_adaptive_token_budget_for_brief_or_detailed_settings(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry('Daily text', analysis_options={'ai_style': 'brief', 'ai_verbosity': 'concise'})
+    brief_max_tokens = mock_client.chat.completions.create.call_args.kwargs['max_tokens']
+
+    service.analyse_daily_entry('Daily text', analysis_options={'ai_style': 'reflective', 'ai_verbosity': 'detailed'})
+    detailed_max_tokens = mock_client.chat.completions.create.call_args.kwargs['max_tokens']
+
+    assert brief_max_tokens <= int(service.max_output_tokens * 0.5)
+    assert detailed_max_tokens >= int(service.max_output_tokens * 2.2)
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_builds_prompt_from_style_and_personalisation_settings(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry(
+        'Daily text',
+        recent_context='Related entry memory:\n[related 1] On 5 August 2026, shared theme: Katie',
+        analysis_options={
+            'ai_style': 'creative',
+            'ai_tone': 'analytical',
+            'ai_verbosity': 'detailed',
+            'ai_focus': 'practical-advice',
+            'has_related_context': True,
+            'personal_context': 'Display name: Alex\nPronouns: they/them\nCustom guidance: Help me focus on evidence',
+        },
+    )
+
+    system_prompt = mock_client.chat.completions.create.call_args.kwargs['messages'][0]['content']
+    assert 'metaphorical and interpretive language' in system_prompt
+    assert 'pattern-oriented' in system_prompt
+    assert 'Provide fuller, more thorough' in system_prompt
+    assert 'practical next steps' in system_prompt
+    assert 'date plus shared theme' in system_prompt
+    assert '8 to 11 sentences or 2 to 4 short paragraphs' in system_prompt
+    assert '3 short sections or paragraphs' in system_prompt
+    assert 'explicitly connect the current entry to at least one prior entry' in system_prompt
+    assert 'your attachment "filename.ext"' in system_prompt
+    assert 'use it gently to personalise tone or framing' in system_prompt
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_detailed_prompt_requests_fuller_summary_and_interpretation(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"summary":"ok","interpretation":"ok","image_prompt":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_dream_entry(
+        'Dream text',
+        analysis_options={'ai_style': 'reflective', 'ai_verbosity': 'detailed'},
+    )
+
+    system_prompt = mock_client.chat.completions.create.call_args.kwargs['messages'][0]['content']
+    assert '"summary" should usually be 2 to 4 sentences' in system_prompt
+    assert '"interpretation" should usually be 2 to 4 substantial paragraphs or 8 to 12 sentences' in system_prompt
+    assert 'genuinely comprehensive reading with multiple paragraphs' in system_prompt
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_uses_selected_analysis_model(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry('Daily text', analysis_options={'ai_model': 'gpt-4.1'})
+    assert mock_client.chat.completions.create.call_args.kwargs['model'] == 'gpt-4.1'
+
+    service.analyse_daily_entry('Daily text')
+    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_OPENAI_ANALYSIS_MODEL
+
+
+@patch('services.openai_svc.OpenAI')
+def test_clean_ocr_extracted_text_uses_analysis_model_and_returns_cleaned_text(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = 'Strong, committed, creative. Fun-looking and serious.'
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    cleaned = service.clean_ocr_extracted_text("‘Strong. commived, restive? (tos)")
+
+    assert cleaned == 'Strong, committed, creative. Fun-looking and serious.'
+    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_OPENAI_ANALYSIS_MODEL
+    system_prompt = mock_client.chat.completions.create.call_args.kwargs['messages'][0]['content']
+    assert 'Drop fragments that are clearly unreadable OCR garbage' in system_prompt
 
 
 @patch('services.openai_svc.OpenAI')
