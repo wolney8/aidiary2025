@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, convertToParamMap } from "@angular/router";
 import { of, throwError } from "rxjs";
 import { CreateComponent } from "./create.component";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import { AuthService } from "../../core/services/auth.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import {
@@ -18,6 +19,7 @@ describe("CreateComponent save reliability", () => {
   let component: CreateComponent;
   let routerMock: jasmine.SpyObj<Router>;
   let appDialogMock: jasmine.SpyObj<AppDialogService>;
+  let authServiceMock: jasmine.SpyObj<AuthService>;
   let entriesServiceMock: jasmine.SpyObj<EntriesService>;
   let analysisServiceMock: jasmine.SpyObj<AnalysisService>;
 
@@ -29,6 +31,10 @@ describe("CreateComponent save reliability", () => {
     ]);
     appDialogMock.confirm.and.resolveTo(true);
     appDialogMock.alert.and.resolveTo();
+    authServiceMock = jasmine.createSpyObj<AuthService>("AuthService", [
+      "getCurrentUser",
+    ]);
+    authServiceMock.getCurrentUser.and.returnValue(null);
 
     entriesServiceMock = jasmine.createSpyObj<EntriesService>(
       "EntriesService",
@@ -54,6 +60,7 @@ describe("CreateComponent save reliability", () => {
       providers: [
         { provide: Router, useValue: routerMock },
         { provide: AppDialogService, useValue: appDialogMock },
+        { provide: AuthService, useValue: authServiceMock },
         { provide: EntriesService, useValue: entriesServiceMock },
         { provide: AnalysisService, useValue: analysisServiceMock },
         {
@@ -307,6 +314,17 @@ describe("CreateComponent save reliability", () => {
     expect(routerMock.navigate).toHaveBeenCalledWith(["/entries", 56], {
       queryParams: { showAttachments: "1" },
     });
+  });
+
+  it("defaults attachment AI context to off when the user setting is undefined", () => {
+    authServiceMock.getCurrentUser.and.returnValue({
+      id: 1,
+      username: "tester",
+    } as any);
+
+    (component as any).applyAttachmentContextDefault();
+
+    expect(component.allowAiAttachmentContext).toBeFalse();
   });
 
   it("uses app dialog confirmation before leaving with unsaved changes", async () => {
