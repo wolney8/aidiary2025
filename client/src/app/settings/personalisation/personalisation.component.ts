@@ -430,7 +430,7 @@ export class PersonalisationComponent implements OnInit {
               : Boolean(profile.allow_ai_history),
           allow_ai_attachment_context:
             profile.allow_ai_attachment_context === undefined
-              ? true
+              ? false
               : Boolean(profile.allow_ai_attachment_context),
         };
       },

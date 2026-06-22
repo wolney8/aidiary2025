@@ -49,7 +49,7 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'ai_focus': "TEXT DEFAULT 'reflective'",
     'ai_model': "TEXT DEFAULT 'gpt-4.1-mini'",
     'allow_ai_history': 'INTEGER DEFAULT 1',
-    'allow_ai_attachment_context': 'INTEGER DEFAULT 1',
+    'allow_ai_attachment_context': 'INTEGER DEFAULT 0',
 }
 
 _EXPORT_HISTORY_DDL = """

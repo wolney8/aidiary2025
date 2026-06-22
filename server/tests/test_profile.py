@@ -72,7 +72,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["ai_focus"] == "reflective"
     assert data["ai_model"] == "gpt-4.1-mini"
     assert data["allow_ai_history"] == 1
-    assert data["allow_ai_attachment_context"] == 1
+    assert data["allow_ai_attachment_context"] == 0
 
     conn = sqlite3.connect(db_path)
     columns = {

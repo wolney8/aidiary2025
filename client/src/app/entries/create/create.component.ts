@@ -2438,7 +2438,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   private getAttachmentContextDefaultValue(): boolean {
     const currentUser = this.authService.getCurrentUser();
     return currentUser?.allow_ai_attachment_context === undefined
-      ? true
+      ? false
       : Boolean(currentUser.allow_ai_attachment_context);
   }
 
