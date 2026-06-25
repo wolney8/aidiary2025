@@ -107,6 +107,33 @@ _ENTRY_ASSET_COLUMNS: dict[str, str] = {
     'derived_text_updated_at': 'TEXT',
 }
 
+_IMPORTANT_DAYS_DDL = """
+CREATE TABLE IF NOT EXISTS important_days (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    label         TEXT NOT NULL,
+    starts_on     TEXT,
+    month         INTEGER NOT NULL,
+    day           INTEGER NOT NULL,
+    original_year INTEGER,
+    category      TEXT NOT NULL DEFAULT 'other',
+    recurrence    TEXT NOT NULL DEFAULT 'yearly',
+    icon_name     TEXT NOT NULL DEFAULT 'event',
+    accent_color  TEXT NOT NULL DEFAULT 'amber',
+    note          TEXT,
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
+_IMPORTANT_DAY_COLUMNS: dict[str, str] = {
+    'starts_on': 'TEXT',
+    'recurrence': "TEXT NOT NULL DEFAULT 'yearly'",
+    'icon_name': "TEXT NOT NULL DEFAULT 'event'",
+    'accent_color': "TEXT NOT NULL DEFAULT 'amber'",
+}
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -276,5 +303,37 @@ def ensure_entry_assets_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'entry_assets')
+
+    return True
+
+
+def ensure_important_days_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime important-days table exists for user-managed recurring dates."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_IMPORTANT_DAYS_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_important_days_user_lookup
+            ON important_days(user_id, month, day)
+            """
+        )
+        table_columns = {
+            row[1]
+            for row in conn.execute('PRAGMA table_info(important_days)').fetchall()
+        }
+        for column_name, column_definition in _IMPORTANT_DAY_COLUMNS.items():
+            if column_name in table_columns:
+                continue
+            conn.execute(
+                f'ALTER TABLE important_days ADD COLUMN {column_name} {column_definition}'
+            )
+            if log:
+                log('Runtime migration added column %s.%s', 'important_days', column_name)
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'important_days')
 
     return True

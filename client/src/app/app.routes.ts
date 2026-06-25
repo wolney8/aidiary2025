@@ -74,6 +74,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: "important-days",
+        loadComponent: () =>
+          import("./settings/important-days/important-days.component").then(
+            (m) => m.ImportantDaysComponent,
+          ),
+      },
+      {
         path: "import",
         canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
