@@ -10,6 +10,7 @@ from services.runtime_migrations import (
     ensure_entry_mood_style_columns,
     ensure_export_history_table,
     ensure_import_sessions_table,
+    ensure_important_days_table,
     ensure_user_settings_columns,
 )
 from services.media_storage import DEFAULT_MEDIA_URL_PREFIX, ensure_media_root
@@ -102,6 +103,11 @@ def create_app():
         ensure_entry_assets_table(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime entry assets migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_important_days_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime important days migration skipped due to error: %s', migration_exc)
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
@@ -149,6 +155,7 @@ def create_app():
     from routes.entries import entries_bp
     from routes.analyse import analyse_bp
     from routes.import_routes import import_bp
+    from routes.important_days import important_days_bp
     from routes.chat import chat_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
@@ -156,6 +163,7 @@ def create_app():
     app.register_blueprint(entries_bp, url_prefix='/api')
     app.register_blueprint(analyse_bp, url_prefix='/api')
     app.register_blueprint(import_bp, url_prefix='/api')
+    app.register_blueprint(important_days_bp, url_prefix='/api')
     app.register_blueprint(chat_bp, url_prefix='/api')
     
     # Health check endpoint
