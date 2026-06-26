@@ -372,6 +372,40 @@ Additional requirements for this retry:
         return max(280, int(base_tokens * multiplier))
 
     @staticmethod
+    def _resolve_analysis_temperature(analysis_options: dict[str, Any] | None = None) -> float:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        tone = options['ai_tone']
+        verbosity = options['ai_verbosity']
+
+        temperature = 0.6
+
+        if style == 'brief':
+            temperature = 0.35
+        elif style == 'clinical':
+            temperature = 0.4
+        elif style == 'friendly':
+            temperature = 0.58
+        elif style == 'reflective':
+            temperature = 0.68
+        elif style == 'creative':
+            temperature = 0.82
+
+        if tone == 'analytical':
+            temperature = min(temperature, 0.48)
+        elif tone == 'formal':
+            temperature = min(temperature, 0.52)
+        elif tone == 'empathetic':
+            temperature = max(temperature, 0.62)
+
+        if verbosity == 'concise':
+            temperature = min(temperature, 0.5)
+        elif verbosity == 'detailed' and style in {'reflective', 'creative'}:
+            temperature = min(0.88, temperature + 0.04)
+
+        return round(max(0.2, min(0.9, temperature)), 2)
+
+    @staticmethod
     def _build_daily_structure_guidance(options: dict[str, Any]) -> str:
         verbosity = options['ai_verbosity']
         style = options['ai_style']
@@ -739,7 +773,7 @@ Additional requirements for this retry:
                     "content": user_content,
                 },
             ],
-            temperature=0.7,
+            temperature=self._resolve_analysis_temperature(analysis_options),
             max_tokens=self._resolve_analysis_max_tokens(analysis_options),
             timeout=self.request_timeout_seconds,
         )

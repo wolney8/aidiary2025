@@ -166,6 +166,37 @@ def test_analyse_daily_entry_uses_adaptive_token_budget_for_brief_or_detailed_se
 
 
 @patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_uses_adaptive_temperature_for_style_and_tone(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry(
+        'Daily text',
+        analysis_options={'ai_style': 'brief', 'ai_tone': 'formal', 'ai_verbosity': 'concise'},
+    )
+    brief_temperature = mock_client.chat.completions.create.call_args.kwargs['temperature']
+
+    service.analyse_daily_entry(
+        'Daily text',
+        analysis_options={'ai_style': 'creative', 'ai_tone': 'empathetic', 'ai_verbosity': 'detailed'},
+    )
+    creative_temperature = mock_client.chat.completions.create.call_args.kwargs['temperature']
+
+    assert brief_temperature <= 0.5
+    assert creative_temperature >= 0.8
+    assert creative_temperature > brief_temperature
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry_builds_prompt_from_style_and_personalisation_settings(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 

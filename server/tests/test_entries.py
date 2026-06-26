@@ -392,6 +392,43 @@ def test_create_daily_entry_persists_mood_and_ai_style(client):
     assert payload['ai_style'] == 'reflective'
 
 
+@patch('routes.entries.derive_daily_nltk_fields')
+def test_create_daily_entry_merges_nltk_enrichment_on_save(mock_derive_daily, client):
+    token = get_auth_token(client)
+    mock_derive_daily.return_value = {
+        'tags': 'work,focus',
+        'daily_people_names': 'Alex',
+        'daily_places': 'Office',
+    }
+
+    create_response = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-01-17',
+            'title': 'Busy day',
+            'user_message': 'Met Alex at the office',
+            'tags': 'manual',
+            'daily_people_names': 'Sam',
+            'daily_places': 'Cafe',
+        }),
+        content_type='application/json',
+    )
+
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    detail_response = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,work,focus'
+    assert payload['daily_people_names'] == 'Sam,Alex'
+    assert payload['daily_places'] == 'Cafe,Office'
+
+
 def test_bulk_delete_readiness_requires_guarded_export(client):
     token = get_auth_token(client)
     seed_bulk_delete_entries(client, token)
@@ -1653,6 +1690,54 @@ def test_update_daily_entry_updates_date_mood_and_ai_style(client):
     assert updated['entry_number'] == 2
 
 
+@patch('routes.entries.derive_daily_nltk_fields')
+def test_update_daily_entry_rebuilds_metadata_from_effective_state(mock_derive_daily, client):
+    token = get_auth_token(client)
+    mock_derive_daily.side_effect = [
+        {
+            'tags': 'focus',
+            'daily_people_names': 'Alex',
+            'daily_places': 'Office',
+        },
+        {
+            'tags': 'focus,repair',
+            'daily_people_names': 'Alex,Katie',
+            'daily_places': 'Office',
+        },
+    ]
+
+    create_resp = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-07',
+            'title': 'Original title',
+            'user_message': 'Met Alex at the office',
+            'tags': 'manual',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'user_message': 'Met Alex and Katie at the office',
+        }),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    detail_response = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,focus,repair'
+    assert payload['daily_people_names'] == 'Alex,Katie'
+    assert payload['daily_places'] == 'Office'
+
+
 def test_update_dream_entry_updates_date_mood_and_ai_style(client):
     """PUT /api/dreams/:id should accept date, mood and ai_style updates."""
     token = get_auth_token(client)
@@ -1705,6 +1790,54 @@ def test_update_dream_entry_updates_date_mood_and_ai_style(client):
     assert updated['mood'] == 'anxious'
     assert updated['ai_style'] == 'brief'
     assert updated['entry_number'] == 2
+
+
+@patch('routes.entries.derive_dream_nltk_fields')
+def test_update_dream_entry_rebuilds_metadata_from_effective_state(mock_derive_dream, client):
+    token = get_auth_token(client)
+    mock_derive_dream.side_effect = [
+        {
+            'tags': 'water,night',
+            'dream_people_names': 'Jordan',
+            'dream_places': 'Lake',
+        },
+        {
+            'tags': 'water,night,storm',
+            'dream_people_names': 'Jordan,Maya',
+            'dream_places': 'Lake',
+        },
+    ]
+
+    create_resp = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-11',
+            'title': 'Original dream',
+            'plot': 'Jordan by the lake',
+            'tags': 'manual',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'plot': 'Jordan and Maya near the lake in a storm',
+        }),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    detail_response = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,water,night,storm'
+    assert payload['dream_people_names'] == 'Jordan,Maya'
+    assert payload['dream_places'] == 'Lake'
 
 
 def test_update_daily_entry_rejects_invalid_entry_date(client):
@@ -1829,6 +1962,43 @@ def test_create_dream_entry_persists_mood_and_ai_style(client):
     payload = json.loads(detail_response.data)
     assert payload['mood'] == 'peaceful'
     assert payload['ai_style'] == 'creative'
+
+
+@patch('routes.entries.derive_dream_nltk_fields')
+def test_create_dream_entry_merges_nltk_enrichment_on_save(mock_derive_dream, client):
+    token = get_auth_token(client)
+    mock_derive_dream.return_value = {
+        'tags': 'school,flight',
+        'dream_people_names': 'Jordan',
+        'dream_places': 'Old school',
+    }
+
+    create_response = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-10',
+            'title': 'Dream',
+            'plot': 'Back at school with Jordan',
+            'tags': 'manual',
+            'dream_people_names': 'Maya',
+            'dream_places': 'Garden',
+        }),
+        content_type='application/json',
+    )
+
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    detail_response = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,school,flight'
+    assert payload['dream_people_names'] == 'Maya,Jordan'
+    assert payload['dream_places'] == 'Garden,Old school'
 
 def test_update_dream_entry_rejects_future_entry_date(client):
     """PUT /api/dreams/:id should reject future dates."""
