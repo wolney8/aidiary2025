@@ -1,7 +1,6 @@
 import { CommonModule } from "@angular/common";
 import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
-import { RouterModule } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import { MatCheckboxModule } from "@angular/material/checkbox";
@@ -20,7 +19,6 @@ import { User } from "../../core/models/user.model";
   imports: [
     CommonModule,
     FormsModule,
-    RouterModule,
     MatButtonModule,
     MatCardModule,
     MatCheckboxModule,
@@ -31,87 +29,11 @@ import { User } from "../../core/models/user.model";
   template: `
     <section class="settings-section" *ngIf="settings">
       <header class="section-header">
-        <h2>Personalisation</h2>
-        <p>Choose how the app and AI companion address and support you.</p>
-        <p class="supporting-copy">
-          Changes here update the current compatibility profile endpoint. This
-          is the active home for app-level preferences and AI behaviour.
-        </p>
+        <h2>Customisation</h2>
+        <p>Choose how the app responds, analyses, and handles calendar data.</p>
       </header>
 
       <form (ngSubmit)="saveSettings()" class="settings-form">
-        <mat-card class="group-card">
-          <mat-card-header>
-            <mat-card-title>Identity</mat-card-title>
-            <mat-card-subtitle>
-              How the app and AI should refer to you.
-            </mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content class="field-grid">
-            <mat-form-field appearance="outline">
-              <mat-label>Display name</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.display_name"
-                name="display_name"
-                maxlength="8"
-              />
-              <mat-hint>Up to 8 letters. No numbers.</mat-hint>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Pronouns</mat-label>
-              <mat-select [(ngModel)]="settings.pronouns" name="pronouns">
-                <mat-option value="he/him">he/him</mat-option>
-                <mat-option value="she/her">she/her</mat-option>
-                <mat-option value="they/them">they/them</mat-option>
-                <mat-option value="he/they">he/they</mat-option>
-                <mat-option value="she/they">she/they</mat-option>
-                <mat-option value="prefer not to say"
-                  >prefer not to say</mat-option
-                >
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Gender</mat-label>
-              <mat-select [(ngModel)]="settings.gender" name="gender">
-                <mat-option value="man">man</mat-option>
-                <mat-option value="woman">woman</mat-option>
-                <mat-option value="non-binary">non-binary</mat-option>
-                <mat-option value="agender">agender</mat-option>
-                <mat-option value="other / prefer not to say"
-                  >other / prefer not to say</mat-option
-                >
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Timezone</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.timezone"
-                name="timezone"
-                placeholder="Europe/London"
-                maxlength="64"
-              />
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="identity-guidance-field">
-              <mat-label>Goals and custom AI guidance</mat-label>
-              <textarea
-                matInput
-                rows="3"
-                maxlength="100"
-                [(ngModel)]="settings.custom_guidance"
-                name="custom_guidance"
-                placeholder="Short background such as what support helps most."
-              ></textarea>
-              <mat-hint>Up to 100 characters of plain text.</mat-hint>
-            </mat-form-field>
-          </mat-card-content>
-        </mat-card>
-
         <mat-card class="group-card">
           <mat-card-header>
             <mat-card-title>Calendar And Holidays</mat-card-title>
@@ -151,6 +73,17 @@ import { User } from "../../core/models/user.model";
                 </mat-option>
               </mat-select>
               <mat-hint>Pick a country to show its public holidays.</mat-hint>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Timezone</mat-label>
+              <input
+                matInput
+                [(ngModel)]="settings.timezone"
+                name="timezone"
+                placeholder="Europe/London"
+                maxlength="64"
+              />
             </mat-form-field>
           </mat-card-content>
         </mat-card>
@@ -223,6 +156,20 @@ import { User } from "../../core/models/user.model";
               <mat-hint>
                 Higher-tier models usually cost more per analysis.
               </mat-hint>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="guidance-field">
+              <mat-label>Goals and custom AI guidance</mat-label>
+              <textarea
+                matInput
+                rows="3"
+                maxlength="100"
+                [(ngModel)]="settings.custom_guidance"
+                name="custom_guidance"
+                placeholder="Short background such as what support helps most."
+              ></textarea>
+              <mat-hint align="start">Optional short guidance.</mat-hint>
+              <mat-hint align="end">{{ getCustomGuidanceLength() }}/100</mat-hint>
             </mat-form-field>
 
             <div class="ai-behaviour-group checkbox-row-wide">
@@ -317,7 +264,7 @@ import { User } from "../../core/models/user.model";
             type="submit"
             [disabled]="saving || !hasPendingChanges()"
           >
-            {{ saving ? "Saving..." : "Save Personalisation" }}
+            {{ saving ? "Saving..." : "Save Customisation" }}
           </button>
         </div>
 
@@ -342,10 +289,6 @@ import { User } from "../../core/models/user.model";
         color: var(--colour-text-secondary);
       }
 
-      .supporting-copy {
-        margin-top: var(--spacing-xs);
-      }
-
       .settings-form {
         display: grid;
         gap: var(--spacing-md);
@@ -361,7 +304,7 @@ import { User } from "../../core/models/user.model";
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       }
 
-      .identity-guidance-field {
+      .guidance-field {
         grid-column: 1 / -1;
       }
 
@@ -488,9 +431,6 @@ export class PersonalisationComponent implements OnInit {
       next: (profile) => {
         this.settings = {
           ...profile,
-          display_name: profile.display_name || "",
-          pronouns: this.normalisePronouns(profile.pronouns),
-          gender: this.normaliseGender(profile.gender || profile.sex),
           custom_guidance: profile.custom_guidance || profile.goals || "",
           timezone: profile.timezone || "UTC",
           holiday_country_code: profile.holiday_country_code || "",
@@ -543,12 +483,15 @@ export class PersonalisationComponent implements OnInit {
       age,
       sex,
       goals,
+      display_name,
+      pronouns,
+      gender,
       ...settingsPayload
     } = this.settings;
 
     this.profileService.updateProfile(settingsPayload).subscribe({
       next: (response) => {
-        this.successMessage = response.message || "Personalisation saved.";
+        this.successMessage = response.message || "Customisation saved.";
         this.saving = false;
         if (this.settings) {
           this.initialSettingsSnapshot = this.serialiseSettings(this.settings);
@@ -595,9 +538,9 @@ export class PersonalisationComponent implements OnInit {
     }
 
     return this.appDialog.confirm({
-      title: "Discard Personalisation changes?",
+      title: "Discard Customisation changes?",
       message:
-        "You have unsaved Personalisation changes. Leaving now will discard them.",
+        "You have unsaved Customisation changes. Leaving now will discard them.",
       confirmText: "Discard changes",
       cancelText: "Stay here",
       variant: "danger",
@@ -615,9 +558,6 @@ export class PersonalisationComponent implements OnInit {
 
   private serialiseSettings(settings: User): string {
     return JSON.stringify({
-      display_name: String(settings.display_name || "").trim(),
-      pronouns: this.normalisePronouns(settings.pronouns),
-      gender: this.normaliseGender(settings.gender),
       custom_guidance: String(settings.custom_guidance || "").trim(),
       timezone: String(settings.timezone || "").trim(),
       holiday_country_code: String(settings.holiday_country_code || "").trim(),
@@ -639,28 +579,7 @@ export class PersonalisationComponent implements OnInit {
     });
   }
 
-  private normalisePronouns(value?: string): string {
-    const normalised = String(value || "").trim();
-    const allowed = new Set([
-      "he/him",
-      "she/her",
-      "they/them",
-      "he/they",
-      "she/they",
-      "prefer not to say",
-    ]);
-    return allowed.has(normalised) ? normalised : "prefer not to say";
-  }
-
-  private normaliseGender(value?: string): string {
-    const normalised = String(value || "").trim();
-    const allowed = new Set([
-      "man",
-      "woman",
-      "non-binary",
-      "agender",
-      "other / prefer not to say",
-    ]);
-    return allowed.has(normalised) ? normalised : "other / prefer not to say";
+  getCustomGuidanceLength(): number {
+    return String(this.settings?.custom_guidance || "").trim().length;
   }
 }

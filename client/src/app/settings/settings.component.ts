@@ -36,7 +36,7 @@ import {
           [routerLinkActiveOptions]="{ exact: true }"
         >
           <mat-icon>tune</mat-icon>
-          Personalisation
+          Customisation
         </a>
 
         <a

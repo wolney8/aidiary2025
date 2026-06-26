@@ -28,6 +28,9 @@ describe("ProfileComponent", () => {
       of({
         id: 1,
         username: "tester",
+        display_name: "Alex",
+        pronouns: "they/them",
+        gender: "non-binary",
       } satisfies User),
     updateProfile: () =>
       of({
@@ -73,12 +76,18 @@ describe("ProfileComponent", () => {
     expect(backButton?.textContent).toContain("Back");
   });
 
-  it("shows that AI-facing identity and context moved to personalisation", () => {
+  it("renders account and identity fields", () => {
     const host = fixture.nativeElement as HTMLElement;
-    const note = host.querySelector(".profile-note");
+    const title = host.querySelector(".account-heading");
 
-    expect(note?.textContent).toContain("Personalisation moved");
-    expect(note?.textContent).toContain("pronouns");
+    expect(title?.textContent).toContain("Account and identity");
+    expect(host.textContent).toContain("Display Name");
+    expect(host.textContent).toContain("Pronouns");
+    expect(host.textContent).toContain("Gender");
+  });
+
+  it("shows the display name counter", () => {
+    expect(component.getDisplayNameLength()).toBe(4);
   });
 
   it("uses browser history when available", () => {

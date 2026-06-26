@@ -233,7 +233,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
             </mat-select>
             <mat-hint class="ai-style-hint">
               Style changes the type of response. Depth is controlled by AI
-              Verbosity in Personalisation.
+              Verbosity in Customisation.
             </mat-hint>
           </mat-form-field>
 
