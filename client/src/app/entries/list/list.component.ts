@@ -13,13 +13,16 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
 import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { MatChipsModule } from "@angular/material/chips";
+import { MatTooltipModule } from "@angular/material/tooltip";
 import { ViewToggleComponent } from "../../shared/components/view-toggle/view-toggle.component";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
 import { ImportantDaysService } from "../../core/services/important-days.service";
+import { PublicHolidaysService } from "../../core/services/public-holidays.service";
 import { SearchService } from "../../core/services/search.service";
 import { DailyEntry, DreamEntry } from "../../core/models/entry.model";
 import { ImportantDay } from "../../core/models/important-day.model";
+import { PublicHoliday } from "../../core/models/public-holiday.model";
 
 type TimelineMonth = {
   label: string;
@@ -45,6 +48,7 @@ type CalendarDay = {
   status: CalendarStatus;
   entries: EntryItem[];
   importantDays: ImportantDay[];
+  publicHolidays: PublicHoliday[];
 };
 
 type CalendarPreviewState = {
@@ -71,6 +75,28 @@ type ImportantDayPreviewState = {
   placement: "above" | "below";
 };
 
+type OccasionPreviewItem = {
+  kind: "important" | "holiday";
+  label: string;
+  subtitle: string;
+  note?: string;
+  meta: string[];
+  icon: string;
+  accentClass: string;
+};
+
+type OccasionPreviewState = {
+  dayKey: string;
+  phase: "open" | "closing";
+  direction: "left-to-right" | "right-to-left";
+  heading: string;
+  occasions: OccasionPreviewItem[];
+  dateLabel: string;
+  top: number;
+  left: number;
+  placement: "above" | "below";
+};
+
 @Component({
   selector: "app-list",
   standalone: true,
@@ -82,6 +108,7 @@ type ImportantDayPreviewState = {
     MatButtonModule,
     MatPaginatorModule,
     MatChipsModule,
+    MatTooltipModule,
     ViewToggleComponent,
     SearchResultsComponent,
   ],
@@ -210,6 +237,20 @@ type ImportantDayPreviewState = {
                     getImportantDayIcon(importantDay)
                   }}</mat-icon>
                   {{ importantDay.label }}
+                </span>
+              </div>
+              <div
+                class="selected-day-important-days"
+                *ngIf="getSelectedDayPublicHolidays().length > 0"
+              >
+                <span
+                  class="selected-day-important-chip selected-day-holiday-chip"
+                  *ngFor="let holiday of getSelectedDayPublicHolidays()"
+                >
+                  <mat-icon aria-hidden="true">{{
+                    getPublicHolidayIcon(holiday)
+                  }}</mat-icon>
+                  {{ holiday.localName || holiday.name }}
                 </span>
               </div>
             </div>
@@ -525,17 +566,21 @@ type ImportantDayPreviewState = {
                   [attr.role]="day.isCurrentMonth && !day.isFuture ? 'button' : null"
                   [attr.tabindex]="day.isCurrentMonth && !day.isFuture ? 0 : null"
                   [attr.aria-label]="getCalendarDayLabel(day)"
-                  (click)="onCalendarDaySelect(day)"
+                  (click)="onCalendarDaySelect(day, $event)"
                   (keydown.enter)="onCalendarDayKeydown($event, day)"
                   (keydown.space)="onCalendarDayKeydown($event, day)"
                 >
                   <span class="calendar-day-number">{{ day.dayNumber }}</span>
                   <button
+                    #occasionBadge
                     type="button"
                     class="calendar-important-day-badge"
+                    [class.holiday-leading]="isHolidayLeadingOccasion(day)"
                     *ngIf="day.importantDays.length > 0"
                     [attr.aria-label]="getImportantDayAriaLabel(day)"
                     [class.is-expandable]="day.importantDays.length > 1"
+                    [matTooltip]="getOccasionTooltip(day)"
+                    [matTooltipShowDelay]="500"
                     (click)="toggleImportantDayPreview(day, $event)"
                   >
                     <mat-icon aria-hidden="true">{{
@@ -554,6 +599,38 @@ type ImportantDayPreviewState = {
                         *ngIf="day.importantDays.length > 2"
                       >
                         +{{ day.importantDays.length - 2 }}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    #occasionBadge
+                    type="button"
+                    class="calendar-important-day-badge holiday-leading"
+                    *ngIf="day.importantDays.length === 0 && day.publicHolidays.length > 0"
+                    [attr.aria-label]="getOccasionAriaLabel(day)"
+                    [class.is-expandable]="getDayOccasionCount(day) > 1"
+                    [matTooltip]="getOccasionTooltip(day)"
+                    [matTooltipShowDelay]="500"
+                    (mousedown)="$event.stopPropagation()"
+                    (click)="toggleOccasionPreview(day, occasionBadge, $event)"
+                    (keydown.enter)="onOccasionBadgeKeydown($event, day, occasionBadge)"
+                    (keydown.space)="onOccasionBadgeKeydown($event, day, occasionBadge)"
+                  >
+                    <mat-icon aria-hidden="true">{{
+                      getPublicHolidayIcon(day.publicHolidays[0])
+                    }}</mat-icon>
+                    <span class="calendar-important-day-badge-stack">
+                      <span
+                        class="calendar-important-day-badge-chip holiday-chip"
+                        *ngFor="let holiday of day.publicHolidays.slice(0, 2)"
+                      >
+                        {{ truncatePublicHolidayLabel(holiday) }}
+                      </span>
+                      <span
+                        class="calendar-important-day-badge-chip calendar-important-day-badge-overflow"
+                        *ngIf="day.publicHolidays.length > 2"
+                      >
+                        +{{ day.publicHolidays.length - 2 }}
                       </span>
                     </span>
                   </button>
@@ -744,6 +821,57 @@ type ImportantDayPreviewState = {
                   </article>
                 </div>
               </section>
+              <section
+                class="calendar-preview-deck important-day-preview-deck"
+                *ngIf="occasionPreview"
+                [class.preview-left-to-right]="getOccasionPreviewDirection() === 'left-to-right'"
+                [class.preview-right-to-left]="getOccasionPreviewDirection() === 'right-to-left'"
+                [class.preview-below]="occasionPreview.placement === 'below'"
+                [class.preview-above]="occasionPreview.placement === 'above'"
+                [class.closing]="occasionPreview.phase === 'closing'"
+                [style.top.px]="occasionPreview.top"
+                [style.left.px]="occasionPreview.left"
+                (click)="$event.stopPropagation()"
+                aria-label="Occasion preview deck"
+              >
+                <header class="calendar-preview-header">
+                  <div>
+                    <strong>{{ occasionPreview.heading }}</strong>
+                    <span>{{ occasionPreview.dateLabel }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="calendar-preview-close"
+                    aria-label="Close occasion preview"
+                    (click)="closeOccasionPreview($event)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </header>
+                <div class="calendar-important-day-preview-cards">
+                  <article
+                    class="calendar-important-day-card"
+                    *ngFor="let occasion of occasionPreview.occasions"
+                    [ngClass]="occasion.accentClass"
+                  >
+                    <div class="calendar-important-day-card-icon" aria-hidden="true">
+                      <mat-icon>{{ occasion.icon }}</mat-icon>
+                    </div>
+                    <div class="calendar-important-day-card-copy">
+                      <div class="calendar-important-day-card-heading">
+                        <strong>{{ occasion.label }}</strong>
+                        <span>{{ occasion.subtitle }}</span>
+                      </div>
+                      <p class="calendar-important-day-card-note" *ngIf="occasion.note">
+                        {{ occasion.note }}
+                      </p>
+                      <div class="calendar-important-day-card-meta">
+                        <span *ngFor="let metaItem of occasion.meta">{{ metaItem }}</span>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
             </section>
           </ng-template>
         </ng-container>
@@ -754,6 +882,7 @@ type ImportantDayPreviewState = {
 export class ListComponent implements OnInit, OnDestroy {
   private entriesService = inject(EntriesService);
   private importantDaysService = inject(ImportantDaysService);
+  private publicHolidaysService = inject(PublicHolidaysService);
   protected readonly searchService = inject(SearchService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -785,16 +914,23 @@ export class ListComponent implements OnInit, OnDestroy {
   dailyEntries: EntryItem[] = [];
   dreamEntries: EntryItem[] = [];
   importantDays: ImportantDay[] = [];
+  publicHolidays: PublicHoliday[] = [];
+  publicHolidayCountryCode = "";
+  publicHolidaysEnabled = false;
+  private publicHolidaysByYear = new Map<number, PublicHoliday[]>();
   filteredEntries: EntryItem[] = [];
   private hasExplicitMonthSelection = false;
   private pendingMonthSelection: { monthIndex: number; year: number } | null =
     null;
   calendarPreview: CalendarPreviewState | null = null;
   importantDayPreview: ImportantDayPreviewState | null = null;
+  occasionPreview: OccasionPreviewState | null = null;
   showImportantDays = false;
   showAllImportantDays = false;
+  private loadedHolidayYears = new Set<number>();
   private previewCloseTimerId: number | null = null;
   private importantDayPreviewCloseTimerId: number | null = null;
+  private occasionPreviewCloseTimerId: number | null = null;
 
   exitSearch(): void {
     this.searchService.clear();
@@ -1114,6 +1250,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.allMonths.forEach((m) => (m.isSelected = false));
     month.isSelected = true;
     this.selectedMonth = month;
+    this.syncPublicHolidaysForSelectedYear();
 
     // Update active states - current month is always active, future months remain inactive
     const selectedIndex = this.allMonths.findIndex((m) => m === month);
@@ -1148,11 +1285,18 @@ export class ListComponent implements OnInit, OnDestroy {
     let dailyLoaded = false;
     let dreamLoaded = false;
     let importantDaysLoaded = false;
+    let holidaySettingsLoaded = false;
 
     const checkAndGenerateTimeline = () => {
-      if (dailyLoaded && dreamLoaded && importantDaysLoaded) {
+      if (
+        dailyLoaded &&
+        dreamLoaded &&
+        importantDaysLoaded &&
+        holidaySettingsLoaded
+      ) {
         this.generateTimelineFromEntries();
         this.applyInitialMonthSelection();
+        this.syncPublicHolidaysForSelectedYear();
         this.filterEntries();
         this.updatePaginatedEntries();
       }
@@ -1182,11 +1326,37 @@ export class ListComponent implements OnInit, OnDestroy {
         checkAndGenerateTimeline();
       },
     });
+
+    this.publicHolidaysService.getPublicHolidays(new Date().getFullYear()).subscribe({
+      next: (feed) => {
+        this.publicHolidaysEnabled = Boolean(feed.enabled);
+        this.publicHolidayCountryCode = feed.countryCode || "";
+        this.publicHolidays = feed.holidays || [];
+        if (feed.enabled) {
+          this.publicHolidaysByYear.set(feed.year, feed.holidays || []);
+          this.loadedHolidayYears.add(feed.year);
+        } else {
+          this.publicHolidaysByYear.clear();
+          this.loadedHolidayYears.clear();
+        }
+        holidaySettingsLoaded = true;
+        checkAndGenerateTimeline();
+      },
+      error: () => {
+        this.publicHolidays = [];
+        this.publicHolidaysEnabled = false;
+        this.publicHolidayCountryCode = "";
+        this.publicHolidaysByYear.clear();
+        this.loadedHolidayYears.clear();
+        holidaySettingsLoaded = true;
+        checkAndGenerateTimeline();
+      },
+    });
   }
 
   onViewChange(view: string): void {
     this.closeCalendarPreview();
-    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
     this.currentView = view as "all" | "daily" | "dreams";
     this.selectedDay = null;
 
@@ -1207,7 +1377,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
   setDisplayMode(mode: "cards" | "calendar"): void {
     this.closeCalendarPreview();
-    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
     this.displayMode = mode;
     if (mode === "calendar") {
       this.selectedDay = null;
@@ -1219,7 +1389,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
   clearSelectedDay(): void {
     this.closeCalendarPreview();
-    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
     this.selectedDay = null;
     this.displayMode = "calendar";
     this.filterEntries();
@@ -1312,8 +1482,14 @@ export class ListComponent implements OnInit, OnDestroy {
             .map((importantDay) => importantDay.label)
             .join(", ")}.`
         : "";
+    const publicHolidayLabel =
+      day.publicHolidays.length > 0
+        ? ` Public holiday${day.publicHolidays.length === 1 ? "" : "s"}: ${day.publicHolidays
+            .map((holiday) => holiday.localName || holiday.name)
+            .join(", ")}.`
+        : "";
 
-    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.${importantDayLabel}`;
+    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.${importantDayLabel}${publicHolidayLabel}`;
   }
 
   getCurrentMonthImportantDays(): ImportantDay[] {
@@ -1372,6 +1548,18 @@ export class ListComponent implements OnInit, OnDestroy {
     return this.importantDays.filter(
       (importantDay) => importantDay.month === month && importantDay.day === day,
     );
+  }
+
+  getSelectedDayPublicHolidays(): PublicHoliday[] {
+    if (!this.selectedDay) {
+      return [];
+    }
+
+    const [yearText] = this.selectedDay.split("-");
+    const year = Number(yearText);
+    const holidaysForYear =
+      this.publicHolidaysByYear.get(year) ?? this.publicHolidays;
+    return holidaysForYear.filter((holiday) => holiday.date === this.selectedDay);
   }
 
   getImportantDayAriaLabel(day: CalendarDay): string {
@@ -1458,67 +1646,80 @@ export class ListComponent implements OnInit, OnDestroy {
     return this.truncatePreviewText(importantDay.label, 14);
   }
 
-  getEntryCountByType(day: CalendarDay, type: "daily" | "dream"): number {
-    return day.entries.filter((entry) => entry.type === type).length;
-  }
-
-  getCalendarPreviewEntries(): EntryItem[] {
-    return this.calendarPreview?.entries ?? [];
-  }
-
-  getCalendarPreviewHeading(): string {
-    if (!this.calendarPreview) {
-      return "Entries";
+  getCurrentMonthPublicHolidays(): PublicHoliday[] {
+    if (!this.selectedMonth || !this.publicHolidaysEnabled) {
+      return [];
     }
 
-    const count = this.calendarPreview.totalCount;
-    const typeLabel = this.calendarPreview.type === "daily" ? "Daily" : "Dream";
-    return `${typeLabel} entr${count === 1 ? "y" : "ies"}`;
+    const holidaysForYear =
+      this.publicHolidaysByYear.get(this.selectedMonth.year) ?? this.publicHolidays;
+
+    return holidaysForYear
+      .filter((holiday) => {
+        const holidayDate = new Date(`${holiday.date}T12:00:00`);
+        return (
+          holidayDate.getMonth() === (this.selectedMonth as any).monthIndex &&
+          holidayDate.getFullYear() === this.selectedMonth!.year
+        );
+      })
+      .sort((left, right) => left.date.localeCompare(right.date));
   }
 
-  getCalendarPreviewMoreLabel(): string {
-    return "View more";
+  formatPublicHolidaySummaryLabel(holiday: PublicHoliday): string {
+    const date = new Date(`${holiday.date}T12:00:00`);
+    const dateLabel = date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+    });
+    return `${dateLabel} ${holiday.localName || holiday.name}`;
   }
 
-  getCalendarPreviewDirection(): "left-to-right" | "right-to-left" {
-    return this.calendarPreview?.direction ?? "left-to-right";
+  getPublicHolidayIcon(_holiday: PublicHoliday): string {
+    return "flag";
   }
 
-  isCalendarPreviewActive(day: CalendarDay, type: CalendarPreviewType): boolean {
-    return (
-      this.calendarPreview?.dayKey === this.toDateKey(day.date) &&
-      this.calendarPreview.type === type &&
-      this.calendarPreview.phase === "open"
+  truncatePublicHolidayLabel(holiday: PublicHoliday): string {
+    return this.truncatePreviewText(holiday.localName || holiday.name, 14);
+  }
+
+  isHolidayLeadingOccasion(day: CalendarDay): boolean {
+    return day.importantDays.length === 0 && day.publicHolidays.length > 0;
+  }
+
+  hasDayOccasions(day: CalendarDay): boolean {
+    return day.importantDays.length > 0 || day.publicHolidays.length > 0;
+  }
+
+  getDayOccasionCount(day: CalendarDay): number {
+    return day.importantDays.length + day.publicHolidays.length;
+  }
+
+  getOccasionAriaLabel(day: CalendarDay): string {
+    const labels = [
+      ...day.importantDays.map((importantDay) => importantDay.label),
+      ...day.publicHolidays.map((holiday) => holiday.localName || holiday.name),
+    ];
+    return `Occasions: ${labels.join(", ")}`;
+  }
+
+  getOccasionTriggerIcon(day: CalendarDay): string {
+    return day.importantDays[0]
+      ? this.getImportantDayIcon(day.importantDays[0])
+      : this.getPublicHolidayIcon(day.publicHolidays[0]);
+  }
+
+  getOccasionTooltip(day: CalendarDay): string {
+    const importantLabels = day.importantDays.map((importantDay) => importantDay.label);
+    const holidayLabels = day.publicHolidays.map(
+      (holiday) => holiday.localName || holiday.name,
     );
-  }
-
-  onCalendarDaySelect(day: CalendarDay): void {
-    this.closeCalendarPreview();
-    this.closeImportantDayPreview(undefined, true);
-    if (!day.isCurrentMonth) {
-      return;
+    const labels = [...importantLabels, ...holidayLabels];
+    if (labels.length === 0) {
+      return "";
     }
-
-    if (day.isFuture) {
-      return;
-    }
-
-    if (day.entries.length === 0) {
-      this.navigateToCreateEntryForDate(day.date);
-      return;
-    }
-
-    this.currentView = "all";
-    this.selectedDay = this.toDateKey(day.date);
-    this.displayMode = "cards";
-    this.currentPage = 0;
-    this.filterEntries();
-    this.updatePaginatedEntries();
-  }
-
-  onCalendarDayKeydown(event: Event, day: CalendarDay): void {
-    event.preventDefault();
-    this.onCalendarDaySelect(day);
+    return labels.length === 1
+      ? labels[0]
+      : `${labels[0]} and ${labels.length - 1} more`;
   }
 
   getImportantDayPreviewDirection(): "left-to-right" | "right-to-left" {
@@ -1528,6 +1729,7 @@ export class ListComponent implements OnInit, OnDestroy {
   toggleImportantDayPreview(day: CalendarDay, event: MouseEvent): void {
     event.stopPropagation();
     this.closeCalendarPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.importantDays.length === 0) {
       return;
@@ -1564,6 +1766,206 @@ export class ListComponent implements OnInit, OnDestroy {
     };
   }
 
+  onOccasionBadgeKeydown(
+    event: Event,
+    day: CalendarDay,
+    anchorElement: HTMLElement,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.toggleOccasionPreview(day, anchorElement, event);
+  }
+
+  getVisibleDayOccasionBadges(
+    day: CalendarDay,
+  ): Array<{ label: string; accentClass: string }> {
+    const importantBadges = day.importantDays.map((importantDay) => ({
+      label: this.truncatePreviewText(importantDay.label, 14),
+      accentClass: `accent-${importantDay.accent_color}`,
+    }));
+    const holidayBadges = day.publicHolidays.map((holiday) => ({
+      label: this.truncatePreviewText(holiday.localName || holiday.name, 14),
+      accentClass: "holiday-chip",
+    }));
+
+    if (importantBadges.length > 0 && holidayBadges.length > 0) {
+      return [importantBadges[0], holidayBadges[0]];
+    }
+
+    return [...importantBadges, ...holidayBadges].slice(0, 2);
+  }
+
+  getOccasionPreviewHeading(day: CalendarDay): string {
+    if (day.importantDays.length > 0 && day.publicHolidays.length > 0) {
+      return "Important days and holidays";
+    }
+    if (day.publicHolidays.length > 0) {
+      return "Public holidays";
+    }
+    return "Important days";
+  }
+
+  getOccasionPreviewItems(day: CalendarDay): OccasionPreviewItem[] {
+    const importantItems = day.importantDays.map((importantDay) => ({
+      kind: "important" as const,
+      label: importantDay.label,
+      subtitle: this.formatImportantDaySummaryLabel(importantDay),
+      note: importantDay.note,
+      meta: [
+        this.getImportantDayRecurrenceLabel(importantDay),
+        this.getImportantDayElapsedLabel(importantDay),
+        this.getImportantDayMatchingEntryCountLabel(importantDay),
+      ],
+      icon: this.getImportantDayIcon(importantDay),
+      accentClass: `accent-${importantDay.accent_color}`,
+    }));
+
+    const holidayItems = day.publicHolidays.map((holiday) => ({
+      kind: "holiday" as const,
+      label: holiday.localName || holiday.name,
+      subtitle: new Date(`${holiday.date}T12:00:00`).toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      }),
+      note:
+        holiday.localName && holiday.localName !== holiday.name
+          ? holiday.name
+          : undefined,
+      meta: [
+        `Country: ${holiday.countryCode}`,
+        holiday.global ? "National holiday" : "Regional holiday",
+        ...(holiday.types || []).slice(0, 2),
+      ],
+      icon: this.getPublicHolidayIcon(holiday),
+      accentClass: "holiday-card",
+    }));
+
+    return [...importantItems, ...holidayItems];
+  }
+
+  getEntryCountByType(day: CalendarDay, type: "daily" | "dream"): number {
+    return day.entries.filter((entry) => entry.type === type).length;
+  }
+
+  getCalendarPreviewEntries(): EntryItem[] {
+    return this.calendarPreview?.entries ?? [];
+  }
+
+  getCalendarPreviewHeading(): string {
+    if (!this.calendarPreview) {
+      return "Entries";
+    }
+
+    const count = this.calendarPreview.totalCount;
+    const typeLabel = this.calendarPreview.type === "daily" ? "Daily" : "Dream";
+    return `${typeLabel} entr${count === 1 ? "y" : "ies"}`;
+  }
+
+  getCalendarPreviewMoreLabel(): string {
+    return "View more";
+  }
+
+  getCalendarPreviewDirection(): "left-to-right" | "right-to-left" {
+    return this.calendarPreview?.direction ?? "left-to-right";
+  }
+
+  isCalendarPreviewActive(day: CalendarDay, type: CalendarPreviewType): boolean {
+    return (
+      this.calendarPreview?.dayKey === this.toDateKey(day.date) &&
+      this.calendarPreview.type === type &&
+      this.calendarPreview.phase === "open"
+    );
+  }
+
+  onCalendarDaySelect(day: CalendarDay, event?: Event): void {
+    const target = this.getEventTargetElement(event);
+    if (
+      target?.closest(
+        ".calendar-important-day-badge, .calendar-entry-icon",
+      )
+    ) {
+      return;
+    }
+
+    this.closeCalendarPreview();
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+    if (!day.isCurrentMonth) {
+      return;
+    }
+
+    if (day.isFuture) {
+      return;
+    }
+
+    if (day.entries.length === 0) {
+      this.navigateToCreateEntryForDate(day.date);
+      return;
+    }
+
+    this.currentView = "all";
+    this.selectedDay = this.toDateKey(day.date);
+    this.displayMode = "cards";
+    this.currentPage = 0;
+    this.filterEntries();
+    this.updatePaginatedEntries();
+  }
+
+  onCalendarDayKeydown(event: Event, day: CalendarDay): void {
+    event.preventDefault();
+    this.onCalendarDaySelect(day);
+  }
+
+  getOccasionPreviewDirection(): "left-to-right" | "right-to-left" {
+    return this.occasionPreview?.direction ?? "left-to-right";
+  }
+
+  toggleOccasionPreview(
+    day: CalendarDay,
+    anchorElement: HTMLElement,
+    event: Event,
+  ): void {
+    event.stopPropagation();
+    this.closeCalendarPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+
+    if (!day.isCurrentMonth || !this.hasDayOccasions(day)) {
+      return;
+    }
+
+    const dayKey = this.toDateKey(day.date);
+    if (
+      this.occasionPreview?.dayKey === dayKey &&
+      this.occasionPreview.phase === "open"
+    ) {
+      this.closeOccasionPreview();
+      return;
+    }
+
+    if (this.occasionPreviewCloseTimerId) {
+      window.clearTimeout(this.occasionPreviewCloseTimerId);
+      this.occasionPreviewCloseTimerId = null;
+    }
+
+    const overlayPosition = this.getCalendarPreviewPosition(
+      anchorElement,
+      Math.min(this.getDayOccasionCount(day), 3),
+    );
+
+    this.occasionPreview = {
+      dayKey,
+      phase: "open",
+      direction: this.getPreviewDirectionFromEvent(event as MouseEvent | KeyboardEvent, anchorElement),
+      heading: this.getOccasionPreviewHeading(day),
+      occasions: this.getOccasionPreviewItems(day),
+      dateLabel: this.getCalendarDayDateLabel(day),
+      top: overlayPosition.top,
+      left: overlayPosition.left,
+      placement: overlayPosition.placement,
+    };
+  }
+
   openCalendarPreviewFullView(event: Event): void {
     event.stopPropagation();
 
@@ -1587,7 +1989,7 @@ export class ListComponent implements OnInit, OnDestroy {
     event: MouseEvent,
   ): void {
     event.stopPropagation();
-    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.isFuture) {
       return;
@@ -1697,6 +2099,7 @@ export class ListComponent implements OnInit, OnDestroy {
     if (currentMonth) {
       currentMonth.isSelected = true;
       this.selectedMonth = currentMonth;
+      this.syncPublicHolidaysForSelectedYear();
 
       // Center timeline on current month
       const currentIndex = this.allMonths.findIndex((m) => m.isCurrent);
@@ -1739,6 +2142,7 @@ export class ListComponent implements OnInit, OnDestroy {
       this.allMonths.forEach((m) => (m.isSelected = false));
       earliestMonth.isSelected = true;
       this.selectedMonth = earliestMonth;
+      this.syncPublicHolidaysForSelectedYear();
 
       // Center timeline on earliest month with animation
       const earliestIndex = this.allMonths.findIndex(
@@ -1765,6 +2169,7 @@ export class ListComponent implements OnInit, OnDestroy {
       this.allMonths.forEach((m) => (m.isSelected = false));
       currentMonth.isSelected = true;
       this.selectedMonth = currentMonth;
+      this.syncPublicHolidaysForSelectedYear();
 
       // Center timeline on current month with animation
       const currentIndex = this.allMonths.findIndex((m) => m === currentMonth);
@@ -1979,6 +2384,7 @@ export class ListComponent implements OnInit, OnDestroy {
     const todayKey = this.toDateKey(new Date());
     const entriesByDate = new Map<string, EntryItem[]>();
     const importantDaysByDate = new Map<string, ImportantDay[]>();
+    const publicHolidaysByDate = new Map<string, PublicHoliday[]>();
 
     entries.forEach((entry) => {
       const key = this.toDateKey(new Date(entry.entry_date));
@@ -1992,6 +2398,19 @@ export class ListComponent implements OnInit, OnDestroy {
       const matchingImportantDays = importantDaysByDate.get(key) ?? [];
       matchingImportantDays.push(importantDay);
       importantDaysByDate.set(key, matchingImportantDays);
+    });
+
+    const yearHolidays = this.publicHolidaysByYear.get(year) ?? this.publicHolidays;
+
+    yearHolidays.forEach((holiday) => {
+      const holidayDate = new Date(`${holiday.date}T12:00:00`);
+      if (holidayDate.getFullYear() !== year) {
+        return;
+      }
+      const key = this.toDateKey(holidayDate);
+      const matchingHolidays = publicHolidaysByDate.get(key) ?? [];
+      matchingHolidays.push(holiday);
+      publicHolidaysByDate.set(key, matchingHolidays);
     });
 
     this.calendarDays = Array.from({ length: 42 }, (_, index) => {
@@ -2010,6 +2429,7 @@ export class ListComponent implements OnInit, OnDestroy {
           importantDay.original_year <= date.getFullYear()
         );
       });
+      const matchingPublicHolidays = publicHolidaysByDate.get(key) ?? [];
 
       return {
         date,
@@ -2020,6 +2440,7 @@ export class ListComponent implements OnInit, OnDestroy {
         status: this.getCalendarStatus(dateEntries),
         entries: dateEntries,
         importantDays: matchingImportantDays,
+        publicHolidays: matchingPublicHolidays,
       };
     });
   }
@@ -2053,7 +2474,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
   openEntryDetail(entry: any, event?: Event): void {
     this.closeCalendarPreview();
-    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
     event?.stopPropagation();
     this.router.navigate(["/entries", entry.id], {
       queryParams: this.getDetailContextParams(),
@@ -2114,6 +2535,7 @@ export class ListComponent implements OnInit, OnDestroy {
       }
 
       this.pendingMonthSelection = null;
+      this.syncPublicHolidaysForSelectedYear();
       return;
     }
 
@@ -2171,6 +2593,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.allMonths.forEach((m) => (m.isSelected = false));
     monthToSelect.isSelected = true;
     this.selectedMonth = monthToSelect;
+    this.syncPublicHolidaysForSelectedYear();
 
     const selectedIndex = this.allMonths.findIndex((m) => m === monthToSelect);
     if (animate) {
@@ -2227,6 +2650,38 @@ export class ListComponent implements OnInit, OnDestroy {
     return raw.length > 0 ? raw : null;
   }
 
+  private syncPublicHolidaysForSelectedYear(): void {
+    if (!this.selectedMonth || !this.publicHolidaysEnabled) {
+      return;
+    }
+
+    const selectedYear = this.selectedMonth.year;
+    if (this.loadedHolidayYears.has(selectedYear)) {
+      return;
+    }
+
+    this.publicHolidaysService.getPublicHolidays(selectedYear).subscribe({
+      next: (feed) => {
+        this.publicHolidaysEnabled = Boolean(feed.enabled);
+        this.publicHolidayCountryCode = feed.countryCode || "";
+        this.publicHolidaysByYear.set(feed.year, feed.holidays || []);
+        this.publicHolidays = this.publicHolidaysByYear.get(selectedYear) ?? [];
+        if (feed.enabled) {
+          this.loadedHolidayYears.add(feed.year);
+        }
+        this.filterEntries();
+        this.updatePaginatedEntries();
+      },
+      error: () => {
+        this.publicHolidaysByYear.delete(selectedYear);
+        this.publicHolidays = this.publicHolidaysByYear.get(selectedYear) ?? [];
+        this.loadedHolidayYears.delete(selectedYear);
+        this.filterEntries();
+        this.updatePaginatedEntries();
+      },
+    });
+  }
+
   private getEntrySortTimestamp(entry: EntryItem): number {
     const timeValue =
       typeof entry.entry_time === "string" && /^\d{2}:\d{2}$/.test(entry.entry_time.trim())
@@ -2263,6 +2718,35 @@ export class ListComponent implements OnInit, OnDestroy {
   ): "left-to-right" | "right-to-left" {
     const viewportMidpoint = window.innerWidth / 2;
     return event.clientX <= viewportMidpoint ? "left-to-right" : "right-to-left";
+  }
+
+  private getPreviewDirectionFromEvent(
+    event: MouseEvent | KeyboardEvent,
+    anchorElement: HTMLElement,
+  ): "left-to-right" | "right-to-left" {
+    if (event instanceof MouseEvent) {
+      return this.getPreviewDirectionFromClick(event);
+    }
+
+    const rect = anchorElement.getBoundingClientRect();
+    const midpoint = rect.left + rect.width / 2;
+    return midpoint <= window.innerWidth / 2
+      ? "left-to-right"
+      : "right-to-left";
+  }
+
+  private getEventTargetElement(event?: Event): HTMLElement | null {
+    const target = event?.target;
+    if (target instanceof HTMLElement) {
+      return target;
+    }
+    if (target instanceof Element) {
+      return target as HTMLElement;
+    }
+    if (target instanceof Node) {
+      return target.parentElement;
+    }
+    return null;
   }
 
   private getCalendarPreviewPosition(
@@ -2366,9 +2850,43 @@ export class ListComponent implements OnInit, OnDestroy {
     }, 180);
   }
 
+  closeOccasionPreview(event?: Event, immediate = false): void {
+    event?.stopPropagation();
+
+    if (!this.occasionPreview) {
+      return;
+    }
+
+    if (this.occasionPreviewCloseTimerId) {
+      window.clearTimeout(this.occasionPreviewCloseTimerId);
+      this.occasionPreviewCloseTimerId = null;
+    }
+
+    if (immediate) {
+      this.occasionPreview = null;
+      return;
+    }
+
+    this.occasionPreview = {
+      ...this.occasionPreview,
+      phase: "closing",
+    };
+
+    const closingPreviewKey = this.occasionPreview.dayKey;
+    this.occasionPreviewCloseTimerId = window.setTimeout(() => {
+      if (
+        this.occasionPreview &&
+        this.occasionPreview.dayKey === closingPreviewKey
+      ) {
+        this.occasionPreview = null;
+      }
+      this.occasionPreviewCloseTimerId = null;
+    }, 180);
+  }
+
   @HostListener("document:click", ["$event"])
   onDocumentClick(event: MouseEvent): void {
-    const target = event.target as HTMLElement | null;
+    const target = this.getEventTargetElement(event);
     if (!target) {
       return;
     }
@@ -2386,6 +2904,13 @@ export class ListComponent implements OnInit, OnDestroy {
       }
       this.closeImportantDayPreview();
     }
+
+    if (this.occasionPreview) {
+      if (target.closest(".important-day-preview-deck, .calendar-important-day-badge")) {
+        return;
+      }
+      this.closeOccasionPreview();
+    }
   }
 
   @HostListener("document:keydown.escape", ["$event"])
@@ -2399,6 +2924,12 @@ export class ListComponent implements OnInit, OnDestroy {
     if (this.importantDayPreview) {
       event.preventDefault();
       this.closeImportantDayPreview();
+      return;
+    }
+
+    if (this.occasionPreview) {
+      event.preventDefault();
+      this.closeOccasionPreview();
     }
   }
 
@@ -2410,6 +2941,9 @@ export class ListComponent implements OnInit, OnDestroy {
     if (this.importantDayPreview) {
       this.closeImportantDayPreview(undefined, true);
     }
+    if (this.occasionPreview) {
+      this.closeOccasionPreview(undefined, true);
+    }
   }
 
   @HostListener("window:resize")
@@ -2419,6 +2953,9 @@ export class ListComponent implements OnInit, OnDestroy {
     }
     if (this.importantDayPreview) {
       this.closeImportantDayPreview(undefined, true);
+    }
+    if (this.occasionPreview) {
+      this.closeOccasionPreview(undefined, true);
     }
   }
 
@@ -2432,6 +2969,9 @@ export class ListComponent implements OnInit, OnDestroy {
     }
     if (this.importantDayPreviewCloseTimerId) {
       window.clearTimeout(this.importantDayPreviewCloseTimerId);
+    }
+    if (this.occasionPreviewCloseTimerId) {
+      window.clearTimeout(this.occasionPreviewCloseTimerId);
     }
   }
 }

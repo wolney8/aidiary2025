@@ -44,6 +44,8 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'gender': 'TEXT',
     'custom_guidance': 'TEXT',
     'timezone': "TEXT DEFAULT 'UTC'",
+    'holiday_country_code': 'TEXT',
+    'show_public_holidays': 'INTEGER DEFAULT 0',
     'ai_tone': "TEXT DEFAULT 'friendly'",
     'ai_verbosity': "TEXT DEFAULT 'balanced'",
     'ai_focus': "TEXT DEFAULT 'reflective'",
@@ -133,6 +135,17 @@ _IMPORTANT_DAY_COLUMNS: dict[str, str] = {
     'icon_name': "TEXT NOT NULL DEFAULT 'event'",
     'accent_color': "TEXT NOT NULL DEFAULT 'amber'",
 }
+
+_PUBLIC_HOLIDAY_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS public_holiday_cache (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    country_code  TEXT NOT NULL,
+    holiday_year  INTEGER NOT NULL,
+    payload_json  TEXT NOT NULL,
+    fetched_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(country_code, holiday_year)
+)
+"""
 
 
 def ensure_entry_mood_style_columns(
@@ -335,5 +348,25 @@ def ensure_important_days_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'important_days')
+
+    return True
+
+
+def ensure_public_holiday_cache_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime public-holiday cache table exists for provider responses."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_PUBLIC_HOLIDAY_CACHE_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_public_holiday_cache_lookup
+            ON public_holiday_cache(country_code, holiday_year)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'public_holiday_cache')
 
     return True

@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, OnInit, inject } from "@angular/core";
+import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { RouterModule } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
@@ -8,7 +8,10 @@ import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
+import { AppDialogService } from "../../core/services/app-dialog.service";
 import { ProfileService } from "../../core/services/profile.service";
+import { PublicHolidaysService } from "../../core/services/public-holidays.service";
+import { PublicHolidayCountry } from "../../core/models/public-holiday.model";
 import { User } from "../../core/models/user.model";
 
 @Component({
@@ -105,6 +108,49 @@ import { User } from "../../core/models/user.model";
                 placeholder="Short background such as what support helps most."
               ></textarea>
               <mat-hint>Up to 100 characters of plain text.</mat-hint>
+            </mat-form-field>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="group-card">
+          <mat-card-header>
+            <mat-card-title>Calendar And Holidays</mat-card-title>
+            <mat-card-subtitle>
+              Control whether public holidays appear in calendar view.
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content class="field-grid">
+            <div class="ai-behaviour-group checkbox-row-wide">
+              <div class="checkbox-stack">
+                <div class="checkbox-row">
+                  <mat-checkbox
+                    [(ngModel)]="settings.show_public_holidays"
+                    name="show_public_holidays"
+                  >
+                    Show public holidays in calendar
+                  </mat-checkbox>
+                  <p class="checkbox-hint">
+                    Uses your selected country and keeps holidays separate from diary entries.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <mat-form-field appearance="outline" class="holiday-country-field">
+              <mat-label>Holiday country</mat-label>
+              <mat-select
+                [(ngModel)]="settings.holiday_country_code"
+                name="holiday_country_code"
+              >
+                <mat-option value="">No country selected</mat-option>
+                <mat-option
+                  *ngFor="let country of holidayCountries"
+                  [value]="country.countryCode"
+                >
+                  {{ country.name }}
+                </mat-option>
+              </mat-select>
+              <mat-hint>Pick a country to show its public holidays.</mat-hint>
             </mat-form-field>
           </mat-card-content>
         </mat-card>
@@ -269,9 +315,9 @@ import { User } from "../../core/models/user.model";
             mat-raised-button
             color="primary"
             type="submit"
-            [disabled]="saving"
+            [disabled]="saving || !hasPendingChanges()"
           >
-            Save Personalisation
+            {{ saving ? "Saving..." : "Save Personalisation" }}
           </button>
         </div>
 
@@ -317,6 +363,19 @@ import { User } from "../../core/models/user.model";
 
       .identity-guidance-field {
         grid-column: 1 / -1;
+      }
+
+      .holiday-country-field {
+        align-self: start;
+      }
+
+      .holiday-country-field .mat-mdc-form-field-subscript-wrapper {
+        min-height: 1rem;
+      }
+
+      .holiday-country-field .mat-mdc-form-field-hint-wrapper,
+      .holiday-country-field .mat-mdc-form-field-hint {
+        line-height: 1.2;
       }
 
       .ai-behaviour-grid {
@@ -394,6 +453,7 @@ import { User } from "../../core/models/user.model";
 
       .success {
         color: #2e7d32;
+        font-weight: 600;
       }
 
       .error {
@@ -403,23 +463,41 @@ import { User } from "../../core/models/user.model";
   ],
 })
 export class PersonalisationComponent implements OnInit {
+  private readonly appDialog = inject(AppDialogService);
   private readonly profileService = inject(ProfileService);
+  private readonly publicHolidaysService = inject(PublicHolidaysService);
 
   settings: User | null = null;
+  holidayCountries: PublicHolidayCountry[] = [];
   saving = false;
   successMessage = "";
   errorMessage = "";
+  private initialSettingsSnapshot = "";
 
   ngOnInit(): void {
+    this.publicHolidaysService.getAvailableCountries().subscribe({
+      next: (countries) => {
+        this.holidayCountries = countries;
+      },
+      error: () => {
+        this.holidayCountries = [];
+      },
+    });
+
     this.profileService.getProfile().subscribe({
       next: (profile) => {
         this.settings = {
           ...profile,
           display_name: profile.display_name || "",
-          pronouns: profile.pronouns || "prefer not to say",
-          gender: profile.gender || profile.sex || "other / prefer not to say",
+          pronouns: this.normalisePronouns(profile.pronouns),
+          gender: this.normaliseGender(profile.gender || profile.sex),
           custom_guidance: profile.custom_guidance || profile.goals || "",
           timezone: profile.timezone || "UTC",
+          holiday_country_code: profile.holiday_country_code || "",
+          show_public_holidays:
+            profile.show_public_holidays === undefined
+              ? false
+              : Boolean(profile.show_public_holidays),
           ai_tone: profile.ai_tone || "friendly",
           ai_verbosity: profile.ai_verbosity || "balanced",
           ai_focus: profile.ai_focus || "reflective",
@@ -433,6 +511,7 @@ export class PersonalisationComponent implements OnInit {
               ? false
               : Boolean(profile.allow_ai_attachment_context),
         };
+        this.initialSettingsSnapshot = this.serialiseSettings(this.settings);
       },
       error: () => {
         this.errorMessage = "Unable to load settings.";
@@ -469,8 +548,11 @@ export class PersonalisationComponent implements OnInit {
 
     this.profileService.updateProfile(settingsPayload).subscribe({
       next: (response) => {
-        this.successMessage = response.message;
+        this.successMessage = response.message || "Personalisation saved.";
         this.saving = false;
+        if (this.settings) {
+          this.initialSettingsSnapshot = this.serialiseSettings(this.settings);
+        }
       },
       error: (error) => {
         this.errorMessage =
@@ -498,5 +580,87 @@ export class PersonalisationComponent implements OnInit {
     }
 
     return null;
+  }
+
+  hasPendingChanges(): boolean {
+    if (!this.settings) {
+      return false;
+    }
+    return this.serialiseSettings(this.settings) !== this.initialSettingsSnapshot;
+  }
+
+  canDeactivate(): boolean | Promise<boolean> {
+    if (!this.hasPendingChanges() || this.saving) {
+      return true;
+    }
+
+    return this.appDialog.confirm({
+      title: "Discard Personalisation changes?",
+      message:
+        "You have unsaved Personalisation changes. Leaving now will discard them.",
+      confirmText: "Discard changes",
+      cancelText: "Stay here",
+      variant: "danger",
+    });
+  }
+
+  @HostListener("window:beforeunload", ["$event"])
+  handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!this.hasPendingChanges() || this.saving) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  }
+
+  private serialiseSettings(settings: User): string {
+    return JSON.stringify({
+      display_name: String(settings.display_name || "").trim(),
+      pronouns: this.normalisePronouns(settings.pronouns),
+      gender: this.normaliseGender(settings.gender),
+      custom_guidance: String(settings.custom_guidance || "").trim(),
+      timezone: String(settings.timezone || "").trim(),
+      holiday_country_code: String(settings.holiday_country_code || "").trim(),
+      show_public_holidays: Boolean(settings.show_public_holidays),
+      ai_tone: String(settings.ai_tone || "").trim(),
+      ai_verbosity: String(settings.ai_verbosity || "").trim(),
+      ai_focus: String(settings.ai_focus || "").trim(),
+      ai_model: String(settings.ai_model || "").trim(),
+      allow_ai_history: Boolean(settings.allow_ai_history),
+      allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
+      chatgpt_daily_diary_coachname: String(
+        settings.chatgpt_daily_diary_coachname || "",
+      ).trim(),
+      chatgpt_dream_diary_coachname: String(
+        settings.chatgpt_dream_diary_coachname || "",
+      ).trim(),
+      dailydiary_api_key: String(settings.dailydiary_api_key || "").trim(),
+      dreamdiary_api_key: String(settings.dreamdiary_api_key || "").trim(),
+    });
+  }
+
+  private normalisePronouns(value?: string): string {
+    const normalised = String(value || "").trim();
+    const allowed = new Set([
+      "he/him",
+      "she/her",
+      "they/them",
+      "he/they",
+      "she/they",
+      "prefer not to say",
+    ]);
+    return allowed.has(normalised) ? normalised : "prefer not to say";
+  }
+
+  private normaliseGender(value?: string): string {
+    const normalised = String(value || "").trim();
+    const allowed = new Set([
+      "man",
+      "woman",
+      "non-binary",
+      "agender",
+      "other / prefer not to say",
+    ]);
+    return allowed.has(normalised) ? normalised : "other / prefer not to say";
   }
 }

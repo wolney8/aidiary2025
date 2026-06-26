@@ -68,6 +68,7 @@ export const routes: Routes = [
       },
       {
         path: "personalisation",
+        canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
           import("./settings/personalisation/personalisation.component").then(
             (m) => m.PersonalisationComponent,
