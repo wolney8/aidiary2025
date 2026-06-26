@@ -13,6 +13,8 @@ export interface User {
   gender?: string;
   custom_guidance?: string;
   timezone?: string;
+  holiday_country_code?: string;
+  show_public_holidays?: boolean;
   ai_tone?: string;
   ai_verbosity?: string;
   ai_focus?: string;

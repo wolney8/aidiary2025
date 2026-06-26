@@ -73,6 +73,8 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["ai_model"] == "gpt-4.1-mini"
     assert data["allow_ai_history"] == 1
     assert data["allow_ai_attachment_context"] == 0
+    assert data["holiday_country_code"] is None
+    assert data["show_public_holidays"] == 0
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -91,6 +93,8 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "ai_model" in columns
     assert "allow_ai_history" in columns
     assert "allow_ai_attachment_context" in columns
+    assert "holiday_country_code" in columns
+    assert "show_public_holidays" in columns
 
 
 def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_schema):
@@ -107,6 +111,8 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
                 "gender": "non-binary",
                 "custom_guidance": "Help me stay grounded",
                 "timezone": "Europe/London",
+                "holiday_country_code": "gb",
+                "show_public_holidays": True,
                 "ai_tone": "empathetic",
                 "ai_verbosity": "detailed",
                 "ai_focus": "creative-prompts",
@@ -127,6 +133,8 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     assert data["user"]["gender"] == "non-binary"
     assert data["user"]["custom_guidance"] == "Help me stay grounded"
     assert data["user"]["timezone"] == "Europe/London"
+    assert data["user"]["holiday_country_code"] == "GB"
+    assert data["user"]["show_public_holidays"] == 1
     assert data["user"]["ai_tone"] == "empathetic"
     assert data["user"]["ai_verbosity"] == "detailed"
     assert data["user"]["ai_focus"] == "creative-prompts"
@@ -150,6 +158,22 @@ def test_profile_update_rejects_invalid_ai_tone(client_with_legacy_user_schema):
     assert response.status_code == 400
     data = json.loads(response.data)
     assert data["error"] == "Invalid AI tone"
+
+
+def test_profile_update_rejects_invalid_holiday_country_code(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"holiday_country_code": "United Kingdom"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data["error"] == "Holiday country must use a two-letter country code"
 
 
 def test_profile_update_rejects_invalid_ai_model(client_with_legacy_user_schema):

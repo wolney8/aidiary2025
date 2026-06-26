@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from datetime import datetime, timezone
+from typing import Any
+
+import httpx
+
+AVAILABLE_COUNTRIES_URL = "https://date.nager.at/api/v3/AvailableCountries"
+PUBLIC_HOLIDAYS_URL_TEMPLATE = "https://date.nager.at/api/v3/PublicHolidays/{year}/{country_code}"
+REQUEST_TIMEOUT_SECONDS = 10.0
+
+
+def _serialise_holiday(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "date": item.get("date", ""),
+        "localName": item.get("localName", ""),
+        "name": item.get("name", ""),
+        "countryCode": item.get("countryCode", ""),
+        "fixed": bool(item.get("fixed", False)),
+        "global": bool(item.get("global", False)),
+        "counties": item.get("counties"),
+        "launchYear": item.get("launchYear"),
+        "types": item.get("types") or [],
+    }
+
+
+def list_available_countries() -> list[dict[str, str]]:
+    with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        response = client.get(AVAILABLE_COUNTRIES_URL)
+        response.raise_for_status()
+        payload = response.json()
+
+    countries: list[dict[str, str]] = []
+    for item in payload:
+        country_code = str(item.get("countryCode", "")).strip().upper()
+        name = str(item.get("name", "")).strip()
+        if not country_code or not name:
+            continue
+        countries.append({"countryCode": country_code, "name": name})
+
+    countries.sort(key=lambda item: item["name"])
+    return countries
+
+
+def get_public_holidays(
+    conn: sqlite3.Connection,
+    *,
+    country_code: str,
+    year: int,
+) -> list[dict[str, Any]]:
+    normalised_country_code = country_code.strip().upper()
+    cached_row = conn.execute(
+        """
+        SELECT payload_json
+        FROM public_holiday_cache
+        WHERE country_code = ? AND holiday_year = ?
+        """,
+        (normalised_country_code, year),
+    ).fetchone()
+    if cached_row:
+        return json.loads(cached_row[0])
+
+    with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        response = client.get(
+            PUBLIC_HOLIDAYS_URL_TEMPLATE.format(
+                year=year,
+                country_code=normalised_country_code,
+            )
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+    serialised_payload = [_serialise_holiday(item) for item in payload]
+    fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute(
+        """
+        INSERT INTO public_holiday_cache (
+            country_code, holiday_year, payload_json, fetched_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(country_code, holiday_year)
+        DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at
+        """,
+        (
+            normalised_country_code,
+            year,
+            json.dumps(serialised_payload),
+            fetched_at,
+        ),
+    )
+    conn.commit()
+    return serialised_payload

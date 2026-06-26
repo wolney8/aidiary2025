@@ -11,6 +11,7 @@ MAX_SHORT_TEXT_LENGTH = 80
 MAX_DISPLAY_NAME_LENGTH = 8
 MAX_CUSTOM_GUIDANCE_LENGTH = 100
 MAX_TIMEZONE_LENGTH = 64
+HOLIDAY_COUNTRY_CODE_PATTERN = re.compile(r"^[A-Z]{2}$")
 DISPLAY_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z '\-]{0,7}$")
 CUSTOM_GUIDANCE_PATTERN = re.compile(r"^[A-Za-z0-9 ,.?!'\"()&/\-:]{1,100}$")
 ALLOWED_PRONOUNS = {
@@ -117,6 +118,17 @@ def _normalise_profile_update(field: str, value):
         return _normalise_custom_guidance(value)
     if field == 'timezone':
         return _normalise_optional_text(value, max_length=MAX_TIMEZONE_LENGTH)
+    if field == 'holiday_country_code':
+        if value is None:
+            return None
+        normalised = str(value).strip().upper()
+        if not normalised:
+            return ''
+        if not HOLIDAY_COUNTRY_CODE_PATTERN.fullmatch(normalised):
+            raise ValueError('Holiday country must use a two-letter country code')
+        return normalised
+    if field == 'show_public_holidays':
+        return 1 if bool(value) else 0
     if field == 'ai_tone':
         return _normalise_choice(value, allowed=ALLOWED_AI_TONES, field_label='AI tone')
     if field == 'ai_verbosity':
@@ -147,7 +159,8 @@ def get_profile():
         SELECT id, username, first_name, last_name, age, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
-               display_name, pronouns, gender, custom_guidance, timezone, ai_tone, ai_verbosity,
+               display_name, pronouns, gender, custom_guidance, timezone,
+               holiday_country_code, show_public_holidays, ai_tone, ai_verbosity,
                ai_focus, ai_model, allow_ai_history, allow_ai_attachment_context
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
@@ -172,7 +185,8 @@ def update_profile():
         'dailydiary_api_key', 'dreamdiary_api_key',
         'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname',
         'display_name', 'pronouns', 'gender', 'custom_guidance',
-        'timezone', 'ai_tone', 'ai_verbosity',
+        'timezone', 'holiday_country_code', 'show_public_holidays',
+        'ai_tone', 'ai_verbosity',
         'ai_focus', 'ai_model', 'allow_ai_history', 'allow_ai_attachment_context'
     ]
     
@@ -207,7 +221,8 @@ def update_profile():
         SELECT id, username, first_name, last_name, age, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
-               display_name, pronouns, gender, custom_guidance, timezone, ai_tone, ai_verbosity,
+               display_name, pronouns, gender, custom_guidance, timezone,
+               holiday_country_code, show_public_holidays, ai_tone, ai_verbosity,
                ai_focus, ai_model, allow_ai_history, allow_ai_attachment_context
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
