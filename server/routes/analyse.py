@@ -10,6 +10,7 @@ from services.attachment_text import (
     extract_pdf_attachment_content,
     looks_like_low_quality_ocr_text,
 )
+from services.ai_config import DEFAULT_ANALYSIS_MODEL
 from services.media_storage import read_media_bytes
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 from services.nltk_enrichment import (
@@ -123,7 +124,7 @@ DEFAULT_ANALYSIS_SETTINGS = {
     'ai_tone': 'friendly',
     'ai_verbosity': 'balanced',
     'ai_focus': 'reflective',
-    'ai_model': 'gpt-4.1-mini',
+    'ai_model': DEFAULT_ANALYSIS_MODEL,
     'allow_ai_history': True,
     'personal_context': None,
 }

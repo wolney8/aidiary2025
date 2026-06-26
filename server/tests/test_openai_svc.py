@@ -6,13 +6,13 @@ import pytest
 from services.openai_svc import (
     AnalysisRateLimitError,
     DAILY_IMAGE_STYLE_PREFIX,
-    DEFAULT_OPENAI_ANALYSIS_MODEL,
     DEFAULT_OPENAI_MAX_RETRIES,
     DEFAULT_OPENAI_MAX_OUTPUT_TOKENS,
     DEFAULT_OPENAI_TIMEOUT_SECONDS,
     DREAM_IMAGE_STYLE_PREFIX,
     OpenAIService,
 )
+from services.ai_config import DEFAULT_ANALYSIS_MODEL
 
 
 @patch('services.openai_svc.OpenAI')
@@ -248,7 +248,7 @@ def test_analyse_daily_entry_uses_selected_analysis_model(mock_openai):
     assert mock_client.chat.completions.create.call_args.kwargs['model'] == 'gpt-4.1'
 
     service.analyse_daily_entry('Daily text')
-    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_OPENAI_ANALYSIS_MODEL
+    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_ANALYSIS_MODEL
 
 
 @patch('services.openai_svc.OpenAI')
@@ -266,9 +266,90 @@ def test_clean_ocr_extracted_text_uses_analysis_model_and_returns_cleaned_text(m
     cleaned = service.clean_ocr_extracted_text("‘Strong. commived, restive? (tos)")
 
     assert cleaned == 'Strong, committed, creative. Fun-looking and serious.'
-    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_OPENAI_ANALYSIS_MODEL
+    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_ANALYSIS_MODEL
     system_prompt = mock_client.chat.completions.create.call_args.kwargs['messages'][0]['content']
     assert 'Drop fragments that are clearly unreadable OCR garbage' in system_prompt
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_maps_common_alias_keys_and_array_values(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps(
+        {
+            'response': 'A clearer response',
+            'themes': ['focus', 'repair'],
+            'people': ['Katie'],
+            'locations': ['Cafe', 'Park'],
+        }
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text')
+
+    assert result == {
+        'ai_response': 'A clearer response',
+        'tags': 'focus, repair',
+        'people_names': 'Katie',
+        'places': 'Cafe, Park',
+    }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_maps_common_alias_keys_and_array_values(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps(
+        {
+            'dream_summary': 'A station dream',
+            'meaning': 'It reflects transition and uncertainty.',
+            'prompt': 'A station at dawn with surreal details',
+            'themes': ['transition', 'travel'],
+            'people': ['Sam'],
+            'locations': ['Station'],
+        }
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry('Dream text')
+
+    assert result == {
+        'summary': 'A station dream',
+        'interpretation': 'It reflects transition and uncertainty.',
+        'image_prompt': 'A station at dawn with surreal details',
+        'tags': 'transition, travel',
+        'people_names': 'Sam',
+        'places': 'Station',
+    }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_invalid_requested_model_falls_back_to_default(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry('Daily text', analysis_options={'ai_model': 'bad-model'})
+
+    assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_ANALYSIS_MODEL
 
 
 @patch('services.openai_svc.OpenAI')
@@ -541,6 +622,41 @@ def test_analyse_daily_entry_does_not_retry_more_than_once_on_repeated_generic_o
     assert result['tags'] == 'reflection,daily'
     assert result['people_names'] == ''
     assert result['places'] == ''
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_retries_on_generic_boilerplate_variant(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'Thank you for sharing this. It is important to reflect and be kind to yourself.',
+            'tags': 'reflection,daily',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'You described feeling unsettled after seeing Katie on Bumble and then choosing a light WhatsApp message while trying to stay evidence-based. That tension between hope and self-protection stands out clearly.',
+            'tags': 'uncertainty,contact,boundaries',
+            'people_names': 'Katie',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('I saw Katie on Bumble and sent her a light WhatsApp message while trying to stay evidence-based.')
+
+    assert result['people_names'] == 'Katie'
+    assert 'Katie' in result['ai_response']
     assert mock_client.chat.completions.create.call_count == 2
 
 
@@ -833,6 +949,45 @@ def test_analyse_dream_entry_uses_contextual_fallback_when_retry_stays_generic(m
     assert result['tags'] == 'dream,subconscious'
     assert result['people_names'] == ''
     assert result['places'] == ''
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_retries_on_generic_non_fallback_variant(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'A meaningful dream to reflect on.',
+            'interpretation': 'Dreams often reflect our subconscious thoughts and emotions in symbolic ways.',
+            'image_prompt': 'Abstract symbolic dreamscape at night',
+            'tags': 'dream,subconscious',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'You were back in your old school corridor and then discovered a hidden rooftop garden.',
+            'interpretation': 'The corridor suggests old structures or expectations, while the hidden garden points to a private wish for relief, freedom, or a calmer perspective beyond those old pressures.',
+            'image_prompt': 'Old school corridor opening onto a hidden rooftop garden under moonlight',
+            'tags': 'school,pressure,relief',
+            'people_names': '',
+            'places': 'old school,rooftop garden',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry('I kept running through my old school corridor and then found a hidden rooftop garden.')
+
+    assert 'old school corridor' in result['summary']
+    assert result['places'] == 'old school,rooftop garden'
     assert mock_client.chat.completions.create.call_count == 2
 
 

@@ -8,6 +8,10 @@ import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import {
+  AI_MODEL_OPTIONS,
+  DEFAULT_AI_MODEL,
+} from "../../core/constants/ai-options";
 import { ProfileService } from "../../core/services/profile.service";
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
 import { PublicHolidayCountry } from "../../core/models/public-holiday.model";
@@ -149,9 +153,12 @@ import { User } from "../../core/models/user.model";
             <mat-form-field appearance="outline">
               <mat-label>AI Analysis Model</mat-label>
               <mat-select [(ngModel)]="settings.ai_model" name="ai_model">
-                <mat-option value="gpt-4o-mini">GPT-4o mini</mat-option>
-                <mat-option value="gpt-4.1-mini">GPT-4.1 mini</mat-option>
-                <mat-option value="gpt-4.1">GPT-4.1</mat-option>
+                <mat-option
+                  *ngFor="let model of aiModelOptions"
+                  [value]="model.value"
+                >
+                  {{ model.label }}
+                </mat-option>
               </mat-select>
               <mat-hint>
                 Higher-tier models usually cost more per analysis.
@@ -410,6 +417,7 @@ export class PersonalisationComponent implements OnInit {
   private readonly profileService = inject(ProfileService);
   private readonly publicHolidaysService = inject(PublicHolidaysService);
 
+  readonly aiModelOptions = AI_MODEL_OPTIONS;
   settings: User | null = null;
   holidayCountries: PublicHolidayCountry[] = [];
   saving = false;
@@ -441,7 +449,7 @@ export class PersonalisationComponent implements OnInit {
           ai_tone: profile.ai_tone || "friendly",
           ai_verbosity: profile.ai_verbosity || "balanced",
           ai_focus: profile.ai_focus || "reflective",
-          ai_model: profile.ai_model || "gpt-4.1-mini",
+          ai_model: profile.ai_model || DEFAULT_AI_MODEL,
           allow_ai_history:
             profile.allow_ai_history === undefined
               ? true

@@ -5,9 +5,11 @@ import logging
 import math
 import os
 import base64
+import re
 from io import BytesIO
 from typing import Any, Dict, Generator
 from openai import OpenAI
+from services.ai_config import ALLOWED_ANALYSIS_MODELS, DEFAULT_ANALYSIS_MODEL
 
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
-DEFAULT_OPENAI_ANALYSIS_MODEL = 'gpt-4.1-mini'
 DEFAULT_AI_STYLE = 'friendly'
 DEFAULT_AI_TONE = 'friendly'
 DEFAULT_AI_VERBOSITY = 'balanced'
@@ -131,6 +132,32 @@ Additional requirements for this retry:
 - Do not return vague or fallback-style wording.
 """
 
+    GENERIC_DAILY_RESPONSE_PHRASES = (
+        'thank you for sharing',
+        'every experience helps us grow and learn',
+        'remember to take care of yourself',
+        'be kind to yourself',
+        'it is important to reflect',
+        "it's important to reflect",
+    )
+
+    GENERIC_DREAM_INTERPRETATION_PHRASES = (
+        'dreams often reflect our subconscious thoughts and emotions',
+        'emotionally significant and worth exploring further',
+        'may reflect important emotions or concerns',
+    )
+
+    GENERIC_DREAM_SUMMARY_PHRASES = (
+        'a dream experience to explore further',
+        'a meaningful dream to reflect on',
+        'a dream was recorded and is ready for exploration',
+    )
+
+    GENERIC_DREAM_IMAGE_PROMPT_PHRASES = (
+        'abstract dreamscape',
+        'surreal dream scene',
+    )
+
     @staticmethod
     def _log_analysis_outcome(mode: str, outcome: str, level: str = 'info', **fields: object) -> None:
         payload = {'event': 'analysis_outcome', 'mode': mode, 'outcome': outcome, **fields}
@@ -222,8 +249,16 @@ Additional requirements for this retry:
     @staticmethod
     def _normalise_analysis_options(analysis_options: dict[str, Any] | None) -> dict[str, Any]:
         options = dict(analysis_options or {})
+        requested_model = str(
+            options.get('ai_model') or DEFAULT_ANALYSIS_MODEL
+        ).strip() or DEFAULT_ANALYSIS_MODEL
+        resolved_model = (
+            requested_model
+            if requested_model in ALLOWED_ANALYSIS_MODELS
+            else DEFAULT_ANALYSIS_MODEL
+        )
         return {
-            'ai_model': str(options.get('ai_model') or DEFAULT_OPENAI_ANALYSIS_MODEL).strip() or DEFAULT_OPENAI_ANALYSIS_MODEL,
+            'ai_model': resolved_model,
             'ai_style': str(options.get('ai_style') or DEFAULT_AI_STYLE).strip() or DEFAULT_AI_STYLE,
             'ai_tone': str(options.get('ai_tone') or DEFAULT_AI_TONE).strip() or DEFAULT_AI_TONE,
             'ai_verbosity': str(options.get('ai_verbosity') or DEFAULT_AI_VERBOSITY).strip() or DEFAULT_AI_VERBOSITY,
@@ -639,14 +674,51 @@ Additional requirements for this retry:
         if parsed is None:
             return None
 
+        alias_map: dict[str, tuple[str, ...]] = {
+            'ai_response': ('response', 'analysis', 'message'),
+            'tags': ('themes', 'keywords'),
+            'people_names': ('people', 'names', 'peopleMentioned'),
+            'places': ('locations', 'place_names'),
+            'summary': ('dream_summary', 'overview'),
+            'interpretation': ('analysis', 'meaning', 'interpretation_text'),
+            'image_prompt': ('prompt', 'art_prompt', 'image_description'),
+        }
+
         normalised: Dict[str, str] = {}
         for key in required_keys:
             value = parsed.get(key)
             if value is None:
+                for alias in alias_map.get(key, ()):
+                    if alias in parsed and parsed.get(alias) is not None:
+                        value = parsed.get(alias)
+                        break
+            if value is None:
                 continue
-            normalised[key] = str(value)
+            normalised[key] = OpenAIService._coerce_json_field_value(value)
 
         return normalised
+
+    @staticmethod
+    def _coerce_json_field_value(value: object) -> str:
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            parts = [OpenAIService._coerce_json_field_value(item).strip() for item in value]
+            parts = [part for part in parts if part]
+            return ', '.join(parts)
+        if isinstance(value, dict):
+            simple_values = [
+                OpenAIService._coerce_json_field_value(item).strip()
+                for item in value.values()
+            ]
+            simple_values = [item for item in simple_values if item]
+            if simple_values:
+                return ', '.join(simple_values)
+        return str(value)
 
     def _create_analysis_completion(
         self,
@@ -708,7 +780,7 @@ Additional requirements for this retry:
 
         try:
             response = self.client.chat.completions.create(
-                model=DEFAULT_OPENAI_ANALYSIS_MODEL,
+                model=DEFAULT_ANALYSIS_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -739,26 +811,111 @@ Additional requirements for this retry:
             raise
 
     @staticmethod
-    def _is_daily_generic_fallback_like(result: Dict, fallback: Dict) -> bool:
+    def _tokenise_specificity_text(value: str) -> set[str]:
+        words = re.findall(r"[A-Za-z']{4,}", str(value or '').lower())
+        stop_words = {
+            'about', 'after', 'again', 'also', 'because', 'being', 'could',
+            'dream', 'dreams', 'entry', 'feeling', 'further', 'important',
+            'maybe', 'might', 'please', 'really', 'reflect', 'response',
+            'sharing', 'should', 'some', 'take', 'thank', 'their', 'there',
+            'these', 'they', 'this', 'thoughts', 'through', 'today', 'very',
+            'what', 'when', 'with', 'worth', 'would', 'your',
+        }
+        return {word for word in words if word not in stop_words}
+
+    @classmethod
+    def _has_meaningful_token_overlap(cls, source_text: str, candidate_text: str) -> bool:
+        source_tokens = cls._tokenise_specificity_text(source_text)
+        candidate_tokens = cls._tokenise_specificity_text(candidate_text)
+        if not source_tokens or not candidate_tokens:
+            return False
+        return bool(source_tokens & candidate_tokens)
+
+    @classmethod
+    def _is_daily_generic_fallback_like(
+        cls,
+        result: Dict,
+        fallback: Dict,
+        source_text: str,
+    ) -> bool:
+        response_text = cls._normalise_whitespace(result.get('ai_response', ''))
+        if not response_text:
+            return True
+        if response_text == fallback['ai_response'] or result == fallback:
+            return True
+
+        lowered = response_text.lower()
+        if any(phrase in lowered for phrase in cls.GENERIC_DAILY_RESPONSE_PHRASES):
+            return True
+
+        has_overlap = cls._has_meaningful_token_overlap(source_text, response_text)
+        defaultish_tags = cls._normalise_whitespace(result.get('tags', '')) in {'', 'reflection,daily'}
+        no_entities = not cls._normalise_whitespace(result.get('people_names', '')) and not cls._normalise_whitespace(result.get('places', ''))
+        short_response = len(response_text.split()) <= 10
+        return short_response and defaultish_tags and no_entities and not has_overlap
+
+    @staticmethod
+    def _normalised_joined_text(*parts: str) -> str:
+        return ' '.join(OpenAIService._normalise_whitespace(part) for part in parts if str(part or '').strip())
+
+    @classmethod
+    def _is_dream_generic_trio(cls, result: Dict, fallback: Dict, source_text: str) -> bool:
+        summary = cls._normalise_whitespace(result.get('summary', ''))
+        interpretation = cls._normalise_whitespace(result.get('interpretation', ''))
+        image_prompt = cls._normalise_whitespace(result.get('image_prompt', ''))
+
+        if (
+            summary == fallback['summary']
+            and interpretation == fallback['interpretation']
+            and image_prompt == fallback['image_prompt']
+        ):
+            return True
+
+        lowered_summary = summary.lower()
+        lowered_interpretation = interpretation.lower()
+        lowered_image_prompt = image_prompt.lower()
+
+        combined = cls._normalised_joined_text(summary, interpretation, image_prompt)
+        has_overlap = cls._has_meaningful_token_overlap(source_text, combined)
+        defaultish_tags = cls._normalise_whitespace(result.get('tags', '')) in {'', 'dream,subconscious'}
+        no_entities = not cls._normalise_whitespace(result.get('people_names', '')) and not cls._normalise_whitespace(result.get('places', ''))
+        short_summary = len(summary.split()) <= 8
+        short_interpretation = len(interpretation.split()) <= 14
+        generic_summary = (
+            summary == fallback['summary']
+            or any(phrase in lowered_summary for phrase in cls.GENERIC_DREAM_SUMMARY_PHRASES)
+            or (short_summary and not has_overlap)
+        )
+        generic_interpretation = (
+            interpretation == fallback['interpretation']
+            or any(
+                phrase in lowered_interpretation
+                for phrase in cls.GENERIC_DREAM_INTERPRETATION_PHRASES
+            )
+            or short_interpretation
+        )
+        generic_image_prompt = (
+            image_prompt == fallback['image_prompt']
+            or any(
+                phrase in lowered_image_prompt
+                for phrase in cls.GENERIC_DREAM_IMAGE_PROMPT_PHRASES
+            )
+            or ('abstract' in lowered_image_prompt and 'dreamscape' in lowered_image_prompt)
+        )
         return (
-            result.get('ai_response') == fallback['ai_response']
-            or result == fallback
+            generic_summary
+            and generic_interpretation
+            and generic_image_prompt
+            and defaultish_tags
+            and no_entities
         )
 
     @staticmethod
-    def _is_dream_generic_trio(result: Dict, fallback: Dict) -> bool:
-        return (
-            result.get('summary') == fallback['summary']
-            and result.get('interpretation') == fallback['interpretation']
-            and result.get('image_prompt') == fallback['image_prompt']
-        )
-
-    @staticmethod
-    def _is_daily_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict) -> bool:
+    def _is_daily_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
         if retry_result is None:
             return True
 
-        if OpenAIService._is_daily_generic_fallback_like(retry_result, fallback):
+        if OpenAIService._is_daily_generic_fallback_like(retry_result, fallback, source_text):
             return True
 
         initial_text = OpenAIService._normalise_whitespace(initial_result.get('ai_response', ''))
@@ -766,11 +923,11 @@ Additional requirements for this retry:
         return bool(initial_text and retry_text and initial_text == retry_text)
 
     @staticmethod
-    def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict) -> bool:
+    def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
         if retry_result is None:
             return True
 
-        if OpenAIService._is_dream_generic_trio(retry_result, fallback):
+        if OpenAIService._is_dream_generic_trio(retry_result, fallback, source_text):
             return True
 
         initial_trio = (
@@ -855,7 +1012,7 @@ Additional requirements for this retry:
 
                 if retry_result is not None:
                     retry_merged_result = {**fallback, **retry_result}
-                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback):
+                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback, text):
                         self._log_analysis_outcome('daily', 'retry_improved_specificity_after_invalid_json')
                         return retry_merged_result
 
@@ -879,7 +1036,7 @@ Additional requirements for this retry:
 
             merged_result = {**fallback, **result}
 
-            if self._is_daily_generic_fallback_like(merged_result, fallback):
+            if self._is_daily_generic_fallback_like(merged_result, fallback, text):
                 self._log_analysis_outcome(
                     'daily',
                     'retry_triggered_generic_output',
@@ -897,7 +1054,7 @@ Additional requirements for this retry:
                 )
                 retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
 
-                if not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback):
+                if not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback, text):
                     self._log_analysis_outcome('daily', 'retry_improved_specificity')
                     return retry_merged_result
 
@@ -967,7 +1124,7 @@ Additional requirements for this retry:
 
                 if retry_result is not None:
                     retry_merged_result = {**fallback, **retry_result}
-                    if not self._is_dream_generic_trio(retry_merged_result, fallback):
+                    if not self._is_dream_generic_trio(retry_merged_result, fallback, text):
                         self._log_analysis_outcome('dream', 'retry_improved_specificity_after_invalid_json')
                         return retry_merged_result
 
@@ -991,7 +1148,7 @@ Additional requirements for this retry:
 
             merged_result = {**fallback, **result}
 
-            if self._is_dream_generic_trio(merged_result, fallback):
+            if self._is_dream_generic_trio(merged_result, fallback, text):
                 self._log_analysis_outcome(
                     'dream',
                     'retry_triggered_generic_output',
@@ -1009,7 +1166,7 @@ Additional requirements for this retry:
                 )
                 retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
 
-                if not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback):
+                if not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback, text):
                     self._log_analysis_outcome('dream', 'retry_improved_specificity')
                     return retry_merged_result
 
