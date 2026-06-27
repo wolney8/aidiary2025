@@ -4,6 +4,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 import { User } from '../models/user.model';
 import { AuthService } from './auth.service';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
@@ -11,7 +12,7 @@ import { AuthService } from './auth.service';
 export class ProfileService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
-  private apiUrl = 'http://localhost:5001/api';
+  private apiUrl = environment.apiBaseUrl;
 
   private buildHeaders(): HttpHeaders {
     const headers: Record<string, string> = {

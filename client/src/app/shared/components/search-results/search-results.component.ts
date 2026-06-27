@@ -11,7 +11,7 @@ import {
   SearchResult,
   SearchState,
 } from "../../../core/services/search.service";
-import { RouterLink } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { MatCardModule } from "@angular/material/card";
 import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
@@ -1017,6 +1017,8 @@ import { Subscription } from "rxjs";
 })
 export class SearchResultsComponent implements OnInit, OnDestroy {
   protected readonly searchService = inject(SearchService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly elementRef = inject(ElementRef);
   protected readonly results$ = this.searchService.results$;
@@ -1313,14 +1315,26 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
 
   clearSearch(): void {
     this.searchService.clear();
+    void this.router.navigate(["/entries"], {
+      queryParams: this.getQueryParamsWithoutSearch(),
+      replaceUrl: true,
+    });
   }
 
   browseAllEntries(): void {
-    // Clear the search first
     this.searchService.clear();
-    // Navigate to entries (latest entries will be shown by default)
-    // The entries list component should handle showing latest entries
-    window.location.href = "/entries";
+    void this.router.navigate(["/entries"], {
+      queryParams: this.getQueryParamsWithoutSearch(),
+      replaceUrl: true,
+    });
+  }
+
+  private getQueryParamsWithoutSearch(): Record<string, string> {
+    const queryParams = this.route.snapshot.queryParams;
+    const filtered = Object.entries(queryParams).filter(
+      ([key, value]) => key !== "search" && value !== null && value !== undefined && value !== "",
+    );
+    return Object.fromEntries(filtered);
   }
 
   getSearchSuggestions(query: string): string[] {

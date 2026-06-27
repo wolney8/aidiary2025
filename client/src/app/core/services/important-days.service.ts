@@ -6,6 +6,7 @@ import {
   ImportantDayPayload,
 } from "../models/important-day.model";
 import { AuthService } from "./auth.service";
+import { environment } from "../../../environments/environment";
 
 @Injectable({
   providedIn: "root",
@@ -13,7 +14,7 @@ import { AuthService } from "./auth.service";
 export class ImportantDaysService {
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
-  private readonly apiUrl = "http://localhost:5001/api";
+  private readonly apiUrl = environment.apiBaseUrl;
 
   private buildHeaders(): HttpHeaders {
     const headers: Record<string, string> = {

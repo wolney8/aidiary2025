@@ -364,6 +364,95 @@ def test_analyse_dream_entry_maps_common_alias_keys_and_array_values(mock_openai
     }
 
 
+def test_extract_valid_json_payload_unwraps_single_item_list_and_result_wrapper():
+    raw_content = json.dumps(
+        [
+            {
+                'result': {
+                    'response': 'Wrapped daily analysis',
+                    'themes': ['reflection', 'memory'],
+                    'people': ['Alex'],
+                    'locations': ['Pier'],
+                }
+            }
+        ]
+    )
+
+    result = OpenAIService._extract_valid_json_payload(
+        raw_content,
+        ('ai_response', 'tags', 'people_names', 'places'),
+    )
+
+    assert result == {
+        'ai_response': 'Wrapped daily analysis',
+        'tags': 'reflection, memory',
+        'people_names': 'Alex',
+        'places': 'Pier',
+    }
+
+
+def test_extract_valid_json_payload_unwraps_nested_data_and_output_wrappers():
+    raw_content = json.dumps(
+        {
+            'data': {
+                'output': {
+                    'dream_summary': 'A crowded station',
+                    'interpretation_text': 'Movement and uncertainty are central themes.',
+                    'art_prompt': 'Cinematic station scene at dawn',
+                    'keywords': ['travel', 'change'],
+                    'names': ['Mira'],
+                    'place_names': ['Platform'],
+                }
+            }
+        }
+    )
+
+    result = OpenAIService._extract_valid_json_payload(
+        raw_content,
+        ('summary', 'interpretation', 'image_prompt', 'tags', 'people_names', 'places'),
+    )
+
+    assert result == {
+        'summary': 'A crowded station',
+        'interpretation': 'Movement and uncertainty are central themes.',
+        'image_prompt': 'Cinematic station scene at dawn',
+        'tags': 'travel, change',
+        'people_names': 'Mira',
+        'places': 'Platform',
+    }
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_accepts_wrapped_json_payload(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps(
+        {
+            'result': {
+                'message': 'Wrapped payload accepted',
+                'keywords': ['clarity'],
+                'peopleMentioned': ['Jo'],
+                'locations': ['Office'],
+            }
+        }
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry('Daily text')
+
+    assert result == {
+        'ai_response': 'Wrapped payload accepted',
+        'tags': 'clarity',
+        'people_names': 'Jo',
+        'places': 'Office',
+    }
+
+
 @patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry_invalid_requested_model_falls_back_to_default(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'

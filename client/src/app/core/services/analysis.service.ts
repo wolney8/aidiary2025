@@ -8,6 +8,7 @@ import {
   DreamAnalysisResponse,
 } from "../models/entry.model";
 import { AuthService } from "./auth.service";
+import { environment } from "../../../environments/environment";
 
 @Injectable({
   providedIn: "root",
@@ -15,7 +16,7 @@ import { AuthService } from "./auth.service";
 export class AnalysisService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
-  private apiUrl = "http://localhost:5001/api";
+  private apiUrl = environment.apiBaseUrl;
 
   analyseText(
     request: AnalysisRequest,

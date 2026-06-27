@@ -685,22 +685,49 @@ Additional requirements for this retry:
 
         try:
             parsed = json.loads(raw_content)
-            if isinstance(parsed, dict):
-                return parsed
+            normalised = OpenAIService._normalise_json_payload_shape(parsed)
+            if isinstance(normalised, dict):
+                return normalised
         except (TypeError, json.JSONDecodeError):
             pass
 
         for start_index, char in enumerate(raw_content):
-            if char != '{':
+            if char not in '[{':
                 continue
             try:
                 parsed, _ = decoder.raw_decode(raw_content, idx=start_index)
             except json.JSONDecodeError:
                 continue
-            if isinstance(parsed, dict):
-                return parsed
+            normalised = OpenAIService._normalise_json_payload_shape(parsed)
+            if isinstance(normalised, dict):
+                return normalised
 
         return None
+
+    @staticmethod
+    def _normalise_json_payload_shape(payload: object) -> Dict | None:
+        current = payload
+        wrapper_keys = ('result', 'data', 'output', 'content', 'payload')
+
+        for _ in range(4):
+            if isinstance(current, list):
+                if len(current) != 1:
+                    return None
+                current = current[0]
+                continue
+
+            if not isinstance(current, dict):
+                return None
+
+            for wrapper_key in wrapper_keys:
+                wrapped = current.get(wrapper_key)
+                if isinstance(wrapped, (dict, list)):
+                    current = wrapped
+                    break
+            else:
+                return current
+
+        return current if isinstance(current, dict) else None
 
     @staticmethod
     def _extract_valid_json_payload(raw_content: str, required_keys: tuple[str, ...]) -> Dict | None:
