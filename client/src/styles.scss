@@ -52,7 +52,24 @@ $ai-diary-theme: mat.define-light-theme(
   )
 );
 
+$ai-diary-dark-theme: mat.define-dark-theme(
+  (
+    color: (
+      primary: $ai-diary-primary,
+      accent: $ai-diary-accent,
+      warn: $ai-diary-warn,
+    ),
+    typography: mat.define-typography-config(),
+    density: 0,
+  )
+);
+
+@include mat.core();
 @include mat.all-component-themes($ai-diary-theme);
+
+html[data-theme="dark"] {
+  @include mat.all-component-colors($ai-diary-dark-theme);
+}
 
 // Global styles
 html,
@@ -62,6 +79,9 @@ body {
   font-family: "Source Sans 3", Roboto, "Helvetica Neue", sans-serif;
   background: var(--colour-background);
   color: var(--colour-text-primary);
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
 }
 
 // Spacing variables from wireframes
@@ -79,9 +99,26 @@ body {
   --colour-background: #f8fafc;
   --colour-surface: #ffffff;
   --colour-surface-muted: #f1f5f9;
+  --colour-surface-elevated: #ffffff;
+  --colour-surface-strong: #e2e8f0;
   --colour-text-primary: #0f172a;
   --colour-text-secondary: #334155;
   --colour-border: #cbd5e1;
+  --colour-overlay: rgba(15, 23, 42, 0.68);
+  --colour-toolbar: linear-gradient(90deg, #5b21b6 0%, #7c3aed 52%, #8b5cf6 100%);
+  --colour-toolbar-text: #ffffff;
+  --colour-chip-bg: #dbeafe;
+  --colour-chip-text: #1e3a8a;
+  --colour-warning-bg: #fff7ed;
+  --colour-warning-text: #9a3412;
+  --colour-success-bg: #dcfce7;
+  --colour-success-text: #166534;
+  --colour-danger-bg: #fee2e2;
+  --colour-danger-text: #991b1b;
+  --colour-info-bg: #dbeafe;
+  --colour-info-text: #1d4ed8;
+  --colour-violet-bg: #ede9fe;
+  --colour-violet-text: #6d28d9;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -90,6 +127,442 @@ body {
 
   --focus-outline: 2px solid #1d4ed8;
   --focus-offset: 2px;
+}
+
+html[data-theme="dark"] {
+  --colour-primary: #9bb8ff;
+  --colour-primary-hover: #bfd1ff;
+  --colour-secondary: #dbe4f3;
+  --colour-accent: #67d1ff;
+  --colour-background: #07111d;
+  --colour-surface: #111b2e;
+  --colour-surface-muted: #162235;
+  --colour-surface-elevated: #1b2940;
+  --colour-surface-strong: #24344d;
+  --colour-text-primary: #e2e8f0;
+  --colour-text-secondary: #cbd5e1;
+  --colour-border: #31455f;
+  --colour-overlay: rgba(2, 6, 23, 0.78);
+  --colour-toolbar: linear-gradient(90deg, #111b2e 0%, #1a2740 45%, #223251 100%);
+  --colour-toolbar-text: #f8fafc;
+  --colour-chip-bg: #22395c;
+  --colour-chip-text: #dbeafe;
+  --colour-warning-bg: #3a2615;
+  --colour-warning-text: #ffd7a8;
+  --colour-success-bg: #18392b;
+  --colour-success-text: #b8f7d4;
+  --colour-danger-bg: #45202a;
+  --colour-danger-text: #ffc4cf;
+  --colour-info-bg: #1f3254;
+  --colour-info-text: #c9deff;
+  --colour-violet-bg: #31254e;
+  --colour-violet-text: #e0d2ff;
+  --focus-outline: 2px solid #7fb0ff;
+}
+
+html[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 34%),
+    linear-gradient(180deg, #09111f 0%, #0b1322 100%);
+}
+
+html[data-theme="dark"] .mat-drawer-container,
+html[data-theme="dark"] .mat-drawer-content,
+html[data-theme="dark"] .mat-mdc-card,
+html[data-theme="dark"] .mat-mdc-menu-panel,
+html[data-theme="dark"] .mat-mdc-dialog-surface,
+html[data-theme="dark"] .mat-mdc-select-panel {
+  background-color: var(--colour-surface-elevated);
+  color: var(--colour-text-primary);
+}
+
+html[data-theme="dark"] .mat-drawer {
+  background-color: #0b1322;
+  color: var(--colour-text-primary);
+}
+
+html[data-theme="dark"] .mat-toolbar {
+  background: var(--colour-toolbar);
+  color: var(--colour-toolbar-text);
+}
+
+html[data-theme="dark"] .mat-mdc-card,
+html[data-theme="dark"] .mat-expansion-panel,
+html[data-theme="dark"] .mat-mdc-paginator,
+html[data-theme="dark"] .mat-mdc-table,
+html[data-theme="dark"] .mat-mdc-tab-header,
+html[data-theme="dark"] .mat-mdc-autocomplete-panel {
+  background-color: var(--colour-surface-elevated);
+  color: var(--colour-text-primary);
+}
+
+html[data-theme="dark"] .mat-mdc-outlined-button:not(:disabled),
+html[data-theme="dark"] .mat-mdc-button:not(:disabled),
+html[data-theme="dark"] .mat-mdc-icon-button:not(:disabled),
+html[data-theme="dark"] .mat-button-toggle {
+  color: var(--colour-text-primary);
+}
+
+html[data-theme="dark"] .mat-mdc-outlined-button:not(:disabled),
+html[data-theme="dark"] .mat-button-toggle {
+  border-color: var(--colour-border);
+}
+
+html[data-theme="dark"] .mat-mdc-unelevated-button:not(:disabled),
+html[data-theme="dark"] .mat-mdc-raised-button:not(:disabled) {
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .mat-button-toggle-appearance-standard,
+html[data-theme="dark"] .mat-button-toggle-standalone.mat-button-toggle-appearance-standard,
+html[data-theme="dark"] .mat-button-toggle-group-appearance-standard {
+  border-color: var(--colour-border);
+}
+
+html[data-theme="dark"] .mat-button-toggle-appearance-standard .mat-button-toggle-label-content,
+html[data-theme="dark"] .mat-button-toggle-standalone.mat-button-toggle-appearance-standard .mat-button-toggle-label-content {
+  color: var(--colour-text-secondary);
+}
+
+html[data-theme="dark"] .mat-button-toggle-checked {
+  background: var(--colour-primary) !important;
+}
+
+html[data-theme="dark"] .mat-button-toggle-checked .mat-button-toggle-label-content {
+  color: #08111f !important;
+}
+
+html[data-theme="dark"] .mat-mdc-chip,
+html[data-theme="dark"] .mat-mdc-standard-chip {
+  background: var(--colour-chip-bg) !important;
+  color: var(--colour-chip-text) !important;
+}
+
+html[data-theme="dark"] .mat-mdc-text-field-wrapper,
+html[data-theme="dark"] .mdc-text-field--filled:not(.mdc-text-field--disabled),
+html[data-theme="dark"] .mdc-text-field--outlined:not(.mdc-text-field--disabled) {
+  background-color: var(--colour-surface) !important;
+}
+
+html[data-theme="dark"] .mat-mdc-form-field-subscript-wrapper,
+html[data-theme="dark"] .mat-mdc-form-field-hint-wrapper,
+html[data-theme="dark"] .mat-mdc-form-field-error-wrapper {
+  color: var(--colour-text-secondary);
+}
+
+html[data-theme="dark"] .mat-mdc-paginator,
+html[data-theme="dark"] .mat-mdc-paginator-container {
+  color: var(--colour-text-primary);
+}
+
+html[data-theme="dark"] .mat-mdc-paginator {
+  background: var(--colour-surface-elevated) !important;
+}
+
+html[data-theme="dark"] .mat-mdc-button-touch-target {
+  background: transparent !important;
+}
+
+html[data-theme="dark"] .mat-mdc-paginator-page-size-label,
+html[data-theme="dark"] .mat-mdc-paginator-range-label {
+  color: var(--colour-text-secondary) !important;
+}
+
+html[data-theme="dark"] .mat-mdc-select-value,
+html[data-theme="dark"] .mat-mdc-select-min-line,
+html[data-theme="dark"] .mat-mdc-option .mdc-list-item__primary-text,
+html[data-theme="dark"] .mat-mdc-menu-item .mdc-list-item__primary-text {
+  color: var(--colour-text-primary) !important;
+}
+
+html[data-theme="dark"] .mat-mdc-option.mdc-list-item--selected:not(.mdc-list-item--disabled),
+html[data-theme="dark"] .mat-mdc-option:hover:not(.mdc-list-item--disabled),
+html[data-theme="dark"] .mat-mdc-menu-item:hover:not([disabled]) {
+  background: rgba(155, 184, 255, 0.1) !important;
+}
+
+html[data-theme="dark"] .mat-mdc-select-arrow,
+html[data-theme="dark"] .mat-mdc-form-field-icon-suffix,
+html[data-theme="dark"] .mat-mdc-form-field-icon-prefix,
+html[data-theme="dark"] .mat-mdc-paginator-icon {
+  color: var(--colour-text-secondary);
+}
+
+html[data-theme="dark"] .mat-mdc-form-field-focus-overlay,
+html[data-theme="dark"] .mat-mdc-form-field:hover .mat-mdc-form-field-focus-overlay {
+  background-color: rgba(127, 176, 255, 0.08);
+}
+
+html[data-theme="dark"] .auth-container,
+html[data-theme="dark"] .profile-container,
+html[data-theme="dark"] .search-results,
+html[data-theme="dark"] .settings-section,
+html[data-theme="dark"] .list-container,
+html[data-theme="dark"] .main-content {
+  color: var(--colour-text-primary) !important;
+}
+
+html[data-theme="dark"] .auth-container {
+  background:
+    radial-gradient(circle at top, rgba(103, 209, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, #07111d 0%, #0b1322 100%) !important;
+}
+
+html[data-theme="dark"] .auth-container .mat-mdc-card,
+html[data-theme="dark"] .profile-container .mat-mdc-card,
+html[data-theme="dark"] .search-results .mat-mdc-card,
+html[data-theme="dark"] .settings-section .mat-mdc-card {
+  background: linear-gradient(
+    180deg,
+    var(--colour-surface-elevated) 0%,
+    var(--colour-surface) 100%
+  ) !important;
+  color: var(--colour-text-primary) !important;
+  border-color: var(--colour-border) !important;
+}
+
+html[data-theme="dark"] .auth-container .error-message,
+html[data-theme="dark"] .settings-section .error,
+html[data-theme="dark"] .profile-container .error,
+html[data-theme="dark"] .status.error {
+  color: var(--colour-danger-text) !important;
+}
+
+html[data-theme="dark"] .auth-container .error-message {
+  background: var(--colour-danger-bg) !important;
+  border-color: rgba(255, 196, 207, 0.28) !important;
+}
+
+html[data-theme="dark"] .auth-container .info-message {
+  background: var(--colour-info-bg) !important;
+  border-color: rgba(155, 184, 255, 0.24) !important;
+  color: var(--colour-info-text) !important;
+}
+
+html[data-theme="dark"] .auth-container .register-link,
+html[data-theme="dark"] .auth-container .login-link,
+html[data-theme="dark"] .holiday-preview-card p,
+html[data-theme="dark"] .checkbox-hint,
+html[data-theme="dark"] .search-header h2 + p,
+html[data-theme="dark"] .status,
+html[data-theme="dark"] .success,
+html[data-theme="dark"] .profile-container .success {
+  color: var(--colour-text-secondary) !important;
+}
+
+html[data-theme="dark"] .holiday-preview-card,
+html[data-theme="dark"] .holiday-preview-chip,
+html[data-theme="dark"] .ai-behaviour-note,
+html[data-theme="dark"] .ai-behaviour-group {
+  border-color: var(--colour-border) !important;
+}
+
+html[data-theme="dark"] .holiday-preview-card,
+html[data-theme="dark"] .ai-behaviour-note,
+html[data-theme="dark"] .ai-behaviour-group {
+  background: linear-gradient(
+    180deg,
+    var(--colour-surface-elevated) 0%,
+    var(--colour-surface) 100%
+  ) !important;
+  color: var(--colour-text-primary) !important;
+}
+
+html[data-theme="dark"] .holiday-preview-chip,
+html[data-theme="dark"] .holiday-preview-chip.ng-star-inserted {
+  background: var(--colour-info-bg) !important;
+  color: var(--colour-info-text) !important;
+  border-color: rgba(155, 184, 255, 0.24) !important;
+}
+
+html[data-theme="dark"] .timeline-scroller,
+html[data-theme="dark"] .calendar-shell,
+html[data-theme="dark"] .calendar-preview-deck,
+html[data-theme="dark"] .important-day-preview-deck,
+html[data-theme="dark"] .important-day-image-modal-dialog,
+html[data-theme="dark"] .pagination-container,
+html[data-theme="dark"] .pagination-container.ng-star-inserted,
+html[data-theme="dark"] .entry-image-placeholder,
+html[data-theme="dark"] .entry-image-placeholder.ng-star-inserted,
+html[data-theme="dark"] .calendar-day,
+html[data-theme="dark"] .calendar-preview-card,
+html[data-theme="dark"] .calendar-important-day-card,
+html[data-theme="dark"] .selected-day-banner,
+html[data-theme="dark"] .filter-status-banner,
+html[data-theme="dark"] .no-results-card,
+html[data-theme="dark"] .loading-message-card,
+html[data-theme="dark"] .expanded-details-card,
+html[data-theme="dark"] .form-section,
+html[data-theme="dark"] .preview-panel,
+html[data-theme="dark"] .important-day-item,
+html[data-theme="dark"] .icon-picker-panel {
+  background: linear-gradient(
+    180deg,
+    var(--colour-surface-elevated) 0%,
+    var(--colour-surface) 100%
+  ) !important;
+  color: var(--colour-text-primary) !important;
+  border-color: var(--colour-border) !important;
+}
+
+html[data-theme="dark"] .month-item.current,
+html[data-theme="dark"] .month-item.current.clickable,
+html[data-theme="dark"] .month-item.current.clickable.ng-star-inserted {
+  background: rgba(155, 184, 255, 0.16) !important;
+  color: var(--colour-text-primary) !important;
+  border-color: var(--colour-primary) !important;
+}
+
+html[data-theme="dark"] .month-item.current .year,
+html[data-theme="dark"] .month-item.current .month {
+  color: var(--colour-text-primary) !important;
+}
+
+html[data-theme="dark"] .month-item.selected,
+html[data-theme="dark"] .month-item.selected.ng-star-inserted {
+  background: var(--colour-primary) !important;
+  color: #08111f !important;
+}
+
+html[data-theme="dark"] .month-item.selected .year,
+html[data-theme="dark"] .month-item.selected .month,
+html[data-theme="dark"] .month-item.selected .entry-count-badge {
+  color: #08111f !important;
+}
+
+html[data-theme="dark"] .month-item.clickable:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="dark"] .timeline-scroller button,
+html[data-theme="dark"] .timeline-nav-button,
+html[data-theme="dark"] .selected-day-return,
+html[data-theme="dark"] .calendar-important-days-toggle,
+html[data-theme="dark"] .calendar-important-days-more {
+  background: var(--colour-surface-elevated) !important;
+  color: var(--colour-text-primary) !important;
+  border-color: var(--colour-border) !important;
+}
+
+html[data-theme="dark"] .calendar-summary h3,
+html[data-theme="dark"] .calendar-weekdays span,
+html[data-theme="dark"] .calendar-day-number,
+html[data-theme="dark"] .calendar-preview-card-title,
+html[data-theme="dark"] .calendar-preview-card-more span,
+html[data-theme="dark"] .calendar-preview-header strong,
+html[data-theme="dark"] .calendar-important-day-card-note,
+html[data-theme="dark"] .calendar-important-day-card-heading strong,
+html[data-theme="dark"] .no-results-content h3,
+html[data-theme="dark"] .search-suggestions h4,
+html[data-theme="dark"] .form-section-heading h3,
+html[data-theme="dark"] .preview-copy strong,
+html[data-theme="dark"] .important-day-heading strong {
+  color: var(--colour-text-primary) !important;
+}
+
+html[data-theme="dark"] .calendar-summary p,
+html[data-theme="dark"] .calendar-important-days-summary-label,
+html[data-theme="dark"] .calendar-preview-header span,
+html[data-theme="dark"] .calendar-preview-copy-block p,
+html[data-theme="dark"] .calendar-preview-copy-label,
+html[data-theme="dark"] .calendar-important-day-card-heading span,
+html[data-theme="dark"] .calendar-important-day-card-meta,
+html[data-theme="dark"] .calendar-important-day-card-section-label,
+html[data-theme="dark"] .calendar-preview-attachment-indicator,
+html[data-theme="dark"] .calendar-preview-card-title small,
+html[data-theme="dark"] .no-results-message,
+html[data-theme="dark"] .loading-text,
+html[data-theme="dark"] .snippet,
+html[data-theme="dark"] .detail-text,
+html[data-theme="dark"] .detail-icon,
+html[data-theme="dark"] .linked-entry-option-secondary,
+html[data-theme="dark"] .important-day-category,
+html[data-theme="dark"] .important-day-date,
+html[data-theme="dark"] .important-day-linked-heading,
+html[data-theme="dark"] .preview-copy span,
+html[data-theme="dark"] .checkbox-hint,
+html[data-theme="dark"] .holiday-country-field .mat-mdc-form-field-hint,
+html[data-theme="dark"] .mat-mdc-form-field-hint,
+html[data-theme="dark"] .mat-mdc-form-field-error,
+html[data-theme="dark"] .mat-mdc-paginator-page-size-label,
+html[data-theme="dark"] .mat-mdc-paginator-range-label,
+html[data-theme="dark"] .search-mode-header button,
+html[data-theme="dark"] .search-mode-header button:hover,
+html[data-theme="dark"] .no-entries-card p,
+html[data-theme="dark"] .status,
+html[data-theme="dark"] .entry-attachment-indicator {
+  color: var(--colour-text-secondary) !important;
+}
+
+html[data-theme="dark"] .calendar-important-day-badge,
+html[data-theme="dark"] .calendar-important-day-badge:hover,
+html[data-theme="dark"] .calendar-important-days-summary-chip,
+html[data-theme="dark"] .selected-day-important-chip {
+  background: var(--colour-warning-bg) !important;
+  color: var(--colour-warning-text) !important;
+}
+
+html[data-theme="dark"] .calendar-important-day-badge.holiday-leading,
+html[data-theme="dark"] .calendar-important-day-badge.holiday-leading:hover,
+html[data-theme="dark"] .calendar-important-days-summary-chip.holiday-chip,
+html[data-theme="dark"] .selected-day-holiday-chip {
+  background: var(--colour-info-bg) !important;
+  color: var(--colour-info-text) !important;
+  box-shadow: inset 0 0 0 1px rgba(155, 184, 255, 0.18) !important;
+}
+
+html[data-theme="dark"] .calendar-preview-tag,
+html[data-theme="dark"] .entry-card mat-chip,
+html[data-theme="dark"] .important-day-linked-chip {
+  background: var(--colour-chip-bg) !important;
+  color: var(--colour-chip-text) !important;
+  border-color: var(--colour-border) !important;
+}
+
+html[data-theme="dark"] .entry-card mat-chip.duplicate-tag-chip {
+  background: var(--colour-danger-bg) !important;
+  color: var(--colour-danger-text) !important;
+}
+
+html[data-theme="dark"] .entry-image-placeholder mat-icon,
+html[data-theme="dark"] .no-entries-icon,
+html[data-theme="dark"] .skeleton-avatar,
+html[data-theme="dark"] .skeleton-title,
+html[data-theme="dark"] .skeleton-subtitle,
+html[data-theme="dark"] .skeleton-image,
+html[data-theme="dark"] .skeleton-line {
+  color: rgba(203, 213, 225, 0.5) !important;
+}
+
+html[data-theme="dark"] .entry-image-placeholder,
+html[data-theme="dark"] .skeleton-card,
+html[data-theme="dark"] .entry-card-image {
+  background: linear-gradient(180deg, #20314a 0%, #162235 100%) !important;
+}
+
+html[data-theme="dark"] .search-suggestions,
+html[data-theme="dark"] .error-suggestions {
+  background: var(--colour-surface-muted) !important;
+  border-color: var(--colour-border) !important;
+}
+
+html[data-theme="dark"] .error-card,
+html[data-theme="dark"] .auth-container .error-message {
+  background: linear-gradient(
+    180deg,
+    var(--colour-danger-bg) 0%,
+    rgba(69, 32, 42, 0.92) 100%
+  ) !important;
+  border-color: rgba(255, 196, 207, 0.28) !important;
+}
+
+html[data-theme="dark"] .error-card,
+html[data-theme="dark"] .error-content h3,
+html[data-theme="dark"] .error-message,
+html[data-theme="dark"] .error-suggestions h4,
+html[data-theme="dark"] .error-suggestions ul,
+html[data-theme="dark"] .error-icon mat-icon {
+  color: var(--colour-danger-text) !important;
 }
 
 // Card styles matching wireframes
