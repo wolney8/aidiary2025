@@ -21,18 +21,22 @@ describe("ProfileComponent", () => {
   let location: Location;
   let router: Router;
   let appDialogServiceMock: jasmine.SpyObj<AppDialogService>;
+  let updateProfileSpy: jasmine.Spy;
 
-  const profileServiceStub: Pick<
-    ProfileService,
-    "getProfile" | "updateProfile"
-  > = {
+  const profileServiceStub: Pick<ProfileService, "getProfile" | "updateProfile"> = {
     getProfile: () =>
       of({
         id: 1,
         username: "tester",
+        first_name: "Alex",
+        last_name: "Taylor",
+        age: 31,
         display_name: "Alex",
         pronouns: "they/them",
         gender: "non-binary",
+        ai_model: "gpt-4.1-mini",
+        ai_focus: "reflective",
+        custom_guidance: "Keep me grounded",
       } satisfies User),
     updateProfile: () =>
       of({
@@ -75,6 +79,7 @@ describe("ProfileComponent", () => {
     component = fixture.componentInstance;
     location = TestBed.inject(Location);
     router = TestBed.inject(Router);
+    updateProfileSpy = spyOn(profileServiceStub, "updateProfile").and.callThrough();
     fixture.detectChanges();
   });
 
@@ -121,6 +126,34 @@ describe("ProfileComponent", () => {
         title: "Discard Profile changes?",
       }),
     );
+  });
+
+  it("submits only profile-owned fields", () => {
+    component.profile!.display_name = "Alec";
+    component.onSubmit();
+
+    expect(updateProfileSpy).toHaveBeenCalledWith({
+      first_name: "Alex",
+      last_name: "Taylor",
+      age: 31,
+      display_name: "Alec",
+      pronouns: "they/them",
+      gender: "non-binary",
+    });
+  });
+
+  it("omits age when it is unset", () => {
+    component.profile!.age = undefined;
+    component.onSubmit();
+
+    expect(updateProfileSpy).toHaveBeenCalledWith({
+      first_name: "Alex",
+      last_name: "Taylor",
+      age: undefined,
+      display_name: "Alex",
+      pronouns: "they/them",
+      gender: "non-binary",
+    });
   });
 
   it("uses browser history when available", () => {

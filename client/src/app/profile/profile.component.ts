@@ -241,7 +241,7 @@ export class ProfileComponent implements OnInit {
     this.successMessage = "";
     this.errorMessage = "";
 
-    const { id, username, ...updatePayload } = this.profile;
+    const updatePayload = this.buildProfileUpdatePayload(this.profile);
 
     this.profileService.updateProfile(updatePayload).subscribe({
       next: (response) => {
@@ -314,6 +314,17 @@ export class ProfileComponent implements OnInit {
       pronouns: String(profile.pronouns || "").trim(),
       gender: String(profile.gender || "").trim(),
     });
+  }
+
+  private buildProfileUpdatePayload(profile: User): Partial<User> {
+    return {
+      first_name: String(profile.first_name || "").trim(),
+      last_name: String(profile.last_name || "").trim(),
+      age: profile.age ?? undefined,
+      display_name: String(profile.display_name || "").trim(),
+      pronouns: String(profile.pronouns || "").trim(),
+      gender: String(profile.gender || "").trim(),
+    };
   }
 
   private canGoBack(): boolean {
