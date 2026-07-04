@@ -1012,6 +1012,129 @@ import { Subscription } from "rxjs";
           padding: 0.75rem 0;
         }
       }
+
+      :host-context(html[data-theme="dark"]) .search-results {
+        color: var(--colour-text-primary);
+      }
+
+      :host-context(html[data-theme="dark"]) .search-header h2 {
+        color: var(--colour-text-primary);
+      }
+
+      :host-context(html[data-theme="dark"]) .loading-message-card,
+      :host-context(html[data-theme="dark"]) .skeleton-card,
+      :host-context(html[data-theme="dark"]) .no-results-card,
+      :host-context(html[data-theme="dark"]) .expanded-details-card {
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-elevated) 0%,
+          var(--colour-surface) 100%
+        );
+        border-color: var(--colour-border);
+        color: var(--colour-text-primary);
+      }
+
+      :host-context(html[data-theme="dark"]) .loading-message-card {
+        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
+      }
+
+      :host-context(html[data-theme="dark"]) .loading-text,
+      :host-context(html[data-theme="dark"]) .no-results-message,
+      :host-context(html[data-theme="dark"]) .search-suggestions ul,
+      :host-context(html[data-theme="dark"]) .detail-icon,
+      :host-context(html[data-theme="dark"]) .detail-text,
+      :host-context(html[data-theme="dark"]) .snippet,
+      :host-context(html[data-theme="dark"]) .close-btn {
+        color: var(--colour-text-secondary);
+      }
+
+      :host-context(html[data-theme="dark"]) .search-suggestions,
+      :host-context(html[data-theme="dark"]) .error-suggestions {
+        background: var(--colour-surface-muted);
+        border: 1px solid var(--colour-border);
+      }
+
+      :host-context(html[data-theme="dark"]) .no-results-content h3,
+      :host-context(html[data-theme="dark"]) .search-suggestions h4 {
+        color: var(--colour-text-primary);
+      }
+
+      :host-context(html[data-theme="dark"]) .error-card {
+        background: linear-gradient(
+          180deg,
+          var(--colour-danger-bg) 0%,
+          rgba(69, 32, 42, 0.92) 100%
+        );
+        border-color: rgba(255, 196, 207, 0.22);
+        color: var(--colour-danger-text);
+      }
+
+      :host-context(html[data-theme="dark"]) .error-content h3,
+      :host-context(html[data-theme="dark"]) .error-message,
+      :host-context(html[data-theme="dark"]) .error-suggestions h4,
+      :host-context(html[data-theme="dark"]) .error-suggestions ul,
+      :host-context(html[data-theme="dark"]) .error-icon mat-icon {
+        color: var(--colour-danger-text);
+      }
+
+      :host-context(html[data-theme="dark"]) .connector-arrow {
+        background: var(--colour-primary);
+        color: #08111f;
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.3);
+      }
+
+      :host-context(html[data-theme="dark"]) .expanded-details-card {
+        border-left-color: var(--colour-primary);
+        box-shadow: 0 20px 40px rgba(2, 6, 23, 0.28);
+      }
+
+      :host-context(html[data-theme="dark"]) .result-container:has(.expanded-details-card) .entry-card {
+        border-color: rgba(155, 184, 255, 0.32);
+        box-shadow: 0 16px 32px rgba(2, 6, 23, 0.24);
+      }
+
+      :host-context(html[data-theme="dark"]) .entry-card:hover {
+        box-shadow: 0 16px 28px rgba(2, 6, 23, 0.22);
+      }
+
+      :host-context(html[data-theme="dark"]) .entry-image-placeholder {
+        background: linear-gradient(180deg, #20314a 0%, #162235 100%);
+      }
+
+      :host-context(html[data-theme="dark"]) .entry-image-placeholder mat-icon {
+        color: rgba(203, 213, 225, 0.52);
+      }
+
+      :host-context(html[data-theme="dark"]) .detail-row:hover {
+        background-color: rgba(155, 184, 255, 0.08);
+      }
+
+      :host-context(html[data-theme="dark"]) .expanded-header {
+        border-bottom-color: var(--colour-border);
+      }
+
+      :host-context(html[data-theme="dark"]) .pagination-container {
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-elevated) 0%,
+          var(--colour-surface) 100%
+        );
+        border-color: var(--colour-border);
+      }
+
+      :host-context(html[data-theme="dark"]) .skeleton-avatar,
+      :host-context(html[data-theme="dark"]) .skeleton-title,
+      :host-context(html[data-theme="dark"]) .skeleton-subtitle,
+      :host-context(html[data-theme="dark"]) .skeleton-image,
+      :host-context(html[data-theme="dark"]) .skeleton-line {
+        background: linear-gradient(
+          90deg,
+          #1b2940 25%,
+          #24344d 50%,
+          #1b2940 75%
+        );
+        background-size: 200% 100%;
+      }
     `,
   ],
 })

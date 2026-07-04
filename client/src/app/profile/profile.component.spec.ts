@@ -4,6 +4,7 @@ import { Location } from "@angular/common";
 import { NoopAnimationsModule } from "@angular/platform-browser/animations";
 import { Router, provideRouter } from "@angular/router";
 import { of } from "rxjs";
+import { AppDialogService } from "../core/services/app-dialog.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 import { ProfileComponent } from "./profile.component";
@@ -19,18 +20,23 @@ describe("ProfileComponent", () => {
   let component: ProfileComponent;
   let location: Location;
   let router: Router;
+  let appDialogServiceMock: jasmine.SpyObj<AppDialogService>;
+  let updateProfileSpy: jasmine.Spy;
 
-  const profileServiceStub: Pick<
-    ProfileService,
-    "getProfile" | "updateProfile"
-  > = {
+  const profileServiceStub: Pick<ProfileService, "getProfile" | "updateProfile"> = {
     getProfile: () =>
       of({
         id: 1,
         username: "tester",
+        first_name: "Alex",
+        last_name: "Taylor",
+        age: 31,
         display_name: "Alex",
         pronouns: "they/them",
         gender: "non-binary",
+        ai_model: "gpt-4.1-mini",
+        ai_focus: "reflective",
+        custom_guidance: "Keep me grounded",
       } satisfies User),
     updateProfile: () =>
       of({
@@ -43,12 +49,22 @@ describe("ProfileComponent", () => {
   };
 
   beforeEach(async () => {
+    appDialogServiceMock = jasmine.createSpyObj<AppDialogService>(
+      "AppDialogService",
+      ["confirm"],
+    );
+    appDialogServiceMock.confirm.and.resolveTo(true);
+
     await TestBed.configureTestingModule({
       imports: [ProfileComponent, NoopAnimationsModule],
       providers: [
         {
           provide: ProfileService,
           useValue: profileServiceStub,
+        },
+        {
+          provide: AppDialogService,
+          useValue: appDialogServiceMock,
         },
         provideRouter([
           {
@@ -63,6 +79,7 @@ describe("ProfileComponent", () => {
     component = fixture.componentInstance;
     location = TestBed.inject(Location);
     router = TestBed.inject(Router);
+    updateProfileSpy = spyOn(profileServiceStub, "updateProfile").and.callThrough();
     fixture.detectChanges();
   });
 
@@ -88,6 +105,55 @@ describe("ProfileComponent", () => {
 
   it("shows the display name counter", () => {
     expect(component.getDisplayNameLength()).toBe(4);
+  });
+
+  it("tracks pending changes after the profile is edited", () => {
+    expect(component.hasPendingChanges()).toBeFalse();
+
+    component.profile!.display_name = "Alec";
+
+    expect(component.hasPendingChanges()).toBeTrue();
+  });
+
+  it("uses the app dialog when navigating away with unsaved profile changes", async () => {
+    component.profile!.display_name = "Alec";
+
+    const result = await component.canDeactivate();
+
+    expect(result).toBeTrue();
+    expect(appDialogServiceMock.confirm).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        title: "Discard Profile changes?",
+      }),
+    );
+  });
+
+  it("submits only profile-owned fields", () => {
+    component.profile!.display_name = "Alec";
+    component.onSubmit();
+
+    expect(updateProfileSpy).toHaveBeenCalledWith({
+      first_name: "Alex",
+      last_name: "Taylor",
+      age: 31,
+      display_name: "Alec",
+      pronouns: "they/them",
+      gender: "non-binary",
+    });
+  });
+
+  it("omits age when it is unset", () => {
+    component.profile!.age = undefined;
+    component.onSubmit();
+
+    expect(updateProfileSpy).toHaveBeenCalledWith({
+      first_name: "Alex",
+      last_name: "Taylor",
+      age: undefined,
+      display_name: "Alex",
+      pronouns: "they/them",
+      gender: "non-binary",
+    });
   });
 
   it("uses browser history when available", () => {

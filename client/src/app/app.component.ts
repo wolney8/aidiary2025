@@ -10,6 +10,7 @@ import { MatDialog, MatDialogRef } from "@angular/material/dialog";
 import { distinctUntilChanged } from "rxjs";
 import { AuthService } from "./core/services/auth.service";
 import { InactivityService } from "./core/services/inactivity.service";
+import { ThemeService } from "./core/services/theme.service";
 import {
   InactivityWarningComponent,
   InactivityWarningResult,
@@ -71,6 +72,7 @@ import { environment as environmentProd } from "../environments/environment.prod
 export class AppComponent {
   private readonly authService = inject(AuthService);
   private readonly inactivityService = inject(InactivityService);
+  private readonly themeService = inject(ThemeService);
   private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
   private readonly inactivityConfig = isDevMode()
@@ -86,6 +88,8 @@ export class AppComponent {
   isAuthenticated = this.authService.isAuthenticated();
 
   constructor() {
+    this.themeService.mode();
+
     this.authService.currentUser$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((user) => {
