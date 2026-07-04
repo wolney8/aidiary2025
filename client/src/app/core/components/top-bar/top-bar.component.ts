@@ -33,6 +33,7 @@ import { Observable, Subject } from "rxjs";
 import { map, filter, takeUntil } from "rxjs/operators";
 import { SearchService } from "../../services/search.service";
 import { Location } from "@angular/common";
+import { ThemeService } from "../../services/theme.service";
 
 @Component({
   selector: "app-top-bar",
@@ -194,6 +195,26 @@ import { Location } from "@angular/common";
 
       <div class="compact-actions" *ngIf="isCompact() && !isCompactSearchOpen()">
         <button
+          type="button"
+          class="theme-toggle"
+          [class.is-dark]="isDarkTheme()"
+          (click)="toggleTheme()"
+          role="switch"
+          [attr.aria-checked]="isDarkTheme()"
+          [attr.aria-label]="
+            isDarkTheme() ? 'Switch to light mode' : 'Switch to dark mode'
+          "
+        >
+          <span class="theme-toggle-track" aria-hidden="true">
+            <span class="theme-toggle-slot">
+              <mat-icon>light_mode</mat-icon>
+            </span>
+            <span class="theme-toggle-slot">
+              <mat-icon>dark_mode</mat-icon>
+            </span>
+          </span>
+        </button>
+        <button
           mat-icon-button
           type="button"
           (click)="openCompactSearch()"
@@ -208,6 +229,26 @@ import { Location } from "@angular/common";
         <ng-container *ngIf="userName$ | async as name">
           <span class="user-name" *ngIf="showUserName()">{{ name }}</span>
         </ng-container>
+        <button
+          type="button"
+          class="theme-toggle"
+          [class.is-dark]="isDarkTheme()"
+          (click)="toggleTheme()"
+          role="switch"
+          [attr.aria-checked]="isDarkTheme()"
+          [attr.aria-label]="
+            isDarkTheme() ? 'Switch to light mode' : 'Switch to dark mode'
+          "
+        >
+          <span class="theme-toggle-track" aria-hidden="true">
+            <span class="theme-toggle-slot">
+              <mat-icon>light_mode</mat-icon>
+            </span>
+            <span class="theme-toggle-slot">
+              <mat-icon>dark_mode</mat-icon>
+            </span>
+          </span>
+        </button>
         <span class="version-label" *ngIf="showVersionLabel()">{{
           versionLabel
         }}</span>
@@ -236,6 +277,10 @@ import { Location } from "@angular/common";
         padding-inline: clamp(0.5rem, 2vw, 1rem);
         position: relative;
         flex-wrap: nowrap;
+        background: var(--colour-toolbar);
+        color: var(--colour-toolbar-text);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
       }
       .compact-toolbar {
         min-height: 64px;
@@ -244,13 +289,13 @@ import { Location } from "@angular/common";
         gap: 0.5rem;
       }
       .logo {
-        background: var(--colour-secondary);
-        color: var(--colour-surface);
+        background: rgba(255, 255, 255, 0.12);
+        color: var(--colour-toolbar-text);
         padding: 8px 16px;
         border-radius: var(--radius-pill);
         font-weight: 700;
         cursor: pointer;
-        border: none;
+        border: 1px solid rgba(255, 255, 255, 0.18);
       }
       .spacer {
         flex: 1;
@@ -282,11 +327,11 @@ import { Location } from "@angular/common";
         display: flex;
         align-items: center;
         width: 100%;
-        background: var(--colour-surface);
+        background: rgba(5, 11, 24, 0.68);
         border-radius: var(--radius-pill);
-        border: 1px solid var(--colour-border);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 6px 12px;
-        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
       }
       .compact-search-close {
         display: inline-flex;
@@ -294,19 +339,19 @@ import { Location } from "@angular/common";
         justify-content: center;
         border: none;
         background: transparent;
-        color: var(--colour-text-secondary);
+        color: rgba(255, 255, 255, 0.8);
         padding: 4px;
         margin-left: 6px;
         cursor: pointer;
       }
       .search-shell:focus-within {
         border-color: var(--colour-primary);
-        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.2);
+        box-shadow: 0 0 0 2px rgba(155, 184, 255, 0.24);
       }
       .search-button {
         background: none;
         border: none;
-        color: var(--colour-text-secondary);
+        color: rgba(255, 255, 255, 0.82);
         cursor: pointer;
         padding: 4px;
         margin-right: 8px;
@@ -317,10 +362,10 @@ import { Location } from "@angular/common";
         outline: none;
         font-size: 16px;
         background: transparent;
-        color: var(--colour-text-primary);
+        color: var(--colour-toolbar-text);
       }
       .search-input::placeholder {
-        color: var(--colour-text-secondary);
+        color: rgba(226, 232, 240, 0.72);
       }
       .user-section {
         display: flex;
@@ -333,15 +378,63 @@ import { Location } from "@angular/common";
         align-items: center;
         gap: 0.25rem;
       }
+      .theme-toggle {
+        width: 48px;
+        height: 48px;
+        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 32px;
+        overflow: hidden;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.06);
+        color: #ffffff;
+        flex-shrink: 0;
+        transition:
+          border-color 0.2s ease,
+          background-color 0.2s ease,
+          box-shadow 0.2s ease;
+      }
+      .theme-toggle:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+      .theme-toggle:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
+      }
+      .theme-toggle-track {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 96px;
+        transform: translateY(0);
+        transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+      }
+      .theme-toggle.is-dark .theme-toggle-track {
+        transform: translateY(-48px);
+      }
+      .theme-toggle-slot {
+        width: 48px;
+        height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+      }
+      .theme-toggle-slot mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
       .user-name {
         white-space: nowrap;
       }
       .version-label {
         font-size: 12px;
         padding: 4px 8px;
-        background: rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.12);
         border-radius: var(--radius-pill);
-        border: 1px solid rgba(255, 255, 255, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         color: #ffffff;
         white-space: nowrap;
       }
@@ -363,7 +456,7 @@ import { Location } from "@angular/common";
         right: 0;
         background: var(--colour-surface);
         border-radius: var(--radius-md);
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
         border: 1px solid var(--colour-border);
         max-height: 320px;
         overflow-y: auto;
@@ -515,6 +608,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   private location = inject(Location);
   private fb = inject(FormBuilder);
   private sanitizer = inject(DomSanitizer);
+  private readonly themeService = inject(ThemeService);
   private destroy$ = new Subject<void>();
 
   // Search History Properties
@@ -532,6 +626,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   );
 
   versionLabel = APP_VERSION;
+  readonly isDarkTheme = this.themeService.isDark;
 
   // Track search loading state
   isSearching = false;
@@ -560,6 +655,10 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   logout(): void {
     this.authService.logout();
+  }
+
+  toggleTheme(): void {
+    this.themeService.toggleTheme();
   }
 
   filterResults(): void {

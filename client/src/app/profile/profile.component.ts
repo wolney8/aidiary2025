@@ -1,5 +1,5 @@
 // Profile screen mapping to users table columns
-import { Component, OnInit, inject } from "@angular/core";
+import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { CommonModule, Location } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { MatCardModule } from "@angular/material/card";
@@ -9,6 +9,7 @@ import { MatSelectModule } from "@angular/material/select";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { Router } from "@angular/router";
+import { AppDialogService } from "../core/services/app-dialog.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 
@@ -47,13 +48,7 @@ import { User } from "../core/models/user.model";
 
         <mat-card-content>
           <form (ngSubmit)="onSubmit()">
-            <div class="profile-note" role="note">
-              <h3>Personalisation moved</h3>
-              <p>
-                AI-facing identity, pronouns, gender, and custom guidance now
-                live in Personalisation.
-              </p>
-            </div>
+            <h3 class="account-heading">Account and identity</h3>
 
             <div class="field-grid">
               <mat-form-field appearance="outline">
@@ -83,23 +78,57 @@ import { User } from "../core/models/user.model";
                   name="age"
                 />
               </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Display Name</mat-label>
+                <input
+                  matInput
+                  [(ngModel)]="profile.display_name"
+                  name="display_name"
+                  maxlength="8"
+                />
+                <mat-hint align="start">Letters only, up to 8 characters.</mat-hint>
+                <mat-hint align="end">{{ getDisplayNameLength() }}/8</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Pronouns</mat-label>
+                <mat-select [(ngModel)]="profile.pronouns" name="pronouns">
+                  <mat-option value="">Not set</mat-option>
+                  <mat-option value="he/him">he/him</mat-option>
+                  <mat-option value="she/her">she/her</mat-option>
+                  <mat-option value="they/them">they/them</mat-option>
+                  <mat-option value="he/they">he/they</mat-option>
+                  <mat-option value="she/they">she/they</mat-option>
+                  <mat-option value="prefer not to say"
+                    >prefer not to say</mat-option
+                  >
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Gender</mat-label>
+                <mat-select [(ngModel)]="profile.gender" name="gender">
+                  <mat-option value="">Not set</mat-option>
+                  <mat-option value="man">man</mat-option>
+                  <mat-option value="woman">woman</mat-option>
+                  <mat-option value="non-binary">non-binary</mat-option>
+                  <mat-option value="agender">agender</mat-option>
+                  <mat-option value="other / prefer not to say"
+                    >other / prefer not to say</mat-option
+                  >
+                </mat-select>
+              </mat-form-field>
             </div>
 
             <div class="actions">
               <button
-                mat-stroked-button
-                type="button"
-                (click)="openSettings()"
-              >
-                Open Settings
-              </button>
-              <button
                 mat-raised-button
                 color="primary"
                 type="submit"
-                [disabled]="saving"
+                [disabled]="saving || !hasPendingChanges()"
               >
-                Save Changes
+                {{ saving ? "Saving..." : "Save Changes" }}
               </button>
             </div>
           </form>
@@ -138,21 +167,8 @@ import { User } from "../core/models/user.model";
         grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       }
 
-      .profile-note {
-        margin-bottom: var(--spacing-md);
-        padding: 0.95rem 1rem;
-        border: 1px solid var(--colour-border);
-        border-radius: var(--radius-md);
-        background: var(--colour-surface-muted);
-      }
-
-      .profile-note h3,
-      .profile-note p {
-        margin: 0;
-      }
-
-      .profile-note h3 {
-        margin-bottom: 0.35rem;
+      .account-heading {
+        margin: 0 0 var(--spacing-md);
       }
 
       .actions {
@@ -177,6 +193,7 @@ import { User } from "../core/models/user.model";
   ],
 })
 export class ProfileComponent implements OnInit {
+  private appDialog = inject(AppDialogService);
   private profileService = inject(ProfileService);
   private location = inject(Location);
   private router = inject(Router);
@@ -185,6 +202,7 @@ export class ProfileComponent implements OnInit {
   saving = false;
   successMessage = "";
   errorMessage = "";
+  private initialProfileSnapshot = "";
 
   goBack(): void {
     if (this.canGoBack()) {
@@ -199,6 +217,7 @@ export class ProfileComponent implements OnInit {
     this.profileService.getProfile().subscribe({
       next: (profile) => {
         this.profile = { ...profile };
+        this.initialProfileSnapshot = this.serialiseProfile(this.profile);
       },
       error: () => {
         this.errorMessage = "Unable to load profile details.";
@@ -211,26 +230,101 @@ export class ProfileComponent implements OnInit {
       return;
     }
 
+    const validationError = this.validateProfile(this.profile);
+    if (validationError) {
+      this.errorMessage = validationError;
+      this.successMessage = "";
+      return;
+    }
+
     this.saving = true;
     this.successMessage = "";
     this.errorMessage = "";
 
-    const { id, username, ...updatePayload } = this.profile;
+    const updatePayload = this.buildProfileUpdatePayload(this.profile);
 
     this.profileService.updateProfile(updatePayload).subscribe({
       next: (response) => {
         this.successMessage = response.message;
         this.saving = false;
+        if (this.profile) {
+          this.initialProfileSnapshot = this.serialiseProfile(this.profile);
+        }
       },
-      error: () => {
-        this.errorMessage = "Profile update failed. Please try again.";
+      error: (error) => {
+        this.errorMessage =
+          error?.error?.error || "Profile update failed. Please try again.";
         this.saving = false;
       },
     });
   }
 
-  openSettings(): void {
-    this.router.navigateByUrl("/settings/personalisation");
+  getDisplayNameLength(): number {
+    return String(this.profile?.display_name || "").trim().length;
+  }
+
+  hasPendingChanges(): boolean {
+    if (!this.profile) {
+      return false;
+    }
+    return this.serialiseProfile(this.profile) !== this.initialProfileSnapshot;
+  }
+
+  canDeactivate(): boolean | Promise<boolean> {
+    if (!this.hasPendingChanges() || this.saving) {
+      return true;
+    }
+
+    return this.appDialog.confirm({
+      title: "Discard Profile changes?",
+      message: "You have unsaved Profile changes. Leaving now will discard them.",
+      confirmText: "Discard changes",
+      cancelText: "Stay here",
+      variant: "danger",
+    });
+  }
+
+  @HostListener("window:beforeunload", ["$event"])
+  handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!this.hasPendingChanges() || this.saving) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  }
+
+  private validateProfile(profile: User): string | null {
+    const displayName = String(profile.display_name || "").trim();
+    if (displayName && displayName.length > 8) {
+      return "Display name must be 8 characters or fewer.";
+    }
+    if (displayName && !/^[A-Za-z][A-Za-z '\-]{0,7}$/.test(displayName)) {
+      return "Display name may only use letters, spaces, apostrophes, and hyphens.";
+    }
+
+    return null;
+  }
+
+  private serialiseProfile(profile: User): string {
+    return JSON.stringify({
+      first_name: String(profile.first_name || "").trim(),
+      last_name: String(profile.last_name || "").trim(),
+      age: profile.age ?? null,
+      display_name: String(profile.display_name || "").trim(),
+      pronouns: String(profile.pronouns || "").trim(),
+      gender: String(profile.gender || "").trim(),
+    });
+  }
+
+  private buildProfileUpdatePayload(profile: User): Partial<User> {
+    return {
+      first_name: String(profile.first_name || "").trim(),
+      last_name: String(profile.last_name || "").trim(),
+      age: profile.age ?? undefined,
+      display_name: String(profile.display_name || "").trim(),
+      pronouns: String(profile.pronouns || "").trim(),
+      gender: String(profile.gender || "").trim(),
+    };
   }
 
   private canGoBack(): boolean {
