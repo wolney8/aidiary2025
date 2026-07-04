@@ -472,6 +472,14 @@ def test_analyse_daily_entry_invalid_requested_model_falls_back_to_default(mock_
     assert mock_client.chat.completions.create.call_args.kwargs['model'] == DEFAULT_ANALYSIS_MODEL
 
 
+def test_normalise_analysis_options_maps_legacy_ai_style_aliases():
+    assert OpenAIService._normalise_analysis_options({'ai_style': 'professional-clinical'})['ai_style'] == 'clinical'
+    assert OpenAIService._normalise_analysis_options({'ai_style': 'Reflective & Deep'})['ai_style'] == 'reflective'
+    assert OpenAIService._normalise_analysis_options({'ai_style': 'creative_symbolic'})['ai_style'] == 'creative'
+    assert OpenAIService._normalise_analysis_options({'ai_style': 'minimal'})['ai_style'] == 'brief'
+    assert OpenAIService._normalise_analysis_options({'ai_style': 'unknown-style'})['ai_style'] == 'friendly'
+
+
 @patch('services.openai_svc.OpenAI')
 def test_openai_service_invalid_output_token_cap_uses_default(mock_openai):
     with patch.dict(

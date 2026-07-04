@@ -1235,6 +1235,37 @@ export class CreateComponent implements OnInit, OnDestroy {
     );
   }
 
+  private normaliseAIStyleValue(value: string | null | undefined): string {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) {
+      return "friendly";
+    }
+
+    const aliasMap: Record<string, string> = {
+      supportive: "friendly",
+      "friendly-supportive": "friendly",
+      professional: "clinical",
+      "professional-clinical": "clinical",
+      "clinical-professional": "clinical",
+      "reflective-deep": "reflective",
+      "reflective-&-deep": "reflective",
+      deep: "reflective",
+      thoughtful: "reflective",
+      minimal: "brief",
+      concise: "brief",
+      practical: "brief",
+      "creative-symbolic": "creative",
+      symbolic: "creative",
+    };
+
+    if (this.aiStyleOptions.some((style) => style.value === raw)) {
+      return raw;
+    }
+
+    const collapsed = raw.replace(/&/g, "and").replace(/[\s_]+/g, "-");
+    return aliasMap[raw] || aliasMap[collapsed] || "friendly";
+  }
+
   // Dream field options with common values
   dreamFieldOptions: DreamFieldOptions = {
     emotions: [
@@ -1345,7 +1376,7 @@ export class CreateComponent implements OnInit, OnDestroy {
           .filter((t: string) => t)
       : [];
     this.selectedMood = entry.mood || "";
-    this.selectedAIStyle = entry.ai_style || "friendly";
+    this.selectedAIStyle = this.normaliseAIStyleValue(entry.ai_style);
 
     if (type === "daily") {
       this.content = entry.user_message || "";

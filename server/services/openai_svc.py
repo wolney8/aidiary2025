@@ -22,6 +22,28 @@ DEFAULT_AI_STYLE = 'friendly'
 DEFAULT_AI_TONE = 'friendly'
 DEFAULT_AI_VERBOSITY = 'balanced'
 DEFAULT_AI_FOCUS = 'reflective'
+AI_STYLE_ALIASES = {
+    'supportive': 'friendly',
+    'friendly-supportive': 'friendly',
+    'friendly_supportive': 'friendly',
+    'warm': 'friendly',
+    'professional': 'clinical',
+    'professional-clinical': 'clinical',
+    'professional_clinical': 'clinical',
+    'clinical-professional': 'clinical',
+    'clinical_professional': 'clinical',
+    'reflective-deep': 'reflective',
+    'reflective-and-deep': 'reflective',
+    'reflective_deep': 'reflective',
+    'deep': 'reflective',
+    'thoughtful': 'reflective',
+    'minimal': 'brief',
+    'concise': 'brief',
+    'practical': 'brief',
+    'creative-symbolic': 'creative',
+    'creative_symbolic': 'creative',
+    'symbolic': 'creative',
+}
 DREAM_IMAGE_STYLE_PREFIX = (
     'Create a dreamlike but believable single scene with cinematic lighting, '
     'clean modern digital illustration or film-still energy, moderate realism, '
@@ -259,13 +281,34 @@ Additional requirements for this retry:
         )
         return {
             'ai_model': resolved_model,
-            'ai_style': str(options.get('ai_style') or DEFAULT_AI_STYLE).strip() or DEFAULT_AI_STYLE,
+            'ai_style': OpenAIService._normalise_ai_style(options.get('ai_style')),
             'ai_tone': str(options.get('ai_tone') or DEFAULT_AI_TONE).strip() or DEFAULT_AI_TONE,
             'ai_verbosity': str(options.get('ai_verbosity') or DEFAULT_AI_VERBOSITY).strip() or DEFAULT_AI_VERBOSITY,
             'ai_focus': str(options.get('ai_focus') or DEFAULT_AI_FOCUS).strip() or DEFAULT_AI_FOCUS,
             'has_related_context': bool(options.get('has_related_context')),
             'personal_context': str(options.get('personal_context') or '').strip() or None,
         }
+
+    @staticmethod
+    def _normalise_ai_style(value: object) -> str:
+        raw = str(value or DEFAULT_AI_STYLE).strip().lower()
+        if not raw:
+            return DEFAULT_AI_STYLE
+
+        canonical_styles = {'friendly', 'clinical', 'reflective', 'brief', 'creative'}
+        if raw in canonical_styles:
+            return raw
+
+        alias = AI_STYLE_ALIASES.get(raw)
+        if alias:
+            return alias
+
+        collapsed = raw.replace('&', 'and').replace(' ', '-').replace('_', '-')
+        alias = AI_STYLE_ALIASES.get(collapsed)
+        if alias:
+            return alias
+
+        return DEFAULT_AI_STYLE
 
     @classmethod
     def _build_daily_system_prompt(cls, analysis_options: dict[str, Any] | None = None) -> str:

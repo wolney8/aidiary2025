@@ -222,6 +222,22 @@ describe("CreateComponent save reliability", () => {
     expect(component.isSaving).toBeFalse();
   });
 
+  it("normalises legacy AI style values to current selector options", () => {
+    expect(component["normaliseAIStyleValue"]("professional-clinical")).toBe(
+      "clinical",
+    );
+    expect(component["normaliseAIStyleValue"]("Reflective & Deep")).toBe(
+      "reflective",
+    );
+    expect(component["normaliseAIStyleValue"]("creative_symbolic")).toBe(
+      "creative",
+    );
+    expect(component["normaliseAIStyleValue"]("minimal")).toBe("brief");
+    expect(component["normaliseAIStyleValue"]("unknown-style")).toBe(
+      "friendly",
+    );
+  });
+
   it("runs analysis for create flow when AI toggle is enabled", () => {
     component.selectedType = "daily";
     component.entryDate = new Date("2026-05-30T10:00:00.000Z");
