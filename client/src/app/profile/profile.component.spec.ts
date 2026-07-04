@@ -4,6 +4,7 @@ import { Location } from "@angular/common";
 import { NoopAnimationsModule } from "@angular/platform-browser/animations";
 import { Router, provideRouter } from "@angular/router";
 import { of } from "rxjs";
+import { AppDialogService } from "../core/services/app-dialog.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 import { ProfileComponent } from "./profile.component";
@@ -19,6 +20,7 @@ describe("ProfileComponent", () => {
   let component: ProfileComponent;
   let location: Location;
   let router: Router;
+  let appDialogServiceMock: jasmine.SpyObj<AppDialogService>;
 
   const profileServiceStub: Pick<
     ProfileService,
@@ -43,12 +45,22 @@ describe("ProfileComponent", () => {
   };
 
   beforeEach(async () => {
+    appDialogServiceMock = jasmine.createSpyObj<AppDialogService>(
+      "AppDialogService",
+      ["confirm"],
+    );
+    appDialogServiceMock.confirm.and.resolveTo(true);
+
     await TestBed.configureTestingModule({
       imports: [ProfileComponent, NoopAnimationsModule],
       providers: [
         {
           provide: ProfileService,
           useValue: profileServiceStub,
+        },
+        {
+          provide: AppDialogService,
+          useValue: appDialogServiceMock,
         },
         provideRouter([
           {
@@ -88,6 +100,27 @@ describe("ProfileComponent", () => {
 
   it("shows the display name counter", () => {
     expect(component.getDisplayNameLength()).toBe(4);
+  });
+
+  it("tracks pending changes after the profile is edited", () => {
+    expect(component.hasPendingChanges()).toBeFalse();
+
+    component.profile!.display_name = "Alec";
+
+    expect(component.hasPendingChanges()).toBeTrue();
+  });
+
+  it("uses the app dialog when navigating away with unsaved profile changes", async () => {
+    component.profile!.display_name = "Alec";
+
+    const result = await component.canDeactivate();
+
+    expect(result).toBeTrue();
+    expect(appDialogServiceMock.confirm).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        title: "Discard Profile changes?",
+      }),
+    );
   });
 
   it("uses browser history when available", () => {

@@ -1,5 +1,5 @@
 // Profile screen mapping to users table columns
-import { Component, OnInit, inject } from "@angular/core";
+import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { CommonModule, Location } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { MatCardModule } from "@angular/material/card";
@@ -9,6 +9,7 @@ import { MatSelectModule } from "@angular/material/select";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { Router } from "@angular/router";
+import { AppDialogService } from "../core/services/app-dialog.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 
@@ -125,9 +126,9 @@ import { User } from "../core/models/user.model";
                 mat-raised-button
                 color="primary"
                 type="submit"
-                [disabled]="saving"
+                [disabled]="saving || !hasPendingChanges()"
               >
-                Save Changes
+                {{ saving ? "Saving..." : "Save Changes" }}
               </button>
             </div>
           </form>
@@ -192,6 +193,7 @@ import { User } from "../core/models/user.model";
   ],
 })
 export class ProfileComponent implements OnInit {
+  private appDialog = inject(AppDialogService);
   private profileService = inject(ProfileService);
   private location = inject(Location);
   private router = inject(Router);
@@ -200,6 +202,7 @@ export class ProfileComponent implements OnInit {
   saving = false;
   successMessage = "";
   errorMessage = "";
+  private initialProfileSnapshot = "";
 
   goBack(): void {
     if (this.canGoBack()) {
@@ -214,6 +217,7 @@ export class ProfileComponent implements OnInit {
     this.profileService.getProfile().subscribe({
       next: (profile) => {
         this.profile = { ...profile };
+        this.initialProfileSnapshot = this.serialiseProfile(this.profile);
       },
       error: () => {
         this.errorMessage = "Unable to load profile details.";
@@ -243,6 +247,9 @@ export class ProfileComponent implements OnInit {
       next: (response) => {
         this.successMessage = response.message;
         this.saving = false;
+        if (this.profile) {
+          this.initialProfileSnapshot = this.serialiseProfile(this.profile);
+        }
       },
       error: (error) => {
         this.errorMessage =
@@ -256,6 +263,36 @@ export class ProfileComponent implements OnInit {
     return String(this.profile?.display_name || "").trim().length;
   }
 
+  hasPendingChanges(): boolean {
+    if (!this.profile) {
+      return false;
+    }
+    return this.serialiseProfile(this.profile) !== this.initialProfileSnapshot;
+  }
+
+  canDeactivate(): boolean | Promise<boolean> {
+    if (!this.hasPendingChanges() || this.saving) {
+      return true;
+    }
+
+    return this.appDialog.confirm({
+      title: "Discard Profile changes?",
+      message: "You have unsaved Profile changes. Leaving now will discard them.",
+      confirmText: "Discard changes",
+      cancelText: "Stay here",
+      variant: "danger",
+    });
+  }
+
+  @HostListener("window:beforeunload", ["$event"])
+  handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!this.hasPendingChanges() || this.saving) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  }
+
   private validateProfile(profile: User): string | null {
     const displayName = String(profile.display_name || "").trim();
     if (displayName && displayName.length > 8) {
@@ -266,6 +303,17 @@ export class ProfileComponent implements OnInit {
     }
 
     return null;
+  }
+
+  private serialiseProfile(profile: User): string {
+    return JSON.stringify({
+      first_name: String(profile.first_name || "").trim(),
+      last_name: String(profile.last_name || "").trim(),
+      age: profile.age ?? null,
+      display_name: String(profile.display_name || "").trim(),
+      pronouns: String(profile.pronouns || "").trim(),
+      gender: String(profile.gender || "").trim(),
+    });
   }
 
   private canGoBack(): boolean {
