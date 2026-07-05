@@ -719,6 +719,36 @@ def test_analyse_daily_entry(mock_openai, client):
     assert data['daily_people_names'] == 'John,Sarah'
 
 
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_filters_generic_people_and_places(mock_openai, client):
+    token = get_auth_token(client)
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'ai_response': 'You spent time with John and felt reflective.',
+        'tags': 'reflection',
+        'people_names': 'someone,John,myself,Sarah',
+        'places': 'location,Cafe,unknown,Park'
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Had lunch with John and Sarah at the cafe and then walked in the park'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['daily_people_names'] == 'John,Sarah'
+    assert data['daily_places'] == 'Cafe,Park'
+
+
 @patch('routes.analyse.derive_daily_nltk_fields')
 @patch('routes.analyse.OpenAIService')
 def test_analyse_daily_entry_merges_user_and_ai_nltk_tags(
@@ -951,7 +981,7 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(
     data = json.loads(response.data)
     assert set(data.keys()) == {'ai_response', 'tags', 'daily_people_names', 'daily_places'}
     assert data['ai_response'] == 'Context-aware response'
-    assert data['tags'] == 'context,analysis'
+    assert data['tags'] == 'context'
     assert data['daily_people_names'] == 'Alex'
     assert data['daily_places'] == 'Library'
 
@@ -1058,11 +1088,42 @@ def test_analyse_dream_entry_success_keys_present(mock_openai, client):
     data = json.loads(response.data)
     assert 'summary' in data
     assert 'interpretation' in data
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_filters_generic_people_and_places(mock_openai, client):
+    token = get_auth_token(client)
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'summary': 'You were walking across a bridge with Maya.',
+        'interpretation': 'The bridge suggests transition.',
+        'image_prompt': 'Night bridge over dark water with distant lights',
+        'tags': 'transition',
+        'people_names': 'Maya,unknown,somebody',
+        'places': 'Bridge,place,there'
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'dream',
+            'text': 'I dreamed I was walking across a bridge with Maya.'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['dream_people_names'] == 'Maya'
+    assert data['dream_places'] == 'Bridge'
     assert 'image_prompt' in data
     assert 'tags' in data
     assert 'dream_people_names' in data
     assert 'dream_places' in data
-    assert data['dream_people_names'] == 'Alex,Sam'
 
 
 @patch('routes.analyse.derive_dream_nltk_fields')

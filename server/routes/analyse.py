@@ -27,6 +27,9 @@ def _normalise_people_names(raw: str) -> str:
     blocked = {
         "hopefully",
         "maybe",
+        "me",
+        "myself",
+        "i",
         "someone",
         "somebody",
         "everyone",
@@ -79,12 +82,43 @@ def _normalise_places(raw: str) -> str:
     if not raw:
         return ""
 
+    blocked = {
+        "unknown",
+        "none",
+        "na",
+        "n/a",
+        "had",
+        "met",
+        "saw",
+        "felt",
+        "walked",
+        "dreamed",
+        "dreamt",
+        "somewhere",
+        "someplace",
+        "place",
+        "places",
+        "location",
+        "locations",
+        "here",
+        "there",
+    }
+
     cleaned: list[str] = []
     seen: set[str] = set()
     for token in str(raw).split(","):
         candidate = token.strip()
         if not candidate:
             continue
+
+        lower = candidate.lower()
+        if lower in blocked:
+            continue
+        if not all(ch.isalpha() or ch in " -'/" for ch in candidate):
+            continue
+        if len(candidate) < 2:
+            continue
+
         key = candidate.lower()
         if key in seen:
             continue
