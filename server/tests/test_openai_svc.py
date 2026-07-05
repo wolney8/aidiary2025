@@ -803,6 +803,51 @@ def test_analyse_daily_entry_retries_on_generic_boilerplate_variant(mock_openai)
 
 
 @patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_retries_when_detailed_output_is_too_short(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'You felt conflicted after seeing Katie again and reaching out.',
+            'tags': 'contact,uncertainty',
+            'people_names': 'Katie',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': (
+                'Seeing Katie again seems to have reopened a mix of hope, self-protection, and unfinished feeling. '
+                'What stands out is that you were trying to stay evidence-based rather than letting the uncertainty run the whole interaction. '
+                'That suggests some real growth in how you are handling contact that once felt emotionally loaded. '
+                'There is also a tension here between wanting clarity and wanting to avoid repeating a dynamic that felt dismissive before. '
+                'A useful reflection point is whether the message was mainly about curiosity, reconnection, or a wish for emotional repair. '
+                'If you can name that clearly, the next response or silence from her is less likely to define your own sense of steadiness. '
+                'This also links to a broader pattern of trying to be fair to the evidence while still feeling the emotional sting of ambiguity.'
+            ),
+            'tags': 'contact,uncertainty,boundaries,growth',
+            'people_names': 'Katie',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry(
+        'I saw Katie again and felt conflicted about reaching out.',
+        analysis_options={'ai_style': 'reflective', 'ai_verbosity': 'detailed'},
+    )
+
+    assert 'unfinished feeling' in result['ai_response']
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry_includes_recent_context_in_user_message(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
@@ -866,6 +911,57 @@ def test_analyse_dream_entry_includes_recent_context_in_user_message(mock_openai
     assert 'Current dream text' in user_message
     assert 'Recent context:' in user_message
     assert 'Previous dream text' in user_message
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_retries_when_detailed_output_is_too_short(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'You were at a station looking for a train.',
+            'interpretation': 'The dream reflects uncertainty about direction.',
+            'image_prompt': 'A station platform at dawn',
+            'tags': 'transition',
+            'people_names': '',
+            'places': 'station',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'summary': (
+                'You were at a station in a restless search for the right train, with the setting carrying a strong sense of movement, delay, and unresolved destination.'
+            ),
+            'interpretation': (
+                'The station imagery suggests a psychological threshold rather than a simple travel scene. '
+                'What matters is not just movement, but the uncertainty around which direction feels right and whether you are ready to commit to it. '
+                'Dreams like this often emerge when part of you wants forward motion while another part is scanning for risk, missing information, or the cost of choosing incorrectly. '
+                'The searching quality can also point to a waking pattern of trying to find the right emotional position before acting, rather than feeling fully settled enough to step aboard. '
+                'If the dream carried urgency, that adds another layer: you may be feeling time pressure around a decision, transition, or identity shift. '
+                'If it felt repetitive or looping, the deeper theme may be frustration with still being in preparation mode rather than living inside the next chapter itself. '
+                'Taken together, the dream reads less as random transport symbolism and more as a reflection of transition, hesitation, and the emotional weight of choosing a direction.'
+            ),
+            'image_prompt': 'A cinematic dawn station with empty platforms, layered signs of transition, and tense anticipatory stillness',
+            'tags': 'transition,hesitation,decision',
+            'people_names': '',
+            'places': 'station',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry(
+        'I kept searching for the right train at a station.',
+        analysis_options={'ai_style': 'reflective', 'ai_verbosity': 'detailed'},
+    )
+
+    assert 'psychological threshold' in result['interpretation']
+    assert mock_client.chat.completions.create.call_count == 2
 
 
 @patch('services.openai_svc.OpenAI')

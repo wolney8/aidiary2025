@@ -1098,6 +1098,33 @@ Additional requirements for this retry:
         return bool(initial_text and retry_text and initial_text == retry_text)
 
     @staticmethod
+    def _is_daily_underdeveloped_for_options(
+        result: Dict,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> bool:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        verbosity = options['ai_verbosity']
+        response_text = OpenAIService._normalise_whitespace(result.get('ai_response', ''))
+        if not response_text:
+            return True
+
+        if style == 'brief' or verbosity == 'concise':
+            return False
+
+        word_count = len(response_text.split())
+
+        if verbosity == 'detailed':
+            if style in {'reflective', 'creative'}:
+                return word_count < 70
+            return word_count < 50
+
+        if style in {'reflective', 'creative'}:
+            return word_count < 28
+
+        return False
+
+    @staticmethod
     def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
         if retry_result is None:
             return True
@@ -1117,6 +1144,33 @@ Additional requirements for this retry:
         )
 
         return all(initial_trio) and initial_trio == retry_trio
+
+    @staticmethod
+    def _is_dream_underdeveloped_for_options(
+        result: Dict,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> bool:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        verbosity = options['ai_verbosity']
+        summary = OpenAIService._normalise_whitespace(result.get('summary', ''))
+        interpretation = OpenAIService._normalise_whitespace(result.get('interpretation', ''))
+
+        if not summary or not interpretation:
+            return True
+
+        if style == 'brief' or verbosity == 'concise':
+            return False
+
+        summary_words = len(summary.split())
+        interpretation_words = len(interpretation.split())
+
+        if verbosity == 'detailed':
+            if style in {'reflective', 'creative'}:
+                return summary_words < 18 or interpretation_words < 85
+            return summary_words < 14 or interpretation_words < 60
+
+        return summary_words < 10 or interpretation_words < 28
 
     @staticmethod
     def _is_rate_limit_like_error(exc: Exception) -> bool:
@@ -1241,6 +1295,32 @@ Additional requirements for this retry:
                 )
                 return contextual_fallback
 
+            if self._is_daily_underdeveloped_for_options(merged_result, analysis_options):
+                self._log_analysis_outcome(
+                    'daily',
+                    'retry_triggered_underdeveloped_output',
+                    level='warning',
+                )
+                retry_response = self._create_analysis_completion(
+                    system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                    analysis_options=analysis_options,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('ai_response', 'tags', 'people_names', 'places'),
+                )
+                retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
+
+                if (
+                    retry_merged_result is not None
+                    and not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback, text)
+                    and not self._is_daily_underdeveloped_for_options(retry_merged_result, analysis_options)
+                ):
+                    self._log_analysis_outcome('daily', 'retry_improved_depth')
+                    return retry_merged_result
+
             return merged_result
 
         except Exception as exc:
@@ -1352,6 +1432,32 @@ Additional requirements for this retry:
                     level='warning',
                 )
                 return contextual_fallback
+
+            if self._is_dream_underdeveloped_for_options(merged_result, analysis_options):
+                self._log_analysis_outcome(
+                    'dream',
+                    'retry_triggered_underdeveloped_output',
+                    level='warning',
+                )
+                retry_response = self._create_analysis_completion(
+                    system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                    analysis_options=analysis_options,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('summary', 'interpretation', 'image_prompt', 'tags', 'people_names', 'places'),
+                )
+                retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
+
+                if (
+                    retry_merged_result is not None
+                    and not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback, text)
+                    and not self._is_dream_underdeveloped_for_options(retry_merged_result, analysis_options)
+                ):
+                    self._log_analysis_outcome('dream', 'retry_improved_depth')
+                    return retry_merged_result
 
             return merged_result
 
