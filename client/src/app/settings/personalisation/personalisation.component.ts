@@ -103,9 +103,12 @@ import { User } from "../../core/models/user.model";
             <div class="ai-behaviour-note checkbox-row-wide">
               <strong>Cost and depth</strong>
               <p>
-                Detailed responses and stronger models can produce more
-                comprehensive analysis, but they usually increase token usage
-                and cost.
+                Your current AI model and verbosity work together. Higher-depth
+                choices usually create richer responses, but they also tend to
+                increase token usage and cost.
+              </p>
+              <p class="ai-behaviour-note-current">
+                {{ getCurrentAiCostSummary() }}
               </p>
             </div>
 
@@ -131,7 +134,7 @@ import { User } from "../../core/models/user.model";
                 <mat-option value="detailed">Detailed</mat-option>
               </mat-select>
               <mat-hint>
-                Controls response depth. Brief response styles remain shorter.
+                {{ getCurrentVerbosityHint() }}
               </mat-hint>
             </mat-form-field>
 
@@ -161,7 +164,7 @@ import { User } from "../../core/models/user.model";
                 </mat-option>
               </mat-select>
               <mat-hint>
-                Higher-tier models usually cost more per analysis.
+                {{ getCurrentModelHint() }}
               </mat-hint>
             </mat-form-field>
 
@@ -351,6 +354,12 @@ import { User } from "../../core/models/user.model";
       .ai-behaviour-note p,
       .ai-behaviour-group p {
         margin: 0;
+      }
+
+      .ai-behaviour-note-current {
+        margin-top: 0.55rem;
+        color: var(--colour-text-primary);
+        font-weight: 600;
       }
 
       .ai-behaviour-group-title {
@@ -589,5 +598,43 @@ export class PersonalisationComponent implements OnInit {
 
   getCustomGuidanceLength(): number {
     return String(this.settings?.custom_guidance || "").trim().length;
+  }
+
+  getCurrentVerbosityHint(): string {
+    const verbosity = String(this.settings?.ai_verbosity || "balanced").trim();
+    if (verbosity === "concise") {
+      return "Keeps responses short. Brief styles will stay especially compact.";
+    }
+    if (verbosity === "detailed") {
+      return "Pushes for fuller responses. Brief styles still stay shorter than the others.";
+    }
+    return "A middle ground between speed, depth, and cost.";
+  }
+
+  getCurrentModelHint(): string {
+    const selectedModel = String(this.settings?.ai_model || DEFAULT_AI_MODEL).trim();
+    const option = this.aiModelOptions.find((candidate) => candidate.value === selectedModel);
+    return option?.hint || "Choose the model that fits the depth and cost you want.";
+  }
+
+  getCurrentAiCostSummary(): string {
+    const verbosity = String(this.settings?.ai_verbosity || "balanced").trim();
+    const model = String(this.settings?.ai_model || DEFAULT_AI_MODEL).trim();
+
+    const modelBand =
+      model === "gpt-4.1"
+        ? "higher-cost model"
+        : model === "gpt-4o-mini"
+          ? "lower-cost model"
+          : "mid-cost model";
+
+    const verbosityBand =
+      verbosity === "detailed"
+        ? "higher-depth responses"
+        : verbosity === "concise"
+          ? "lighter responses"
+          : "balanced responses";
+
+    return `Current setup: ${modelBand} with ${verbosityBand}.`;
   }
 }
