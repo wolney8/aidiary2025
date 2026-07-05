@@ -480,6 +480,20 @@ def test_normalise_analysis_options_maps_legacy_ai_style_aliases():
     assert OpenAIService._normalise_analysis_options({'ai_style': 'unknown-style'})['ai_style'] == 'friendly'
 
 
+def test_normalise_analysis_options_maps_legacy_tone_verbosity_and_focus_aliases():
+    normalised = OpenAIService._normalise_analysis_options(
+        {
+            'ai_tone': 'Compassionate',
+            'ai_verbosity': 'comprehensive',
+            'ai_focus': 'creative prompts',
+        }
+    )
+
+    assert normalised['ai_tone'] == 'empathetic'
+    assert normalised['ai_verbosity'] == 'detailed'
+    assert normalised['ai_focus'] == 'creative-prompts'
+
+
 @patch('services.openai_svc.OpenAI')
 def test_openai_service_invalid_output_token_cap_uses_default(mock_openai):
     with patch.dict(

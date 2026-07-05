@@ -44,6 +44,36 @@ AI_STYLE_ALIASES = {
     'creative_symbolic': 'creative',
     'symbolic': 'creative',
 }
+AI_TONE_ALIASES = {
+    'warm': 'friendly',
+    'supportive': 'friendly',
+    'kind': 'friendly',
+    'compassionate': 'empathetic',
+    'empathic': 'empathetic',
+    'analytical-structured': 'analytical',
+    'analytical_structured': 'analytical',
+    'professional': 'formal',
+}
+AI_VERBOSITY_ALIASES = {
+    'short': 'concise',
+    'brief': 'concise',
+    'medium': 'balanced',
+    'normal': 'balanced',
+    'full': 'detailed',
+    'deep': 'detailed',
+    'comprehensive': 'detailed',
+}
+AI_FOCUS_ALIASES = {
+    'emotional support': 'emotional-support',
+    'emotional_support': 'emotional-support',
+    'support': 'emotional-support',
+    'practical advice': 'practical-advice',
+    'practical_advice': 'practical-advice',
+    'advice': 'practical-advice',
+    'creative prompts': 'creative-prompts',
+    'creative_prompts': 'creative-prompts',
+    'prompts': 'creative-prompts',
+}
 DREAM_IMAGE_STYLE_PREFIX = (
     'Create a dreamlike but believable single scene with cinematic lighting, '
     'clean modern digital illustration or film-still energy, moderate realism, '
@@ -282,9 +312,24 @@ Additional requirements for this retry:
         return {
             'ai_model': resolved_model,
             'ai_style': OpenAIService._normalise_ai_style(options.get('ai_style')),
-            'ai_tone': str(options.get('ai_tone') or DEFAULT_AI_TONE).strip() or DEFAULT_AI_TONE,
-            'ai_verbosity': str(options.get('ai_verbosity') or DEFAULT_AI_VERBOSITY).strip() or DEFAULT_AI_VERBOSITY,
-            'ai_focus': str(options.get('ai_focus') or DEFAULT_AI_FOCUS).strip() or DEFAULT_AI_FOCUS,
+            'ai_tone': OpenAIService._normalise_choice(
+                options.get('ai_tone'),
+                default=DEFAULT_AI_TONE,
+                canonical={'friendly', 'empathetic', 'analytical', 'formal'},
+                aliases=AI_TONE_ALIASES,
+            ),
+            'ai_verbosity': OpenAIService._normalise_choice(
+                options.get('ai_verbosity'),
+                default=DEFAULT_AI_VERBOSITY,
+                canonical={'concise', 'balanced', 'detailed'},
+                aliases=AI_VERBOSITY_ALIASES,
+            ),
+            'ai_focus': OpenAIService._normalise_choice(
+                options.get('ai_focus'),
+                default=DEFAULT_AI_FOCUS,
+                canonical={'reflective', 'emotional-support', 'practical-advice', 'creative-prompts'},
+                aliases=AI_FOCUS_ALIASES,
+            ),
             'has_related_context': bool(options.get('has_related_context')),
             'personal_context': str(options.get('personal_context') or '').strip() or None,
         }
@@ -309,6 +354,32 @@ Additional requirements for this retry:
             return alias
 
         return DEFAULT_AI_STYLE
+
+    @staticmethod
+    def _normalise_choice(
+        value: object,
+        *,
+        default: str,
+        canonical: set[str],
+        aliases: dict[str, str],
+    ) -> str:
+        raw = str(value or default).strip().lower()
+        if not raw:
+            return default
+
+        if raw in canonical:
+            return raw
+
+        alias = aliases.get(raw)
+        if alias:
+            return alias
+
+        collapsed = raw.replace('&', 'and').replace(' ', '-').replace('_', '-')
+        alias = aliases.get(collapsed)
+        if alias:
+            return alias
+
+        return default
 
     @classmethod
     def _build_daily_system_prompt(cls, analysis_options: dict[str, Any] | None = None) -> str:
