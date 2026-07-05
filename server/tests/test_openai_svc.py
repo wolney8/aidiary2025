@@ -1068,6 +1068,20 @@ def test_response_underuses_available_context_requires_human_reference_and_attac
     ) is False
 
 
+def test_dream_image_prompt_underdeveloped_requires_specific_non_generic_scene_language():
+    assert OpenAIService._is_dream_image_prompt_underdeveloped(
+        'Abstract dreamscape with surreal elements',
+        'I was in my old school corridor and found a hidden rooftop garden.',
+        OpenAIService._dream_fallback()['image_prompt'],
+    ) is True
+
+    assert OpenAIService._is_dream_image_prompt_underdeveloped(
+        'Moonlit old school corridor opening into a hidden rooftop garden with lanterns and mist',
+        'I was in my old school corridor and found a hidden rooftop garden.',
+        OpenAIService._dream_fallback()['image_prompt'],
+    ) is False
+
+
 @patch('services.openai_svc.OpenAI')
 def test_analyse_dream_entry_retries_when_detailed_output_is_too_short(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
@@ -1116,6 +1130,65 @@ def test_analyse_dream_entry_retries_when_detailed_output_is_too_short(mock_open
     )
 
     assert 'psychological threshold' in result['interpretation']
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_retries_when_image_prompt_stays_generic(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'summary': (
+                'You were back in your old school corridor, running through a familiar pressured space before discovering a hidden rooftop garden that felt unexpectedly calm and private.'
+            ),
+            'interpretation': (
+                'The corridor suggests old structures or expectations, while the hidden garden points to a private wish for relief, freedom, or a calmer perspective beyond those old pressures. '
+                'The contrast between enclosure and discovery suggests movement from pressure into a more self-directed inner space. '
+                'It may reflect a waking desire to find relief that still feels connected to the past rather than cut off from it. '
+                'The fact that the garden is hidden rather than obvious suggests that this calmer space may still feel psychologically hard to access. '
+                'That can fit periods where you know what would help emotionally, yet still feel pulled back into older systems, roles, or expectations. '
+                'Taken together, the dream feels less like random surreal scenery and more like a transition from inherited pressure into a more private, self-directed refuge.'
+            ),
+            'image_prompt': 'Abstract dreamscape with surreal elements',
+            'tags': 'school,pressure,relief',
+            'people_names': '',
+            'places': 'old school,rooftop garden',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'summary': (
+                'You were back in your old school corridor, running through a familiar pressured space before discovering a hidden rooftop garden that felt unexpectedly calm and private.'
+            ),
+            'interpretation': (
+                'The corridor suggests old structures or expectations, while the hidden garden points to a private wish for relief, freedom, or a calmer perspective beyond those old pressures. '
+                'The contrast between enclosure and discovery suggests movement from pressure into a more self-directed inner space. '
+                'It may reflect a waking desire to find relief that still feels connected to the past rather than cut off from it. '
+                'The fact that the garden is hidden rather than obvious suggests that this calmer space may still feel psychologically hard to access. '
+                'That can fit periods where you know what would help emotionally, yet still feel pulled back into older systems, roles, or expectations. '
+                'Taken together, the dream feels less like random surreal scenery and more like a transition from inherited pressure into a more private, self-directed refuge.'
+            ),
+            'image_prompt': 'Moonlit old school corridor opening into a hidden rooftop garden with lanterns and mist',
+            'tags': 'school,pressure,relief',
+            'people_names': '',
+            'places': 'old school,rooftop garden',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_dream_entry(
+        'I kept running through my old school corridor and then found a hidden rooftop garden.',
+        analysis_options={'ai_style': 'reflective', 'ai_verbosity': 'detailed'},
+    )
+
+    assert result['image_prompt'] == 'Moonlit old school corridor opening into a hidden rooftop garden with lanterns and mist'
     assert mock_client.chat.completions.create.call_count == 2
 
 

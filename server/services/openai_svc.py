@@ -1107,6 +1107,30 @@ Additional requirements for this retry:
             and no_entities
         )
 
+    @classmethod
+    def _is_dream_image_prompt_underdeveloped(
+        cls,
+        image_prompt: str,
+        source_text: str,
+        fallback: str,
+    ) -> bool:
+        prompt = cls._normalise_whitespace(image_prompt)
+        if not prompt:
+            return True
+
+        lowered = prompt.lower()
+        if (
+            prompt == fallback
+            or any(phrase in lowered for phrase in cls.GENERIC_DREAM_IMAGE_PROMPT_PHRASES)
+            or ('abstract' in lowered and 'dreamscape' in lowered)
+        ):
+            return True
+
+        if len(prompt.split()) < 9:
+            return True
+
+        return not cls._has_meaningful_token_overlap(source_text, prompt)
+
     @staticmethod
     def _is_daily_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
         if retry_result is None:
@@ -1178,6 +1202,7 @@ Additional requirements for this retry:
     @staticmethod
     def _is_dream_underdeveloped_for_options(
         result: Dict,
+        source_text: str,
         related_context: str | None = None,
         attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
@@ -1187,8 +1212,9 @@ Additional requirements for this retry:
         verbosity = options['ai_verbosity']
         summary = OpenAIService._normalise_whitespace(result.get('summary', ''))
         interpretation = OpenAIService._normalise_whitespace(result.get('interpretation', ''))
+        image_prompt = OpenAIService._normalise_whitespace(result.get('image_prompt', ''))
 
-        if not summary or not interpretation:
+        if not summary or not interpretation or not image_prompt:
             return True
 
         if style == 'brief' or verbosity == 'concise':
@@ -1206,11 +1232,18 @@ Additional requirements for this retry:
         elif summary_words < 10 or interpretation_words < 28:
             return True
 
-        return OpenAIService._response_underuses_available_context(
-            f'{summary}\n{interpretation}',
-            related_context=related_context,
-            attachment_context=attachment_context,
-            analysis_options=options,
+        return (
+            OpenAIService._response_underuses_available_context(
+                f'{summary}\n{interpretation}\n{image_prompt}',
+                related_context=related_context,
+                attachment_context=attachment_context,
+                analysis_options=options,
+            )
+            or OpenAIService._is_dream_image_prompt_underdeveloped(
+                image_prompt,
+                source_text,
+                OpenAIService._dream_fallback()['image_prompt'],
+            )
         )
 
     @staticmethod
@@ -1570,6 +1603,7 @@ Additional requirements for this retry:
 
             if self._is_dream_underdeveloped_for_options(
                 merged_result,
+                text,
                 related_context=related_context,
                 attachment_context=attachment_context,
                 analysis_options=analysis_options,
@@ -1596,6 +1630,7 @@ Additional requirements for this retry:
                     and not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback, text)
                     and not self._is_dream_underdeveloped_for_options(
                         retry_merged_result,
+                        text,
                         related_context=related_context,
                         attachment_context=attachment_context,
                         analysis_options=analysis_options,
