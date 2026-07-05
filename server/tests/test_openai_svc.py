@@ -219,6 +219,7 @@ def test_analyse_daily_entry_builds_prompt_from_style_and_personalisation_settin
             'ai_verbosity': 'detailed',
             'ai_focus': 'practical-advice',
             'has_related_context': True,
+            'has_attachment_context': True,
             'personal_context': 'Display name: Alex\nPronouns: they/them\nCustom guidance: Help me focus on evidence',
         },
     )
@@ -229,9 +230,11 @@ def test_analyse_daily_entry_builds_prompt_from_style_and_personalisation_settin
     assert 'Provide fuller, more thorough' in system_prompt
     assert 'practical next steps' in system_prompt
     assert 'date plus shared theme' in system_prompt
+    assert 'explicitly use at least one concrete detail from it' in system_prompt
     assert '8 to 11 sentences or 2 to 4 short paragraphs' in system_prompt
     assert '3 short sections or paragraphs' in system_prompt
     assert 'explicitly connect the current entry to at least one prior entry' in system_prompt
+    assert 'fold it into the analysis as supporting evidence or context' in system_prompt
     assert 'your attachment "filename.ext"' in system_prompt
     assert 'use it gently to personalise tone or framing' in system_prompt
 
@@ -258,6 +261,34 @@ def test_analyse_dream_entry_detailed_prompt_requests_fuller_summary_and_interpr
     system_prompt = mock_client.chat.completions.create.call_args.kwargs['messages'][0]['content']
     assert '"summary" should usually be 2 to 4 sentences' in system_prompt
     assert '"interpretation" should usually be 2 to 4 substantial paragraphs or 8 to 12 sentences' in system_prompt
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_prompt_requests_attachment_context_synthesis_when_present(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"summary":"ok","interpretation":"ok","image_prompt":"ok","tags":"a","people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_dream_entry(
+        'Dream text',
+        analysis_options={
+            'ai_style': 'reflective',
+            'ai_verbosity': 'detailed',
+            'has_attachment_context': True,
+        },
+    )
+
+    system_prompt = mock_client.chat.completions.create.call_args.kwargs['messages'][0]['content']
+    assert 'explicitly use at least one concrete detail from it where it sharpens the dream reading' in system_prompt
+    assert 'fold it into the interpretation as supporting context or pattern evidence' in system_prompt
     assert 'genuinely comprehensive reading with multiple paragraphs' in system_prompt
 
 

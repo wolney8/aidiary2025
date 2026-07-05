@@ -783,6 +783,7 @@ def analyse_text():
             'ai_focus': analysis_settings.get('ai_focus', DEFAULT_ANALYSIS_SETTINGS['ai_focus']),
             'ai_model': analysis_settings.get('ai_model', DEFAULT_ANALYSIS_SETTINGS['ai_model']),
             'has_related_context': bool(related_context),
+            'has_attachment_context': bool(attachment_context),
             'personal_context': analysis_settings.get('personal_context'),
         }
         

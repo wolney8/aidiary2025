@@ -331,6 +331,7 @@ Additional requirements for this retry:
                 aliases=AI_FOCUS_ALIASES,
             ),
             'has_related_context': bool(options.get('has_related_context')),
+            'has_attachment_context': bool(options.get('has_attachment_context')),
             'personal_context': str(options.get('personal_context') or '').strip() or None,
         }
 
@@ -394,6 +395,11 @@ Additional requirements for this retry:
             if options['has_related_context']
             else 'Do not invent prior-entry references when no relevant related-entry context is present.'
         )
+        attachment_guidance = (
+            'If attachment-derived context is present and relevant, explicitly use at least one concrete detail from it rather than referring to the file only by name.'
+            if options['has_attachment_context']
+            else 'Do not imply that attachment-derived context was used when none is provided.'
+        )
         personal_guidance = (
             'If lightweight user background context is present, use it gently to personalise tone or framing without making the response identity-heavy.'
             if options['personal_context']
@@ -412,12 +418,14 @@ Additional requirements for this retry:
             verbosity_guidance,
             focus_guidance,
             memory_guidance,
+            attachment_guidance,
             personal_guidance,
             cls._build_daily_length_guidance(options),
             cls._build_daily_structure_guidance(options),
             'Be specific about real events, emotions, people, places, and patterns from the entry and context.',
             'For non-brief detailed output, do not collapse the answer into the same short length as brief mode.',
             'When related-entry memory is present and genuinely relevant, explicitly connect the current entry to at least one prior entry using date + theme and explain the pattern or contrast.',
+            'When attachment-derived context is present and relevant, fold it into the analysis as supporting evidence or context, not as a detached afterthought.',
             'If you mention an attachment, refer to it naturally in human language, such as your attachment "filename.ext", and use any provided derived text carefully.',
             'Do not fabricate facts or prior memories that are not supported by the provided entry or context.',
             cls.DAILY_ANALYSIS_RESPONSE_SCHEMA,
@@ -435,6 +443,11 @@ Additional requirements for this retry:
             'using the date plus shared theme, but do not quote long passages.'
             if options['has_related_context']
             else 'Do not invent prior-entry references when no relevant related-entry context is present.'
+        )
+        attachment_guidance = (
+            'If attachment-derived context is present and relevant, explicitly use at least one concrete detail from it where it sharpens the dream reading, rather than referring to the file only by name.'
+            if options['has_attachment_context']
+            else 'Do not imply that attachment-derived context was used when none is provided.'
         )
         personal_guidance = (
             'If lightweight user background context is present, use it gently to personalise tone or framing without making the response identity-heavy.'
@@ -456,11 +469,13 @@ Additional requirements for this retry:
             verbosity_guidance,
             focus_guidance,
             memory_guidance,
+            attachment_guidance,
             personal_guidance,
             cls._build_dream_length_guidance(options),
             'Ground the interpretation in actual dream details rather than generic symbolism alone.',
             'For non-brief detailed output, do not collapse the summary and interpretation into minimal one-line answers unless the source material is extremely sparse.',
             cls._build_dream_structure_guidance(options),
+            'When attachment-derived context is present and relevant, fold it into the interpretation as supporting context or pattern evidence, not as a detached afterthought.',
             'If you mention an attachment, refer to it naturally in human language, such as your attachment "filename.ext", and use any provided derived text carefully.',
             'Do not fabricate facts or prior memories that are not supported by the provided dream or context.',
             cls.DREAM_ANALYSIS_RESPONSE_SCHEMA,
