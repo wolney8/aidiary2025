@@ -764,6 +764,48 @@ def test_analyse_daily_entry_merges_user_and_ai_nltk_tags(
 
 @patch('routes.analyse.derive_daily_nltk_fields')
 @patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_filters_generic_ai_tags_from_merged_metadata(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'You felt uncertain after seeing Katie again.',
+        'tags': 'analysis,daily,relationships,uncertainty',
+        'people_names': 'Katie',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {
+            'tags': 'evidence',
+            'daily_people_names': 'Katie',
+            'daily_places': '',
+        },
+        {
+            'tags': 'entry,reflection',
+            'daily_people_names': '',
+            'daily_places': '',
+        },
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'I saw Katie again and felt uncertain.'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['tags'] == 'evidence,relationships,uncertainty,reflection'
+    assert data['daily_people_names'] == 'Katie'
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
 def test_analyse_daily_entry_passes_ai_style_and_user_preferences_to_service(
     mock_service_cls,
     mock_daily_nltk,
@@ -1065,6 +1107,50 @@ def test_analyse_dream_entry_merges_user_and_ai_nltk_tags(
     data = json.loads(response.data)
     assert data['tags'] == 'river,night,transition,curiosity,symbolism'
     assert data['dream_people_names'] == 'Jordan,Maya'
+    assert data['dream_places'] == 'Leeds,Bridge'
+
+
+@patch('routes.analyse.derive_dream_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_dream_entry_filters_generic_ai_tags_from_merged_metadata(
+    mock_service_cls,
+    mock_dream_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_dream_entry.return_value = {
+        'summary': 'You were crossing a bridge at night.',
+        'interpretation': 'The bridge suggests transition and uncertainty.',
+        'image_prompt': 'Night bridge over dark water with distant lights',
+        'tags': 'dream,analysis,transition,night',
+        'people_names': '',
+        'places': 'Bridge',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_dream_nltk.side_effect = [
+        {
+            'tags': 'water',
+            'dream_people_names': '',
+            'dream_places': 'Leeds',
+        },
+        {
+            'tags': 'entry,symbolism',
+            'dream_people_names': '',
+            'dream_places': '',
+        },
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'dream', 'text': 'I was crossing a bridge at night over water.'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['tags'] == 'water,transition,night,symbolism'
     assert data['dream_places'] == 'Leeds,Bridge'
 
 

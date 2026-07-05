@@ -94,6 +94,43 @@ def _normalise_places(raw: str) -> str:
     return ",".join(cleaned)
 
 
+def _normalise_tags(raw: str) -> str:
+    if not raw:
+        return ""
+
+    blocked = {
+        "analysis",
+        "analysed",
+        "analyzed",
+        "ai",
+        "response",
+        "entry",
+        "entries",
+        "daily",
+        "dream",
+    }
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for token in str(raw).split(","):
+        candidate = token.strip().lower()
+        if not candidate:
+            continue
+        if candidate in blocked:
+            continue
+        if len(candidate) < 2:
+            continue
+        if not re.fullmatch(r"[a-z0-9][a-z0-9 _'/-]{0,39}", candidate):
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(candidate)
+
+    return ",".join(cleaned)
+
+
 def _format_human_reference_date(value: str | None) -> str:
     if not value:
         return 'an earlier date'
@@ -343,10 +380,12 @@ def _merge_daily_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
             str(result.get("places", "")),
         )
     )
-    merged_tags = merge_csv_values(
-        user_nltk.get("tags", ""),
-        str(result.get("tags", "")),
-        ai_nltk.get("tags", ""),
+    merged_tags = _normalise_tags(
+        merge_csv_values(
+            user_nltk.get("tags", ""),
+            str(result.get("tags", "")),
+            ai_nltk.get("tags", ""),
+        )
     )
 
     return {
@@ -395,10 +434,12 @@ def _merge_dream_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
             str(result.get("places", "")),
         )
     )
-    merged_tags = merge_csv_values(
-        user_nltk.get("tags", ""),
-        str(result.get("tags", "")),
-        ai_nltk.get("tags", ""),
+    merged_tags = _normalise_tags(
+        merge_csv_values(
+            user_nltk.get("tags", ""),
+            str(result.get("tags", "")),
+            ai_nltk.get("tags", ""),
+        )
     )
 
     return {
