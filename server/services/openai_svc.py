@@ -694,15 +694,22 @@ Additional requirements for this retry:
         text: str,
         recent_context: str | None,
         personal_context: str | None = None,
+        *,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
     ) -> str:
-        if not recent_context and not personal_context:
+        if not recent_context and not personal_context and not related_context and not attachment_context:
             return text
 
         sections: list[str] = []
         if personal_context:
             sections.append(f'User background context:\n{personal_context}')
         sections.append(f'Entry to analyse:\n{text}')
-        if recent_context:
+        if related_context:
+            sections.append(f'Related entry context:\n{related_context}')
+        if attachment_context:
+            sections.append(f'Attachment context:\n{attachment_context}')
+        elif recent_context:
             sections.append(f'Recent context:\n{recent_context}')
 
         return (
@@ -1214,14 +1221,20 @@ Additional requirements for this retry:
         self,
         text: str,
         recent_context: str | None = None,
+        *,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
     ) -> Dict:
         """Analyse daily diary entry and extract insights."""
         try:
+            normalised_options = self._normalise_analysis_options(analysis_options)
             user_content = self._build_analysis_user_content(
                 text,
                 recent_context,
-                self._normalise_analysis_options(analysis_options)['personal_context'],
+                normalised_options['personal_context'],
+                related_context=related_context,
+                attachment_context=attachment_context,
             )
             system_prompt = self._build_daily_system_prompt(analysis_options)
             response = self._create_analysis_completion(
@@ -1352,14 +1365,20 @@ Additional requirements for this retry:
         self,
         text: str,
         recent_context: str | None = None,
+        *,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
     ) -> Dict:
         """Analyse dream diary entry and provide interpretation."""
         try:
+            normalised_options = self._normalise_analysis_options(analysis_options)
             user_content = self._build_analysis_user_content(
                 text,
                 recent_context,
-                self._normalise_analysis_options(analysis_options)['personal_context'],
+                normalised_options['personal_context'],
+                related_context=related_context,
+                attachment_context=attachment_context,
             )
             system_prompt = self._build_dream_system_prompt(analysis_options)
             response = self._create_analysis_completion(

@@ -791,6 +791,8 @@ def analyse_text():
             result = ai_service.analyse_daily_entry(
                 text,
                 recent_context=recent_context,
+                related_context=related_context,
+                attachment_context=attachment_context,
                 analysis_options=analysis_options,
             )
             merged_result = _merge_daily_analysis_with_nltk(text, result)
@@ -819,6 +821,8 @@ def analyse_text():
             result = ai_service.analyse_dream_entry(
                 text,
                 recent_context=recent_context,
+                related_context=related_context,
+                attachment_context=attachment_context,
                 analysis_options=analysis_options,
             )
             merged_result = _merge_dream_analysis_with_nltk(text, result)

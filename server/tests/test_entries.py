@@ -834,12 +834,16 @@ def test_analyse_daily_entry_passes_ai_style_and_user_preferences_to_service(
 
     assert response.status_code == 200
     analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    related_context = mock_service.analyse_daily_entry.call_args.kwargs['related_context']
+    attachment_context = mock_service.analyse_daily_entry.call_args.kwargs['attachment_context']
     assert analysis_options['ai_style'] == 'creative'
     assert analysis_options['ai_tone'] == 'analytical'
     assert analysis_options['ai_verbosity'] == 'detailed'
     assert analysis_options['ai_focus'] == 'practical-advice'
     assert analysis_options['ai_model'] == 'gpt-4.1'
     assert analysis_options['has_attachment_context'] is False
+    assert related_context is None
+    assert attachment_context is None
     assert 'Display name: Alex' in analysis_options['personal_context']
     assert 'Pronouns: they/them' in analysis_options['personal_context']
     assert 'Gender: non-binary' in analysis_options['personal_context']
@@ -1518,9 +1522,12 @@ def test_analyse_daily_entry_can_include_attachment_context(
     assert payload['attachment_context_refs'] == ['notes.pdf (PDF text extracted)']
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
     analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    attachment_context = mock_service.analyse_daily_entry.call_args.kwargs['attachment_context']
     assert recent_context is not None
     assert analysis_options['has_attachment_context'] is True
+    assert attachment_context is not None
     assert 'Attachment context:' in recent_context
+    assert 'Your PDF attachment "notes.pdf"' in attachment_context
     assert 'Your PDF attachment "notes.pdf"' in recent_context
     assert 'PDF summary about a difficult meeting' in recent_context
 
@@ -3084,8 +3091,11 @@ def test_analyse_daily_entry_lazily_extracts_pdf_text_for_older_attachment(
     assert payload['attachment_context_refs'] == ['older-notes.pdf (PDF OCR text)']
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
     analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    attachment_context = mock_service.analyse_daily_entry.call_args.kwargs['attachment_context']
     assert recent_context is not None
     assert analysis_options['has_attachment_context'] is True
+    assert attachment_context is not None
+    assert 'Your PDF attachment "older-notes.pdf"' in attachment_context
     assert 'Your PDF attachment "older-notes.pdf"' in recent_context
     assert 'Recovered PDF text about an old difficult meeting and next steps.' in recent_context
 

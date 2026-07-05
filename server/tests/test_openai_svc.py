@@ -911,6 +911,42 @@ def test_analyse_daily_entry_includes_recent_context_in_user_message(mock_openai
 
 
 @patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_separates_related_and_attachment_context_in_user_message(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': 'Great reflection!',
+            'tags': 'positive,growth',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.analyse_daily_entry(
+        'Current daily text',
+        recent_context='legacy merged context',
+        related_context='[related 1] On 5 August 2026, shared theme: Katie',
+        attachment_context='- Your PDF attachment "notes.pdf"\n  Derived text summary: difficult meeting notes',
+    )
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    user_message = call_kwargs['messages'][1]['content']
+    assert 'Entry to analyse:' in user_message
+    assert 'Related entry context:' in user_message
+    assert '[related 1] On 5 August 2026, shared theme: Katie' in user_message
+    assert 'Attachment context:' in user_message
+    assert 'Your PDF attachment "notes.pdf"' in user_message
+    assert 'Recent context:\nlegacy merged context' not in user_message
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_dream_entry_includes_recent_context_in_user_message(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
