@@ -1122,6 +1122,8 @@ Additional requirements for this retry:
     @staticmethod
     def _is_daily_underdeveloped_for_options(
         result: Dict,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
     ) -> bool:
         options = OpenAIService._normalise_analysis_options(analysis_options)
@@ -1138,13 +1140,19 @@ Additional requirements for this retry:
 
         if verbosity == 'detailed':
             if style in {'reflective', 'creative'}:
-                return word_count < 70
-            return word_count < 50
+                if word_count < 70:
+                    return True
+            elif word_count < 50:
+                return True
+        elif style in {'reflective', 'creative'} and word_count < 28:
+            return True
 
-        if style in {'reflective', 'creative'}:
-            return word_count < 28
-
-        return False
+        return OpenAIService._response_underuses_available_context(
+            response_text,
+            related_context=related_context,
+            attachment_context=attachment_context,
+            analysis_options=options,
+        )
 
     @staticmethod
     def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
@@ -1170,6 +1178,8 @@ Additional requirements for this retry:
     @staticmethod
     def _is_dream_underdeveloped_for_options(
         result: Dict,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
     ) -> bool:
         options = OpenAIService._normalise_analysis_options(analysis_options)
@@ -1189,10 +1199,91 @@ Additional requirements for this retry:
 
         if verbosity == 'detailed':
             if style in {'reflective', 'creative'}:
-                return summary_words < 18 or interpretation_words < 85
-            return summary_words < 14 or interpretation_words < 60
+                if summary_words < 18 or interpretation_words < 85:
+                    return True
+            elif summary_words < 14 or interpretation_words < 60:
+                return True
+        elif summary_words < 10 or interpretation_words < 28:
+            return True
 
-        return summary_words < 10 or interpretation_words < 28
+        return OpenAIService._response_underuses_available_context(
+            f'{summary}\n{interpretation}',
+            related_context=related_context,
+            attachment_context=attachment_context,
+            analysis_options=options,
+        )
+
+    @staticmethod
+    def _extract_attachment_filenames(attachment_context: str | None) -> list[str]:
+        if not isinstance(attachment_context, str) or not attachment_context.strip():
+            return []
+
+        filenames: list[str] = []
+        seen: set[str] = set()
+        for match in re.finditer(r'attachment "([^"]+)"', attachment_context, flags=re.IGNORECASE):
+            candidate = match.group(1).strip()
+            if not candidate:
+                continue
+            lowered = candidate.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            filenames.append(candidate)
+        return filenames
+
+    @staticmethod
+    def _response_underuses_available_context(
+        response_text: str,
+        *,
+        related_context: str | None,
+        attachment_context: str | None,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> bool:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        verbosity = options['ai_verbosity']
+        if style == 'brief' or verbosity == 'concise':
+            return False
+
+        lowered_response = OpenAIService._normalise_whitespace(response_text).lower()
+        if not lowered_response:
+            return True
+
+        if options['has_related_context'] and isinstance(related_context, str) and related_context.strip():
+            month_match = re.search(
+                r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\b',
+                related_context,
+                flags=re.IGNORECASE,
+            )
+            date_hint = month_match.group(1).lower() if month_match else ''
+            callback_markers = (
+                'earlier entry',
+                'previous entry',
+                'prior entry',
+                'on ',
+                'back in ',
+                'similar to your entry',
+                'this sounds similar',
+            )
+            has_callback_signal = any(marker in lowered_response for marker in callback_markers)
+            if date_hint and date_hint not in lowered_response:
+                has_callback_signal = False
+            if not has_callback_signal:
+                return True
+
+        if options['has_attachment_context'] and isinstance(attachment_context, str) and attachment_context.strip():
+            filenames = OpenAIService._extract_attachment_filenames(attachment_context)
+            if filenames:
+                if not any(
+                    filename.lower() in lowered_response
+                    or filename.rsplit('.', 1)[0].lower() in lowered_response
+                    for filename in filenames
+                ):
+                    return True
+            elif 'attachment' not in lowered_response and 'file' not in lowered_response:
+                return True
+
+        return False
 
     @staticmethod
     def _is_rate_limit_like_error(exc: Exception) -> bool:
@@ -1323,7 +1414,12 @@ Additional requirements for this retry:
                 )
                 return contextual_fallback
 
-            if self._is_daily_underdeveloped_for_options(merged_result, analysis_options):
+            if self._is_daily_underdeveloped_for_options(
+                merged_result,
+                related_context=related_context,
+                attachment_context=attachment_context,
+                analysis_options=analysis_options,
+            ):
                 self._log_analysis_outcome(
                     'daily',
                     'retry_triggered_underdeveloped_output',
@@ -1344,7 +1440,12 @@ Additional requirements for this retry:
                 if (
                     retry_merged_result is not None
                     and not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback, text)
-                    and not self._is_daily_underdeveloped_for_options(retry_merged_result, analysis_options)
+                    and not self._is_daily_underdeveloped_for_options(
+                        retry_merged_result,
+                        related_context=related_context,
+                        attachment_context=attachment_context,
+                        analysis_options=analysis_options,
+                    )
                 ):
                     self._log_analysis_outcome('daily', 'retry_improved_depth')
                     return retry_merged_result
@@ -1467,7 +1568,12 @@ Additional requirements for this retry:
                 )
                 return contextual_fallback
 
-            if self._is_dream_underdeveloped_for_options(merged_result, analysis_options):
+            if self._is_dream_underdeveloped_for_options(
+                merged_result,
+                related_context=related_context,
+                attachment_context=attachment_context,
+                analysis_options=analysis_options,
+            ):
                 self._log_analysis_outcome(
                     'dream',
                     'retry_triggered_underdeveloped_output',
@@ -1488,7 +1594,12 @@ Additional requirements for this retry:
                 if (
                     retry_merged_result is not None
                     and not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback, text)
-                    and not self._is_dream_underdeveloped_for_options(retry_merged_result, analysis_options)
+                    and not self._is_dream_underdeveloped_for_options(
+                        retry_merged_result,
+                        related_context=related_context,
+                        attachment_context=attachment_context,
+                        analysis_options=analysis_options,
+                    )
                 ):
                     self._log_analysis_outcome('dream', 'retry_improved_depth')
                     return retry_merged_result

@@ -879,6 +879,65 @@ def test_analyse_daily_entry_retries_when_detailed_output_is_too_short(mock_open
 
 
 @patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_retries_when_detailed_output_ignores_available_context(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    first_response = MagicMock()
+    first_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': (
+                'You seem caught between hope and uncertainty. '
+                'It makes sense that reaching out felt emotionally loaded. '
+                'There is a real wish for clarity here, alongside a need to protect yourself. '
+                'Staying close to the evidence is a helpful way to remain grounded. '
+                'A useful next step is to notice what outcome you are actually hoping for. '
+                'That can help you respond in a way that feels more stable and intentional.'
+            ),
+            'tags': 'contact,uncertainty,boundaries',
+            'people_names': 'Katie',
+            'places': '',
+        }
+    )
+    second_response = MagicMock()
+    second_response.choices[0].message.content = json.dumps(
+        {
+            'ai_response': (
+                'You seem caught between hope and uncertainty, but the pattern becomes clearer when this is set beside your entry on 5 August 2026 about Katie. '
+                'In both situations you are trying to stay evidence-based while also carrying the sting of ambiguity. '
+                'Your attachment "notes.pdf" also reinforces that you were already documenting mixed signals rather than reacting only in the moment. '
+                'That makes this feel less like a one-off wobble and more like a recurring tension between curiosity, repair, and self-protection. '
+                'The growth here is that you are now naming the uncertainty directly instead of letting it define the whole interaction. '
+                'A grounded next step is to decide whether you want clarity, reconnection, or closure, because each would call for a different emotional boundary.'
+            ),
+            'tags': 'contact,uncertainty,boundaries,growth',
+            'people_names': 'Katie',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+    service = OpenAIService()
+    result = service.analyse_daily_entry(
+        'I saw Katie again and felt conflicted about reaching out.',
+        related_context='[related 1] On 5 August 2026, shared theme: Katie and uncertainty',
+        attachment_context='- Your PDF attachment "notes.pdf"\n  Derived text summary: notes about mixed signals',
+        analysis_options={
+            'ai_style': 'reflective',
+            'ai_verbosity': 'detailed',
+            'has_related_context': True,
+            'has_attachment_context': True,
+        },
+    )
+
+    assert '5 August 2026' in result['ai_response']
+    assert 'notes.pdf' in result['ai_response']
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@patch('services.openai_svc.OpenAI')
 def test_analyse_daily_entry_includes_recent_context_in_user_message(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
@@ -978,6 +1037,35 @@ def test_analyse_dream_entry_includes_recent_context_in_user_message(mock_openai
     assert 'Current dream text' in user_message
     assert 'Recent context:' in user_message
     assert 'Previous dream text' in user_message
+
+
+def test_response_underuses_available_context_requires_human_reference_and_attachment_signal():
+    assert OpenAIService._response_underuses_available_context(
+        'This feels emotionally loaded, but you are trying to stay grounded and careful.',
+        related_context='[related 1] On 5 August 2026, shared theme: Katie and uncertainty',
+        attachment_context='- Your PDF attachment "notes.pdf"\n  Derived text summary: difficult meeting notes',
+        analysis_options={
+            'ai_style': 'reflective',
+            'ai_verbosity': 'detailed',
+            'has_related_context': True,
+            'has_attachment_context': True,
+        },
+    ) is True
+
+    assert OpenAIService._response_underuses_available_context(
+        (
+            'This sounds similar to your entry on 5 August 2026 about Katie, and your attachment '
+            '"notes.pdf" suggests the same uncertainty was already present.'
+        ),
+        related_context='[related 1] On 5 August 2026, shared theme: Katie and uncertainty',
+        attachment_context='- Your PDF attachment "notes.pdf"\n  Derived text summary: difficult meeting notes',
+        analysis_options={
+            'ai_style': 'reflective',
+            'ai_verbosity': 'detailed',
+            'has_related_context': True,
+            'has_attachment_context': True,
+        },
+    ) is False
 
 
 @patch('services.openai_svc.OpenAI')
