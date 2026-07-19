@@ -6,6 +6,14 @@ from app import create_app
 import tempfile
 import os
 
+
+def test_production_startup_requires_explicit_jwt_secret(monkeypatch):
+    monkeypatch.setenv('APP_ENV', 'production')
+    monkeypatch.delenv('JWT_SECRET', raising=False)
+
+    with pytest.raises(RuntimeError, match='JWT_SECRET must be configured'):
+        create_app()
+
 @pytest.fixture
 def client():
     """Create test client with temporary database."""
@@ -83,7 +91,7 @@ def test_register_rejects_short_password(client):
 
     assert response.status_code == 400
     data = json.loads(response.data)
-    assert data['error'] == 'Password must be between 8 and 12 characters'
+    assert data['error'] == 'Password must be between 8 and 128 characters'
 
 def test_register_rejects_password_that_is_only_numbers(client):
     response = client.post('/api/register',
@@ -115,14 +123,26 @@ def test_register_rejects_password_over_max_length(client):
     response = client.post('/api/register',
         data=json.dumps({
             'username': 'testuser',
-            'password': 'abc1234567890'
+            'password': f"a1{'x' * 127}"
         }),
         content_type='application/json'
     )
 
     assert response.status_code == 400
     data = json.loads(response.data)
-    assert data['error'] == 'Password must be between 8 and 12 characters'
+    assert data['error'] == 'Password must be between 8 and 128 characters'
+
+
+def test_register_accepts_long_passphrase(client):
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'passphrase-user',
+            'password': 'correct-horse-battery-staple-2026'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 201
 
 def test_register_trims_username(client):
     response = client.post('/api/register',

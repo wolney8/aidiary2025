@@ -39,7 +39,13 @@ def create_app():
     app = Flask(__name__)
     
     # Configuration
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'dev-secret-key')
+    app_environment = (os.getenv('APP_ENV') or 'development').strip().lower()
+    jwt_secret = os.getenv('JWT_SECRET')
+    if not jwt_secret and app_environment == 'production':
+        raise RuntimeError('JWT_SECRET must be configured when APP_ENV=production')
+    if not jwt_secret:
+        app.logger.warning('JWT_SECRET is not configured; using local development secret')
+    app.config['JWT_SECRET_KEY'] = jwt_secret or 'dev-secret-key'
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
     env_db_path = os.getenv('DB_PATH')
     fallback_path = os.path.join(app.root_path, 'db', 'app.db')

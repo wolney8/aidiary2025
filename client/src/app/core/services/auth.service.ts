@@ -21,13 +21,18 @@ export class AuthService {
   private tokenKey = "ai_diary_token";
   private userKey = "ai_diary_user";
   private currentUserSubject = new BehaviorSubject<User | null>(null);
+  private sessionExpiredSinceLastCheck = false;
 
   currentUser$ = this.currentUserSubject.asObservable();
 
   constructor() {
     const storedUser = localStorage.getItem(this.userKey);
     if (storedUser) {
-      this.currentUserSubject.next(JSON.parse(storedUser));
+      try {
+        this.currentUserSubject.next(JSON.parse(storedUser));
+      } catch {
+        this.clearSession();
+      }
     }
   }
 
@@ -36,6 +41,7 @@ export class AuthService {
       .post<AuthResponse>(`${this.apiUrl}/login`, credentials)
       .pipe(
         tap((response) => {
+          this.sessionExpiredSinceLastCheck = false;
           localStorage.setItem(this.tokenKey, response.token);
           localStorage.setItem(this.userKey, JSON.stringify(response.user));
           this.currentUserSubject.next(response.user);
@@ -46,6 +52,7 @@ export class AuthService {
   register(data: RegisterRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/register`, data).pipe(
       tap((response) => {
+        this.sessionExpiredSinceLastCheck = false;
         localStorage.setItem(this.tokenKey, response.token);
         localStorage.setItem(this.userKey, JSON.stringify(response.user));
         this.currentUserSubject.next(response.user);
@@ -59,15 +66,20 @@ export class AuthService {
   }
 
   handleSessionExpired(): void {
+    this.sessionExpiredSinceLastCheck = true;
     this.clearSession();
 
-    const currentPath = this.router.url.split("?")[0];
+    const currentUrl = this.router.url;
+    const currentPath = currentUrl.split("?")[0];
     if (currentPath === "/login" || currentPath === "/register") {
       return;
     }
 
     this.router.navigate(["/login"], {
-      queryParams: { reason: "session-expired" },
+      queryParams: {
+        reason: "session-expired",
+        returnUrl: currentUrl || "/entries",
+      },
       replaceUrl: true,
     });
   }
@@ -83,7 +95,24 @@ export class AuthService {
   }
 
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    const token = this.getToken();
+    if (!token) {
+      return false;
+    }
+
+    if (this.isTokenExpiredOrInvalid(token)) {
+      this.sessionExpiredSinceLastCheck = true;
+      this.clearSession();
+      return false;
+    }
+
+    return true;
+  }
+
+  consumeSessionExpiredFlag(): boolean {
+    const wasExpired = this.sessionExpiredSinceLastCheck;
+    this.sessionExpiredSinceLastCheck = false;
+    return wasExpired;
   }
 
   syncCurrentUser(user: User): void {
@@ -93,5 +122,25 @@ export class AuthService {
 
   getCurrentUser(): User | null {
     return this.currentUserSubject.value;
+  }
+
+  private isTokenExpiredOrInvalid(token: string): boolean {
+    try {
+      const segments = token.split(".");
+      if (segments.length !== 3) {
+        return true;
+      }
+
+      const base64Url = segments[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+      const payload = JSON.parse(atob(padded)) as { exp?: unknown };
+
+      return (
+        typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()
+      );
+    } catch {
+      return true;
+    }
   }
 }
