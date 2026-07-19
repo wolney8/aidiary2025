@@ -66,6 +66,31 @@ _DEFAULT_IMPORT_TIMES = {
 }
 _PACKAGE_WORKBOOK_NAME = 'entries.xlsx'
 _PACKAGE_MANIFEST_NAME = 'manifest.json'
+PACKAGE_FORMAT_VERSION = 1
+PORTABILITY_CONTRACT = {
+    'contract_version': 1,
+    'workbook_fields': {
+        'daily': list(DAILY_IMPORT_HEADERS),
+        'dream': list(DREAM_IMPORT_HEADERS),
+    },
+    'preserved_assets': [
+        'hero images and framing metadata',
+        'entry attachments and their filenames, MIME types, and ordering',
+    ],
+    'normalised_on_import': [
+        'blank Daily entry times default to 19:00',
+        'blank Dream entry times default to 08:00',
+        'search enrichment metadata is recalculated from imported entry text',
+    ],
+    'omitted_data': [
+        'account and Customisation settings',
+        'important days and public-holiday preferences',
+        'chat history',
+        'attachment-derived text and transcripts',
+        'Daily mood and derived tags, people, and places',
+        'Dream AI summary and interpretation',
+    ],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +433,36 @@ def parse_import_package(file_bytes: bytes) -> dict:
 
             manifest = _load_package_manifest(zip_file)
             manifest_assets = manifest.get('assets', {}) if isinstance(manifest, dict) else {}
+            manifest_warnings = parsed.setdefault('warnings', [])
+            if manifest and not isinstance(manifest, dict):
+                manifest_warnings.append(
+                    'Package manifest is not an object; media metadata and portability details were ignored.'
+                )
+            elif isinstance(manifest, dict) and manifest:
+                package_type = manifest.get('package_type')
+                if package_type and package_type != 'aidiary_export':
+                    manifest_warnings.append(
+                        f'Package type "{package_type}" is not the standard AI Diary export type; '
+                        'only recognised workbook and media fields will be imported.'
+                    )
+
+                package_version = manifest.get('version')
+                if package_version not in (None, PACKAGE_FORMAT_VERSION):
+                    manifest_warnings.append(
+                        f'Package format version {package_version} differs from supported version '
+                        f'{PACKAGE_FORMAT_VERSION}; unsupported fields may be ignored.'
+                    )
+
+                portability = manifest.get('portability')
+                omitted_data = portability.get('omitted_data', []) if isinstance(portability, dict) else []
+                if isinstance(omitted_data, list) and omitted_data:
+                    readable_omissions = [item.strip() for item in omitted_data if isinstance(item, str) and item.strip()]
+                    if readable_omissions:
+                        manifest_warnings.append(
+                            'Portability notice — this package does not contain: '
+                            + '; '.join(readable_omissions)
+                            + '.'
+                        )
             staging_root = _get_package_staging_root()
 
             _attach_package_asset_metadata(
@@ -416,7 +471,7 @@ def parse_import_package(file_bytes: bytes) -> dict:
                 manifest_assets=manifest_assets,
                 zip_file=zip_file,
                 staging_root=staging_root,
-                warnings=parsed.setdefault('warnings', []),
+                warnings=manifest_warnings,
             )
             _attach_package_asset_metadata(
                 parsed.get('dreams', []),
@@ -424,7 +479,7 @@ def parse_import_package(file_bytes: bytes) -> dict:
                 manifest_assets=manifest_assets,
                 zip_file=zip_file,
                 staging_root=staging_root,
-                warnings=parsed.setdefault('warnings', []),
+                warnings=manifest_warnings,
             )
 
             parsed['package_staging_root'] = staging_root

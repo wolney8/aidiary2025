@@ -38,8 +38,18 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       <mat-card-content>
         <p class="hint">
           The export package contains an <strong>entries.xlsx</strong> workbook
-          plus any bundled Daily and Dream hero images.
+          plus bundled Daily and Dream hero images and entry attachments.
         </p>
+
+        <div class="portability-note" role="note">
+          <strong>Portability limits</strong>
+          <p>
+            Entry content, supported AI fields, times, hero images, framing, and
+            attachments can be restored from the package. Account settings,
+            important days, chat history, and attachment-derived text or
+            transcripts are not currently included.
+          </p>
+        </div>
 
         <div class="filters" aria-label="Export filters">
           <div class="date-row">
@@ -198,6 +208,23 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       .hint {
         margin: 0;
         color: var(--colour-text-secondary);
+      }
+
+      .portability-note {
+        margin-top: var(--spacing-md);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-sm);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+      }
+
+      .portability-note strong {
+        color: var(--colour-text-primary);
+      }
+
+      .portability-note p {
+        margin: var(--spacing-xs) 0 0;
       }
 
       .filters {

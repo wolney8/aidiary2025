@@ -218,6 +218,7 @@ def _make_zip_package(
     dream_rows=None,
     manifest_assets=None,
     media_files=None,
+    manifest_overrides=None,
 ) -> bytes:
     workbook_bytes = _make_xlsx_with_headers(
         daily_headers=list(DAILY_IMPORT_HEADERS),
@@ -231,6 +232,7 @@ def _make_zip_package(
         'generated_at': '2026-06-10T00:00:00Z',
         'assets': manifest_assets or {},
     }
+    manifest.update(manifest_overrides or {})
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
@@ -877,6 +879,26 @@ class TestMalformedData:
 # ---------------------------------------------------------------------------
 
 class TestSchemaContractWarnings:
+    def test_package_version_mismatch_is_reported_without_blocking_supported_fields(self, client):
+        token = _register_and_login(client)
+        package_bytes = _make_zip_package(
+            daily_rows=[['2025-02-01', '19:00', 'Future package', 'Body', '', '']],
+            manifest_overrides={'version': 99},
+        )
+
+        response = _upload(
+            client,
+            token,
+            package_bytes,
+            filename='future-package.zip',
+            content_type='application/zip',
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['summary']['inserted_daily'] == 1
+        assert any('version 99' in warning.lower() for warning in data['warnings'])
+
     def test_daily_unexpected_column_emits_warning(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx_with_headers(
@@ -1339,6 +1361,11 @@ class TestExportDownload:
         assert 'Daily' in wb.sheetnames
         assert 'Dreams' in wb.sheetnames
         assert manifest['package_type'] == 'aidiary_export'
+        assert manifest['version'] == 1
+        assert manifest['portability']['contract_version'] == 1
+        assert manifest['portability']['workbook_fields']['daily'] == list(DAILY_IMPORT_HEADERS)
+        assert manifest['portability']['workbook_fields']['dream'] == list(DREAM_IMPORT_HEADERS)
+        assert 'attachment-derived text and transcripts' in manifest['portability']['omitted_data']
         assert 'entries.xlsx' in package_members
         assert 'manifest.json' in package_members
 
@@ -1366,6 +1393,86 @@ class TestExportDownload:
         assert dream_ws.cell(2, 5).value == 'Alex'
         assert dream_ws.cell(2, 6).value == 'Forest'
         assert dream_ws.cell(2, 13).value == 'dream,flight'
+
+    def test_export_package_round_trips_supported_entry_fields_to_another_user(self, client):
+        source_token = _register_and_login(client)
+        self._seed_export_rows(os.environ['DB_PATH'])
+
+        export_response = client.get(
+            '/api/import/export',
+            headers={'Authorization': f'Bearer {source_token}'},
+        )
+        assert export_response.status_code == 200
+
+        client.post(
+            '/api/register',
+            data=json.dumps({'username': 'restore-user', 'password': 'secret123'}),
+            content_type='application/json',
+        )
+        login_response = client.post(
+            '/api/login',
+            data=json.dumps({'username': 'restore-user', 'password': 'secret123'}),
+            content_type='application/json',
+        )
+        restore_token = json.loads(login_response.data)['token']
+
+        import_response = _upload(
+            client,
+            restore_token,
+            export_response.data,
+            filename='round-trip.zip',
+            content_type='application/zip',
+        )
+        assert import_response.status_code == 200
+        result = json.loads(import_response.data)
+        assert result['summary']['inserted_daily'] == 2
+        assert result['summary']['inserted_dreams'] == 2
+        assert any('portability notice' in warning.lower() for warning in result['warnings'])
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        restored_user_id = conn.execute(
+            'SELECT id FROM users WHERE username = ?',
+            ('restore-user',),
+        ).fetchone()['id']
+        daily = conn.execute(
+            '''
+            SELECT entry_date, entry_time, title, user_message, ai_response
+            FROM dailydiary_entries
+            WHERE user_id = ? AND title = 'Daily one'
+            ''',
+            (restored_user_id,),
+        ).fetchone()
+        dream = conn.execute(
+            '''
+            SELECT entry_date, entry_time, title, plot, "cast", location, emotion, tags
+            FROM dreamdiary_entries
+            WHERE user_id = ? AND title = 'Dream one'
+            ''',
+            (restored_user_id,),
+        ).fetchone()
+        conn.close()
+
+        assert dict(daily) == {
+            'entry_date': '2026-01-10',
+            'entry_time': '09:30',
+            'title': 'Daily one',
+            'user_message': 'Body text',
+            'ai_response': 'AI text',
+        }
+        assert {
+            key: dream[key]
+            for key in ('entry_date', 'entry_time', 'title', 'plot', 'cast', 'location', 'emotion')
+        } == {
+            'entry_date': '2026-01-11',
+            'entry_time': '08:15',
+            'title': 'Dream one',
+            'plot': 'Flying over trees',
+            'cast': 'Alex',
+            'location': 'Forest',
+            'emotion': 'Joy',
+        }
+        assert dream['tags'].split(',')[:2] == ['dream', 'flight']
 
     def test_export_records_guard_token_for_full_range_export(self, client):
         token = _register_and_login(client)

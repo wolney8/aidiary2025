@@ -98,7 +98,7 @@ type UploadState =
             The template contains separate sheets for <strong>Daily</strong> and
             <strong>Dream</strong> entries with all required columns
             pre-defined. You can also import a full .zip export package to
-            restore bundled entry images.
+            restore supported entry data, bundled images, and attachments.
           </p>
 
           <div

@@ -12,6 +12,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from services.import_service import (
     DAILY_IMPORT_HEADERS,
     DREAM_IMPORT_HEADERS,
+    PACKAGE_FORMAT_VERSION,
+    PORTABILITY_CONTRACT,
     validate_file,
     parse_import_file,
     preview_import_entries,
@@ -798,8 +800,9 @@ def export_entries():
             json.dumps(
                 {
                     'package_type': 'aidiary_export',
-                    'version': 1,
+                    'version': PACKAGE_FORMAT_VERSION,
                     'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'portability': PORTABILITY_CONTRACT,
                     'assets': manifest_assets,
                 },
                 ensure_ascii=True,
