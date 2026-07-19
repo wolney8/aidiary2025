@@ -1900,6 +1900,18 @@
   color: #ffffff;
 }
 
+.entry-card mat-chip.tag-overflow-chip {
+  cursor: default;
+  background: var(--colour-surface-muted);
+  color: var(--colour-text-secondary);
+  font-weight: 700;
+}
+
+.entry-card mat-chip.tag-overflow-chip:hover {
+  background: var(--colour-surface-muted);
+  color: var(--colour-text-secondary);
+}
+
 .entry-snippet {
   margin-bottom: 0;
   flex: 1;
@@ -1914,11 +1926,6 @@
 
 .entry-card .mat-mdc-card-actions {
   margin-top: auto;
-}
-
-.entry-card .mat-mdc-icon-button[disabled] {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .entry-image-placeholder {

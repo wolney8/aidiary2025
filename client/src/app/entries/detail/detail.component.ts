@@ -43,6 +43,20 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
     BackToTopComponent,
   ],
   template: `
+    <section class="detail-status" *ngIf="isLoadingEntry" role="status">
+      <mat-progress-spinner mode="indeterminate" diameter="48" />
+      <p>Loading entry…</p>
+    </section>
+
+    <section class="detail-status detail-error" *ngIf="loadErrorMessage" role="alert">
+      <mat-icon>error_outline</mat-icon>
+      <h2>Entry unavailable</h2>
+      <p>{{ loadErrorMessage }}</p>
+      <button mat-stroked-button type="button" (click)="goBack()">
+        Back to entries
+      </button>
+    </section>
+
     <div class="detail-container" *ngIf="entry">
       <div class="analysis-warning" *ngIf="analysisWarningMessage" role="alert">
         {{ analysisWarningMessage }}
@@ -61,6 +75,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
             mat-raised-button
             color="primary"
             [routerLink]="['/entries', entry.id, 'edit']"
+            [queryParams]="{ type: entryType }"
           >
             Edit Entry
           </button>
@@ -700,7 +715,9 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
           <h4>Places:</h4>
           <mat-chip-listbox>
             <mat-chip-option
-              *ngFor="let place of getPlacesArray()"
+              *ngFor="
+                let place of getVisibleItems(getPlacesArray(), showAllPlaces)
+              "
               (click)="searchForPlace(place)"
               [class.clickable-chip]="true"
             >
@@ -708,6 +725,18 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
               {{ place }}
             </mat-chip-option>
           </mat-chip-listbox>
+          <button
+            mat-button
+            type="button"
+            class="expand-toggle ellipsis-toggle"
+            *ngIf="shouldShowToggle(getPlacesArray())"
+            (click)="showAllPlaces = !showAllPlaces"
+            [attr.aria-label]="
+              showAllPlaces ? 'Show fewer places' : 'Show more places'
+            "
+          >
+            {{ showAllPlaces ? "Show less" : "..." }}
+          </button>
         </div>
       </div>
 
@@ -719,6 +748,29 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
       .detail-container {
         max-width: 1200px;
         margin: 0 auto;
+      }
+
+      .detail-status {
+        min-height: 18rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.8rem;
+        text-align: center;
+        color: var(--colour-text-secondary);
+      }
+
+      .detail-status p,
+      .detail-status h2 {
+        margin: 0;
+      }
+
+      .detail-error mat-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 2.5rem;
+        color: var(--colour-danger-text);
       }
 
       .date-nav {
@@ -1416,6 +1468,8 @@ export class DetailComponent implements OnInit, OnDestroy {
 
   entry: any;
   entryType: "daily" | "dream" = "daily";
+  isLoadingEntry = true;
+  loadErrorMessage = "";
   backQueryParams: Record<string, string | number> = {};
   analysisWarningMessage = "";
   isAttachmentsExpanded = false;
@@ -1440,6 +1494,7 @@ export class DetailComponent implements OnInit, OnDestroy {
 
   showAllTags = false;
   showAllPeople = false;
+  showAllPlaces = false;
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get("id"));
@@ -1447,21 +1502,21 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.captureAnalysisWarning();
     this.captureInitialAttachmentExpansion();
 
-    // Try loading as daily first, then dream if not found
+    const requestedType = this.route.snapshot.queryParamMap.get("entryType");
+    if (requestedType === "daily" || requestedType === "dream") {
+      this.loadEntryByType(id, requestedType);
+      return;
+    }
+
+    // Backward-compatible fallback for older links that did not carry entry type.
     this.entriesService.getDailyEntry(id).subscribe({
-      next: (entry) => {
-        this.entry = entry;
-        this.entryType = "daily";
-        this.applyInitialAttachmentExpansion();
-        this.syncDreamImageUiFromEntry();
-      },
-      error: () => {
-        this.entriesService.getDreamEntry(id).subscribe((entry) => {
-          this.entry = entry;
-          this.entryType = "dream";
-          this.applyInitialAttachmentExpansion();
-          this.syncDreamImageUiFromEntry();
-        });
+      next: (entry) => this.applyLoadedEntry(entry, "daily"),
+      error: (error) => {
+        if (error?.status && error.status !== 404) {
+          this.applyEntryLoadError();
+          return;
+        }
+        this.loadEntryByType(id, "dream");
       },
     });
   }
@@ -1481,6 +1536,37 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.router.navigate(["/entries"]);
   }
 
+  private loadEntryByType(id: number, entryType: "daily" | "dream"): void {
+    if (entryType === "dream") {
+      this.entriesService.getDreamEntry(id).subscribe({
+        next: (entry) => this.applyLoadedEntry(entry, "dream"),
+        error: () => this.applyEntryLoadError(),
+      });
+      return;
+    }
+
+    this.entriesService.getDailyEntry(id).subscribe({
+      next: (entry) => this.applyLoadedEntry(entry, "daily"),
+      error: () => this.applyEntryLoadError(),
+    });
+  }
+
+  private applyLoadedEntry(entry: unknown, entryType: "daily" | "dream"): void {
+    this.entry = entry;
+    this.entryType = entryType;
+    this.isLoadingEntry = false;
+    this.loadErrorMessage = "";
+    this.applyInitialAttachmentExpansion();
+    this.syncDreamImageUiFromEntry();
+  }
+
+  private applyEntryLoadError(): void {
+    this.entry = null;
+    this.isLoadingEntry = false;
+    this.loadErrorMessage =
+      "This entry could not be found or you no longer have access to it.";
+  }
+
   async deleteEntry(): Promise<void> {
     const entryType = this.isDream() ? "dream" : "daily";
     const confirmed = await this.appDialog.confirm({
@@ -1498,7 +1584,9 @@ export class DetailComponent implements OnInit, OnDestroy {
 
       deleteObservable.subscribe({
         next: () => {
-          this.router.navigate(["/entries"]);
+          this.router.navigate(["/entries"], {
+            queryParams: this.backQueryParams,
+          });
         },
         error: (error) => {
           console.error("Failed to delete entry:", error);
@@ -2641,7 +2729,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   private captureBackQueryParams(): void {
     const sourceParams = this.route.snapshot.queryParams;
 
-    ["type", "month", "year", "search"].forEach((key) => {
+    ["type", "month", "year", "search", "filters"].forEach((key) => {
       if (sourceParams[key] !== undefined && sourceParams[key] !== null) {
         this.backQueryParams[key] = sourceParams[key];
       }
