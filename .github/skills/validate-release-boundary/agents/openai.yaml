@@ -1,0 +1,4 @@
+interface:
+  display_name: "Validate Release Boundary"
+  short_description: "Run review and validation before AI Diary sign-off or merge."
+  default_prompt: "Validate the current AI Diary change set and report evidence, risks, and smoke tests."

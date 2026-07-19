@@ -8,6 +8,10 @@ import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import {
+  AI_MODEL_OPTIONS,
+  DEFAULT_AI_MODEL,
+} from "../../core/constants/ai-options";
 import { ProfileService } from "../../core/services/profile.service";
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
 import { PublicHolidayCountry } from "../../core/models/public-holiday.model";
@@ -99,9 +103,12 @@ import { User } from "../../core/models/user.model";
             <div class="ai-behaviour-note checkbox-row-wide">
               <strong>Cost and depth</strong>
               <p>
-                Detailed responses and stronger models can produce more
-                comprehensive analysis, but they usually increase token usage
-                and cost.
+                Your current AI model and verbosity work together. Higher-depth
+                choices usually create richer responses, but they also tend to
+                increase token usage and cost.
+              </p>
+              <p class="ai-behaviour-note-current">
+                {{ getCurrentAiCostSummary() }}
               </p>
             </div>
 
@@ -127,7 +134,7 @@ import { User } from "../../core/models/user.model";
                 <mat-option value="detailed">Detailed</mat-option>
               </mat-select>
               <mat-hint>
-                Controls response depth. Brief response styles remain shorter.
+                {{ getCurrentVerbosityHint() }}
               </mat-hint>
             </mat-form-field>
 
@@ -149,12 +156,15 @@ import { User } from "../../core/models/user.model";
             <mat-form-field appearance="outline">
               <mat-label>AI Analysis Model</mat-label>
               <mat-select [(ngModel)]="settings.ai_model" name="ai_model">
-                <mat-option value="gpt-4o-mini">GPT-4o mini</mat-option>
-                <mat-option value="gpt-4.1-mini">GPT-4.1 mini</mat-option>
-                <mat-option value="gpt-4.1">GPT-4.1</mat-option>
+                <mat-option
+                  *ngFor="let model of aiModelOptions"
+                  [value]="model.value"
+                >
+                  {{ model.label }}
+                </mat-option>
               </mat-select>
               <mat-hint>
-                Higher-tier models usually cost more per analysis.
+                {{ getCurrentModelHint() }}
               </mat-hint>
             </mat-form-field>
 
@@ -346,6 +356,12 @@ import { User } from "../../core/models/user.model";
         margin: 0;
       }
 
+      .ai-behaviour-note-current {
+        margin-top: 0.55rem;
+        color: var(--colour-text-primary);
+        font-weight: 600;
+      }
+
       .ai-behaviour-group-title {
         font-weight: 700;
       }
@@ -410,6 +426,7 @@ export class PersonalisationComponent implements OnInit {
   private readonly profileService = inject(ProfileService);
   private readonly publicHolidaysService = inject(PublicHolidaysService);
 
+  readonly aiModelOptions = AI_MODEL_OPTIONS;
   settings: User | null = null;
   holidayCountries: PublicHolidayCountry[] = [];
   saving = false;
@@ -441,7 +458,7 @@ export class PersonalisationComponent implements OnInit {
           ai_tone: profile.ai_tone || "friendly",
           ai_verbosity: profile.ai_verbosity || "balanced",
           ai_focus: profile.ai_focus || "reflective",
-          ai_model: profile.ai_model || "gpt-4.1-mini",
+          ai_model: profile.ai_model || DEFAULT_AI_MODEL,
           allow_ai_history:
             profile.allow_ai_history === undefined
               ? true
@@ -581,5 +598,43 @@ export class PersonalisationComponent implements OnInit {
 
   getCustomGuidanceLength(): number {
     return String(this.settings?.custom_guidance || "").trim().length;
+  }
+
+  getCurrentVerbosityHint(): string {
+    const verbosity = String(this.settings?.ai_verbosity || "balanced").trim();
+    if (verbosity === "concise") {
+      return "Keeps responses short. Brief styles will stay especially compact.";
+    }
+    if (verbosity === "detailed") {
+      return "Pushes for fuller responses. Brief styles still stay shorter than the others.";
+    }
+    return "A middle ground between speed, depth, and cost.";
+  }
+
+  getCurrentModelHint(): string {
+    const selectedModel = String(this.settings?.ai_model || DEFAULT_AI_MODEL).trim();
+    const option = this.aiModelOptions.find((candidate) => candidate.value === selectedModel);
+    return option?.hint || "Choose the model that fits the depth and cost you want.";
+  }
+
+  getCurrentAiCostSummary(): string {
+    const verbosity = String(this.settings?.ai_verbosity || "balanced").trim();
+    const model = String(this.settings?.ai_model || DEFAULT_AI_MODEL).trim();
+
+    const modelBand =
+      model === "gpt-4.1"
+        ? "higher-cost model"
+        : model === "gpt-4o-mini"
+          ? "lower-cost model"
+          : "mid-cost model";
+
+    const verbosityBand =
+      verbosity === "detailed"
+        ? "higher-depth responses"
+        : verbosity === "concise"
+          ? "lighter responses"
+          : "balanced responses";
+
+    return `Current setup: ${modelBand} with ${verbosityBand}.`;
   }
 }

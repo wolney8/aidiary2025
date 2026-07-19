@@ -10,6 +10,7 @@ from services.attachment_text import (
     extract_pdf_attachment_content,
     looks_like_low_quality_ocr_text,
 )
+from services.ai_config import DEFAULT_ANALYSIS_MODEL
 from services.media_storage import read_media_bytes
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 from services.nltk_enrichment import (
@@ -26,6 +27,9 @@ def _normalise_people_names(raw: str) -> str:
     blocked = {
         "hopefully",
         "maybe",
+        "me",
+        "myself",
+        "i",
         "someone",
         "somebody",
         "everyone",
@@ -78,11 +82,79 @@ def _normalise_places(raw: str) -> str:
     if not raw:
         return ""
 
+    blocked = {
+        "unknown",
+        "none",
+        "na",
+        "n/a",
+        "had",
+        "met",
+        "saw",
+        "felt",
+        "walked",
+        "dreamed",
+        "dreamt",
+        "somewhere",
+        "someplace",
+        "place",
+        "places",
+        "location",
+        "locations",
+        "here",
+        "there",
+    }
+
     cleaned: list[str] = []
     seen: set[str] = set()
     for token in str(raw).split(","):
         candidate = token.strip()
         if not candidate:
+            continue
+
+        lower = candidate.lower()
+        if lower in blocked:
+            continue
+        if not all(ch.isalpha() or ch in " -'/" for ch in candidate):
+            continue
+        if len(candidate) < 2:
+            continue
+
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(candidate)
+
+    return ",".join(cleaned)
+
+
+def _normalise_tags(raw: str) -> str:
+    if not raw:
+        return ""
+
+    blocked = {
+        "analysis",
+        "analysed",
+        "analyzed",
+        "ai",
+        "response",
+        "entry",
+        "entries",
+        "daily",
+        "dream",
+    }
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for token in str(raw).split(","):
+        candidate = token.strip().lower()
+        if not candidate:
+            continue
+        if candidate in blocked:
+            continue
+        if len(candidate) < 2:
+            continue
+        if not re.fullmatch(r"[a-z0-9][a-z0-9 _'/-]{0,39}", candidate):
             continue
         key = candidate.lower()
         if key in seen:
@@ -123,7 +195,7 @@ DEFAULT_ANALYSIS_SETTINGS = {
     'ai_tone': 'friendly',
     'ai_verbosity': 'balanced',
     'ai_focus': 'reflective',
-    'ai_model': 'gpt-4.1-mini',
+    'ai_model': DEFAULT_ANALYSIS_MODEL,
     'allow_ai_history': True,
     'personal_context': None,
 }
@@ -342,10 +414,12 @@ def _merge_daily_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
             str(result.get("places", "")),
         )
     )
-    merged_tags = merge_csv_values(
-        user_nltk.get("tags", ""),
-        str(result.get("tags", "")),
-        ai_nltk.get("tags", ""),
+    merged_tags = _normalise_tags(
+        merge_csv_values(
+            user_nltk.get("tags", ""),
+            str(result.get("tags", "")),
+            ai_nltk.get("tags", ""),
+        )
     )
 
     return {
@@ -394,10 +468,12 @@ def _merge_dream_analysis_with_nltk(text: str, result: dict) -> dict[str, str]:
             str(result.get("places", "")),
         )
     )
-    merged_tags = merge_csv_values(
-        user_nltk.get("tags", ""),
-        str(result.get("tags", "")),
-        ai_nltk.get("tags", ""),
+    merged_tags = _normalise_tags(
+        merge_csv_values(
+            user_nltk.get("tags", ""),
+            str(result.get("tags", "")),
+            ai_nltk.get("tags", ""),
+        )
     )
 
     return {
@@ -782,6 +858,7 @@ def analyse_text():
             'ai_focus': analysis_settings.get('ai_focus', DEFAULT_ANALYSIS_SETTINGS['ai_focus']),
             'ai_model': analysis_settings.get('ai_model', DEFAULT_ANALYSIS_SETTINGS['ai_model']),
             'has_related_context': bool(related_context),
+            'has_attachment_context': bool(attachment_context),
             'personal_context': analysis_settings.get('personal_context'),
         }
         
@@ -789,6 +866,8 @@ def analyse_text():
             result = ai_service.analyse_daily_entry(
                 text,
                 recent_context=recent_context,
+                related_context=related_context,
+                attachment_context=attachment_context,
                 analysis_options=analysis_options,
             )
             merged_result = _merge_daily_analysis_with_nltk(text, result)
@@ -817,6 +896,8 @@ def analyse_text():
             result = ai_service.analyse_dream_entry(
                 text,
                 recent_context=recent_context,
+                related_context=related_context,
+                attachment_context=attachment_context,
                 analysis_options=analysis_options,
             )
             merged_result = _merge_dream_analysis_with_nltk(text, result)

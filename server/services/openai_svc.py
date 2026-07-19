@@ -5,9 +5,11 @@ import logging
 import math
 import os
 import base64
+import re
 from io import BytesIO
 from typing import Any, Dict, Generator
 from openai import OpenAI
+from services.ai_config import ALLOWED_ANALYSIS_MODELS, DEFAULT_ANALYSIS_MODEL
 
 
 logger = logging.getLogger(__name__)
@@ -16,11 +18,62 @@ logger = logging.getLogger(__name__)
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
-DEFAULT_OPENAI_ANALYSIS_MODEL = 'gpt-4.1-mini'
 DEFAULT_AI_STYLE = 'friendly'
 DEFAULT_AI_TONE = 'friendly'
 DEFAULT_AI_VERBOSITY = 'balanced'
 DEFAULT_AI_FOCUS = 'reflective'
+AI_STYLE_ALIASES = {
+    'supportive': 'friendly',
+    'friendly-supportive': 'friendly',
+    'friendly_supportive': 'friendly',
+    'warm': 'friendly',
+    'professional': 'clinical',
+    'professional-clinical': 'clinical',
+    'professional_clinical': 'clinical',
+    'clinical-professional': 'clinical',
+    'clinical_professional': 'clinical',
+    'reflective-deep': 'reflective',
+    'reflective-and-deep': 'reflective',
+    'reflective_deep': 'reflective',
+    'deep': 'reflective',
+    'thoughtful': 'reflective',
+    'minimal': 'brief',
+    'concise': 'brief',
+    'practical': 'brief',
+    'creative-symbolic': 'creative',
+    'creative_symbolic': 'creative',
+    'symbolic': 'creative',
+}
+AI_TONE_ALIASES = {
+    'warm': 'friendly',
+    'supportive': 'friendly',
+    'kind': 'friendly',
+    'compassionate': 'empathetic',
+    'empathic': 'empathetic',
+    'analytical-structured': 'analytical',
+    'analytical_structured': 'analytical',
+    'professional': 'formal',
+}
+AI_VERBOSITY_ALIASES = {
+    'short': 'concise',
+    'brief': 'concise',
+    'medium': 'balanced',
+    'normal': 'balanced',
+    'full': 'detailed',
+    'deep': 'detailed',
+    'comprehensive': 'detailed',
+}
+AI_FOCUS_ALIASES = {
+    'emotional support': 'emotional-support',
+    'emotional_support': 'emotional-support',
+    'support': 'emotional-support',
+    'practical advice': 'practical-advice',
+    'practical_advice': 'practical-advice',
+    'advice': 'practical-advice',
+    'creative prompts': 'creative-prompts',
+    'creative_prompts': 'creative-prompts',
+    'prompts': 'creative-prompts',
+}
 DREAM_IMAGE_STYLE_PREFIX = (
     'Create a dreamlike but believable single scene with cinematic lighting, '
     'clean modern digital illustration or film-still energy, moderate realism, '
@@ -53,6 +106,55 @@ class AnalysisRateLimitError(Exception):
 
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
+
+    DAILY_ANALYSIS_RESPONSE_FORMAT = {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'daily_diary_analysis',
+            'description': 'Structured response and metadata for a daily diary entry.',
+            'strict': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'ai_response': {'type': 'string'},
+                    'tags': {'type': 'string'},
+                    'people_names': {'type': 'string'},
+                    'places': {'type': 'string'},
+                },
+                'required': ['ai_response', 'tags', 'people_names', 'places'],
+                'additionalProperties': False,
+            },
+        },
+    }
+
+    DREAM_ANALYSIS_RESPONSE_FORMAT = {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'dream_diary_analysis',
+            'description': 'Structured summary, interpretation, image prompt, and metadata for a dream.',
+            'strict': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'summary': {'type': 'string'},
+                    'interpretation': {'type': 'string'},
+                    'image_prompt': {'type': 'string'},
+                    'tags': {'type': 'string'},
+                    'people_names': {'type': 'string'},
+                    'places': {'type': 'string'},
+                },
+                'required': [
+                    'summary',
+                    'interpretation',
+                    'image_prompt',
+                    'tags',
+                    'people_names',
+                    'places',
+                ],
+                'additionalProperties': False,
+            },
+        },
+    }
 
     DAILY_ANALYSIS_RESPONSE_SCHEMA = """Respond in JSON format:
 {
@@ -130,6 +232,32 @@ Additional requirements for this retry:
 - Avoid generic phrases and boilerplate encouragement.
 - Do not return vague or fallback-style wording.
 """
+
+    GENERIC_DAILY_RESPONSE_PHRASES = (
+        'thank you for sharing',
+        'every experience helps us grow and learn',
+        'remember to take care of yourself',
+        'be kind to yourself',
+        'it is important to reflect',
+        "it's important to reflect",
+    )
+
+    GENERIC_DREAM_INTERPRETATION_PHRASES = (
+        'dreams often reflect our subconscious thoughts and emotions',
+        'emotionally significant and worth exploring further',
+        'may reflect important emotions or concerns',
+    )
+
+    GENERIC_DREAM_SUMMARY_PHRASES = (
+        'a dream experience to explore further',
+        'a meaningful dream to reflect on',
+        'a dream was recorded and is ready for exploration',
+    )
+
+    GENERIC_DREAM_IMAGE_PROMPT_PHRASES = (
+        'abstract dreamscape',
+        'surreal dream scene',
+    )
 
     @staticmethod
     def _log_analysis_outcome(mode: str, outcome: str, level: str = 'info', **fields: object) -> None:
@@ -222,15 +350,86 @@ Additional requirements for this retry:
     @staticmethod
     def _normalise_analysis_options(analysis_options: dict[str, Any] | None) -> dict[str, Any]:
         options = dict(analysis_options or {})
+        requested_model = str(
+            options.get('ai_model') or DEFAULT_ANALYSIS_MODEL
+        ).strip() or DEFAULT_ANALYSIS_MODEL
+        resolved_model = (
+            requested_model
+            if requested_model in ALLOWED_ANALYSIS_MODELS
+            else DEFAULT_ANALYSIS_MODEL
+        )
         return {
-            'ai_model': str(options.get('ai_model') or DEFAULT_OPENAI_ANALYSIS_MODEL).strip() or DEFAULT_OPENAI_ANALYSIS_MODEL,
-            'ai_style': str(options.get('ai_style') or DEFAULT_AI_STYLE).strip() or DEFAULT_AI_STYLE,
-            'ai_tone': str(options.get('ai_tone') or DEFAULT_AI_TONE).strip() or DEFAULT_AI_TONE,
-            'ai_verbosity': str(options.get('ai_verbosity') or DEFAULT_AI_VERBOSITY).strip() or DEFAULT_AI_VERBOSITY,
-            'ai_focus': str(options.get('ai_focus') or DEFAULT_AI_FOCUS).strip() or DEFAULT_AI_FOCUS,
+            'ai_model': resolved_model,
+            'ai_style': OpenAIService._normalise_ai_style(options.get('ai_style')),
+            'ai_tone': OpenAIService._normalise_choice(
+                options.get('ai_tone'),
+                default=DEFAULT_AI_TONE,
+                canonical={'friendly', 'empathetic', 'analytical', 'formal'},
+                aliases=AI_TONE_ALIASES,
+            ),
+            'ai_verbosity': OpenAIService._normalise_choice(
+                options.get('ai_verbosity'),
+                default=DEFAULT_AI_VERBOSITY,
+                canonical={'concise', 'balanced', 'detailed'},
+                aliases=AI_VERBOSITY_ALIASES,
+            ),
+            'ai_focus': OpenAIService._normalise_choice(
+                options.get('ai_focus'),
+                default=DEFAULT_AI_FOCUS,
+                canonical={'reflective', 'emotional-support', 'practical-advice', 'creative-prompts'},
+                aliases=AI_FOCUS_ALIASES,
+            ),
             'has_related_context': bool(options.get('has_related_context')),
+            'has_attachment_context': bool(options.get('has_attachment_context')),
             'personal_context': str(options.get('personal_context') or '').strip() or None,
         }
+
+    @staticmethod
+    def _normalise_ai_style(value: object) -> str:
+        raw = str(value or DEFAULT_AI_STYLE).strip().lower()
+        if not raw:
+            return DEFAULT_AI_STYLE
+
+        canonical_styles = {'friendly', 'clinical', 'reflective', 'brief', 'creative'}
+        if raw in canonical_styles:
+            return raw
+
+        alias = AI_STYLE_ALIASES.get(raw)
+        if alias:
+            return alias
+
+        collapsed = raw.replace('&', 'and').replace(' ', '-').replace('_', '-')
+        alias = AI_STYLE_ALIASES.get(collapsed)
+        if alias:
+            return alias
+
+        return DEFAULT_AI_STYLE
+
+    @staticmethod
+    def _normalise_choice(
+        value: object,
+        *,
+        default: str,
+        canonical: set[str],
+        aliases: dict[str, str],
+    ) -> str:
+        raw = str(value or default).strip().lower()
+        if not raw:
+            return default
+
+        if raw in canonical:
+            return raw
+
+        alias = aliases.get(raw)
+        if alias:
+            return alias
+
+        collapsed = raw.replace('&', 'and').replace(' ', '-').replace('_', '-')
+        alias = aliases.get(collapsed)
+        if alias:
+            return alias
+
+        return default
 
     @classmethod
     def _build_daily_system_prompt(cls, analysis_options: dict[str, Any] | None = None) -> str:
@@ -244,6 +443,11 @@ Additional requirements for this retry:
             'using the date plus shared theme, but do not quote long passages.'
             if options['has_related_context']
             else 'Do not invent prior-entry references when no relevant related-entry context is present.'
+        )
+        attachment_guidance = (
+            'If attachment-derived context is present and relevant, explicitly use at least one concrete detail from it rather than referring to the file only by name.'
+            if options['has_attachment_context']
+            else 'Do not imply that attachment-derived context was used when none is provided.'
         )
         personal_guidance = (
             'If lightweight user background context is present, use it gently to personalise tone or framing without making the response identity-heavy.'
@@ -263,12 +467,14 @@ Additional requirements for this retry:
             verbosity_guidance,
             focus_guidance,
             memory_guidance,
+            attachment_guidance,
             personal_guidance,
             cls._build_daily_length_guidance(options),
             cls._build_daily_structure_guidance(options),
             'Be specific about real events, emotions, people, places, and patterns from the entry and context.',
             'For non-brief detailed output, do not collapse the answer into the same short length as brief mode.',
             'When related-entry memory is present and genuinely relevant, explicitly connect the current entry to at least one prior entry using date + theme and explain the pattern or contrast.',
+            'When attachment-derived context is present and relevant, fold it into the analysis as supporting evidence or context, not as a detached afterthought.',
             'If you mention an attachment, refer to it naturally in human language, such as your attachment "filename.ext", and use any provided derived text carefully.',
             'Do not fabricate facts or prior memories that are not supported by the provided entry or context.',
             cls.DAILY_ANALYSIS_RESPONSE_SCHEMA,
@@ -286,6 +492,11 @@ Additional requirements for this retry:
             'using the date plus shared theme, but do not quote long passages.'
             if options['has_related_context']
             else 'Do not invent prior-entry references when no relevant related-entry context is present.'
+        )
+        attachment_guidance = (
+            'If attachment-derived context is present and relevant, explicitly use at least one concrete detail from it where it sharpens the dream reading, rather than referring to the file only by name.'
+            if options['has_attachment_context']
+            else 'Do not imply that attachment-derived context was used when none is provided.'
         )
         personal_guidance = (
             'If lightweight user background context is present, use it gently to personalise tone or framing without making the response identity-heavy.'
@@ -307,11 +518,13 @@ Additional requirements for this retry:
             verbosity_guidance,
             focus_guidance,
             memory_guidance,
+            attachment_guidance,
             personal_guidance,
             cls._build_dream_length_guidance(options),
             'Ground the interpretation in actual dream details rather than generic symbolism alone.',
             'For non-brief detailed output, do not collapse the summary and interpretation into minimal one-line answers unless the source material is extremely sparse.',
             cls._build_dream_structure_guidance(options),
+            'When attachment-derived context is present and relevant, fold it into the interpretation as supporting context or pattern evidence, not as a detached afterthought.',
             'If you mention an attachment, refer to it naturally in human language, such as your attachment "filename.ext", and use any provided derived text carefully.',
             'Do not fabricate facts or prior memories that are not supported by the provided dream or context.',
             cls.DREAM_ANALYSIS_RESPONSE_SCHEMA,
@@ -335,6 +548,40 @@ Additional requirements for this retry:
             multiplier = max(multiplier, 2.2)
 
         return max(280, int(base_tokens * multiplier))
+
+    @staticmethod
+    def _resolve_analysis_temperature(analysis_options: dict[str, Any] | None = None) -> float:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        tone = options['ai_tone']
+        verbosity = options['ai_verbosity']
+
+        temperature = 0.6
+
+        if style == 'brief':
+            temperature = 0.35
+        elif style == 'clinical':
+            temperature = 0.4
+        elif style == 'friendly':
+            temperature = 0.58
+        elif style == 'reflective':
+            temperature = 0.68
+        elif style == 'creative':
+            temperature = 0.82
+
+        if tone == 'analytical':
+            temperature = min(temperature, 0.48)
+        elif tone == 'formal':
+            temperature = min(temperature, 0.52)
+        elif tone == 'empathetic':
+            temperature = max(temperature, 0.62)
+
+        if verbosity == 'concise':
+            temperature = min(temperature, 0.5)
+        elif verbosity == 'detailed' and style in {'reflective', 'creative'}:
+            temperature = min(0.88, temperature + 0.04)
+
+        return round(max(0.2, min(0.9, temperature)), 2)
 
     @staticmethod
     def _build_daily_structure_guidance(options: dict[str, Any]) -> str:
@@ -496,15 +743,22 @@ Additional requirements for this retry:
         text: str,
         recent_context: str | None,
         personal_context: str | None = None,
+        *,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
     ) -> str:
-        if not recent_context and not personal_context:
+        if not recent_context and not personal_context and not related_context and not attachment_context:
             return text
 
         sections: list[str] = []
         if personal_context:
             sections.append(f'User background context:\n{personal_context}')
         sections.append(f'Entry to analyse:\n{text}')
-        if recent_context:
+        if related_context:
+            sections.append(f'Related entry context:\n{related_context}')
+        if attachment_context:
+            sections.append(f'Attachment context:\n{attachment_context}')
+        elif recent_context:
             sections.append(f'Recent context:\n{recent_context}')
 
         return (
@@ -616,22 +870,49 @@ Additional requirements for this retry:
 
         try:
             parsed = json.loads(raw_content)
-            if isinstance(parsed, dict):
-                return parsed
+            normalised = OpenAIService._normalise_json_payload_shape(parsed)
+            if isinstance(normalised, dict):
+                return normalised
         except (TypeError, json.JSONDecodeError):
             pass
 
         for start_index, char in enumerate(raw_content):
-            if char != '{':
+            if char not in '[{':
                 continue
             try:
                 parsed, _ = decoder.raw_decode(raw_content, idx=start_index)
             except json.JSONDecodeError:
                 continue
-            if isinstance(parsed, dict):
-                return parsed
+            normalised = OpenAIService._normalise_json_payload_shape(parsed)
+            if isinstance(normalised, dict):
+                return normalised
 
         return None
+
+    @staticmethod
+    def _normalise_json_payload_shape(payload: object) -> Dict | None:
+        current = payload
+        wrapper_keys = ('result', 'data', 'output', 'content', 'payload')
+
+        for _ in range(4):
+            if isinstance(current, list):
+                if len(current) != 1:
+                    return None
+                current = current[0]
+                continue
+
+            if not isinstance(current, dict):
+                return None
+
+            for wrapper_key in wrapper_keys:
+                wrapped = current.get(wrapper_key)
+                if isinstance(wrapped, (dict, list)):
+                    current = wrapped
+                    break
+            else:
+                return current
+
+        return current if isinstance(current, dict) else None
 
     @staticmethod
     def _extract_valid_json_payload(raw_content: str, required_keys: tuple[str, ...]) -> Dict | None:
@@ -639,20 +920,58 @@ Additional requirements for this retry:
         if parsed is None:
             return None
 
+        alias_map: dict[str, tuple[str, ...]] = {
+            'ai_response': ('response', 'analysis', 'message'),
+            'tags': ('themes', 'keywords'),
+            'people_names': ('people', 'names', 'peopleMentioned'),
+            'places': ('locations', 'place_names'),
+            'summary': ('dream_summary', 'overview'),
+            'interpretation': ('analysis', 'meaning', 'interpretation_text'),
+            'image_prompt': ('prompt', 'art_prompt', 'image_description'),
+        }
+
         normalised: Dict[str, str] = {}
         for key in required_keys:
             value = parsed.get(key)
             if value is None:
+                for alias in alias_map.get(key, ()):
+                    if alias in parsed and parsed.get(alias) is not None:
+                        value = parsed.get(alias)
+                        break
+            if value is None:
                 continue
-            normalised[key] = str(value)
+            normalised[key] = OpenAIService._coerce_json_field_value(value)
 
         return normalised
+
+    @staticmethod
+    def _coerce_json_field_value(value: object) -> str:
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            parts = [OpenAIService._coerce_json_field_value(item).strip() for item in value]
+            parts = [part for part in parts if part]
+            return ', '.join(parts)
+        if isinstance(value, dict):
+            simple_values = [
+                OpenAIService._coerce_json_field_value(item).strip()
+                for item in value.values()
+            ]
+            simple_values = [item for item in simple_values if item]
+            if simple_values:
+                return ', '.join(simple_values)
+        return str(value)
 
     def _create_analysis_completion(
         self,
         system_prompt: str,
         user_content: str,
         *,
+        response_format: dict[str, Any],
         analysis_options: dict[str, Any] | None = None,
     ):
         return self.client.chat.completions.create(
@@ -667,8 +986,9 @@ Additional requirements for this retry:
                     "content": user_content,
                 },
             ],
-            temperature=0.7,
+            temperature=self._resolve_analysis_temperature(analysis_options),
             max_tokens=self._resolve_analysis_max_tokens(analysis_options),
+            response_format=response_format,
             timeout=self.request_timeout_seconds,
         )
 
@@ -708,7 +1028,7 @@ Additional requirements for this retry:
 
         try:
             response = self.client.chat.completions.create(
-                model=DEFAULT_OPENAI_ANALYSIS_MODEL,
+                model=DEFAULT_ANALYSIS_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -739,26 +1059,135 @@ Additional requirements for this retry:
             raise
 
     @staticmethod
-    def _is_daily_generic_fallback_like(result: Dict, fallback: Dict) -> bool:
-        return (
-            result.get('ai_response') == fallback['ai_response']
-            or result == fallback
-        )
+    def _tokenise_specificity_text(value: str) -> set[str]:
+        words = re.findall(r"[A-Za-z']{4,}", str(value or '').lower())
+        stop_words = {
+            'about', 'after', 'again', 'also', 'because', 'being', 'could',
+            'dream', 'dreams', 'entry', 'feeling', 'further', 'important',
+            'maybe', 'might', 'please', 'really', 'reflect', 'response',
+            'sharing', 'should', 'some', 'take', 'thank', 'their', 'there',
+            'these', 'they', 'this', 'thoughts', 'through', 'today', 'very',
+            'what', 'when', 'with', 'worth', 'would', 'your',
+        }
+        return {word for word in words if word not in stop_words}
+
+    @classmethod
+    def _has_meaningful_token_overlap(cls, source_text: str, candidate_text: str) -> bool:
+        source_tokens = cls._tokenise_specificity_text(source_text)
+        candidate_tokens = cls._tokenise_specificity_text(candidate_text)
+        if not source_tokens or not candidate_tokens:
+            return False
+        return bool(source_tokens & candidate_tokens)
+
+    @classmethod
+    def _is_daily_generic_fallback_like(
+        cls,
+        result: Dict,
+        fallback: Dict,
+        source_text: str,
+    ) -> bool:
+        response_text = cls._normalise_whitespace(result.get('ai_response', ''))
+        if not response_text:
+            return True
+        if response_text == fallback['ai_response'] or result == fallback:
+            return True
+
+        lowered = response_text.lower()
+        if any(phrase in lowered for phrase in cls.GENERIC_DAILY_RESPONSE_PHRASES):
+            return True
+
+        has_overlap = cls._has_meaningful_token_overlap(source_text, response_text)
+        defaultish_tags = cls._normalise_whitespace(result.get('tags', '')) in {'', 'reflection,daily'}
+        no_entities = not cls._normalise_whitespace(result.get('people_names', '')) and not cls._normalise_whitespace(result.get('places', ''))
+        short_response = len(response_text.split()) <= 10
+        return short_response and defaultish_tags and no_entities and not has_overlap
 
     @staticmethod
-    def _is_dream_generic_trio(result: Dict, fallback: Dict) -> bool:
+    def _normalised_joined_text(*parts: str) -> str:
+        return ' '.join(OpenAIService._normalise_whitespace(part) for part in parts if str(part or '').strip())
+
+    @classmethod
+    def _is_dream_generic_trio(cls, result: Dict, fallback: Dict, source_text: str) -> bool:
+        summary = cls._normalise_whitespace(result.get('summary', ''))
+        interpretation = cls._normalise_whitespace(result.get('interpretation', ''))
+        image_prompt = cls._normalise_whitespace(result.get('image_prompt', ''))
+
+        if (
+            summary == fallback['summary']
+            and interpretation == fallback['interpretation']
+            and image_prompt == fallback['image_prompt']
+        ):
+            return True
+
+        lowered_summary = summary.lower()
+        lowered_interpretation = interpretation.lower()
+        lowered_image_prompt = image_prompt.lower()
+
+        combined = cls._normalised_joined_text(summary, interpretation, image_prompt)
+        has_overlap = cls._has_meaningful_token_overlap(source_text, combined)
+        defaultish_tags = cls._normalise_whitespace(result.get('tags', '')) in {'', 'dream,subconscious'}
+        no_entities = not cls._normalise_whitespace(result.get('people_names', '')) and not cls._normalise_whitespace(result.get('places', ''))
+        short_summary = len(summary.split()) <= 8
+        short_interpretation = len(interpretation.split()) <= 14
+        generic_summary = (
+            summary == fallback['summary']
+            or any(phrase in lowered_summary for phrase in cls.GENERIC_DREAM_SUMMARY_PHRASES)
+            or (short_summary and not has_overlap)
+        )
+        generic_interpretation = (
+            interpretation == fallback['interpretation']
+            or any(
+                phrase in lowered_interpretation
+                for phrase in cls.GENERIC_DREAM_INTERPRETATION_PHRASES
+            )
+            or short_interpretation
+        )
+        generic_image_prompt = (
+            image_prompt == fallback['image_prompt']
+            or any(
+                phrase in lowered_image_prompt
+                for phrase in cls.GENERIC_DREAM_IMAGE_PROMPT_PHRASES
+            )
+            or ('abstract' in lowered_image_prompt and 'dreamscape' in lowered_image_prompt)
+        )
         return (
-            result.get('summary') == fallback['summary']
-            and result.get('interpretation') == fallback['interpretation']
-            and result.get('image_prompt') == fallback['image_prompt']
+            generic_summary
+            and generic_interpretation
+            and generic_image_prompt
+            and defaultish_tags
+            and no_entities
         )
 
+    @classmethod
+    def _is_dream_image_prompt_underdeveloped(
+        cls,
+        image_prompt: str,
+        source_text: str,
+        fallback: str,
+    ) -> bool:
+        prompt = cls._normalise_whitespace(image_prompt)
+        if not prompt:
+            return True
+
+        lowered = prompt.lower()
+        if (
+            prompt == fallback
+            or any(phrase in lowered for phrase in cls.GENERIC_DREAM_IMAGE_PROMPT_PHRASES)
+            or ('abstract' in lowered and 'dreamscape' in lowered)
+        ):
+            return True
+
+        if len(prompt.split()) < 9:
+            return True
+
+        return not cls._has_meaningful_token_overlap(source_text, prompt)
+
     @staticmethod
-    def _is_daily_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict) -> bool:
+    def _is_daily_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
         if retry_result is None:
             return True
 
-        if OpenAIService._is_daily_generic_fallback_like(retry_result, fallback):
+        if OpenAIService._is_daily_generic_fallback_like(retry_result, fallback, source_text):
             return True
 
         initial_text = OpenAIService._normalise_whitespace(initial_result.get('ai_response', ''))
@@ -766,11 +1195,46 @@ Additional requirements for this retry:
         return bool(initial_text and retry_text and initial_text == retry_text)
 
     @staticmethod
-    def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict) -> bool:
+    def _is_daily_underdeveloped_for_options(
+        result: Dict,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> bool:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        verbosity = options['ai_verbosity']
+        response_text = OpenAIService._normalise_whitespace(result.get('ai_response', ''))
+        if not response_text:
+            return True
+
+        if style == 'brief' or verbosity == 'concise':
+            return False
+
+        word_count = len(response_text.split())
+
+        if verbosity == 'detailed':
+            if style in {'reflective', 'creative'}:
+                if word_count < 70:
+                    return True
+            elif word_count < 50:
+                return True
+        elif style in {'reflective', 'creative'} and word_count < 28:
+            return True
+
+        return OpenAIService._response_underuses_available_context(
+            response_text,
+            related_context=related_context,
+            attachment_context=attachment_context,
+            analysis_options=options,
+        )
+
+    @staticmethod
+    def _is_dream_retry_not_better(initial_result: Dict, retry_result: Dict | None, fallback: Dict, source_text: str) -> bool:
         if retry_result is None:
             return True
 
-        if OpenAIService._is_dream_generic_trio(retry_result, fallback):
+        if OpenAIService._is_dream_generic_trio(retry_result, fallback, source_text):
             return True
 
         initial_trio = (
@@ -785,6 +1249,125 @@ Additional requirements for this retry:
         )
 
         return all(initial_trio) and initial_trio == retry_trio
+
+    @staticmethod
+    def _is_dream_underdeveloped_for_options(
+        result: Dict,
+        source_text: str,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> bool:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        verbosity = options['ai_verbosity']
+        summary = OpenAIService._normalise_whitespace(result.get('summary', ''))
+        interpretation = OpenAIService._normalise_whitespace(result.get('interpretation', ''))
+        image_prompt = OpenAIService._normalise_whitespace(result.get('image_prompt', ''))
+
+        if not summary or not interpretation or not image_prompt:
+            return True
+
+        if style == 'brief' or verbosity == 'concise':
+            return False
+
+        summary_words = len(summary.split())
+        interpretation_words = len(interpretation.split())
+
+        if verbosity == 'detailed':
+            if style in {'reflective', 'creative'}:
+                if summary_words < 18 or interpretation_words < 85:
+                    return True
+            elif summary_words < 14 or interpretation_words < 60:
+                return True
+        elif summary_words < 10 or interpretation_words < 28:
+            return True
+
+        return (
+            OpenAIService._response_underuses_available_context(
+                f'{summary}\n{interpretation}\n{image_prompt}',
+                related_context=related_context,
+                attachment_context=attachment_context,
+                analysis_options=options,
+            )
+            or OpenAIService._is_dream_image_prompt_underdeveloped(
+                image_prompt,
+                source_text,
+                OpenAIService._dream_fallback()['image_prompt'],
+            )
+        )
+
+    @staticmethod
+    def _extract_attachment_filenames(attachment_context: str | None) -> list[str]:
+        if not isinstance(attachment_context, str) or not attachment_context.strip():
+            return []
+
+        filenames: list[str] = []
+        seen: set[str] = set()
+        for match in re.finditer(r'attachment "([^"]+)"', attachment_context, flags=re.IGNORECASE):
+            candidate = match.group(1).strip()
+            if not candidate:
+                continue
+            lowered = candidate.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            filenames.append(candidate)
+        return filenames
+
+    @staticmethod
+    def _response_underuses_available_context(
+        response_text: str,
+        *,
+        related_context: str | None,
+        attachment_context: str | None,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> bool:
+        options = OpenAIService._normalise_analysis_options(analysis_options)
+        style = options['ai_style']
+        verbosity = options['ai_verbosity']
+        if style == 'brief' or verbosity == 'concise':
+            return False
+
+        lowered_response = OpenAIService._normalise_whitespace(response_text).lower()
+        if not lowered_response:
+            return True
+
+        if options['has_related_context'] and isinstance(related_context, str) and related_context.strip():
+            month_match = re.search(
+                r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\b',
+                related_context,
+                flags=re.IGNORECASE,
+            )
+            date_hint = month_match.group(1).lower() if month_match else ''
+            callback_markers = (
+                'earlier entry',
+                'previous entry',
+                'prior entry',
+                'on ',
+                'back in ',
+                'similar to your entry',
+                'this sounds similar',
+            )
+            has_callback_signal = any(marker in lowered_response for marker in callback_markers)
+            if date_hint and date_hint not in lowered_response:
+                has_callback_signal = False
+            if not has_callback_signal:
+                return True
+
+        if options['has_attachment_context'] and isinstance(attachment_context, str) and attachment_context.strip():
+            filenames = OpenAIService._extract_attachment_filenames(attachment_context)
+            if filenames:
+                if not any(
+                    filename.lower() in lowered_response
+                    or filename.rsplit('.', 1)[0].lower() in lowered_response
+                    for filename in filenames
+                ):
+                    return True
+            elif 'attachment' not in lowered_response and 'file' not in lowered_response:
+                return True
+
+        return False
 
     @staticmethod
     def _is_rate_limit_like_error(exc: Exception) -> bool:
@@ -813,19 +1396,26 @@ Additional requirements for this retry:
         self,
         text: str,
         recent_context: str | None = None,
+        *,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
     ) -> Dict:
         """Analyse daily diary entry and extract insights."""
         try:
+            normalised_options = self._normalise_analysis_options(analysis_options)
             user_content = self._build_analysis_user_content(
                 text,
                 recent_context,
-                self._normalise_analysis_options(analysis_options)['personal_context'],
+                normalised_options['personal_context'],
+                related_context=related_context,
+                attachment_context=attachment_context,
             )
             system_prompt = self._build_daily_system_prompt(analysis_options)
             response = self._create_analysis_completion(
                 system_prompt,
                 user_content,
+                response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                 analysis_options=analysis_options,
             )
 
@@ -845,6 +1435,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -855,7 +1446,7 @@ Additional requirements for this retry:
 
                 if retry_result is not None:
                     retry_merged_result = {**fallback, **retry_result}
-                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback):
+                    if not self._is_daily_generic_fallback_like(retry_merged_result, fallback, text):
                         self._log_analysis_outcome('daily', 'retry_improved_specificity_after_invalid_json')
                         return retry_merged_result
 
@@ -879,7 +1470,7 @@ Additional requirements for this retry:
 
             merged_result = {**fallback, **result}
 
-            if self._is_daily_generic_fallback_like(merged_result, fallback):
+            if self._is_daily_generic_fallback_like(merged_result, fallback, text):
                 self._log_analysis_outcome(
                     'daily',
                     'retry_triggered_generic_output',
@@ -888,6 +1479,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -897,7 +1489,7 @@ Additional requirements for this retry:
                 )
                 retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
 
-                if not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback):
+                if not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback, text):
                     self._log_analysis_outcome('daily', 'retry_improved_specificity')
                     return retry_merged_result
 
@@ -908,6 +1500,43 @@ Additional requirements for this retry:
                     level='warning',
                 )
                 return contextual_fallback
+
+            if self._is_daily_underdeveloped_for_options(
+                merged_result,
+                related_context=related_context,
+                attachment_context=attachment_context,
+                analysis_options=analysis_options,
+            ):
+                self._log_analysis_outcome(
+                    'daily',
+                    'retry_triggered_underdeveloped_output',
+                    level='warning',
+                )
+                retry_response = self._create_analysis_completion(
+                    system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                    response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
+                    analysis_options=analysis_options,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('ai_response', 'tags', 'people_names', 'places'),
+                )
+                retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
+
+                if (
+                    retry_merged_result is not None
+                    and not self._is_daily_retry_not_better(merged_result, retry_merged_result, fallback, text)
+                    and not self._is_daily_underdeveloped_for_options(
+                        retry_merged_result,
+                        related_context=related_context,
+                        attachment_context=attachment_context,
+                        analysis_options=analysis_options,
+                    )
+                ):
+                    self._log_analysis_outcome('daily', 'retry_improved_depth')
+                    return retry_merged_result
 
             return merged_result
 
@@ -925,19 +1554,26 @@ Additional requirements for this retry:
         self,
         text: str,
         recent_context: str | None = None,
+        *,
+        related_context: str | None = None,
+        attachment_context: str | None = None,
         analysis_options: dict[str, Any] | None = None,
     ) -> Dict:
         """Analyse dream diary entry and provide interpretation."""
         try:
+            normalised_options = self._normalise_analysis_options(analysis_options)
             user_content = self._build_analysis_user_content(
                 text,
                 recent_context,
-                self._normalise_analysis_options(analysis_options)['personal_context'],
+                normalised_options['personal_context'],
+                related_context=related_context,
+                attachment_context=attachment_context,
             )
             system_prompt = self._build_dream_system_prompt(analysis_options)
             response = self._create_analysis_completion(
                 system_prompt,
                 user_content,
+                response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                 analysis_options=analysis_options,
             )
 
@@ -957,6 +1593,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -967,7 +1604,7 @@ Additional requirements for this retry:
 
                 if retry_result is not None:
                     retry_merged_result = {**fallback, **retry_result}
-                    if not self._is_dream_generic_trio(retry_merged_result, fallback):
+                    if not self._is_dream_generic_trio(retry_merged_result, fallback, text):
                         self._log_analysis_outcome('dream', 'retry_improved_specificity_after_invalid_json')
                         return retry_merged_result
 
@@ -991,7 +1628,7 @@ Additional requirements for this retry:
 
             merged_result = {**fallback, **result}
 
-            if self._is_dream_generic_trio(merged_result, fallback):
+            if self._is_dream_generic_trio(merged_result, fallback, text):
                 self._log_analysis_outcome(
                     'dream',
                     'retry_triggered_generic_output',
@@ -1000,6 +1637,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -1009,7 +1647,7 @@ Additional requirements for this retry:
                 )
                 retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
 
-                if not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback):
+                if not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback, text):
                     self._log_analysis_outcome('dream', 'retry_improved_specificity')
                     return retry_merged_result
 
@@ -1020,6 +1658,45 @@ Additional requirements for this retry:
                     level='warning',
                 )
                 return contextual_fallback
+
+            if self._is_dream_underdeveloped_for_options(
+                merged_result,
+                text,
+                related_context=related_context,
+                attachment_context=attachment_context,
+                analysis_options=analysis_options,
+            ):
+                self._log_analysis_outcome(
+                    'dream',
+                    'retry_triggered_underdeveloped_output',
+                    level='warning',
+                )
+                retry_response = self._create_analysis_completion(
+                    system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
+                    user_content,
+                    response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
+                    analysis_options=analysis_options,
+                )
+                retry_raw_content = retry_response.choices[0].message.content
+                retry_result = self._extract_valid_json_payload(
+                    retry_raw_content,
+                    ('summary', 'interpretation', 'image_prompt', 'tags', 'people_names', 'places'),
+                )
+                retry_merged_result = {**fallback, **retry_result} if retry_result is not None else None
+
+                if (
+                    retry_merged_result is not None
+                    and not self._is_dream_retry_not_better(merged_result, retry_merged_result, fallback, text)
+                    and not self._is_dream_underdeveloped_for_options(
+                        retry_merged_result,
+                        text,
+                        related_context=related_context,
+                        attachment_context=attachment_context,
+                        analysis_options=analysis_options,
+                    )
+                ):
+                    self._log_analysis_outcome('dream', 'retry_improved_depth')
+                    return retry_merged_result
 
             return merged_result
 

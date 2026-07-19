@@ -11,6 +11,7 @@ import { Injectable, inject } from "@angular/core";
 import { type Observable, throwError } from "rxjs";
 import { catchError, map } from "rxjs/operators";
 import { AuthService } from "./auth.service";
+import { environment } from "../../../environments/environment";
 
 export interface ImportHistoryItem {
   id: number;
@@ -136,8 +137,8 @@ export class ImportService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
-  private readonly primaryBaseUrl = "http://localhost:5001/api";
-  private readonly fallbackBaseUrl = "http://localhost:500/api";
+  private readonly primaryBaseUrl = environment.apiBaseUrl;
+  private readonly fallbackBaseUrl = environment.apiFallbackBaseUrl;
   private readonly maxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
   private readonly allowedMimeTypes = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

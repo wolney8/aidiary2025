@@ -13,6 +13,11 @@ from services.import_service import (
     get_latest_bulk_delete_guard,
     mark_export_guard_used,
 )
+from services.nltk_enrichment import (
+    derive_daily_nltk_fields,
+    derive_dream_nltk_fields,
+    merge_csv_values,
+)
 from services.attachment_text import (
     extract_pdf_attachment_content,
     looks_like_low_quality_ocr_text,
@@ -142,6 +147,49 @@ def _normalise_entry_time(value):
 
 def _default_entry_time_for_kind(entry_kind: str) -> str:
     return '08:00' if entry_kind == 'dream' else '19:00'
+
+
+def _build_daily_save_enrichment(
+    *,
+    title: str,
+    user_message: str,
+    user_tags: str,
+    user_people: str,
+    user_places: str,
+) -> dict[str, str]:
+    derived = derive_daily_nltk_fields(title, user_message)
+    return {
+        'tags': merge_csv_values(user_tags, derived.get('tags', '')),
+        'daily_people_names': merge_csv_values(
+            user_people,
+            derived.get('daily_people_names', ''),
+        ),
+        'daily_places': merge_csv_values(
+            user_places,
+            derived.get('daily_places', ''),
+        ),
+    }
+
+
+def _build_dream_save_enrichment(
+    *,
+    row_data: dict[str, str],
+    user_tags: str,
+    user_people: str,
+    user_places: str,
+) -> dict[str, str]:
+    derived = derive_dream_nltk_fields(row_data)
+    return {
+        'tags': merge_csv_values(user_tags, derived.get('tags', '')),
+        'dream_people_names': merge_csv_values(
+            user_people,
+            derived.get('dream_people_names', ''),
+        ),
+        'dream_places': merge_csv_values(
+            user_places,
+            derived.get('dream_places', ''),
+        ),
+    }
 
 
 def _normalise_uploaded_entry_image(file_bytes: bytes) -> bytes:
@@ -1049,6 +1097,13 @@ def create_daily_entry():
 
     user_message = data.get('user_message', '')
     title = data.get('title', '')
+    enrichment = _build_daily_save_enrichment(
+        title=title,
+        user_message=user_message,
+        user_tags=data.get('tags', ''),
+        user_people=data.get('daily_people_names', ''),
+        user_places=data.get('daily_places', ''),
+    )
     
     conn = get_db()
     cursor = conn.cursor()
@@ -1073,11 +1128,11 @@ def create_daily_entry():
         entry_number,
         title,
         user_message,
-        data.get('tags', ''),
+        enrichment['tags'],
         data.get('mood', ''),
         data.get('ai_style', ''),
-        data.get('daily_people_names', ''),
-        data.get('daily_places', ''),
+        enrichment['daily_people_names'],
+        enrichment['daily_places'],
     ))
     
     conn.commit()
@@ -1104,7 +1159,8 @@ def update_daily_entry(entry_id):
     
     # Check ownership
     entry = cursor.execute(
-        'SELECT id, entry_date FROM dailydiary_entries WHERE id = ? AND user_id = ?',
+        '''SELECT id, entry_date, title, user_message, tags, daily_people_names, daily_places
+           FROM dailydiary_entries WHERE id = ? AND user_id = ?''',
         (entry_id, user_id)
     ).fetchone()
     
@@ -1155,6 +1211,29 @@ def update_daily_entry(entry_id):
         if field in data:
             updates.append(f'{field} = ?')
             values.append(data[field])
+
+    effective_title = data.get('title', entry['title'])
+    effective_user_message = data.get('user_message', entry['user_message'])
+    effective_tags = data.get('tags', entry['tags'])
+    effective_people = data.get('daily_people_names', entry['daily_people_names'])
+    effective_places = data.get('daily_places', entry['daily_places'])
+    enrichment = _build_daily_save_enrichment(
+        title=effective_title,
+        user_message=effective_user_message,
+        user_tags=effective_tags,
+        user_people=effective_people,
+        user_places=effective_places,
+    )
+    updates.extend([
+        'tags = ?',
+        'daily_people_names = ?',
+        'daily_places = ?',
+    ])
+    values.extend([
+        enrichment['tags'],
+        enrichment['daily_people_names'],
+        enrichment['daily_places'],
+    ])
     
     if not updates:
         conn.close()
@@ -1569,6 +1648,25 @@ def create_dream_entry():
     ''', (user_id, entry_date)).fetchone()
     
     entry_number = (max_entry['max_num'] or 0) + 1
+    dream_row_data = {
+        'title': data.get('title', ''),
+        'plot': data.get('plot', ''),
+        'cast': data.get('cast', ''),
+        'location': data.get('location', ''),
+        'period': data.get('period', ''),
+        'emotion': data.get('emotion', ''),
+        'symbols_and_imagery': data.get('symbols_and_imagery', ''),
+        'insight': data.get('insight', ''),
+        'action': data.get('action', ''),
+        'other': data.get('other', ''),
+        'tags': data.get('tags', ''),
+    }
+    enrichment = _build_dream_save_enrichment(
+        row_data=dream_row_data,
+        user_tags=data.get('tags', ''),
+        user_people=data.get('dream_people_names', ''),
+        user_places=data.get('dream_places', ''),
+    )
     
     # Insert with all dream-specific fields
     cursor.execute('''
@@ -1589,11 +1687,11 @@ def create_dream_entry():
         data.get('insight', ''),
         data.get('action', ''),
         data.get('other', ''),
-        data.get('tags', ''),
+        enrichment['tags'],
         data.get('mood', ''),
         data.get('ai_style', ''),
-        data.get('dream_people_names', ''),
-        data.get('dream_places', ''),
+        enrichment['dream_people_names'],
+        enrichment['dream_places'],
     ))
     
     conn.commit()
@@ -1619,7 +1717,10 @@ def update_dream_entry(entry_id):
     
     # Check ownership
     entry = cursor.execute(
-        'SELECT id, entry_date FROM dreamdiary_entries WHERE id = ? AND user_id = ?',
+        '''SELECT id, entry_date, title, "cast", location, period, emotion, plot,
+                  symbols_and_imagery, insight, action, other, tags,
+                  dream_people_names, dream_places
+           FROM dreamdiary_entries WHERE id = ? AND user_id = ?''',
         (entry_id, user_id)
     ).fetchone()
     
@@ -1673,6 +1774,36 @@ def update_dream_entry(entry_id):
         if field in data:
             updates.append(f'{field} = ?')
             values.append(data[field])
+
+    dream_row_data = {
+        'title': data.get('title', entry['title']),
+        'plot': data.get('plot', entry['plot']),
+        'cast': data.get('cast', entry['cast']),
+        'location': data.get('location', entry['location']),
+        'period': data.get('period', entry['period']),
+        'emotion': data.get('emotion', entry['emotion']),
+        'symbols_and_imagery': data.get('symbols_and_imagery', entry['symbols_and_imagery']),
+        'insight': data.get('insight', entry['insight']),
+        'action': data.get('action', entry['action']),
+        'other': data.get('other', entry['other']),
+        'tags': data.get('tags', entry['tags']),
+    }
+    enrichment = _build_dream_save_enrichment(
+        row_data=dream_row_data,
+        user_tags=data.get('tags', entry['tags']),
+        user_people=data.get('dream_people_names', entry['dream_people_names']),
+        user_places=data.get('dream_places', entry['dream_places']),
+    )
+    updates.extend([
+        'tags = ?',
+        'dream_people_names = ?',
+        'dream_places = ?',
+    ])
+    values.extend([
+        enrichment['tags'],
+        enrichment['dream_people_names'],
+        enrichment['dream_places'],
+    ])
     
     if not updates:
         conn.close()

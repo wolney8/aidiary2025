@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deliver Issue Batch"
+  short_description: "Deliver a coherent batch of related AI Diary issues safely."
+  default_prompt: "Deliver the selected related issues end-to-end using the repository agent contract."

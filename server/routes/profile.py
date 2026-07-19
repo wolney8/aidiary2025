@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import sqlite3
 import re
+from services.ai_config import ALLOWED_ANALYSIS_MODELS
 
 profile_bp = Blueprint('profile', __name__)
 
@@ -37,7 +38,7 @@ ALLOWED_AI_FOCUS = {
     'practical-advice',
     'creative-prompts',
 }
-ALLOWED_AI_MODELS = {'gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1'}
+ALLOWED_AI_MODELS = set(ALLOWED_ANALYSIS_MODELS)
 
 def get_db():
     """Get database connection."""

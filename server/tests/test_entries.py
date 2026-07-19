@@ -392,6 +392,43 @@ def test_create_daily_entry_persists_mood_and_ai_style(client):
     assert payload['ai_style'] == 'reflective'
 
 
+@patch('routes.entries.derive_daily_nltk_fields')
+def test_create_daily_entry_merges_nltk_enrichment_on_save(mock_derive_daily, client):
+    token = get_auth_token(client)
+    mock_derive_daily.return_value = {
+        'tags': 'work,focus',
+        'daily_people_names': 'Alex',
+        'daily_places': 'Office',
+    }
+
+    create_response = client.post(
+        '/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-01-17',
+            'title': 'Busy day',
+            'user_message': 'Met Alex at the office',
+            'tags': 'manual',
+            'daily_people_names': 'Sam',
+            'daily_places': 'Cafe',
+        }),
+        content_type='application/json',
+    )
+
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    detail_response = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,work,focus'
+    assert payload['daily_people_names'] == 'Sam,Alex'
+    assert payload['daily_places'] == 'Cafe,Office'
+
+
 def test_bulk_delete_readiness_requires_guarded_export(client):
     token = get_auth_token(client)
     seed_bulk_delete_entries(client, token)
@@ -682,6 +719,36 @@ def test_analyse_daily_entry(mock_openai, client):
     assert data['daily_people_names'] == 'John,Sarah'
 
 
+@patch('services.openai_svc.OpenAI')
+def test_analyse_daily_entry_filters_generic_people_and_places(mock_openai, client):
+    token = get_auth_token(client)
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'ai_response': 'You spent time with John and felt reflective.',
+        'tags': 'reflection',
+        'people_names': 'someone,John,myself,Sarah',
+        'places': 'location,Cafe,unknown,Park'
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'daily',
+            'text': 'Had lunch with John and Sarah at the cafe and then walked in the park'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['daily_people_names'] == 'John,Sarah'
+    assert data['daily_places'] == 'Cafe,Park'
+
+
 @patch('routes.analyse.derive_daily_nltk_fields')
 @patch('routes.analyse.OpenAIService')
 def test_analyse_daily_entry_merges_user_and_ai_nltk_tags(
@@ -723,6 +790,48 @@ def test_analyse_daily_entry_merges_user_and_ai_nltk_tags(
     assert data['tags'] == 'gym,anxiety,reflection,friendship,calm'
     assert data['daily_people_names'] == 'Alex,Sam'
     assert data['daily_places'] == 'Manchester,London'
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_filters_generic_ai_tags_from_merged_metadata(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'You felt uncertain after seeing Katie again.',
+        'tags': 'analysis,daily,relationships,uncertainty',
+        'people_names': 'Katie',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {
+            'tags': 'evidence',
+            'daily_people_names': 'Katie',
+            'daily_places': '',
+        },
+        {
+            'tags': 'entry,reflection',
+            'daily_people_names': '',
+            'daily_places': '',
+        },
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'I saw Katie again and felt uncertain.'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['tags'] == 'evidence,relationships,uncertainty,reflection'
+    assert data['daily_people_names'] == 'Katie'
 
 
 @patch('routes.analyse.derive_daily_nltk_fields')
@@ -797,11 +906,16 @@ def test_analyse_daily_entry_passes_ai_style_and_user_preferences_to_service(
 
     assert response.status_code == 200
     analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    related_context = mock_service.analyse_daily_entry.call_args.kwargs['related_context']
+    attachment_context = mock_service.analyse_daily_entry.call_args.kwargs['attachment_context']
     assert analysis_options['ai_style'] == 'creative'
     assert analysis_options['ai_tone'] == 'analytical'
     assert analysis_options['ai_verbosity'] == 'detailed'
     assert analysis_options['ai_focus'] == 'practical-advice'
     assert analysis_options['ai_model'] == 'gpt-4.1'
+    assert analysis_options['has_attachment_context'] is False
+    assert related_context is None
+    assert attachment_context is None
     assert 'Display name: Alex' in analysis_options['personal_context']
     assert 'Pronouns: they/them' in analysis_options['personal_context']
     assert 'Gender: non-binary' in analysis_options['personal_context']
@@ -867,7 +981,7 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(
     data = json.loads(response.data)
     assert set(data.keys()) == {'ai_response', 'tags', 'daily_people_names', 'daily_places'}
     assert data['ai_response'] == 'Context-aware response'
-    assert data['tags'] == 'context,analysis'
+    assert data['tags'] == 'context'
     assert data['daily_people_names'] == 'Alex'
     assert data['daily_places'] == 'Library'
 
@@ -974,11 +1088,42 @@ def test_analyse_dream_entry_success_keys_present(mock_openai, client):
     data = json.loads(response.data)
     assert 'summary' in data
     assert 'interpretation' in data
+
+
+@patch('services.openai_svc.OpenAI')
+def test_analyse_dream_entry_filters_generic_people_and_places(mock_openai, client):
+    token = get_auth_token(client)
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'summary': 'You were walking across a bridge with Maya.',
+        'interpretation': 'The bridge suggests transition.',
+        'image_prompt': 'Night bridge over dark water with distant lights',
+        'tags': 'transition',
+        'people_names': 'Maya,unknown,somebody',
+        'places': 'Bridge,place,there'
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'mode': 'dream',
+            'text': 'I dreamed I was walking across a bridge with Maya.'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['dream_people_names'] == 'Maya'
+    assert data['dream_places'] == 'Bridge'
     assert 'image_prompt' in data
     assert 'tags' in data
     assert 'dream_people_names' in data
     assert 'dream_places' in data
-    assert data['dream_people_names'] == 'Alex,Sam'
 
 
 @patch('routes.analyse.derive_dream_nltk_fields')
@@ -1023,6 +1168,50 @@ def test_analyse_dream_entry_merges_user_and_ai_nltk_tags(
     data = json.loads(response.data)
     assert data['tags'] == 'river,night,transition,curiosity,symbolism'
     assert data['dream_people_names'] == 'Jordan,Maya'
+    assert data['dream_places'] == 'Leeds,Bridge'
+
+
+@patch('routes.analyse.derive_dream_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_dream_entry_filters_generic_ai_tags_from_merged_metadata(
+    mock_service_cls,
+    mock_dream_nltk,
+    client,
+):
+    token = get_auth_token(client)
+
+    mock_service = MagicMock()
+    mock_service.analyse_dream_entry.return_value = {
+        'summary': 'You were crossing a bridge at night.',
+        'interpretation': 'The bridge suggests transition and uncertainty.',
+        'image_prompt': 'Night bridge over dark water with distant lights',
+        'tags': 'dream,analysis,transition,night',
+        'people_names': '',
+        'places': 'Bridge',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_dream_nltk.side_effect = [
+        {
+            'tags': 'water',
+            'dream_people_names': '',
+            'dream_places': 'Leeds',
+        },
+        {
+            'tags': 'entry,symbolism',
+            'dream_people_names': '',
+            'dream_places': '',
+        },
+    ]
+
+    response = client.post('/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'dream', 'text': 'I was crossing a bridge at night over water.'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['tags'] == 'water,transition,night,symbolism'
     assert data['dream_places'] == 'Leeds,Bridge'
 
 
@@ -1479,8 +1668,13 @@ def test_analyse_daily_entry_can_include_attachment_context(
     payload = json.loads(response.data)
     assert payload['attachment_context_refs'] == ['notes.pdf (PDF text extracted)']
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    attachment_context = mock_service.analyse_daily_entry.call_args.kwargs['attachment_context']
     assert recent_context is not None
+    assert analysis_options['has_attachment_context'] is True
+    assert attachment_context is not None
     assert 'Attachment context:' in recent_context
+    assert 'Your PDF attachment "notes.pdf"' in attachment_context
     assert 'Your PDF attachment "notes.pdf"' in recent_context
     assert 'PDF summary about a difficult meeting' in recent_context
 
@@ -1653,6 +1847,54 @@ def test_update_daily_entry_updates_date_mood_and_ai_style(client):
     assert updated['entry_number'] == 2
 
 
+@patch('routes.entries.derive_daily_nltk_fields')
+def test_update_daily_entry_rebuilds_metadata_from_effective_state(mock_derive_daily, client):
+    token = get_auth_token(client)
+    mock_derive_daily.side_effect = [
+        {
+            'tags': 'focus',
+            'daily_people_names': 'Alex',
+            'daily_places': 'Office',
+        },
+        {
+            'tags': 'focus,repair',
+            'daily_people_names': 'Alex,Katie',
+            'daily_places': 'Office',
+        },
+    ]
+
+    create_resp = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-07',
+            'title': 'Original title',
+            'user_message': 'Met Alex at the office',
+            'tags': 'manual',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'user_message': 'Met Alex and Katie at the office',
+        }),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    detail_response = client.get(
+        f'/api/daily/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,focus,repair'
+    assert payload['daily_people_names'] == 'Alex,Katie'
+    assert payload['daily_places'] == 'Office'
+
+
 def test_update_dream_entry_updates_date_mood_and_ai_style(client):
     """PUT /api/dreams/:id should accept date, mood and ai_style updates."""
     token = get_auth_token(client)
@@ -1705,6 +1947,54 @@ def test_update_dream_entry_updates_date_mood_and_ai_style(client):
     assert updated['mood'] == 'anxious'
     assert updated['ai_style'] == 'brief'
     assert updated['entry_number'] == 2
+
+
+@patch('routes.entries.derive_dream_nltk_fields')
+def test_update_dream_entry_rebuilds_metadata_from_effective_state(mock_derive_dream, client):
+    token = get_auth_token(client)
+    mock_derive_dream.side_effect = [
+        {
+            'tags': 'water,night',
+            'dream_people_names': 'Jordan',
+            'dream_places': 'Lake',
+        },
+        {
+            'tags': 'water,night,storm',
+            'dream_people_names': 'Jordan,Maya',
+            'dream_places': 'Lake',
+        },
+    ]
+
+    create_resp = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-11',
+            'title': 'Original dream',
+            'plot': 'Jordan by the lake',
+            'tags': 'manual',
+        }),
+        content_type='application/json'
+    )
+    entry_id = json.loads(create_resp.data)['id']
+
+    update_resp = client.put(f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'plot': 'Jordan and Maya near the lake in a storm',
+        }),
+        content_type='application/json'
+    )
+    assert update_resp.status_code == 200
+
+    detail_response = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,water,night,storm'
+    assert payload['dream_people_names'] == 'Jordan,Maya'
+    assert payload['dream_places'] == 'Lake'
 
 
 def test_update_daily_entry_rejects_invalid_entry_date(client):
@@ -1829,6 +2119,43 @@ def test_create_dream_entry_persists_mood_and_ai_style(client):
     payload = json.loads(detail_response.data)
     assert payload['mood'] == 'peaceful'
     assert payload['ai_style'] == 'creative'
+
+
+@patch('routes.entries.derive_dream_nltk_fields')
+def test_create_dream_entry_merges_nltk_enrichment_on_save(mock_derive_dream, client):
+    token = get_auth_token(client)
+    mock_derive_dream.return_value = {
+        'tags': 'school,flight',
+        'dream_people_names': 'Jordan',
+        'dream_places': 'Old school',
+    }
+
+    create_response = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-03-10',
+            'title': 'Dream',
+            'plot': 'Back at school with Jordan',
+            'tags': 'manual',
+            'dream_people_names': 'Maya',
+            'dream_places': 'Garden',
+        }),
+        content_type='application/json',
+    )
+
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    detail_response = client.get(
+        f'/api/dreams/{entry_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    payload = json.loads(detail_response.data)
+
+    assert payload['tags'] == 'manual,school,flight'
+    assert payload['dream_people_names'] == 'Maya,Jordan'
+    assert payload['dream_places'] == 'Garden,Old school'
 
 def test_update_dream_entry_rejects_future_entry_date(client):
     """PUT /api/dreams/:id should reject future dates."""
@@ -2910,7 +3237,12 @@ def test_analyse_daily_entry_lazily_extracts_pdf_text_for_older_attachment(
     payload = json.loads(response.data)
     assert payload['attachment_context_refs'] == ['older-notes.pdf (PDF OCR text)']
     recent_context = mock_service.analyse_daily_entry.call_args.kwargs['recent_context']
+    analysis_options = mock_service.analyse_daily_entry.call_args.kwargs['analysis_options']
+    attachment_context = mock_service.analyse_daily_entry.call_args.kwargs['attachment_context']
     assert recent_context is not None
+    assert analysis_options['has_attachment_context'] is True
+    assert attachment_context is not None
+    assert 'Your PDF attachment "older-notes.pdf"' in attachment_context
     assert 'Your PDF attachment "older-notes.pdf"' in recent_context
     assert 'Recovered PDF text about an old difficult meeting and next steps.' in recent_context
 

@@ -9,6 +9,7 @@ import {
   AuthResponse,
   User,
 } from "../models/user.model";
+import { environment } from "../../../environments/environment";
 
 @Injectable({
   providedIn: "root",
@@ -16,7 +17,7 @@ import {
 export class AuthService {
   private http = inject(HttpClient);
   private router = inject(Router);
-  private apiUrl = "http://localhost:5001/api";
+  private apiUrl = environment.apiBaseUrl;
   private tokenKey = "ai_diary_token";
   private userKey = "ai_diary_user";
   private currentUserSubject = new BehaviorSubject<User | null>(null);

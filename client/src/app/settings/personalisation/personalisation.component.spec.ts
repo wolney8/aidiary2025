@@ -62,4 +62,17 @@ describe("PersonalisationComponent", () => {
   it("shows the custom guidance counter", () => {
     expect(component.getCustomGuidanceLength()).toBe(22);
   });
+
+  it("summarises the current AI cost profile from model and verbosity", () => {
+    component.settings = {
+      ...(component.settings as User),
+      ai_model: "gpt-4.1",
+      ai_verbosity: "detailed",
+    };
+
+    expect(component.getCurrentAiCostSummary()).toContain("higher-cost model");
+    expect(component.getCurrentAiCostSummary()).toContain("higher-depth responses");
+    expect(component.getCurrentModelHint()).toContain("costs more per run");
+    expect(component.getCurrentVerbosityHint()).toContain("Pushes for fuller responses");
+  });
 });

@@ -9,6 +9,7 @@ import {
   timeout,
   TimeoutError,
 } from "rxjs";
+import { environment } from "../../../environments/environment";
 
 export interface SearchMatches {
   title?: string;
@@ -54,7 +55,7 @@ export interface SearchFilters {
 export class SearchService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
-  private apiUrl = "http://localhost:5001/api/search";
+  private apiUrl = `${environment.apiBaseUrl}/search`;
   private resultsSubject = new BehaviorSubject<SearchState>({
     query: "",
     filters: [],
