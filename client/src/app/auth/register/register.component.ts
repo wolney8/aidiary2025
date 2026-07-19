@@ -49,10 +49,10 @@ import { AuthService } from '../../core/services/auth.service';
                 type="password"
                 [(ngModel)]="formData.password"
                 name="password"
-                maxlength="12"
+                maxlength="128"
                 required
               >
-              <mat-hint>Use 8-12 characters with letters and numbers.</mat-hint>
+              <mat-hint>Use 8-128 characters with letters and numbers.</mat-hint>
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="full-width">
@@ -161,8 +161,8 @@ export class RegisterComponent {
       return;
     }
 
-    if (this.formData.password.length < 8 || this.formData.password.length > 12) {
-      this.errorMessage = 'Password must be between 8 and 12 characters.';
+    if (this.formData.password.length < 8 || this.formData.password.length > 128) {
+      this.errorMessage = 'Password must be between 8 and 128 characters.';
       return;
     }
 

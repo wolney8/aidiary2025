@@ -8,7 +8,7 @@ import re
 auth_bp = Blueprint('auth', __name__)
 
 MIN_PASSWORD_LENGTH = 8
-MAX_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 128
 MAX_USERNAME_LENGTH = 32
 MAX_NAME_LENGTH = 12
 USERNAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+$')
@@ -38,7 +38,7 @@ def _validate_registration_payload(
     if not USERNAME_PATTERN.fullmatch(username):
         return 'Username may only contain letters, numbers, dots, underscores, and hyphens'
     if len(password) < MIN_PASSWORD_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
-        return 'Password must be between 8 and 12 characters'
+        return 'Password must be between 8 and 128 characters'
     if password.isdigit():
         return 'Password cannot be only numbers'
     if not any(char.isalpha() for char in password):

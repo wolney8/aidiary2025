@@ -17,6 +17,32 @@
 - Frontend API configuration is environment-based, but deployment-specific production
   configuration still needs verification before hosting.
 
+## Authentication security review
+
+Immediate hardening completed:
+
+- Protected routes reject missing, malformed, and expired JWTs before rendering.
+- Expired sessions are cleared and redirected to login with a safe return path.
+- Production startup requires an explicit `JWT_SECRET` when
+  `APP_ENV=production`.
+- Registration supports long passphrases up to 128 characters instead of imposing
+  the previous 12-character ceiling.
+- Legacy plaintext passwords are upgraded to bcrypt after a successful login.
+
+Remaining risks requiring dedicated delivery work:
+
+- **High:** login and registration have no distributed rate limiting. Add a
+  datastore-backed limiter before exposing the service publicly.
+- **High:** browser sessions use local-storage bearer tokens. A production auth redesign
+  should evaluate secure HttpOnly cookies, CSRF protection, refresh/rotation, and
+  server-side revocation.
+- **Medium:** legacy plaintext-password fallback remains active. Provide an audited
+  migration command and remove the fallback after all deployed databases are migrated.
+- **Medium:** account recovery, verification, security-event audit, and consent policy
+  are not implemented. Define the account identity model before adding email recovery.
+- **Low:** duplicate registration confirms that a username exists. Decide whether that
+  usability tradeoff is acceptable alongside rate limiting and monitoring.
+
 ## To confirm
 
 - Whether `server/test_enrichment.py` is intended to remain outside `server/tests/`.

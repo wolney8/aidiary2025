@@ -14,13 +14,17 @@ describe("authGuard", () => {
   let isAuthenticated = false;
   let authServiceMock: {
     isAuthenticated: () => boolean;
+    consumeSessionExpiredFlag: () => boolean;
   };
+  let sessionExpired = false;
 
   beforeEach(() => {
     isAuthenticated = false;
+    sessionExpired = false;
 
     authServiceMock = {
       isAuthenticated: () => isAuthenticated,
+      consumeSessionExpiredFlag: () => sessionExpired,
     };
 
     TestBed.configureTestingModule({
@@ -59,5 +63,20 @@ describe("authGuard", () => {
     expect(result instanceof UrlTree).toBeTrue();
     const redirectUrl = router.serializeUrl(result as UrlTree);
     expect(redirectUrl).toBe("/login?returnUrl=%2Fentries%3Ftype%3Ddaily");
+  });
+
+  it("includes a friendly reason when the stored session expired", () => {
+    sessionExpired = true;
+
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard(
+        {} as ActivatedRouteSnapshot,
+        { url: "/settings/personalisation" } as RouterStateSnapshot,
+      ),
+    );
+
+    const redirectUrl = router.serializeUrl(result as UrlTree);
+    expect(redirectUrl).toContain("returnUrl=%2Fsettings%2Fpersonalisation");
+    expect(redirectUrl).toContain("reason=session-expired");
   });
 });
