@@ -7,7 +7,7 @@
     "build": "ng build",
     "test": "ng test",
     "lint": "eslint \"src/**/*.{ts,html}\" --max-warnings=0",
-    "test:e2e:smoke": "playwright install chromium && playwright test tests/e2e/smoke.spec.ts"
+    "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts"
   },
   "private": true,
   "dependencies": {

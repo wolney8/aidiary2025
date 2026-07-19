@@ -20,6 +20,13 @@ npm run build
 npm run test:e2e:smoke
 ```
 
+Install the Playwright browser once after `npm ci` or when its version changes:
+
+```bash
+cd client
+npx playwright install chromium
+```
+
 ## Run selection
 
 - Backend route or service changes:
