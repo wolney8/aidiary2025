@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reconcile Project State"
+  short_description: "Align AI Diary branches, merged work, and GitHub issue status."
+  default_prompt: "Audit implementation state against branches and GitHub issues, then recommend exact closure and next actions."
