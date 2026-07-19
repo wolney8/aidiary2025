@@ -15,7 +15,16 @@ pytest
 ```bash
 cd client
 npm test
+npm run lint
 npm run build
+npm run test:e2e:smoke
+```
+
+Install the Playwright browser once after `npm ci` or when its version changes:
+
+```bash
+cd client
+npx playwright install chromium
 ```
 
 ## Run selection
@@ -26,13 +35,6 @@ npm run build
   run at least the relevant frontend tests; consider `npm run build` for route or template changes
 - Cross-cutting changes:
   run both backend and frontend checks that are available
-
-## Commands requiring confirmation first
-
-- `cd client && npm run lint`
-  Defined in `package.json`, but no `lint` target is visible in `angular.json`.
-- `cd client && npm run test:e2e:smoke`
-  Defined in `package.json`, but Playwright config and test files are not visible in the current repository snapshot.
 
 ## Validation reminders
 

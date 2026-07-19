@@ -115,8 +115,9 @@ cd server && source venv/bin/activate && PYTHONPATH=. pytest
 cd client && npm run build
 ```
 
-`npm run lint` and `npm run test:e2e:smoke` must not be reported as available until their
-configured targets/files are confirmed on the active branch.
+Playwright requires a one-time `cd client && npx playwright install chromium` after setup
+or a Playwright version change. `npm run lint` and `npm run test:e2e:smoke` are confirmed
+release-boundary commands.
 
 ## Supporting guidance and skills
 
@@ -125,6 +126,7 @@ configured targets/files are confirmed on the active branch.
 - `docs/playbooks/bug-fix.md`
 - `docs/playbooks/git-safety.md`
 - `docs/playbooks/testing-and-validation.md`
+- `docs/playbooks/release-governance.md`
 - `docs/coding-standards.md`
 - `docs/known-issues.md`
 - `.github/skills/deliver-issue-batch/SKILL.md`
