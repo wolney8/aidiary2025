@@ -215,58 +215,6 @@ import { User } from "../../core/models/user.model";
           </mat-card-content>
         </mat-card>
 
-        <mat-card class="group-card">
-          <mat-card-header>
-            <mat-card-title>Coach And API Access</mat-card-title>
-            <mat-card-subtitle>
-              Optional advanced settings for coach naming and per-mode keys.
-            </mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content class="field-grid">
-            <mat-form-field appearance="outline">
-              <mat-label>Daily Diary Coach Name</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.chatgpt_daily_diary_coachname"
-                name="chatgpt_daily_diary_coachname"
-                maxlength="80"
-              />
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Dream Diary Coach Name</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.chatgpt_dream_diary_coachname"
-                name="chatgpt_dream_diary_coachname"
-                maxlength="80"
-              />
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Daily Diary API Key</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.dailydiary_api_key"
-                name="dailydiary_api_key"
-                type="password"
-                autocomplete="off"
-              />
-            </mat-form-field>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Dream Diary API Key</mat-label>
-              <input
-                matInput
-                [(ngModel)]="settings.dreamdiary_api_key"
-                name="dreamdiary_api_key"
-                type="password"
-                autocomplete="off"
-              />
-            </mat-form-field>
-          </mat-card-content>
-        </mat-card>
-
         <div class="actions">
           <button
             mat-raised-button
@@ -492,19 +440,7 @@ export class PersonalisationComponent implements OnInit {
     this.successMessage = "";
     this.errorMessage = "";
 
-    const {
-      id,
-      username,
-      first_name,
-      last_name,
-      age,
-      sex,
-      goals,
-      display_name,
-      pronouns,
-      gender,
-      ...settingsPayload
-    } = this.settings;
+    const settingsPayload = this.buildSettingsUpdatePayload(this.settings);
 
     this.profileService.updateProfile(settingsPayload).subscribe({
       next: (response) => {
@@ -585,15 +521,22 @@ export class PersonalisationComponent implements OnInit {
       ai_model: String(settings.ai_model || "").trim(),
       allow_ai_history: Boolean(settings.allow_ai_history),
       allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
-      chatgpt_daily_diary_coachname: String(
-        settings.chatgpt_daily_diary_coachname || "",
-      ).trim(),
-      chatgpt_dream_diary_coachname: String(
-        settings.chatgpt_dream_diary_coachname || "",
-      ).trim(),
-      dailydiary_api_key: String(settings.dailydiary_api_key || "").trim(),
-      dreamdiary_api_key: String(settings.dreamdiary_api_key || "").trim(),
     });
+  }
+
+  private buildSettingsUpdatePayload(settings: User): Partial<User> {
+    return {
+      custom_guidance: String(settings.custom_guidance || "").trim(),
+      timezone: String(settings.timezone || "").trim(),
+      holiday_country_code: String(settings.holiday_country_code || "").trim(),
+      show_public_holidays: Boolean(settings.show_public_holidays),
+      ai_tone: String(settings.ai_tone || "").trim(),
+      ai_verbosity: String(settings.ai_verbosity || "").trim(),
+      ai_focus: String(settings.ai_focus || "").trim(),
+      ai_model: String(settings.ai_model || "").trim(),
+      allow_ai_history: Boolean(settings.allow_ai_history),
+      allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
+    };
   }
 
   getCustomGuidanceLength(): number {

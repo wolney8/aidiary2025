@@ -8,12 +8,11 @@
 
 ## Near term
 
-- Confirm and repair frontend command gaps:
-  - `lint`
-  - Playwright smoke coverage
-  - missing settings route parent component
-- Consolidate which architecture document is authoritative.
 - Decide whether runtime database migrations remain the preferred approach.
+- Decide whether user-managed AI provider keys are a supported product feature and,
+  if so, design encrypted secret storage before exposing controls.
+- Continue the account/authentication and calendar backlog after Settings issue
+  reconciliation.
 
 ## Later
 

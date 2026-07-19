@@ -20,29 +20,29 @@ Use this ownership split going forward:
 
 ### Profile
 
-Profile is for biographical and reflection context:
+Profile is the canonical UI for account identity:
 
 - `first_name`
 - `last_name`
 - `age`
-- `sex`
-- `goals`
+- `display_name`
+- `pronouns`
+- `gender`
 
 ### Settings > Personalisation
 
 Settings is for app-level and AI-level preferences:
 
-- `display_name`
-- `pronouns`
 - `timezone`
+- `holiday_country_code`
+- `show_public_holidays`
 - `ai_tone`
 - `ai_verbosity`
 - `ai_focus`
+- `ai_model`
 - `allow_ai_history`
-- `chatgpt_daily_diary_coachname`
-- `chatgpt_dream_diary_coachname`
-- `dailydiary_api_key`
-- `dreamdiary_api_key`
+- `allow_ai_attachment_context`
+- `custom_guidance`
 
 ## API direction
 
@@ -55,8 +55,13 @@ Settings is for app-level and AI-level preferences:
 - Top-bar naming should prefer `display_name`, then `first_name`, then `username`.
 - Settings now becomes a meaningful destination rather than only a host for import/export tools.
 - Existing users need runtime-safe schema compatibility for new `users` columns.
+- Legacy coach-name and per-mode API-key columns remain in the compatibility API and
+  database, but are not shown in the UI because they are not consumed by the active
+  AI service.
 
 ## To confirm
 
-- Whether API keys should remain user-managed in-app or move behind a server-managed secret model later.
-- Whether coach naming belongs under personalisation or under a separate AI settings section once chat work advances.
+- Whether a future bring-your-own-key feature should use encrypted server-side
+  credentials or an external secret manager. Plaintext browser round-tripping is not
+  an acceptable production design.
+- Whether coach naming should return once chat work has a concrete consumer for it.
