@@ -35,6 +35,8 @@ import { SearchService } from "../../services/search.service";
 import { Location } from "@angular/common";
 import { ThemeService } from "../../services/theme.service";
 
+type SearchFilterKey = "keywords" | "tags" | "people" | "date";
+
 @Component({
   selector: "app-top-bar",
   standalone: true,
@@ -123,6 +125,15 @@ import { ThemeService } from "../../services/theme.service";
               (input)="onSearchInputChange($event)"
             />
             <button
+              type="button"
+              class="search-filter-button"
+              [matMenuTriggerFor]="searchFiltersMenu"
+              aria-label="Choose search fields"
+              [attr.aria-description]="getSearchFilterSummary()"
+            >
+              <mat-icon>tune</mat-icon>
+            </button>
+            <button
               *ngIf="isCompact()"
               type="button"
               class="compact-search-close"
@@ -132,6 +143,22 @@ import { ThemeService } from "../../services/theme.service";
               <mat-icon>close</mat-icon>
             </button>
           </div>
+
+          <mat-menu #searchFiltersMenu="matMenu" aria-label="Search fields">
+            <button mat-menu-item type="button" (click)="selectAllSearchFilters()">
+              <mat-icon>{{ areAllSearchFiltersSelected() ? "check" : "search" }}</mat-icon>
+              <span>All fields</span>
+            </button>
+            <button
+              mat-menu-item
+              type="button"
+              *ngFor="let option of searchFilterOptions"
+              (click)="toggleSearchFilter(option.key)"
+            >
+              <mat-icon>{{ isSearchFilterSelected(option.key) ? "check" : option.icon }}</mat-icon>
+              <span>{{ option.label }}</span>
+            </button>
+          </mat-menu>
 
           <!-- Search History Dropdown (Google-style) -->
           <div
@@ -343,6 +370,28 @@ import { ThemeService } from "../../services/theme.service";
         padding: 4px;
         margin-left: 6px;
         cursor: pointer;
+      }
+      .search-filter-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 36px;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.82);
+        cursor: pointer;
+      }
+      .search-filter-button:hover,
+      .search-filter-button:focus-visible {
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .search-filter-button:focus-visible {
+        outline: 2px solid var(--colour-toolbar-text);
+        outline-offset: 2px;
       }
       .search-shell:focus-within {
         border-color: var(--colour-primary);
@@ -591,6 +640,15 @@ import { ThemeService } from "../../services/theme.service";
   ],
 })
 export class TopBarComponent implements OnInit, OnDestroy {
+  protected readonly searchFilterOptions = [
+    { key: "keywords", label: "Entry text", icon: "notes" },
+    { key: "tags", label: "Tags", icon: "label" },
+    { key: "people", label: "People", icon: "person" },
+    { key: "date", label: "Dates", icon: "event" },
+  ] as const;
+  private readonly selectedSearchFilters = new Set<SearchFilterKey>(
+    this.searchFilterOptions.map((option) => option.key),
+  );
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly isCompactViewport = signal(false);
   private readonly isMediumViewport = signal(false);
@@ -649,7 +707,11 @@ export class TopBarComponent implements OnInit, OnDestroy {
         if (!event.url.includes("/entries")) {
           this.searchService.clear();
           this.searchForm.patchValue({ query: "" });
+          this.selectAllSearchFilters();
+          return;
         }
+
+        this.applySearchRouteState(event.urlAfterRedirects);
       });
   }
 
@@ -669,85 +731,66 @@ export class TopBarComponent implements OnInit, OnDestroy {
     this.showSearchHistory = false;
 
     const currentPath = this.location.path() || "";
+    const filters = this.getSearchFilterQueryParam();
     if (!currentPath.includes("/entries")) {
       // Navigate to entries with search query - let the route handler trigger search
-      this.router.navigate(["/entries"], { queryParams: { search: query } });
+      this.router.navigate(["/entries"], {
+        queryParams: { search: query, filters },
+      });
     } else {
-      // Already on entries page, just update query param
-      this.router.navigate(["/entries"], { queryParams: { search: query } });
+      // Preserve list type/month context while replacing search-specific state.
+      this.router.navigate(["/entries"], {
+        queryParams: { search: query, filters },
+        queryParamsHandling: "merge",
+      });
     }
   }
 
-  private performSearch(query: string): void {
-    const normalized = this.normalizeQuery(query);
-    // Always search all categories since we removed filters
-    const filters = {
-      tags: true,
-      date: true,
-      keywords: true,
-      people: true,
-    };
-
-    this.isSearching = true;
-    // Disable the search input during search
-    this.searchForm.get("query")?.disable();
-
-    this.searchService.search(normalized, filters).subscribe({
-      next: () => {
-        this.isSearching = false;
-        this.searchForm.get("query")?.enable();
-      },
-      error: () => {
-        this.isSearching = false;
-        this.searchForm.get("query")?.enable();
-      },
-      complete: () => {
-        this.isSearching = false;
-        this.searchForm.get("query")?.enable();
-      },
-    });
-  }
-
-  private normalizeQuery(query: string): string {
-    const ordinalDate =
-      /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)(?:\s+\d{2,4})?$/i;
-    const m = query.match(ordinalDate);
-    if (m) {
-      const day = parseInt(m[1], 10);
-      const monthName = m[2].toLowerCase();
-      const months: Record<string, string> = {
-        january: "01",
-        february: "02",
-        march: "03",
-        april: "04",
-        may: "05",
-        june: "06",
-        july: "07",
-        august: "08",
-        september: "09",
-        october: "10",
-        november: "11",
-        december: "12",
-        jan: "01",
-        feb: "02",
-        mar: "03",
-        apr: "04",
-        jun: "06",
-        jul: "07",
-        aug: "08",
-        sep: "09",
-        sept: "09",
-        oct: "10",
-        nov: "11",
-        dec: "12",
-      };
-      const mm = months[monthName];
-      if (mm) {
-        const dd = day < 10 ? `0${day}` : `${day}`;
-        return `${dd}/${mm}`;
+  protected toggleSearchFilter(filterKey: SearchFilterKey): void {
+    if (this.selectedSearchFilters.has(filterKey)) {
+      if (this.selectedSearchFilters.size > 1) {
+        this.selectedSearchFilters.delete(filterKey);
       }
+      return;
     }
-    return query;
+
+    this.selectedSearchFilters.add(filterKey);
+  }
+
+  protected selectAllSearchFilters(): void {
+    for (const option of this.searchFilterOptions) {
+      this.selectedSearchFilters.add(option.key);
+    }
+  }
+
+  protected isSearchFilterSelected(filterKey: SearchFilterKey): boolean {
+    return this.selectedSearchFilters.has(filterKey);
+  }
+
+  protected areAllSearchFiltersSelected(): boolean {
+    return this.selectedSearchFilters.size === this.searchFilterOptions.length;
+  }
+
+  protected getSearchFilterSummary(): string {
+    if (this.areAllSearchFiltersSelected()) {
+      return "Searching all fields";
+    }
+
+    const selectedLabels = this.searchFilterOptions
+      .filter((option) => this.selectedSearchFilters.has(option.key))
+      .map((option) => option.label.toLowerCase());
+    return `Searching ${selectedLabels.join(", ")}`;
+  }
+
+  private getSearchFilterQueryParam(): string | null {
+    if (this.areAllSearchFiltersSelected()) {
+      return null;
+    }
+
+    return this.searchFilterOptions
+      .filter((option) => this.selectedSearchFilters.has(option.key))
+      .map((option) => option.key)
+      .join(",");
   }
 
   goHome(): void {
@@ -760,6 +803,8 @@ export class TopBarComponent implements OnInit, OnDestroy {
   // Search History Methods
 
   ngOnInit(): void {
+    this.applySearchRouteState(this.location.path() || "/entries");
+
     this.breakpointObserver
       .observe(["(max-width: 767px)", "(min-width: 768px) and (max-width: 1023px)"])
       .pipe(takeUntil(this.destroy$))
@@ -849,6 +894,39 @@ export class TopBarComponent implements OnInit, OnDestroy {
       this.filteredSearchHistory = this.searchHistory.filter((item) =>
         item.toLowerCase().startsWith(this.currentSearchQuery.toLowerCase()),
       );
+    }
+  }
+
+  private applySearchRouteState(url: string): void {
+    const queryParams = this.router.parseUrl(url).queryParams;
+    const routeQuery = String(queryParams["search"] || "");
+    if (routeQuery !== (this.searchForm.get("query")?.value || "")) {
+      this.searchForm.patchValue({ query: routeQuery });
+      this.currentSearchQuery = routeQuery;
+    }
+
+    const routeFilters = String(queryParams["filters"] || "");
+    if (!routeFilters) {
+      this.selectAllSearchFilters();
+      return;
+    }
+
+    const validFilters = new Set<SearchFilterKey>(
+      this.searchFilterOptions.map((option) => option.key),
+    );
+    const selected = routeFilters
+      .split(",")
+      .map((filter) => filter.trim() as SearchFilterKey)
+      .filter((filter) => validFilters.has(filter));
+
+    if (selected.length === 0) {
+      this.selectAllSearchFilters();
+      return;
+    }
+
+    this.selectedSearchFilters.clear();
+    for (const filter of selected) {
+      this.selectedSearchFilters.add(filter);
     }
   }
 

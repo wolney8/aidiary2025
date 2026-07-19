@@ -298,6 +298,7 @@ import { Subscription } from "rxjs";
               <div class="expanded-actions">
                 <a
                   [routerLink]="['/entries', result.id]"
+                  [queryParams]="getEntryQueryParams(result, searchState)"
                   mat-button
                   color="primary"
                 >
@@ -1455,9 +1456,28 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   private getQueryParamsWithoutSearch(): Record<string, string> {
     const queryParams = this.route.snapshot.queryParams;
     const filtered = Object.entries(queryParams).filter(
-      ([key, value]) => key !== "search" && value !== null && value !== undefined && value !== "",
+      ([key, value]) =>
+        key !== "search" &&
+        key !== "filters" &&
+        value !== null &&
+        value !== undefined &&
+        value !== "",
     );
     return Object.fromEntries(filtered);
+  }
+
+  getEntryQueryParams(
+    result: SearchResult,
+    state: SearchState,
+  ): Record<string, string> {
+    const params: Record<string, string> = {
+      search: state.query,
+      entryType: result.type,
+    };
+    if (state.filters.length > 0) {
+      params["filters"] = state.filters.join(",");
+    }
+    return params;
   }
 
   getSearchSuggestions(query: string): string[] {

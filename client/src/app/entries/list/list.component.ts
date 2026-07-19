@@ -19,7 +19,10 @@ import { SearchResultsComponent } from "../../shared/components/search-results/s
 import { EntriesService } from "../../core/services/entries.service";
 import { ImportantDaysService } from "../../core/services/important-days.service";
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
-import { SearchService } from "../../core/services/search.service";
+import {
+  SearchFilters,
+  SearchService,
+} from "../../core/services/search.service";
 import { DailyEntry, DreamEntry } from "../../core/models/entry.model";
 import { ImportantDay } from "../../core/models/important-day.model";
 import { PublicHoliday } from "../../core/models/public-holiday.model";
@@ -389,9 +392,18 @@ type OccasionPreviewState = {
                       <mat-chip
                         *ngFor="let tag of getTags(entry).slice(0, 2)"
                         [class.duplicate-tag-chip]="isDuplicateTag(tag)"
-                        (click)="searchForTag(tag)"
+                        (click)="searchForTag(tag, $event)"
                         >{{ tag }}</mat-chip
                       >
+                      <mat-chip
+                        *ngIf="getTags(entry).length > 2"
+                        class="tag-overflow-chip"
+                        [attr.aria-label]="
+                          getTags(entry).length - 2 + ' more tags'
+                        "
+                      >
+                        +{{ getTags(entry).length - 2 }}
+                      </mat-chip>
                     </mat-chip-set>
                   </div>
                 </mat-card-content>
@@ -403,22 +415,6 @@ type OccasionPreviewState = {
                     (click)="openEntryDetail(entry, $event)"
                   >
                     VIEW ENTRY
-                  </button>
-                  <button
-                    mat-icon-button
-                    [disabled]="true"
-                    title="Coming soon"
-                    aria-label="Favourite coming soon"
-                  >
-                    <mat-icon>favorite_border</mat-icon>
-                  </button>
-                  <button
-                    mat-icon-button
-                    [disabled]="true"
-                    title="Coming soon"
-                    aria-label="Share coming soon"
-                  >
-                    <mat-icon>share</mat-icon>
                   </button>
                 </mat-card-actions>
               </mat-card>
@@ -974,14 +970,16 @@ export class ListComponent implements OnInit, OnDestroy {
       // Handle search query parameter
       const searchQuery = params.get("search");
       if (searchQuery) {
-        this.searchService.search(searchQuery).subscribe({
-          next: (response) => {
-            console.log("Search completed successfully:", response);
-          },
-          error: (error) => {
-            console.error("Search failed:", error);
-          },
-        });
+        this.searchService
+          .search(searchQuery, this.parseSearchFilters(params.get("filters")))
+          .subscribe({
+            next: (response) => {
+              console.log("Search completed successfully:", response);
+            },
+            error: (error) => {
+              console.error("Search failed:", error);
+            },
+          });
       } else {
         this.searchService.clear();
       }
@@ -2367,7 +2365,8 @@ export class ListComponent implements OnInit, OnDestroy {
     return tag.trim() === "*Duplicate*";
   }
 
-  searchForTag(tag: string): void {
+  searchForTag(tag: string, event?: Event): void {
+    event?.stopPropagation();
     // Navigate to entries with search query - the route parameter handler will trigger search
     this.router.navigate(["/entries"], { queryParams: { search: tag } });
   }
@@ -2477,7 +2476,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeOccasionPreview(undefined, true);
     event?.stopPropagation();
     this.router.navigate(["/entries", entry.id], {
-      queryParams: this.getDetailContextParams(),
+      queryParams: this.getDetailContextParams(entry),
     });
   }
 
@@ -2486,8 +2485,14 @@ export class ListComponent implements OnInit, OnDestroy {
     this.openEntryDetail(entry);
   }
 
-  private getDetailContextParams(): Record<string, string | number> {
+  private getDetailContextParams(
+    entry?: EntryItem,
+  ): Record<string, string | number> {
     const params: Record<string, string | number> = {};
+
+    if (entry?.type) {
+      params["entryType"] = entry.type;
+    }
 
     if (this.currentView !== "all") {
       params["type"] = this.currentView;
@@ -2516,6 +2521,20 @@ export class ListComponent implements OnInit, OnDestroy {
   private getListQueryParamsWithoutSearch(): Record<string, string | number> {
     return {
       ...this.getDetailContextParams(),
+    };
+  }
+
+  private parseSearchFilters(value: string | null): SearchFilters | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const selected = new Set(value.split(",").map((filter) => filter.trim()));
+    return {
+      tags: selected.has("tags"),
+      date: selected.has("date"),
+      keywords: selected.has("keywords"),
+      people: selected.has("people"),
     };
   }
 
