@@ -321,7 +321,7 @@ def derive_dream_nltk_fields(row_data: dict[str, str]) -> dict[str, str]:
     if row_data.get("tags"):
         for tag in row_data["tags"].split(","):
             tag_clean = tag.strip().lower()
-            if tag_clean and tag_clean not in seen_tags and tag_clean not in tag_blocklist:
+            if tag_clean and tag_clean not in seen_tags:
                 if (
                     "image" not in tag_clean
                     and "generated" not in tag_clean
