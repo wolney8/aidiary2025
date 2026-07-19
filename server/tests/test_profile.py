@@ -214,6 +214,21 @@ def test_profile_update_trims_display_name_and_timezone(client_with_legacy_user_
     assert data["user"]["timezone"] == "Europe/London"
 
 
+def test_profile_update_rejects_invalid_timezone(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"timezone": "London-ish"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == "Timezone must be a valid IANA timezone"
+
+
 def test_profile_update_rejects_invalid_pronouns_choice(client_with_legacy_user_schema):
     client, _db_path = client_with_legacy_user_schema
     token = _register_and_get_token(client)

@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import sqlite3
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from services.ai_config import ALLOWED_ANALYSIS_MODELS
 
 profile_bp = Blueprint('profile', __name__)
@@ -105,6 +106,18 @@ def _normalise_custom_guidance(value):
     return text
 
 
+def _normalise_timezone(value):
+    timezone_name = _normalise_optional_text(value, max_length=MAX_TIMEZONE_LENGTH)
+    if timezone_name in {None, ''}:
+        return timezone_name
+
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError('Timezone must be a valid IANA timezone') from exc
+    return timezone_name
+
+
 def _normalise_profile_update(field: str, value):
     if field in {'first_name', 'last_name',
                  'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname'}:
@@ -118,7 +131,7 @@ def _normalise_profile_update(field: str, value):
     if field == 'custom_guidance':
         return _normalise_custom_guidance(value)
     if field == 'timezone':
-        return _normalise_optional_text(value, max_length=MAX_TIMEZONE_LENGTH)
+        return _normalise_timezone(value)
     if field == 'holiday_country_code':
         if value is None:
             return None
