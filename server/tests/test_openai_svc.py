@@ -42,6 +42,58 @@ def test_openai_service_uses_valid_timeout_env_value(mock_openai):
 
 
 @patch('services.openai_svc.OpenAI')
+def test_daily_analysis_requests_strict_structured_output(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"ai_response":"Specific response","tags":"reflection",'
+        '"people_names":"","places":""}'
+    )
+    mock_client.chat.completions.create.return_value = mock_response
+
+    OpenAIService().analyse_daily_entry('A specific daily entry')
+
+    response_format = mock_client.chat.completions.create.call_args.kwargs['response_format']
+    schema = response_format['json_schema']
+    assert response_format['type'] == 'json_schema'
+    assert schema['strict'] is True
+    assert schema['schema']['required'] == ['ai_response', 'tags', 'people_names', 'places']
+    assert schema['schema']['additionalProperties'] is False
+
+
+@patch('services.openai_svc.OpenAI')
+def test_dream_analysis_requests_strict_structured_output_on_retry(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    invalid_response = MagicMock()
+    invalid_response.choices[0].message.content = 'not-json'
+    valid_response = MagicMock()
+    valid_response.choices[0].message.content = json.dumps(
+        {
+            'summary': 'A specific dream summary.',
+            'interpretation': 'A grounded interpretation of the dream details.',
+            'image_prompt': 'A grounded symbolic scene without text.',
+            'tags': 'dream,reflection',
+            'people_names': '',
+            'places': '',
+        }
+    )
+    mock_client.chat.completions.create.side_effect = [invalid_response, valid_response]
+
+    OpenAIService().analyse_dream_entry('A detailed dream entry')
+
+    assert mock_client.chat.completions.create.call_count == 2
+    for call in mock_client.chat.completions.create.call_args_list:
+        schema = call.kwargs['response_format']['json_schema']
+        assert schema['name'] == 'dream_diary_analysis'
+        assert schema['strict'] is True
+        assert schema['schema']['additionalProperties'] is False
+
+
+@patch('services.openai_svc.OpenAI')
 def test_openai_service_invalid_or_negative_timeout_uses_default(mock_openai):
     with patch.dict(
         os.environ,

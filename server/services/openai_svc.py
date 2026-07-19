@@ -107,6 +107,55 @@ class AnalysisRateLimitError(Exception):
 class OpenAIService:
     """Service for analysing diary entries using OpenAI."""
 
+    DAILY_ANALYSIS_RESPONSE_FORMAT = {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'daily_diary_analysis',
+            'description': 'Structured response and metadata for a daily diary entry.',
+            'strict': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'ai_response': {'type': 'string'},
+                    'tags': {'type': 'string'},
+                    'people_names': {'type': 'string'},
+                    'places': {'type': 'string'},
+                },
+                'required': ['ai_response', 'tags', 'people_names', 'places'],
+                'additionalProperties': False,
+            },
+        },
+    }
+
+    DREAM_ANALYSIS_RESPONSE_FORMAT = {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'dream_diary_analysis',
+            'description': 'Structured summary, interpretation, image prompt, and metadata for a dream.',
+            'strict': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'summary': {'type': 'string'},
+                    'interpretation': {'type': 'string'},
+                    'image_prompt': {'type': 'string'},
+                    'tags': {'type': 'string'},
+                    'people_names': {'type': 'string'},
+                    'places': {'type': 'string'},
+                },
+                'required': [
+                    'summary',
+                    'interpretation',
+                    'image_prompt',
+                    'tags',
+                    'people_names',
+                    'places',
+                ],
+                'additionalProperties': False,
+            },
+        },
+    }
+
     DAILY_ANALYSIS_RESPONSE_SCHEMA = """Respond in JSON format:
 {
     "ai_response": "Your supportive response here",
@@ -922,6 +971,7 @@ Additional requirements for this retry:
         system_prompt: str,
         user_content: str,
         *,
+        response_format: dict[str, Any],
         analysis_options: dict[str, Any] | None = None,
     ):
         return self.client.chat.completions.create(
@@ -938,6 +988,7 @@ Additional requirements for this retry:
             ],
             temperature=self._resolve_analysis_temperature(analysis_options),
             max_tokens=self._resolve_analysis_max_tokens(analysis_options),
+            response_format=response_format,
             timeout=self.request_timeout_seconds,
         )
 
@@ -1364,6 +1415,7 @@ Additional requirements for this retry:
             response = self._create_analysis_completion(
                 system_prompt,
                 user_content,
+                response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                 analysis_options=analysis_options,
             )
 
@@ -1383,6 +1435,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -1426,6 +1479,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -1461,6 +1515,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DAILY_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -1518,6 +1573,7 @@ Additional requirements for this retry:
             response = self._create_analysis_completion(
                 system_prompt,
                 user_content,
+                response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                 analysis_options=analysis_options,
             )
 
@@ -1537,6 +1593,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -1580,6 +1637,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
@@ -1616,6 +1674,7 @@ Additional requirements for this retry:
                 retry_response = self._create_analysis_completion(
                     system_prompt + self.SPECIFICITY_RETRY_INSTRUCTION,
                     user_content,
+                    response_format=self.DREAM_ANALYSIS_RESPONSE_FORMAT,
                     analysis_options=analysis_options,
                 )
                 retry_raw_content = retry_response.choices[0].message.content
