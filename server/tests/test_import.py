@@ -1174,6 +1174,41 @@ class TestDuplicateHandling:
         assert data['summary']['inserted_daily'] == 1
         assert data['summary']['skipped_daily'] == 0
 
+    def test_duplicate_dream_same_day_same_title_and_plot_requires_review(self, client):
+        token = _register_and_login(client)
+        dream = [
+            '2024-06-02', 'Flying again', 'I flew over the same city', '', '', '',
+            'joy', '', '', '', '', '',
+        ]
+        file_bytes = _make_xlsx(dream_rows=[dream])
+
+        _upload(client, token, file_bytes)
+        response = _upload(client, token, file_bytes)
+        data = json.loads(response.data)
+
+        assert data['status'] == 'review_required'
+        assert data['summary']['duplicate_dreams'] == 1
+        assert data['duplicate_entries'][0]['entry_type'] == 'dream'
+        assert data['duplicate_entries'][0]['reason'] == 'same_date_time_title_content'
+
+    def test_same_day_dreams_with_different_plots_are_allowed(self, client):
+        token = _register_and_login(client)
+        first = [
+            '2024-06-03', 'Recurring place', 'I entered a quiet library', '', '', '',
+            'calm', '', '', '', '', '',
+        ]
+        second = [
+            '2024-06-03', 'Recurring place', 'I ran through a crowded station', '', '', '',
+            'urgent', '', '', '', '', '',
+        ]
+
+        _upload(client, token, _make_xlsx(dream_rows=[first]))
+        response = _upload(client, token, _make_xlsx(dream_rows=[second]))
+        data = json.loads(response.data)
+
+        assert data['summary']['inserted_dreams'] == 1
+        assert data['summary']['skipped_dreams'] == 0
+
     def test_duplicate_reported_in_warnings(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx(daily_rows=[['2024-07-01', 'T', 'B', '']])

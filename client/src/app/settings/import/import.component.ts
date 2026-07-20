@@ -319,6 +319,10 @@ type UploadState =
                 {{ getDuplicateCount(importResult!) === 1 ? "entry" : "entries" }}
                 need your decision before anything is imported.
               </p>
+              <p *ngIf="getDuplicateCount(importResult!) > 0">
+                A duplicate has the same type, date, time, title, and entry text.
+                Other entries from the same day remain available to import.
+              </p>
               <p *ngIf="importResult!.warnings && importResult!.warnings!.length">
                 <strong>Warnings:</strong>
                 {{ importResult!.warnings!.join("; ") }}
@@ -502,6 +506,10 @@ type UploadState =
               <h3 id="duplicate-review-title">Review entries before import</h3>
               <p>
                 Nothing will be imported until you confirm this review.
+              </p>
+              <p>
+                Matching type, date, time, title, and entry text are marked as
+                duplicates. Other same-day entries are allowed.
               </p>
             </div>
             <button
