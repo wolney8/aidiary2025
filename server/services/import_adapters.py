@@ -36,6 +36,8 @@ def _parse_date(value: str) -> str | None:
     for fmt in (
         '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y',
         '%B %d, %Y', '%b %d, %Y', '%d %B %Y', '%d %b %Y',
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+        '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M',
     ):
         try:
             return datetime.strptime(value.strip(), fmt).strftime('%Y-%m-%d')
@@ -44,14 +46,22 @@ def _parse_date(value: str) -> str | None:
     return None
 
 
-def _parse_time(value: str) -> str:
-    if not value.strip():
-        return '19:00'
+def _parse_time(value: str, *, fallback_datetime: str = '') -> str:
     for fmt in ('%H:%M', '%H:%M:%S', '%I:%M %p', '%I:%M:%S %p'):
         try:
             return datetime.strptime(value.strip(), fmt).strftime('%H:%M')
         except ValueError:
             continue
+    for fmt in (
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+        '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M',
+    ):
+        try:
+            return datetime.strptime(fallback_datetime.strip(), fmt).strftime('%H:%M')
+        except ValueError:
+            continue
+    if not value.strip():
+        return '19:00'
     return ''
 
 
@@ -74,7 +84,11 @@ class DaylioCsvAdapter:
             except UnicodeDecodeError as exc:
                 raise ValueError('Daylio CSV must use UTF-8 or UTF-16 text encoding.') from exc
 
-        reader = csv.DictReader(io.StringIO(text))
+        try:
+            dialect = csv.Sniffer().sniff(text[:8192], delimiters=',;\t')
+        except csv.Error:
+            dialect = csv.excel
+        reader = csv.DictReader(io.StringIO(text), dialect=dialect)
         if not reader.fieldnames:
             raise ValueError('Daylio CSV has no header row.')
 
@@ -96,7 +110,10 @@ class DaylioCsvAdapter:
                 warnings.append(f'Daylio row {row_index}: skipped - invalid or missing date.')
                 continue
 
-            entry_time = _parse_time(_first(row, 'time', 'entry_time'))
+            entry_time = _parse_time(
+                _first(row, 'time', 'entry_time'),
+                fallback_datetime=raw_date,
+            )
             if not entry_time:
                 warnings.append(f'Daylio row {row_index}: skipped - invalid time.')
                 continue

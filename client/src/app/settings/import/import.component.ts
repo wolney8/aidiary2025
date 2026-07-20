@@ -19,7 +19,6 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { MatTableModule } from "@angular/material/table";
 import { MatTooltipModule } from "@angular/material/tooltip";
-import { MatButtonToggleModule } from "@angular/material/button-toggle";
 import { filter } from "rxjs/operators";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import {
@@ -55,7 +54,6 @@ type UploadState =
     MatChipsModule,
     MatTooltipModule,
     MatDividerModule,
-    MatButtonToggleModule,
   ],
   animations: [
     trigger("fadeSlideIn", [
@@ -93,25 +91,47 @@ type UploadState =
           <mat-card-subtitle>Select the format that created your file.</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
-          <mat-button-toggle-group
-            class="source-toggle"
-            [value]="importSource"
-            [disabled]="
-              uploadState === 'uploading' ||
-              uploadState === 'processing' ||
-              uploadState === 'review' ||
-              isCommittingReview
-            "
-            aria-label="Import source"
-            (change)="changeImportSource($event.value)"
-          >
-            <mat-button-toggle value="aidiary">AI Diary</mat-button-toggle>
-            <mat-button-toggle value="daylio">Daylio CSV</mat-button-toggle>
-          </mat-button-toggle-group>
-          <p class="hint-text" *ngIf="importSource === 'daylio'">
-            Use Daylio's readable CSV export. Proprietary .daylio backup files
-            cannot be imported.
-          </p>
+          <div class="source-groups">
+            <section class="source-group" aria-labelledby="aidiary-source-heading">
+              <h3 id="aidiary-source-heading">AI Diary files</h3>
+              <p>Import an AI Diary workbook or full export package.</p>
+              <button
+                mat-stroked-button
+                type="button"
+                class="source-pill"
+                [class.source-pill--selected]="importSource === 'aidiary'"
+                [attr.aria-pressed]="importSource === 'aidiary'"
+                [disabled]="isImportSourceLocked()"
+                (click)="changeImportSource('aidiary')"
+              >
+                <mat-icon>description</mat-icon>
+                AI Diary
+              </button>
+            </section>
+
+            <section class="source-group" aria-labelledby="external-source-heading">
+              <h3 id="external-source-heading">Import from external application</h3>
+              <p>Choose a supported diary application.</p>
+              <div class="external-app-pills" aria-label="Supported external applications">
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="source-pill"
+                  [class.source-pill--selected]="importSource === 'daylio'"
+                  [attr.aria-pressed]="importSource === 'daylio'"
+                  [disabled]="isImportSourceLocked()"
+                  (click)="changeImportSource('daylio')"
+                >
+                  <mat-icon>mood</mat-icon>
+                  Daylio
+                </button>
+              </div>
+              <p class="source-note" *ngIf="importSource === 'daylio'">
+                Use Daylio's readable CSV export. Proprietary .daylio backup
+                files cannot be imported.
+              </p>
+            </section>
+          </div>
         </mat-card-content>
       </mat-card>
 
@@ -949,9 +969,52 @@ type UploadState =
         justify-content: flex-end;
       }
 
-      .source-toggle {
+      .source-groups {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-md);
+      }
+
+      .source-group {
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .source-group h3,
+      .source-group p {
+        margin: 0 0 var(--spacing-sm);
+      }
+
+      .source-group p {
+        color: var(--colour-text-secondary);
+      }
+
+      .source-pill {
         border-radius: var(--radius-pill);
-        overflow: hidden;
+      }
+
+      .source-pill--selected {
+        color: var(--colour-on-primary);
+        background: var(--colour-primary);
+        border-color: var(--colour-primary);
+      }
+
+      .external-app-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+      }
+
+      .source-note {
+        margin-top: var(--spacing-sm) !important;
+      }
+
+      @media (max-width: 700px) {
+        .source-groups {
+          grid-template-columns: 1fr;
+        }
       }
 
       /* ── History ── */
@@ -1376,6 +1439,15 @@ export class ImportComponent implements OnInit {
     }
     this.importSource = source;
     this.resetImportState();
+  }
+
+  isImportSourceLocked(): boolean {
+    return (
+      this.uploadState === "uploading" ||
+      this.uploadState === "processing" ||
+      this.uploadState === "review" ||
+      this.isCommittingReview
+    );
   }
 
   openDuplicateReview(): void {

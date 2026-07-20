@@ -93,6 +93,7 @@ body {
   --spacing-xl: 48px;
 
   --colour-primary: #1d4ed8;
+  --colour-on-primary: #ffffff;
   --colour-primary-hover: #1e40af;
   --colour-secondary: #0f172a;
   --colour-accent: #0ea5e9;
@@ -131,6 +132,7 @@ body {
 
 html[data-theme="dark"] {
   --colour-primary: #9bb8ff;
+  --colour-on-primary: #07111d;
   --colour-primary-hover: #bfd1ff;
   --colour-secondary: #dbe4f3;
   --colour-accent: #67d1ff;

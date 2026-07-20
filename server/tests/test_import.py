@@ -460,6 +460,31 @@ class TestSuccessfulImport:
         assert second_data['summary']['duplicate_daily'] == 1
         assert second_data['import_session_id']
 
+    def test_daylio_csv_accepts_semicolon_delimiter_and_combined_datetime(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date;mood;activities;note_title;note\n'
+            '2026-07-17T21:45;meh;rest|music;Quiet evening;Stayed home.\n'
+        ).encode()
+
+        resp = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+
+        assert resp.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        row = conn.execute(
+            'SELECT entry_date, entry_time FROM dailydiary_entries WHERE title = ?',
+            ('Quiet evening',),
+        ).fetchone()
+        conn.close()
+        assert row == ('2026-07-17', '21:45')
+
     def test_daily_entries_inserted(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx(daily_rows=[
