@@ -1,0 +1,111 @@
+---
+name: enforce-platform-ux
+description: Use for every user-facing frontend change in AI Diary, including pages, routes, dialogs, cards, rows, tables, forms, controls, text, icons, responsive states, and themes. Enforces platform consistency, Material Design 3 patterns, pill-shaped compact affordances, and WCAG 2.2 AA checks before implementation and sign-off.
+---
+
+# Enforce Platform UX
+
+Apply this skill before editing user-facing UI and repeat the review before handoff.
+
+## 1. Establish The Existing Pattern
+
+1. Inspect the target component, its parent layout, adjacent screens, shared components,
+   and `client/src/styles.scss` tokens.
+2. Reuse an established AI Diary pattern when it meets the requirement. Do not create a
+   one-off component, icon treatment, spacing system, or colour when a shared equivalent
+   exists.
+3. Record the expected desktop, narrow-screen, light-theme, dark-theme, loading, empty,
+   error, disabled, hover, focus, and selected states relevant to the change.
+4. Check route entry, route exit, browser back, saved query/date state, guards, and page
+   title/heading behavior when navigation is affected.
+
+## 2. Apply Platform Rules
+
+### Layout and visibility
+
+- Use a clear page hierarchy: one primary heading, grouped content, stable actions, and
+  predictable reading/tab order.
+- Align related controls to the same grid and spacing rhythm. Avoid isolated offsets and
+  magic positioning used to compensate for an incorrect container.
+- Keep content responsive without horizontal page overflow. Verify compact, medium, and
+  large layouts; do not merely hide required actions at narrower widths.
+- Keep loading, empty, error, and success states in the same layout region as the content
+  they replace to prevent page jumps.
+- Never leave hidden controls focusable or expose content that is visually clipped.
+
+### Material 3 components and shape
+
+- Prefer Angular Material components and Material 3 interaction/state behavior over
+  custom imitations.
+- Use `var(--radius-pill)` for chips, tags, filters, status labels, compact segmented
+  choices, and suitable compact action buttons. Prefer these pill affordances over
+  sharp rectangular boxes.
+- Do not turn cards, dialogs, tables, text fields, media frames, or page sections into
+  pills. Use `--radius-sm`, `--radius-md`, or `--radius-lg` according to their container
+  hierarchy.
+- Give one action clear primary emphasis. Destructive actions use the established red
+  treatment; cancel/back remains visually safe.
+- Use app-native dialogs for in-app confirmation and alerts. Keep browser prompts only
+  for refresh or tab-close protection.
+
+### Modals, rows, and tables
+
+- Dialogs require a concise accessible title, bounded width, scrollable content with a
+  visible close path, focus trap/restoration, Escape behavior, and actions that remain
+  reachable at 200% zoom and short viewport heights.
+- Rows require consistent leading icon/avatar, text hierarchy, metadata alignment, and
+  trailing actions. Avoid controls overlapping wrapping titles.
+- Use semantic tables for genuinely tabular data, with headers and keyboard-accessible
+  actions. Provide a deliberate narrow-screen treatment rather than shrinking text or
+  clipping columns.
+
+### Text and iconography
+
+- Use concise labels and helper text. Do not restate obvious product context or rely on
+  placeholders as labels.
+- Use `mat-icon` and the repository's Material icon family. Do not mix icon libraries or
+  use arbitrary Unicode symbols.
+- Default icon sizes to the established 18, 20, or 24 px scale. Decorative icons are
+  hidden from assistive technology; icon-only controls have an accessible name and
+  tooltip where the action is not self-evident.
+- Keep paired leading/trailing icons optically aligned and equally inset from container
+  edges.
+
+### Theme and CSS
+
+- Use repository colour, surface, text, border, radius, and shadow variables. Do not
+  hardcode white, black, or light-only surfaces in component CSS.
+- Verify every changed surface in light and dark themes, including Material overlays
+  rendered outside the component tree: dialogs, menus, selects, tooltips, and snackbars.
+- Prefer component-owned styles and shared tokens over broad `!important` overrides.
+  Add a global override only when an Angular Material overlay or truly shared primitive
+  requires it.
+- Preserve readable image overlays with a theme-appropriate gradient and sufficient text
+  contrast.
+
+## 3. Enforce WCAG 2.2 AA
+
+- Support keyboard-only operation with logical tab order, visible focus, and no keyboard
+  trap. Enter and Space activate controls according to their semantics.
+- Meet contrast ratios: 4.5:1 for normal text and 3:1 for large text, UI boundaries, and
+  meaningful graphics. Do not convey state by colour alone.
+- Use semantic HTML before ARIA. Keep names, roles, states, errors, and status updates
+  available to assistive technology.
+- Maintain at least the WCAG 24 by 24 CSS px target minimum and prefer the platform's
+  44-48 px touch target for primary controls.
+- Support 200% zoom, text wrapping, reduced motion, and usable focus within scrolling
+  containers.
+
+## 4. Review Gate
+
+Before handoff:
+
+1. Inspect the actual diff for one-off CSS, hardcoded colours, duplicated components,
+   inconsistent labels, mixed icon styles, and desktop-only assumptions.
+2. Compare the result with the nearest equivalent AI Diary screen.
+3. Run the applicable frontend build, tests, lint, and smoke checks from
+   `docs/playbooks/testing-and-validation.md`.
+4. Manually verify affected routes at compact and desktop widths, in light and dark
+   themes, using keyboard navigation and 200% zoom.
+5. Report any state or viewport not tested. Do not describe a UI slice as signed off
+   while a known contrast, focus, overflow, route, or modal-access issue remains.
