@@ -88,6 +88,16 @@ export class EntriesService {
     });
   }
 
+  deleteSelectedEntries(
+    entries: Array<{ id: number; type: "daily" | "dream" }>,
+  ): Observable<{ deleted_total: number }> {
+    return this.http.post<{ deleted_total: number }>(
+      `${this.apiUrl}/entries/delete-selected`,
+      { entries },
+      { headers: this.getHeaders() },
+    );
+  }
+
   generateDailyImage(
     id: number,
     imagePromptOverride?: string,

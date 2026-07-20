@@ -19,7 +19,7 @@ export interface ImportHistoryItem {
   filename: string;
   imported_count: number;
   skipped_count: number;
-  status: "success" | "partial" | "failed" | "empty";
+  status: "success" | "partial" | "failed" | "empty" | "reverted";
   notes?: string;
 }
 
@@ -40,6 +40,7 @@ export interface ImportResult {
   errors?: string[];
   warnings?: string[];
   duplicate_entries?: ImportDuplicateEntry[];
+  review_entries?: ImportReviewEntry[];
   import_session_id?: string;
 }
 
@@ -52,10 +53,36 @@ export interface ImportDuplicateEntry {
   content_preview?: string;
 }
 
+export interface ImportReviewEntry {
+  row_id: string;
+  entry_type: "daily" | "dream";
+  entry_date: string;
+  title: string;
+  content_preview?: string;
+  mood?: string;
+  is_duplicate: boolean;
+  attachment_count: number;
+  source_record_kind?: "authored" | "mood_checkin";
+}
+
 export interface UploadProgress {
   percent: number;
   loaded: number;
   total: number;
+}
+
+export interface ImportJobStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  processed: number;
+  total: number;
+  percent: number;
+  message: string;
+  created_at: string;
+  updated_at: string;
+  is_delayed?: boolean;
+  error?: string;
+  result?: ImportResult;
 }
 
 export type ImportSource = "aidiary" | "daylio";
@@ -109,6 +136,7 @@ interface UploadResponsePayload {
   errors?: unknown;
   warnings?: unknown;
   duplicate_entries?: unknown;
+  review_entries?: unknown;
   import_session_id?: unknown;
   message?: unknown;
   imported_count?: unknown;
@@ -289,6 +317,7 @@ export class ImportService {
               const duplicateEntries = this.toDuplicateEntryArray(
                 body.duplicate_entries,
               );
+              const reviewEntries = this.toReviewEntryArray(body.review_entries);
 
               const message =
                 typeof body.message === "string"
@@ -323,6 +352,7 @@ export class ImportService {
                 errors,
                 warnings,
                 duplicate_entries: duplicateEntries,
+                review_entries: reviewEntries,
                 import_session_id:
                   typeof body.import_session_id === "string"
                     ? body.import_session_id
@@ -343,6 +373,8 @@ export class ImportService {
   commitImportSession(
     importSessionId: string,
     acceptedDuplicateRowIds: string[],
+    selectedRowIds?: string[],
+    entryTypeOverrides?: Record<string, "daily" | "dream">,
   ): Observable<ImportResult> {
     const headers = this.getAuthHeaders();
     return this.requestWithPortFallback((baseUrl) =>
@@ -352,11 +384,52 @@ export class ImportService {
           {
             import_session_id: importSessionId,
             accepted_duplicate_row_ids: acceptedDuplicateRowIds,
+            selected_row_ids: selectedRowIds,
+            entry_type_overrides: entryTypeOverrides,
           },
           { headers },
         )
         .pipe(map((response) => this.normaliseUploadResult(response))),
     );
+  }
+
+  startImportJob(
+    importSessionId: string,
+    acceptedDuplicateRowIds: string[],
+    selectedRowIds: string[],
+    entryTypeOverrides: Record<string, "daily" | "dream">,
+  ): Observable<ImportJobStatus> {
+    const headers = this.getAuthHeaders();
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.post<ImportJobStatus>(
+        `${baseUrl}/import/jobs`,
+        {
+          import_session_id: importSessionId,
+          accepted_duplicate_row_ids: acceptedDuplicateRowIds,
+          selected_row_ids: selectedRowIds,
+          entry_type_overrides: entryTypeOverrides,
+        },
+        { headers },
+      ).pipe(map((job) => this.normaliseImportJob(job))),
+    );
+  }
+
+  getImportJob(jobId: string): Observable<ImportJobStatus> {
+    const headers = this.getAuthHeaders();
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.get<ImportJobStatus>(`${baseUrl}/import/jobs/${jobId}`, {
+        headers,
+      }).pipe(map((job) => this.normaliseImportJob(job))),
+    );
+  }
+
+  private normaliseImportJob(job: ImportJobStatus): ImportJobStatus {
+    return {
+      ...job,
+      result: job.result
+        ? this.normaliseUploadResult(job.result)
+        : undefined,
+    };
   }
 
   /** Fetch the import history for the current user. */
@@ -383,25 +456,51 @@ export class ImportService {
     );
   }
 
+  revertImport(importId: number): Observable<{ deleted_total: number }> {
+    const headers = this.getAuthHeaders();
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.post<{ deleted_total: number }>(
+        `${baseUrl}/import/history/${importId}/revert`,
+        { confirmation_text: "REVERT IMPORT" },
+        { headers },
+      ),
+    );
+  }
+
+  cancelImportSession(importSessionId: string): Observable<void> {
+    const headers = this.getAuthHeaders();
+    return this.requestWithPortFallback((baseUrl) =>
+      this.http.delete<void>(`${baseUrl}/import/session/${importSessionId}`, { headers }),
+    );
+  }
+
   /** Client-side validation — returns an error string or null if valid. */
   validateFile(file: File, source: ImportSource = "aidiary"): string | null {
     const extension = `.${file.name.split(".").pop()?.toLowerCase()}`;
-    const allowedExtensions = source === "daylio" ? [".csv"] : this.allowedExtensions;
+    const allowedExtensions = source === "daylio" ? [".csv", ".daylio"] : this.allowedExtensions;
     const allowedMimeTypes =
       source === "daylio"
-        ? ["text/csv", "application/csv", "text/plain", "application/vnd.ms-excel"]
+        ? [
+            "text/csv",
+            "application/csv",
+            "text/plain",
+            "application/vnd.ms-excel",
+            "application/octet-stream",
+            "application/zip",
+            "application/x-zip-compressed",
+          ]
         : this.allowedMimeTypes;
 
     if (!allowedExtensions.includes(extension)) {
       return source === "daylio"
-        ? "Invalid file type. Choose a Daylio CSV export, not a .daylio backup."
+        ? "Invalid file type. Choose a Daylio backup (.daylio) or CSV export."
         : "Invalid file type. Only Excel files (.xlsx) or export packages (.zip) are accepted.";
     }
 
     if (!allowedMimeTypes.includes(file.type) && file.type !== "") {
       // Some browsers report empty MIME type for Excel — allow it if extension is correct
       if (file.type !== "") {
-        return `Invalid file type for ${source === "daylio" ? "Daylio CSV" : "AI Diary"} import.`;
+        return `Invalid file type for ${source === "daylio" ? "Daylio" : "AI Diary"} import.`;
       }
     }
 
@@ -502,9 +601,12 @@ export class ImportService {
     const message =
       httpErr?.error?.message ||
       httpErr?.error?.error ||
+      (Array.isArray(httpErr?.error?.errors) ? httpErr.error.errors[0] : null) ||
       httpErr?.message ||
       "An unexpected error occurred. Please try again.";
-    return new Error(message);
+    const normalised = new Error(message) as Error & { status?: number };
+    normalised.status = Number(httpErr?.status ?? 0);
+    return normalised;
   }
 
   private normaliseHistoryItem(raw: unknown): ImportHistoryItem | null {
@@ -530,11 +632,13 @@ export class ImportService {
     const status: ImportHistoryItem["status"] =
       rawStatus === "success"
         ? "success"
+        : rawStatus === "reverted"
+          ? "reverted"
         : rawStatus === "empty"
           ? "empty"
-          : rawStatus === "skipped" || rawStatus === "partial"
-            ? "partial"
-            : "failed";
+            : rawStatus === "skipped" || rawStatus === "partial"
+              ? "partial"
+              : "failed";
 
     return {
       id: Number(item.id ?? 0),
@@ -549,7 +653,7 @@ export class ImportService {
 
   private mapBackendStatus(
     rawStatus: string,
-  ): ImportHistoryItem["status"] | ImportResult["status"] {
+  ): ImportResult["status"] {
     if (rawStatus === "review_required" || rawStatus === "review") {
       return "review";
     }
@@ -618,6 +722,7 @@ export class ImportService {
       errors,
       warnings,
       duplicate_entries: this.toDuplicateEntryArray(body.duplicate_entries),
+      review_entries: this.toReviewEntryArray(body.review_entries),
       import_session_id:
         typeof body.import_session_id === "string"
           ? body.import_session_id
@@ -674,5 +779,31 @@ export class ImportService {
     return entries.filter(
       (item): item is ImportDuplicateEntry => item !== null,
     );
+  }
+
+
+  private toReviewEntryArray(value: unknown): ImportReviewEntry[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item): ImportReviewEntry[] => {
+      if (!item || typeof item !== "object") return [];
+      const raw = item as Record<string, unknown>;
+      if (
+        typeof raw["row_id"] !== "string" ||
+        (raw["entry_type"] !== "daily" && raw["entry_type"] !== "dream") ||
+        typeof raw["entry_date"] !== "string" ||
+        typeof raw["title"] !== "string"
+      ) return [];
+      return [{
+        row_id: raw["row_id"],
+        entry_type: raw["entry_type"],
+        entry_date: raw["entry_date"],
+        title: raw["title"],
+        content_preview: typeof raw["content_preview"] === "string" ? raw["content_preview"] : undefined,
+        mood: typeof raw["mood"] === "string" ? raw["mood"] : undefined,
+        is_duplicate: raw["is_duplicate"] === true,
+        attachment_count: Number(raw["attachment_count"] ?? 0),
+        source_record_kind: raw["source_record_kind"] === "mood_checkin" ? "mood_checkin" : "authored",
+      }];
+    });
   }
 }

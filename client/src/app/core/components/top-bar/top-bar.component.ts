@@ -5,6 +5,7 @@ import {
   inject,
   OnDestroy,
   OnInit,
+  ViewChild,
   computed,
   signal,
 } from "@angular/core";
@@ -13,8 +14,10 @@ import { BreakpointObserver } from "@angular/cdk/layout";
 import { MatToolbarModule } from "@angular/material/toolbar";
 import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
-import { MatMenuModule } from "@angular/material/menu";
+import { MatMenuModule, MatMenuTrigger } from "@angular/material/menu";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { MatProgressBarModule } from "@angular/material/progress-bar";
+import { MatSlideToggleModule } from "@angular/material/slide-toggle";
 import { Router, RouterModule, NavigationEnd } from "@angular/router";
 import { ReactiveFormsModule, FormBuilder } from "@angular/forms";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -34,6 +37,8 @@ import { map, filter, takeUntil } from "rxjs/operators";
 import { SearchService } from "../../services/search.service";
 import { Location } from "@angular/common";
 import { ThemeService } from "../../services/theme.service";
+import { ImportJobService } from "../../services/import-job.service";
+import { type AppNotification } from "../../services/import-job.service";
 
 type SearchFilterKey = "keywords" | "tags" | "people" | "date";
 
@@ -47,6 +52,8 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
     MatButtonModule,
     MatMenuModule,
     MatProgressSpinnerModule,
+    MatProgressBarModule,
+    MatSlideToggleModule,
     RouterModule,
     ReactiveFormsModule,
     MatFormFieldModule,
@@ -280,6 +287,23 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           versionLabel
         }}</span>
         <button
+          #notificationMenuTrigger="matMenuTrigger"
+          mat-icon-button
+          class="notification-bell"
+          type="button"
+          [matMenuTriggerFor]="notificationMenu"
+          aria-label="Open notifications"
+        >
+          <ng-container *ngIf="notifications$ | async as notifications">
+            <mat-icon>{{ hasRunningImport(notifications) ? "notifications_active" : "notifications_none" }}</mat-icon>
+            <span
+              *ngIf="getUnreadCount(notifications) > 0"
+              class="notification-count"
+              aria-hidden="true"
+            >{{ getUnreadBadgeLabel(notifications) }}</span>
+          </ng-container>
+        </button>
+        <button
           mat-icon-button
           [matMenuTriggerFor]="userMenu"
           aria-label="Open account menu"
@@ -293,6 +317,87 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         <button mat-menu-item routerLink="/settings">Settings</button>
         <button mat-menu-item disabled>{{ versionLabel }}</button>
         <button mat-menu-item (click)="logout()">Logout</button>
+      </mat-menu>
+
+      <mat-menu #notificationMenu="matMenu" class="notification-menu">
+        <div class="notification-panel" (click)="$event.stopPropagation()">
+          <div class="notification-panel__header">
+            <div class="notification-panel__title">
+              <mat-icon aria-hidden="true">notifications</mat-icon>
+              <strong>Notifications</strong>
+            </div>
+            <button mat-button type="button" (click)="clearNotifications()">
+              Clear
+            </button>
+          </div>
+          <div class="notification-panel__filters">
+            <mat-slide-toggle
+              [checked]="showUnreadOnly()"
+              (change)="showUnreadOnly.set($event.checked)"
+            >Only show unread</mat-slide-toggle>
+          </div>
+          <ng-container *ngIf="notifications$ | async as notifications">
+            <div
+              *ngFor="let notification of getVisibleNotifications(notifications)"
+              class="notification-item"
+              [class.notification-item--unread]="notification.unread"
+              tabindex="0"
+              role="article"
+              [attr.aria-label]="notification.title + (notification.unread ? ', unread' : '')"
+              (click)="markNotificationRead(notification.id)"
+              (keydown.enter)="markNotificationRead(notification.id)"
+              (keydown.space)="$event.preventDefault(); markNotificationRead(notification.id)"
+            >
+              <span
+                *ngIf="notification.unread"
+                class="notification-unread-dot"
+                aria-label="Unread notification"
+              ></span>
+              <div class="notification-item__title">
+                <mat-icon aria-hidden="true">
+                  {{ notification.status === "completed" ? "task_alt" : notification.status === "failed" ? "error" : "sync" }}
+                </mat-icon>
+                <strong>{{ notification.title }}</strong>
+              </div>
+              <p>{{ notification.message }}</p>
+              <mat-progress-bar
+                *ngIf="notification.status === 'queued' || notification.status === 'running'"
+                mode="determinate"
+                [value]="notification.percent"
+                aria-label="Import progress"
+              ></mat-progress-bar>
+              <p class="notification-item__progress" *ngIf="notification.total > 0">
+                {{ notification.processed }} of {{ notification.total }} entries
+              </p>
+              <p class="notification-item__delayed" *ngIf="notification.isDelayed">
+                Progress has not updated recently. The import is still being monitored.
+              </p>
+              <div class="notification-item__actions">
+                <button
+                  mat-stroked-button
+                  type="button"
+                  (click)="$event.stopPropagation(); openImportPage(notification)"
+                >
+                  Go to import
+                </button>
+                <button
+                  *ngIf="notification.status === 'completed' || notification.status === 'failed'"
+                  mat-button
+                  type="button"
+                  (click)="$event.stopPropagation(); dismissImportNotification(notification.id)"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <p
+              *ngIf="getVisibleNotifications(notifications).length === 0"
+              class="notification-panel__empty"
+            >
+              {{ showUnreadOnly() ? "No unread notifications." : "No notifications." }}
+            </p>
+          </ng-container>
+        </div>
       </mat-menu>
     </mat-toolbar>
   `,
@@ -488,6 +593,127 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         white-space: nowrap;
       }
 
+      .notification-panel {
+        box-sizing: border-box;
+        width: min(17rem, calc(100vw - 1rem));
+        max-width: 100%;
+        max-height: min(70vh, 32rem);
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: var(--spacing-sm);
+        color: var(--colour-text-primary);
+        background: var(--colour-surface-elevated);
+      }
+      :host ::ng-deep .notification-menu.mat-mdc-menu-panel {
+        min-width: 0 !important;
+        max-width: min(19rem, calc(100vw - 1rem)) !important;
+        overflow-x: hidden !important;
+      }
+      :host ::ng-deep .notification-menu .mat-mdc-menu-content {
+        box-sizing: border-box;
+        max-width: 100%;
+        overflow-x: hidden;
+        padding: 0;
+      }
+      .notification-panel__header,
+      .notification-panel__title,
+      .notification-item__title,
+      .notification-item__actions {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+      }
+      .notification-panel__header {
+        justify-content: space-between;
+        min-width: 0;
+        padding-bottom: var(--spacing-sm);
+        border-bottom: 1px solid var(--colour-border);
+      }
+      .notification-panel__title {
+        min-width: 0;
+      }
+      .notification-panel__header > button {
+        flex: 0 0 auto;
+      }
+      .notification-panel__filters {
+        padding: var(--spacing-sm) 0;
+      }
+      .notification-item {
+        box-sizing: border-box;
+        min-width: 0;
+        position: relative;
+        margin-top: var(--spacing-sm);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+        cursor: pointer;
+      }
+      .notification-item:hover,
+      .notification-item:focus-visible {
+        border-color: var(--colour-primary);
+      }
+      .notification-item:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
+      }
+      .notification-item--unread {
+        background: var(--colour-info-bg);
+      }
+      .notification-unread-dot {
+        position: absolute;
+        top: var(--spacing-sm);
+        right: var(--spacing-sm);
+        width: 0.625rem;
+        height: 0.625rem;
+        border-radius: 50%;
+        background: var(--colour-primary);
+      }
+      .notification-item p {
+        margin: var(--spacing-sm) 0;
+        color: var(--colour-text-secondary);
+        overflow-wrap: anywhere;
+      }
+      .notification-item__progress {
+        font-size: 0.875rem;
+      }
+      .notification-item__delayed {
+        color: var(--colour-warning-text) !important;
+      }
+      .notification-item__actions {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        margin-top: var(--spacing-md);
+      }
+      .notification-panel__empty {
+        margin: var(--spacing-md) 0 0;
+        color: var(--colour-text-secondary);
+      }
+      .notification-bell {
+        position: relative;
+        overflow: visible;
+      }
+      .notification-count {
+        position: absolute;
+        top: 0;
+        right: 0;
+        min-width: 1.25rem;
+        height: 1.25rem;
+        padding-inline: 0.25rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid var(--colour-toolbar);
+        border-radius: var(--radius-pill);
+        background: #b91c1c;
+        color: #ffffff;
+        font-size: 0.6875rem;
+        font-weight: 800;
+        line-height: 1;
+        transform: translate(25%, -20%);
+        pointer-events: none;
+      }
+
       @media (max-width: 767px) {
         mat-toolbar {
           padding-inline: 0.5rem;
@@ -640,6 +866,8 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
   ],
 })
 export class TopBarComponent implements OnInit, OnDestroy {
+  @ViewChild("notificationMenuTrigger")
+  private notificationMenuTrigger!: MatMenuTrigger;
   protected readonly searchFilterOptions = [
     { key: "keywords", label: "Entry text", icon: "notes" },
     { key: "tags", label: "Tags", icon: "label" },
@@ -667,6 +895,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   private fb = inject(FormBuilder);
   private sanitizer = inject(DomSanitizer);
   private readonly themeService = inject(ThemeService);
+  private readonly importJobService = inject(ImportJobService);
   private destroy$ = new Subject<void>();
 
   // Search History Properties
@@ -685,6 +914,9 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   versionLabel = APP_VERSION;
   readonly isDarkTheme = this.themeService.isDark;
+  readonly importJob$ = this.importJobService.job$;
+  readonly notifications$ = this.importJobService.notifications$;
+  readonly showUnreadOnly = signal(false);
 
   // Track search loading state
   isSearching = false;
@@ -721,6 +953,48 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   toggleTheme(): void {
     this.themeService.toggleTheme();
+  }
+
+  openImportPage(notification: AppNotification): void {
+    this.importJobService.markRead(notification.id);
+    this.notificationMenuTrigger.closeMenu();
+    void this.router.navigate(["/settings/import"]);
+  }
+
+  dismissImportNotification(notificationId: string): void {
+    this.importJobService.dismiss(notificationId);
+  }
+
+  markNotificationRead(notificationId: string): void {
+    this.importJobService.markRead(notificationId);
+  }
+
+  clearNotifications(): void {
+    this.importJobService.clearCompleted();
+  }
+
+  getUnreadCount(notifications: AppNotification[]): number {
+    return notifications.filter((notification) => notification.unread).length;
+  }
+
+  getUnreadBadgeLabel(notifications: AppNotification[]): string {
+    const count = this.getUnreadCount(notifications);
+    return count > 9 ? "9+" : String(count);
+  }
+
+  hasRunningImport(notifications: AppNotification[]): boolean {
+    return notifications.some(
+      (notification) =>
+        notification.status === "queued" || notification.status === "running",
+    );
+  }
+
+  getVisibleNotifications(
+    notifications: AppNotification[],
+  ): AppNotification[] {
+    return this.showUnreadOnly()
+      ? notifications.filter((notification) => notification.unread)
+      : notifications;
   }
 
   filterResults(): void {

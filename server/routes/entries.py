@@ -2144,6 +2144,73 @@ def get_bulk_delete_readiness():
     return jsonify(readiness), 200
 
 
+@entries_bp.route('/entries/delete-selected', methods=['POST'])
+@jwt_required()
+def delete_selected_entries():
+    """Delete an explicit, ownership-checked set of daily and dream entries."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json(silent=True) or {}
+    selected = data.get('entries', [])
+    if not isinstance(selected, list) or not selected:
+        return jsonify({'error': 'Select at least one entry to delete.'}), 400
+    if len(selected) > 500:
+        return jsonify({'error': 'Delete at most 500 entries at a time.'}), 400
+
+    normalised: list[tuple[str, int]] = []
+    seen: set[tuple[str, int]] = set()
+    for item in selected:
+        if not isinstance(item, dict) or item.get('type') not in {'daily', 'dream'}:
+            return jsonify({'error': 'Each selected entry needs a valid type and id.'}), 400
+        try:
+            key = (str(item['type']), int(item['id']))
+        except (KeyError, TypeError, ValueError):
+            return jsonify({'error': 'Each selected entry needs a valid type and id.'}), 400
+        if key[1] <= 0:
+            return jsonify({'error': 'Each selected entry needs a valid type and id.'}), 400
+        if key not in seen:
+            seen.add(key)
+            normalised.append(key)
+
+    conn = get_db()
+    storage_keys: list[str] = []
+    deleted = {'daily': 0, 'dream': 0}
+    try:
+        for entry_type, entry_id in normalised:
+            table_name = 'dailydiary_entries' if entry_type == 'daily' else 'dreamdiary_entries'
+            row = conn.execute(
+                f'SELECT image_storage_key FROM {table_name} WHERE id = ? AND user_id = ?',
+                (entry_id, user_id),
+            ).fetchone()
+            if not row:
+                continue
+            if row['image_storage_key']:
+                storage_keys.append(str(row['image_storage_key']))
+            storage_keys.extend(_delete_entry_assets(
+                conn,
+                user_id=user_id,
+                entry_type=entry_type,
+                entry_id=entry_id,
+            ))
+            deleted[entry_type] += conn.execute(
+                f'DELETE FROM {table_name} WHERE id = ? AND user_id = ?',
+                (entry_id, user_id),
+            ).rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
+    conn.close()
+
+    for storage_key in storage_keys:
+        delete_image(storage_key)
+    return jsonify({
+        'deleted_daily': deleted['daily'],
+        'deleted_dreams': deleted['dream'],
+        'deleted_total': deleted['daily'] + deleted['dream'],
+    }), 200
+
+
 @entries_bp.route('/entries/bulk-delete', methods=['POST'])
 @jwt_required()
 def bulk_delete_entries():
@@ -2250,7 +2317,11 @@ def search_entries():
     conn.close()
 
     results = []
-    term = query.lower()
+    query_terms = [
+        token.strip('"').lower()
+        for token in re.findall(r'"[^"]+"|\S+', query)
+        if token.strip('"').strip()
+    ]
 
     def field_enabled(field_name: str) -> bool:
         if include_all:
@@ -2276,45 +2347,64 @@ def search_entries():
         entry_date_iso = base_data.get('entry_date')
         title_plain = base_data.get('title_plain') or ''
 
+        searchable_fields = [title_plain]
+        if field_enabled('body'):
+            searchable_fields.append(text_body)
+        if field_enabled('tags'):
+            searchable_fields.append(tags_text)
+        if field_enabled('people'):
+            searchable_fields.append(people_text)
+        if field_enabled('ai'):
+            searchable_fields.append(ai_text)
+        date_strings = _format_date_strings(entry_date_obj) if field_enabled('date') and entry_date_obj else []
+        searchable_fields.extend(date_strings)
+        searchable_text = ' '.join(str(value).lower() for value in searchable_fields if value)
+        if not query_terms or not all(term in searchable_text for term in query_terms):
+            return
+
+        highlight_term = next(
+            (term for term in query_terms if term in title_plain.lower()),
+            query_terms[0],
+        )
+
         matches = {}
         matched = False
 
         # Check title match (always enabled as it's core content)
         if title_plain:
-            highlighted = _highlight_inline(title_plain, query)
+            highlighted = _highlight_inline(title_plain, highlight_term)
             if highlighted:
                 matches['title'] = highlighted
                 matched = True
 
         if field_enabled('body'):
-            highlighted = _highlight_text(text_body, query)
+            highlighted = _highlight_text(text_body, highlight_term)
             if highlighted:
                 matches['body'] = highlighted
                 matched = True
 
         if field_enabled('tags') and tags_text:
-            highlighted = _highlight_inline(tags_text, query)
+            highlighted = _highlight_inline(tags_text, highlight_term)
             if highlighted:
                 matches['tags'] = highlighted
                 matched = True
 
         if field_enabled('people') and people_text:
-            highlighted = _highlight_inline(people_text, query)
+            highlighted = _highlight_inline(people_text, highlight_term)
             if highlighted:
                 matches['people'] = highlighted
                 matched = True
 
         if field_enabled('ai') and ai_text:
-            highlighted = _highlight_text(ai_text, query)
+            highlighted = _highlight_text(ai_text, highlight_term)
             if highlighted:
                 matches['ai'] = highlighted
                 matched = True
 
         if field_enabled('date') and entry_date_obj:
-            date_strings = _format_date_strings(entry_date_obj)
             for date_str in date_strings:
-                if term in date_str.lower():
-                    matches['date'] = _highlight_inline(date_str, query) or escape(date_str)
+                if any(term in date_str.lower() for term in query_terms):
+                    matches['date'] = _highlight_inline(date_str, highlight_term) or escape(date_str)
                     matched = True
                     break
 
