@@ -64,7 +64,8 @@ and continue with any independent safe work.
 2. **Analyse**
    Read affected source, adjacent interfaces, configuration, and existing tests. For AI
    work inspect the route and `server/services/openai_svc.py`; for schema work inspect
-   runtime migrations and existing-database compatibility.
+   runtime migrations and existing-database compatibility. For every user-facing
+   frontend change, apply `.github/skills/enforce-platform-ux/SKILL.md` before planning.
 3. **Plan**
    State the batch outcome, issue boundaries, likely files, validation, and any item that
    requires a ruling. Prefer one plan per batch, not one plan per file.
@@ -74,6 +75,7 @@ and continue with any independent safe work.
 5. **Review**
    Inspect `git diff --stat` and the actual diff. Check scope, secrets, generated files,
    route/API contracts, existing databases, responsive states, and light/dark themes.
+   Repeat the `enforce-platform-ux` review gate for every user-facing frontend diff.
 6. **Validate**
    Run targeted checks during implementation and the applicable release-boundary checks
    before handoff. Do not claim lint, tests, or smoke coverage that did not run.
@@ -132,5 +134,6 @@ release-boundary commands.
 - `.github/skills/deliver-issue-batch/SKILL.md`
 - `.github/skills/validate-release-boundary/SKILL.md`
 - `.github/skills/reconcile-project-state/SKILL.md`
+- `.github/skills/enforce-platform-ux/SKILL.md`
 - `.github/skills/ui-inspect/SKILL.md`
 - `.github/skills/lint-and-analyse/SKILL.md`

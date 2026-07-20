@@ -10,6 +10,8 @@ description: Use when implementing one to three related AI Diary issues as a con
    Split unrelated issues rather than mixing their diffs.
 3. Inspect affected source, interfaces, and tests before planning. Identify existing-data,
    privacy, accessibility, responsive, and light/dark-mode implications.
+   For any user-facing frontend slice, apply `enforce-platform-ux` before planning and
+   repeat its review gate before validation.
 4. State one batch plan with vertical slices, expected files, checks, and rulings needed.
 5. Implement each slice completely. Add regression tests alongside behavioural changes.
 6. Review the diff after each slice. Commit separately only when commits are authorised.
@@ -19,4 +21,3 @@ description: Use when implementing one to three related AI Diary issues as a con
 
 Do not pause for routine code choices. Escalate only under the authority rules in
 `AGENTS.md`. Do not leave one issue half-built merely to begin another.
-
