@@ -33,3 +33,15 @@ The manifest carries this contract in machine-readable form. Import reports pack
 version differences, unexpected workbook columns, missing packaged media, and declared
 omissions in its user-facing warning list. Older packages without the portability section
 remain supported.
+
+## External import adapters
+
+External sources map into the same normalised import payload before duplicate review and
+database insertion. The adapter registry in `server/services/import_adapters.py` isolates
+provider-specific parsing from the core import flow.
+
+Daylio CSV is the first adapter. It preserves entry date/time, note title, note, mood, and
+activities; activities become searchable tags. Header aliases are tolerated because Daylio
+does not publish a versioned CSV schema. Proprietary `.daylio` backup files are not accepted.
+Future providers implement the same adapter protocol and register without changing staged
+import, duplicate review, or history handling.

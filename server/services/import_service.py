@@ -19,6 +19,7 @@ from services.nltk_enrichment import (
     derive_dream_nltk_fields as _runtime_derive_dream_nltk_fields,
 )
 from services.media_storage import store_entry_asset, store_imported_image
+from services.import_adapters import get_import_adapter
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -97,7 +98,13 @@ PORTABILITY_CONTRACT = {
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-def validate_file(filename: str, content_type: str, file_size: int) -> list[str]:
+def validate_file(
+    filename: str,
+    content_type: str,
+    file_size: int,
+    *,
+    source: str = 'aidiary',
+) -> list[str]:
     """Return a list of human-readable error strings; empty means valid."""
     errors: list[str] = []
     if not filename:
@@ -105,14 +112,20 @@ def validate_file(filename: str, content_type: str, file_size: int) -> list[str]
         return errors
 
     ext = _file_extension(filename)
-    if ext not in ALLOWED_EXTENSIONS:
+    adapter = get_import_adapter(source) if source != 'aidiary' else None
+    allowed_extensions = adapter.extensions if adapter else ALLOWED_EXTENSIONS
+    allowed_mime_types = adapter.mime_types if adapter else ALLOWED_MIME_TYPES
+    if source != 'aidiary' and not adapter:
+        errors.append(f'Unsupported import source "{source}".')
+        return errors
+    if ext not in allowed_extensions:
         errors.append(
-            f'Invalid file type "{ext}". Only .xlsx spreadsheets or .zip export packages are accepted.'
+            f'Invalid file type "{ext}" for {source} import.'
         )
 
-    if content_type and content_type not in ALLOWED_MIME_TYPES:
+    if content_type and content_type not in allowed_mime_types:
         errors.append(
-            f'Invalid content type "{content_type}". Please upload an .xlsx spreadsheet or .zip export package.'
+            f'Invalid content type "{content_type}" for {source} import.'
         )
 
     if file_size > MAX_FILE_SIZE_BYTES:
@@ -412,7 +425,15 @@ def _attach_package_asset_metadata(
             row['import_attachment_files'] = staged_attachments
 
 
-def parse_import_file(file_bytes: bytes, *, filename: str) -> dict:
+def parse_import_file(
+    file_bytes: bytes,
+    *,
+    filename: str,
+    source: str = 'aidiary',
+) -> dict:
+    adapter = get_import_adapter(source) if source != 'aidiary' else None
+    if adapter:
+        return adapter.parse(file_bytes, filename=filename)
     extension = _file_extension(filename)
     if extension == '.zip':
         return parse_import_package(file_bytes)
@@ -1064,8 +1085,8 @@ def _insert_daily_import_row(
     cursor.execute(
         '''INSERT INTO dailydiary_entries
            (user_id, import_id, entry_date, entry_time, entry_number, title, user_message,
-            ai_response, daily_people_names, daily_places, tags)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            ai_response, daily_people_names, daily_places, tags, mood)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             user_id,
             import_id,
@@ -1078,6 +1099,7 @@ def _insert_daily_import_row(
             derived_fields['daily_people_names'],
             derived_fields['daily_places'],
             tags,
+            row.get('mood', ''),
         ),
     )
     entry_id = int(cursor.lastrowid)

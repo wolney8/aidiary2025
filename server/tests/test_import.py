@@ -51,6 +51,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             daily_people_names TEXT,
             daily_places TEXT,
             tags TEXT,
+            mood TEXT,
             image_prompt TEXT,
             recycled_image_prompt TEXT,
             image_url TEXT,
@@ -90,6 +91,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             dream_people_names TEXT,
             dream_places TEXT,
             tags TEXT,
+            mood TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
@@ -252,12 +254,16 @@ def _tiny_png_bytes() -> bytes:
 
 
 def _upload(client, token: str, file_bytes: bytes, filename='test.xlsx',
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            source='aidiary'):
     """POST multipart file to /api/import/upload."""
     return client.post(
         '/api/import/upload',
         headers={'Authorization': f'Bearer {token}'},
-        data={'file': (io.BytesIO(file_bytes), filename, content_type)},
+        data={
+            'file': (io.BytesIO(file_bytes), filename, content_type),
+            'source': source,
+        },
         content_type='multipart/form-data',
     )
 
@@ -374,6 +380,86 @@ class TestFileValidation:
 # ---------------------------------------------------------------------------
 
 class TestSuccessfulImport:
+    def test_daylio_csv_import_maps_note_mood_activities_and_time(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,date,weekday,time,mood,activities,note_title,note\n'
+            '2026-07-19,19 July 2026,Sunday,8:35 PM,good,walk|friends,Evening walk,Had a calm evening.\n'
+        ).encode()
+
+        resp = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_daily'] == 1
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            '''SELECT entry_date, entry_time, title, user_message, mood, tags, import_id
+               FROM dailydiary_entries WHERE title = ?''',
+            ('Evening walk',),
+        ).fetchone()
+        conn.close()
+        assert row['entry_date'] == '2026-07-19'
+        assert row['entry_time'] == '20:35'
+        assert row['user_message'] == 'Had a calm evening.'
+        assert row['mood'] == 'good'
+        assert {'walk', 'friends'}.issubset(set(row['tags'].split(',')))
+        assert row['import_id'] == data['import_id']
+
+    def test_daylio_csv_rejects_missing_date_header(self, client):
+        token = _register_and_login(client)
+        resp = _upload(
+            client,
+            token,
+            b'mood,note\ngood,No date\n',
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        assert resp.status_code == 422
+        assert 'date' in ' '.join(json.loads(resp.data)['errors']).lower()
+
+    def test_daylio_source_rejects_proprietary_backup(self, client):
+        token = _register_and_login(client)
+        resp = _upload(
+            client,
+            token,
+            b'proprietary backup',
+            filename='backup.daylio',
+            content_type='application/octet-stream',
+            source='daylio',
+        )
+        assert resp.status_code == 422
+
+    def test_daylio_duplicate_uses_staged_review(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,time,mood,activities,note_title,note\n'
+            '2026-07-18,19:10,good,reading,Quiet night,Read a book.\n'
+        ).encode()
+        upload_args = {
+            'filename': 'daylio_export.csv',
+            'content_type': 'text/csv',
+            'source': 'daylio',
+        }
+
+        first = _upload(client, token, csv_bytes, **upload_args)
+        second = _upload(client, token, csv_bytes, **upload_args)
+
+        assert first.status_code == 200
+        second_data = json.loads(second.data)
+        assert second_data['status'] == 'review_required'
+        assert second_data['summary']['duplicate_daily'] == 1
+        assert second_data['import_session_id']
+
     def test_daily_entries_inserted(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx(daily_rows=[

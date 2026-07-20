@@ -58,6 +58,8 @@ export interface UploadProgress {
   total: number;
 }
 
+export type ImportSource = "aidiary" | "daylio";
+
 export interface ExportFilters {
   fromDate?: string;
   toDate?: string;
@@ -228,6 +230,7 @@ export class ImportService {
    */
   uploadFile(
     file: File,
+    source: ImportSource = "aidiary",
   ): Observable<
     | { type: "progress"; progress: UploadProgress }
     | { type: "result"; result: ImportResult }
@@ -235,6 +238,7 @@ export class ImportService {
     const headers = this.getAuthHeaders();
     const formData = new FormData();
     formData.append("file", file, file.name);
+    formData.append("source", source);
 
     return this.requestWithPortFallback((baseUrl) =>
       this.http
@@ -380,17 +384,24 @@ export class ImportService {
   }
 
   /** Client-side validation — returns an error string or null if valid. */
-  validateFile(file: File): string | null {
+  validateFile(file: File, source: ImportSource = "aidiary"): string | null {
     const extension = `.${file.name.split(".").pop()?.toLowerCase()}`;
+    const allowedExtensions = source === "daylio" ? [".csv"] : this.allowedExtensions;
+    const allowedMimeTypes =
+      source === "daylio"
+        ? ["text/csv", "application/csv", "text/plain", "application/vnd.ms-excel"]
+        : this.allowedMimeTypes;
 
-    if (!this.allowedExtensions.includes(extension)) {
-      return `Invalid file type. Only Excel files (.xlsx) or export packages (.zip) are accepted.`;
+    if (!allowedExtensions.includes(extension)) {
+      return source === "daylio"
+        ? "Invalid file type. Choose a Daylio CSV export, not a .daylio backup."
+        : "Invalid file type. Only Excel files (.xlsx) or export packages (.zip) are accepted.";
     }
 
-    if (!this.allowedMimeTypes.includes(file.type) && file.type !== "") {
+    if (!allowedMimeTypes.includes(file.type) && file.type !== "") {
       // Some browsers report empty MIME type for Excel — allow it if extension is correct
       if (file.type !== "") {
-        return `Invalid file type. Only Excel files (.xlsx) or export packages (.zip) are accepted.`;
+        return `Invalid file type for ${source === "daylio" ? "Daylio CSV" : "AI Diary"} import.`;
       }
     }
 

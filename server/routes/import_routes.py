@@ -139,18 +139,24 @@ def upload_import():
     file_size = len(file_bytes)
     filename = uploaded_file.filename
     content_type = uploaded_file.content_type or ''
+    source = str(request.form.get('source') or 'aidiary').strip().lower()
 
     # --- Structural validation ---
-    errors = validate_file(filename, content_type, file_size)
+    errors = validate_file(filename, content_type, file_size, source=source)
     if errors:
         return jsonify({'status': 'error', 'errors': errors}), 422
 
     # --- Parse workbook / package ---
     try:
-        parsed = parse_import_file(file_bytes, filename=filename)
+        parsed = parse_import_file(file_bytes, filename=filename, source=source)
     except ValueError as exc:
-        current_app.logger.warning('Excel parse error for user %s: %s', user_id, exc)
-        return jsonify({'status': 'error', 'errors': ['The file could not be parsed. Please ensure it is a valid .xlsx workbook or .zip export package.']}), 422
+        current_app.logger.warning('Import parse error for user %s: %s', user_id, exc)
+        message = (
+            str(exc)
+            if source != 'aidiary'
+            else 'The file could not be parsed. Please ensure it is a valid .xlsx workbook or .zip export package.'
+        )
+        return jsonify({'status': 'error', 'errors': [message]}), 422
     except RuntimeError as exc:
         # pandas / openpyxl not installed
         current_app.logger.error('Import dependency missing: %s', exc)

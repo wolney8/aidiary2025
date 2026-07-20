@@ -19,11 +19,13 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { MatTableModule } from "@angular/material/table";
 import { MatTooltipModule } from "@angular/material/tooltip";
+import { MatButtonToggleModule } from "@angular/material/button-toggle";
 import { filter } from "rxjs/operators";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import {
   type ImportHistoryItem,
   type ImportResult,
+  type ImportSource,
   ImportService,
   type UploadProgress,
 } from "../../core/services/import.service";
@@ -53,6 +55,7 @@ type UploadState =
     MatChipsModule,
     MatTooltipModule,
     MatDividerModule,
+    MatButtonToggleModule,
   ],
   animations: [
     trigger("fadeSlideIn", [
@@ -76,15 +79,44 @@ type UploadState =
     <input
       #fileInput
       type="file"
-      accept=".xlsx,.zip"
+      [accept]="acceptedFileTypes"
       class="sr-only"
       aria-hidden="true"
       (change)="onFileSelected($event)"
     />
 
     <div class="import-container" role="main" aria-label="Import entries">
+      <mat-card class="step-card source-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar class="step-icon">move_to_inbox</mat-icon>
+          <mat-card-title>Choose import source</mat-card-title>
+          <mat-card-subtitle>Select the format that created your file.</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <mat-button-toggle-group
+            class="source-toggle"
+            [value]="importSource"
+            [disabled]="
+              uploadState === 'uploading' ||
+              uploadState === 'processing' ||
+              uploadState === 'review' ||
+              isCommittingReview
+            "
+            aria-label="Import source"
+            (change)="changeImportSource($event.value)"
+          >
+            <mat-button-toggle value="aidiary">AI Diary</mat-button-toggle>
+            <mat-button-toggle value="daylio">Daylio CSV</mat-button-toggle>
+          </mat-button-toggle-group>
+          <p class="hint-text" *ngIf="importSource === 'daylio'">
+            Use Daylio's readable CSV export. Proprietary .daylio backup files
+            cannot be imported.
+          </p>
+        </mat-card-content>
+      </mat-card>
+
       <!-- ── Step 1: Download Template ── -->
-      <mat-card class="step-card">
+      <mat-card class="step-card" *ngIf="importSource === 'aidiary'">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">download</mat-icon>
           <mat-card-title>Step 1 — Download Template</mat-card-title>
@@ -129,10 +161,9 @@ type UploadState =
       <mat-card class="step-card">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">upload_file</mat-icon>
-          <mat-card-title>Step 2 — Upload Completed Template</mat-card-title>
+          <mat-card-title>{{ uploadCardTitle }}</mat-card-title>
           <mat-card-subtitle>
-            Select your completed workbook or export package (.xlsx or
-            .zip, max 50 MB).
+            {{ uploadSourceDescription }}
           </mat-card-subtitle>
         </mat-card-header>
 
@@ -145,7 +176,7 @@ type UploadState =
             [class.drop-zone--dragging]="isDragging"
             role="button"
             tabindex="0"
-            aria-label="Choose a workbook or export package for import"
+            [attr.aria-label]="filePickerLabel"
             [attr.aria-describedby]="validationError ? validationErrorId : null"
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
@@ -161,7 +192,7 @@ type UploadState =
             <ng-container *ngIf="!selectedFile; else fileSelected">
               <p class="drop-primary">Click to choose a file</p>
               <p class="drop-secondary">
-                Accepts .xlsx and .zip — maximum 50 MB
+                {{ acceptedFileDescription }}
               </p>
             </ng-container>
 
@@ -918,6 +949,11 @@ type UploadState =
         justify-content: flex-end;
       }
 
+      .source-toggle {
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+      }
+
       /* ── History ── */
       .history-loading {
         padding: 8px 0;
@@ -1028,6 +1064,35 @@ export class ImportComponent implements OnInit {
   isDragging = false;
   validationError: string | null = null;
   readonly validationErrorId = "import-validation-error";
+  importSource: ImportSource = "aidiary";
+
+  get acceptedFileTypes(): string {
+    return this.importSource === "daylio" ? ".csv" : ".xlsx,.zip";
+  }
+
+  get acceptedFileDescription(): string {
+    return this.importSource === "daylio"
+      ? "Accepts Daylio .csv - maximum 50 MB"
+      : "Accepts .xlsx and .zip - maximum 50 MB";
+  }
+
+  get uploadSourceDescription(): string {
+    return this.importSource === "daylio"
+      ? "Select a Daylio CSV export (max 50 MB)."
+      : "Select your completed workbook or export package (.xlsx or .zip, max 50 MB).";
+  }
+
+  get uploadCardTitle(): string {
+    return this.importSource === "daylio"
+      ? "Import Daylio entries"
+      : "Step 2 - Upload completed template";
+  }
+
+  get filePickerLabel(): string {
+    return this.importSource === "daylio"
+      ? "Choose a Daylio CSV export for import"
+      : "Choose a workbook or export package for import";
+  }
 
   // Upload state
   uploadState: UploadState = "idle";
@@ -1147,7 +1212,7 @@ export class ImportComponent implements OnInit {
     this.selectedDuplicateRowIds.clear();
 
     this.importService
-      .uploadFile(this.selectedFile)
+      .uploadFile(this.selectedFile, this.importSource)
       .pipe(filter((event) => event !== null && event !== undefined))
       .subscribe({
         next: (event) => {
@@ -1292,7 +1357,7 @@ export class ImportComponent implements OnInit {
       return;
     }
     this.selectedFile = file;
-    this.validationError = this.importService.validateFile(file);
+    this.validationError = this.importService.validateFile(file, this.importSource);
 
     // Reset any previous result when a new file is chosen
     this.resetImportFeedback();
@@ -1300,6 +1365,17 @@ export class ImportComponent implements OnInit {
 
   getDuplicateCount(result: ImportResult): number {
     return (result.duplicate_entries?.length ?? 0) || 0;
+  }
+
+  async changeImportSource(source: ImportSource): Promise<void> {
+    if (source === this.importSource) {
+      return;
+    }
+    if (!(await this.confirmResetPendingReview())) {
+      return;
+    }
+    this.importSource = source;
+    this.resetImportState();
   }
 
   openDuplicateReview(): void {
