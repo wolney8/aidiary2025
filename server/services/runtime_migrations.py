@@ -88,6 +88,31 @@ CREATE TABLE IF NOT EXISTS import_sessions (
 )
 """
 
+_IMPORT_JOBS_DDL = """
+CREATE TABLE IF NOT EXISTS import_jobs (
+    id                TEXT PRIMARY KEY,
+    user_id           INTEGER NOT NULL,
+    import_session_id TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'queued',
+    processed         INTEGER NOT NULL DEFAULT 0,
+    total             INTEGER NOT NULL DEFAULT 0,
+    percent           INTEGER NOT NULL DEFAULT 0,
+    message           TEXT NOT NULL DEFAULT '',
+    error             TEXT,
+    request_json      TEXT NOT NULL DEFAULT '{}',
+    result_json       TEXT,
+    import_id         INTEGER,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    started_at        TEXT,
+    completed_at      TEXT,
+    attempt_count     INTEGER NOT NULL DEFAULT 0,
+    worker_token      TEXT,
+    lease_expires_at  TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)
+"""
+
 _ENTRY_ASSETS_DDL = """
 CREATE TABLE IF NOT EXISTS entry_assets (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,6 +312,32 @@ def ensure_import_sessions_table(
     if log:
         log('Runtime migration ensured table exists: %s', 'import_sessions')
 
+    return True
+
+
+def ensure_import_jobs_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure durable background import jobs survive process restarts."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_IMPORT_JOBS_DDL)
+        columns = {
+            row[1] for row in conn.execute('PRAGMA table_info(import_jobs)').fetchall()
+        }
+        if 'worker_token' not in columns:
+            conn.execute('ALTER TABLE import_jobs ADD COLUMN worker_token TEXT')
+        if 'lease_expires_at' not in columns:
+            conn.execute('ALTER TABLE import_jobs ADD COLUMN lease_expires_at TEXT')
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_import_jobs_user_status
+            ON import_jobs(user_id, status, updated_at)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'import_jobs')
     return True
 
 

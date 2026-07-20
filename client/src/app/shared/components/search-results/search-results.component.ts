@@ -17,6 +17,7 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
+import { MatCheckboxModule } from "@angular/material/checkbox";
 import {
   trigger,
   state,
@@ -26,6 +27,8 @@ import {
 } from "@angular/animations";
 import { DomSanitizer, SafeHtml } from "@angular/platform-browser";
 import { Subscription } from "rxjs";
+import { EntriesService } from "../../../core/services/entries.service";
+import { AppDialogService } from "../../../core/services/app-dialog.service";
 
 @Component({
   selector: "app-search-results",
@@ -38,6 +41,7 @@ import { Subscription } from "rxjs";
     MatButtonModule,
     MatProgressSpinnerModule,
     MatPaginatorModule,
+    MatCheckboxModule,
   ],
   animations: [
     trigger("slideInOut", [
@@ -215,6 +219,31 @@ import { Subscription } from "rxjs";
 
       <!-- Top Pagination (matching entries list exactly) -->
       <div
+        class="selection-toolbar"
+        *ngIf="!searchState.loading && searchState.results.length > 0"
+        role="toolbar"
+        aria-label="Select and delete matching entries"
+      >
+        <button mat-stroked-button type="button" (click)="toggleCurrentPageSelection()">
+          <mat-icon>{{ isCurrentPageSelected() ? "deselect" : "select_all" }}</mat-icon>
+          {{ isCurrentPageSelected() ? "Clear this page" : "Select this page" }}
+        </button>
+        <span class="selection-count" aria-live="polite">
+          {{ selectedEntries.size }} selected
+        </span>
+        <button
+          mat-raised-button
+          class="delete-selected-button"
+          type="button"
+          [disabled]="selectedEntries.size === 0 || deletingSelected"
+          (click)="deleteSelected(searchState)"
+        >
+          <mat-icon>delete</mat-icon>
+          {{ deletingSelected ? "Deleting…" : "Delete selected" }}
+        </button>
+      </div>
+
+      <div
         class="pagination-container"
         *ngIf="
           !searchState.loading &&
@@ -249,6 +278,13 @@ import { Subscription } from "rxjs";
           class="result-container"
           [attr.data-card-id]="result.id"
         >
+          <mat-checkbox
+            class="result-selector"
+            [checked]="isSelected(result)"
+            (click)="$event.stopPropagation()"
+            (change)="setSelected(result, $event.checked)"
+            [aria-label]="'Select ' + result.title"
+          ></mat-checkbox>
           <!-- Main Card View (Fixed Size) -->
           <mat-card
             class="entry-card"
@@ -747,6 +783,40 @@ import { Subscription } from "rxjs";
         gap: 16px;
         position: relative; /* Allow expanded cards to position relative to grid */
       }
+      .selection-toolbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        margin-block: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface);
+      }
+      .selection-count {
+        color: var(--colour-text-secondary);
+      }
+      .delete-selected-button {
+        margin-left: auto;
+        background: var(--colour-danger-bg);
+        color: var(--colour-danger-text);
+        border-radius: var(--radius-pill);
+      }
+      .delete-selected-button:disabled {
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        opacity: 0.62;
+      }
+      .result-container {
+        position: relative;
+      }
+      .result-selector {
+        position: absolute;
+        z-index: 3;
+        top: var(--spacing-sm);
+        right: var(--spacing-sm);
+      }
 
       .result-container {
         display: flex;
@@ -1145,6 +1215,8 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly elementRef = inject(ElementRef);
+  private readonly entriesService = inject(EntriesService);
+  private readonly appDialog = inject(AppDialogService);
   protected readonly results$ = this.searchService.results$;
   private expandedId: number | null = null;
   protected isRetrying = false;
@@ -1154,11 +1226,18 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   protected pageSize = 8; // 2 rows of 4 cards - default from entries
   protected currentPage = 0;
   protected paginatedResults: SearchResult[] = [];
+  protected selectedEntries = new Map<string, SearchResult>();
+  protected deletingSelected = false;
+  private selectionSearchKey = "";
 
   ngOnInit(): void {
     // Subscribe to search state changes and update pagination
     this.searchSubscription = this.results$.subscribe((searchState) => {
-      console.log("Search results component received state:", searchState);
+      const searchKey = `${searchState.query}|${searchState.filters.join(",")}`;
+      if (this.selectionSearchKey && searchKey !== this.selectionSearchKey) {
+        this.selectedEntries.clear();
+      }
+      this.selectionSearchKey = searchKey;
       if (searchState.results && searchState.results.length > 0) {
         // Reset to first page when new search results arrive
         // (We'll always reset pagination for new searches to avoid complexity)
@@ -1555,5 +1634,66 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   resetPagination(): void {
     this.currentPage = 0;
     this.updatePaginatedResults();
+  }
+
+  private selectionKey(result: SearchResult): string {
+    return `${result.type}:${result.id}`;
+  }
+
+  protected isSelected(result: SearchResult): boolean {
+    return this.selectedEntries.has(this.selectionKey(result));
+  }
+
+  protected setSelected(result: SearchResult, selected: boolean): void {
+    const key = this.selectionKey(result);
+    if (selected) this.selectedEntries.set(key, result);
+    else this.selectedEntries.delete(key);
+  }
+
+  protected isCurrentPageSelected(): boolean {
+    return this.paginatedResults.length > 0 && this.paginatedResults.every((item) => this.isSelected(item));
+  }
+
+  protected toggleCurrentPageSelection(): void {
+    const selected = !this.isCurrentPageSelected();
+    this.paginatedResults.forEach((item) => this.setSelected(item, selected));
+  }
+
+  protected async deleteSelected(searchState: SearchState): Promise<void> {
+    const count = this.selectedEntries.size;
+    if (!count || this.deletingSelected) return;
+    const confirmed = await this.appDialog.confirm({
+      title: `Delete ${count} selected ${count === 1 ? "entry" : "entries"}?`,
+      message: "This permanently deletes the selected entries and their images and attachments.",
+      confirmText: "Delete selected",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    this.deletingSelected = true;
+    const entries = Array.from(this.selectedEntries.values()).map(({ id, type }) => ({ id, type }));
+    this.entriesService.deleteSelectedEntries(entries).subscribe({
+      next: () => {
+        this.selectedEntries.clear();
+        this.deletingSelected = false;
+        const filters = {
+          tags: searchState.filters.includes("tags"),
+          date: searchState.filters.includes("date"),
+          keywords: searchState.filters.includes("keywords"),
+          people: searchState.filters.includes("people"),
+        };
+        this.searchService.search(searchState.query, filters).subscribe();
+      },
+      error: (error: Error) => {
+        this.deletingSelected = false;
+        void this.appDialog.alert({
+          title: "Entries could not be deleted",
+          message: error.message || "Please try again.",
+          confirmText: "Close",
+          variant: "error",
+        });
+      },
+    });
   }
 }

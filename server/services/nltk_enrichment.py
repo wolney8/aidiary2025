@@ -27,7 +27,12 @@ def merge_csv_values(*raw_values: str, limit: int = 20) -> str:
     return ",".join(ordered[:limit])
 
 
-def derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
+def derive_daily_nltk_fields(
+    title: str,
+    user_message: str,
+    *,
+    excluded_terms: set[str] | None = None,
+) -> dict[str, str]:
     text = f"{title} {user_message}".strip()
     if not text:
         return {
@@ -57,7 +62,12 @@ def derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
         except LookupError:
             stop_words = set()
 
-        tag_blocklist = {"example", "diary", "entry", "daily", "dream"}
+        excluded = {
+            term.strip().lower()
+            for term in (excluded_terms or set())
+            if term and term.strip()
+        }
+        tag_blocklist = {"example", "diary", "entry", "daily", "dream", *excluded}
         entity_blocklist = {
             "example",
             "diary",
@@ -84,8 +94,22 @@ def derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
             "nice",
             "productive",
             "wonderful",
+            "feeling",
+            "feelings",
+            "mood",
+            "emotion",
+            "emotions",
+            "dinner",
+            "invitation",
+            "appointment",
+            "meeting",
+            "activity",
+            "activities",
+            "breakfast",
+            "lunch",
             "progress",
             "flying",
+            *excluded,
         }
 
         tokens = word_tokenize(text)
@@ -115,6 +139,8 @@ def derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
             if label == "PERSON":
                 entity_lower = entity.lower()
                 entity_words = entity_lower.split()
+                if any(word in excluded for word in entity_words):
+                    continue
                 if all(
                     word in stop_words or word in entity_blocklist
                     for word in entity_words
@@ -130,6 +156,12 @@ def derive_daily_nltk_fields(title: str, user_message: str) -> dict[str, str]:
                 people_names.append(entity)
                 tags.append(entity.lower().replace(" ", "_"))
             elif label in {"GPE", "LOCATION", "FACILITY"}:
+                entity_words = entity.lower().split()
+                if any(
+                    word in excluded or word in entity_blocklist
+                    for word in entity_words
+                ):
+                    continue
                 places.append(entity)
                 tags.append(entity.lower().replace(" ", "_"))
     except (LookupError, ValueError, TypeError):

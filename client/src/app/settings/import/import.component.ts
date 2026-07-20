@@ -2,14 +2,17 @@
 
 import { animate, style, transition, trigger } from "@angular/animations";
 import { CommonModule } from "@angular/common";
+import { A11yModule } from "@angular/cdk/a11y";
 import {
   Component,
+  DestroyRef,
   type ElementRef,
   HostListener,
   inject,
   type OnInit,
   ViewChild,
 } from "@angular/core";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import { MatCheckboxModule } from "@angular/material/checkbox";
@@ -17,13 +20,17 @@ import { MatChipsModule } from "@angular/material/chips";
 import { MatDividerModule } from "@angular/material/divider";
 import { MatIconModule } from "@angular/material/icon";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
+import { MatSelectModule } from "@angular/material/select";
 import { MatTableModule } from "@angular/material/table";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { filter } from "rxjs/operators";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import { ImportJobService } from "../../core/services/import-job.service";
 import {
   type ImportHistoryItem,
   type ImportResult,
+  type ImportReviewEntry,
+  type ImportSource,
   ImportService,
   type UploadProgress,
 } from "../../core/services/import.service";
@@ -44,11 +51,13 @@ type UploadState =
   standalone: true,
   imports: [
     CommonModule,
+    A11yModule,
     MatCardModule,
     MatButtonModule,
     MatCheckboxModule,
     MatIconModule,
     MatProgressBarModule,
+    MatSelectModule,
     MatTableModule,
     MatChipsModule,
     MatTooltipModule,
@@ -76,15 +85,64 @@ type UploadState =
     <input
       #fileInput
       type="file"
-      accept=".xlsx,.zip"
+      [accept]="acceptedFileTypes"
       class="sr-only"
       aria-hidden="true"
       (change)="onFileSelected($event)"
     />
 
     <div class="import-container" role="main" aria-label="Import entries">
+      <mat-card class="step-card source-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar class="step-icon">move_to_inbox</mat-icon>
+          <mat-card-title>Choose your import source</mat-card-title>
+          <mat-card-subtitle>Select the format that created your file.</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="source-options" aria-label="Import source">
+            <button
+              type="button"
+              class="source-option"
+              [class.source-option--selected]="importSource === 'aidiary'"
+              [attr.aria-pressed]="importSource === 'aidiary'"
+              [disabled]="isImportSourceLocked()"
+              (click)="changeImportSource('aidiary')"
+            >
+              <span class="source-option__icon" aria-hidden="true">
+                <mat-icon>description</mat-icon>
+              </span>
+              <span class="source-option__copy">
+                <strong>Internal XLSX</strong>
+              </span>
+              <mat-icon class="source-option__check" aria-hidden="true">
+                {{ importSource === "aidiary" ? "check_circle" : "radio_button_unchecked" }}
+              </mat-icon>
+            </button>
+
+            <button
+              type="button"
+              class="source-option"
+              [class.source-option--selected]="importSource === 'daylio'"
+              [attr.aria-pressed]="importSource === 'daylio'"
+              [disabled]="isImportSourceLocked()"
+              (click)="changeImportSource('daylio')"
+            >
+              <span class="source-option__icon" aria-hidden="true">
+                  <mat-icon>mood</mat-icon>
+              </span>
+              <span class="source-option__copy">
+                <strong>Daylio</strong>
+              </span>
+              <mat-icon class="source-option__check" aria-hidden="true">
+                {{ importSource === "daylio" ? "check_circle" : "radio_button_unchecked" }}
+              </mat-icon>
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       <!-- ── Step 1: Download Template ── -->
-      <mat-card class="step-card">
+      <mat-card class="step-card" *ngIf="importSource === 'aidiary'">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">download</mat-icon>
           <mat-card-title>Step 1 — Download Template</mat-card-title>
@@ -129,10 +187,9 @@ type UploadState =
       <mat-card class="step-card">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">upload_file</mat-icon>
-          <mat-card-title>Step 2 — Upload Completed Template</mat-card-title>
+          <mat-card-title>{{ uploadCardTitle }}</mat-card-title>
           <mat-card-subtitle>
-            Select your completed workbook or export package (.xlsx or
-            .zip, max 50 MB).
+            {{ uploadSourceDescription }}
           </mat-card-subtitle>
         </mat-card-header>
 
@@ -145,7 +202,7 @@ type UploadState =
             [class.drop-zone--dragging]="isDragging"
             role="button"
             tabindex="0"
-            aria-label="Choose a workbook or export package for import"
+            [attr.aria-label]="filePickerLabel"
             [attr.aria-describedby]="validationError ? validationErrorId : null"
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
@@ -161,7 +218,7 @@ type UploadState =
             <ng-container *ngIf="!selectedFile; else fileSelected">
               <p class="drop-primary">Click to choose a file</p>
               <p class="drop-secondary">
-                Accepts .xlsx and .zip — maximum 50 MB
+                {{ acceptedFileDescription }}
               </p>
             </ng-container>
 
@@ -214,18 +271,45 @@ type UploadState =
             </div>
           </div>
 
+          <ng-container *ngIf="importJob$ | async as job">
+            <div
+              *ngIf="job.status === 'queued' || job.status === 'running'"
+              class="background-import-progress"
+              role="status"
+              aria-live="polite"
+              [@fadeSlideIn]
+            >
+              <div class="processing-spinner" aria-hidden="true"></div>
+              <div class="background-import-progress__body">
+                <p class="feedback-title">Import running in the background</p>
+                <p>{{ job.message }}</p>
+                <mat-progress-bar
+                  mode="determinate"
+                  [value]="job.percent"
+                  aria-label="Background import progress"
+                ></mat-progress-bar>
+                <p class="background-import-progress__hint">
+                  You can continue browsing. Progress is available from the notification bell.
+                </p>
+                <p *ngIf="job.is_delayed" class="background-import-progress__warning">
+                  This is taking longer than expected. The import is still being monitored.
+                </p>
+              </div>
+            </div>
+          </ng-container>
+
           <!-- Result feedback — review required -->
           <div
             *ngIf="uploadState === 'review'"
-            class="feedback feedback--warning"
-            role="alert"
-            aria-live="assertive"
+            class="feedback feedback--success"
+            role="status"
+            aria-live="polite"
             [@fadeSlideIn]
           >
-            <mat-icon aria-hidden="true">rule</mat-icon>
+            <mat-icon aria-hidden="true">task_alt</mat-icon>
             <div class="feedback-body">
-              <p class="feedback-title">Duplicate review required</p>
-              <p>
+              <p class="feedback-title">File ready to review</p>
+              <p *ngIf="getDuplicateCount(importResult!) > 0">
                 {{ importResult!.ready_daily ?? 0 }} daily and
                 {{ importResult!.ready_dreams ?? 0 }} dream entries are ready to
                 import.
@@ -246,7 +330,11 @@ type UploadState =
                   (click)="openDuplicateReview()"
                 >
                   <mat-icon>table_view</mat-icon>
-                  Show duplicates
+                  Review entries
+                </button>
+                <button mat-button type="button" (click)="removePendingImport()">
+                  <mat-icon>delete_outline</mat-icon>
+                  Remove
                 </button>
               </div>
             </div>
@@ -357,7 +445,8 @@ type UploadState =
               !selectedFile ||
               uploadState === 'uploading' ||
               uploadState === 'processing' ||
-              isCommittingReview
+              isCommittingReview ||
+              isBackgroundImportActive
             "
             aria-label="Clear selected file"
           >
@@ -375,7 +464,8 @@ type UploadState =
               uploadState === 'uploading' ||
               uploadState === 'processing' ||
               uploadState === 'review' ||
-              isCommittingReview
+              isCommittingReview ||
+              isBackgroundImportActive
             "
             aria-label="Upload selected file and import entries"
           >
@@ -402,11 +492,14 @@ type UploadState =
           role="dialog"
           aria-modal="true"
           aria-labelledby="duplicate-review-title"
+          cdkTrapFocus
+          [cdkTrapFocusAutoCapture]="true"
+          (keydown.escape)="closeDuplicateReview()"
           (click)="$event.stopPropagation()"
         >
           <div class="duplicate-modal__header">
             <div>
-              <h3 id="duplicate-review-title">Review duplicate entries</h3>
+              <h3 id="duplicate-review-title">Review entries before import</h3>
               <p>
                 Nothing will be imported until you confirm this review.
               </p>
@@ -421,7 +514,21 @@ type UploadState =
             </button>
           </div>
 
-          <div class="duplicate-modal__table-wrapper">
+          <div #reviewTableWrapper class="duplicate-modal__table-wrapper">
+            <div class="review-selection-bar">
+              <button mat-stroked-button type="button" (click)="selectAllReviewEntries()">
+                Select all
+              </button>
+              <button mat-stroked-button type="button" (click)="clearReviewSelection()">
+                Clear all
+              </button>
+              <span>{{ selectedReviewRowIds.size }} of {{ importResult.review_entries?.length ?? 0 }} selected</span>
+            </div>
+            <div class="review-pagination review-pagination--top" *ngIf="reviewPageCount > 1">
+              <button mat-icon-button type="button" (click)="changeReviewPage(-1)" [disabled]="reviewPage === 0" aria-label="Previous review page"><mat-icon>chevron_left</mat-icon></button>
+              <span>Page {{ reviewPage + 1 }} of {{ reviewPageCount }}</span>
+              <button mat-icon-button type="button" (click)="changeReviewPage(1)" [disabled]="reviewPage + 1 >= reviewPageCount" aria-label="Next review page"><mat-icon>chevron_right</mat-icon></button>
+            </div>
             <table class="duplicate-table">
               <thead>
                 <tr>
@@ -433,43 +540,69 @@ type UploadState =
                 </tr>
               </thead>
               <tbody>
-                <tr *ngFor="let duplicate of importResult.duplicate_entries ?? []">
+                <tr *ngFor="let duplicate of paginatedReviewEntries">
                   <td>
                     <mat-checkbox
-                      [checked]="isDuplicateSelected(duplicate.row_id)"
-                      (change)="toggleDuplicateSelection(duplicate.row_id, $event.checked)"
-                      [aria-label]="'Include duplicate ' + duplicate.title"
+                      [checked]="isReviewEntrySelected(duplicate.row_id)"
+                      (change)="toggleReviewSelection(duplicate.row_id, $event.checked)"
+                      [aria-label]="'Include ' + duplicate.title"
                     ></mat-checkbox>
                   </td>
                   <td>{{ formatDuplicateDate(duplicate.entry_date) }}</td>
-                  <td>{{ duplicate.entry_type === "daily" ? "Daily" : "Dream" }}</td>
-                  <td>{{ duplicate.title }}</td>
+                  <td>
+                    <mat-select
+                      class="review-type-select"
+                      [value]="getReviewEntryType(duplicate)"
+                      (selectionChange)="setReviewEntryType(duplicate.row_id, $event.value)"
+                      [attr.aria-label]="'Entry type for ' + duplicate.title"
+                    >
+                      <mat-option value="daily">Daily entry</mat-option>
+                      <mat-option value="dream">Dream entry</mat-option>
+                    </mat-select>
+                    <span *ngIf="duplicate.is_duplicate" class="duplicate-label">Duplicate</span>
+                    <span *ngIf="duplicate.source_record_kind === 'mood_checkin'" class="mood-checkin-label">Mood check-in</span>
+                  </td>
+                  <td>
+                    <span class="review-title" [class]="'review-title mood-' + getMoodTone(duplicate.mood)">
+                      <mat-icon aria-hidden="true">{{ getMoodIcon(duplicate.mood) }}</mat-icon>
+                      {{ duplicate.title }}
+                    </span>
+                  </td>
                   <td>{{ duplicate.content_preview || "—" }}</td>
                 </tr>
               </tbody>
             </table>
+            <div class="review-pagination" *ngIf="reviewPageCount > 1">
+              <button mat-icon-button type="button" (click)="changeReviewPage(-1)" [disabled]="reviewPage === 0" aria-label="Previous review page"><mat-icon>chevron_left</mat-icon></button>
+              <span>Page {{ reviewPage + 1 }} of {{ reviewPageCount }}</span>
+              <button mat-icon-button type="button" (click)="changeReviewPage(1)" [disabled]="reviewPage + 1 >= reviewPageCount" aria-label="Next review page"><mat-icon>chevron_right</mat-icon></button>
+              <button mat-stroked-button type="button" (click)="scrollReviewToTop()">
+                <mat-icon>vertical_align_top</mat-icon>
+                Back to top
+              </button>
+            </div>
           </div>
 
           <div class="duplicate-modal__footer">
             <button
               mat-stroked-button
               type="button"
-              (click)="commitReviewedImport(false)"
+              (click)="closeDuplicateReview()"
               [disabled]="isCommittingReview"
             >
-              Accept and import without duplicates
+              Continue reviewing later
             </button>
             <button
               mat-raised-button
-              color="warn"
+              class="commit-import-action"
               type="button"
-              (click)="commitReviewedImport(true)"
-              [disabled]="isCommittingReview"
+              (click)="commitReviewedImport()"
+              [disabled]="isCommittingReview || selectedReviewRowIds.size === 0"
             >
               {{
                 isCommittingReview
                   ? "Importing…"
-                  : "Accept and import with " + selectedDuplicateRowIds.size + " duplicates"
+                  : "Import " + selectedReviewRowIds.size + " selected entries"
               }}
             </button>
           </div>
@@ -580,6 +713,23 @@ type UploadState =
                     }}</mat-icon>
                     {{ statusLabel(row.status) }}
                   </span>
+                </td>
+              </ng-container>
+
+              <ng-container matColumnDef="actions">
+                <th mat-header-cell *matHeaderCellDef scope="col">Actions</th>
+                <td mat-cell *matCellDef="let row">
+                  <button
+                    mat-stroked-button
+                    class="destructive-action"
+                    type="button"
+                    *ngIf="row.status !== 'reverted' && row.imported_count > 0"
+                    [disabled]="revertingImportId === row.id"
+                    (click)="revertImport(row)"
+                  >
+                    <mat-icon>undo</mat-icon>
+                    {{ revertingImportId === row.id ? "Reverting…" : "Revert import" }}
+                  </button>
                 </td>
               </ng-container>
 
@@ -793,23 +943,24 @@ type UploadState =
       }
 
       .feedback--success {
-        background: #e8f5e9;
-        color: #1b5e20;
+        background: var(--colour-success-bg);
+        color: var(--colour-success-text);
       }
 
       .feedback--warning {
-        background: #fff8e1;
-        color: #6d4c10;
+        background: var(--colour-warning-bg);
+        color: var(--colour-warning-text);
+        border: 1px solid color-mix(in srgb, var(--colour-warning-text) 35%, transparent);
       }
 
       .feedback--error {
-        background: #ffebee;
-        color: #b71c1c;
+        background: var(--colour-danger-bg);
+        color: var(--colour-danger-text);
       }
 
       .feedback--info {
-        background: #e3f2fd;
-        color: #0d47a1;
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
       }
 
       .feedback-body {
@@ -832,7 +983,7 @@ type UploadState =
       .duplicate-modal-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.52);
+        background: var(--colour-overlay);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -846,16 +997,17 @@ type UploadState =
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        background: #fffef8;
+        background: var(--colour-surface-elevated);
+        color: var(--colour-text-primary);
         border-radius: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
+        border: 1px solid var(--colour-border);
         box-shadow: 0 28px 60px rgba(15, 23, 42, 0.24);
       }
 
       .duplicate-modal__header,
       .duplicate-modal__footer {
         padding: 18px 20px;
-        background: #fffdf4;
+        background: var(--colour-surface-muted);
       }
 
       .duplicate-modal__header {
@@ -863,7 +1015,7 @@ type UploadState =
         justify-content: space-between;
         gap: 16px;
         align-items: flex-start;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+        border-bottom: 1px solid var(--colour-border);
       }
 
       .duplicate-modal__header h3 {
@@ -880,6 +1032,120 @@ type UploadState =
         padding: 0 20px 20px;
       }
 
+      .review-selection-bar,
+      .review-pagination {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        padding-block: var(--spacing-sm);
+      }
+
+      .review-selection-bar span {
+        margin-left: auto;
+        color: var(--colour-text-secondary);
+      }
+
+      .review-pagination {
+        justify-content: center;
+      }
+
+      .review-pagination--top {
+        background: var(--colour-surface-elevated);
+        border-block: 1px solid var(--colour-border);
+      }
+
+      .commit-import-action:not(:disabled) {
+        background: var(--colour-success-text);
+        color: var(--colour-on-primary);
+      }
+
+      .background-import-progress {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-md);
+        margin-top: var(--spacing-md);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-info-text);
+        border-radius: var(--radius-md);
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
+      }
+
+      .background-import-progress__body {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .background-import-progress__body p {
+        margin: 0 0 var(--spacing-sm);
+      }
+
+      .background-import-progress__hint {
+        color: var(--colour-text-secondary);
+        font-size: 0.875rem;
+      }
+
+      .background-import-progress__warning {
+        color: var(--colour-warning-text);
+        font-weight: 600;
+      }
+
+      .duplicate-label {
+        display: inline-flex;
+        margin-left: var(--spacing-xs);
+        padding: 0.1rem 0.5rem;
+        border-radius: var(--radius-pill);
+        background: var(--colour-danger-bg);
+        color: var(--colour-danger-text);
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
+      .mood-checkin-label {
+        display: inline-flex;
+        margin-top: var(--spacing-xs);
+        padding: 0.1rem 0.5rem;
+        border-radius: var(--radius-pill);
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
+        font-size: 0.75rem;
+      }
+
+      .review-type-select {
+        min-width: 8.5rem;
+      }
+
+      .review-title {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: var(--spacing-xs);
+      }
+
+      .review-title mat-icon {
+        flex: 0 0 auto;
+        font-size: 1.25rem;
+        width: 1.25rem;
+        height: 1.25rem;
+      }
+
+      .review-title.mood-negative mat-icon {
+        color: var(--colour-danger-text);
+      }
+
+      .review-title.mood-low mat-icon {
+        color: var(--colour-warning-text);
+      }
+
+      .review-title.mood-positive mat-icon,
+      .review-title.mood-high mat-icon {
+        color: var(--colour-success-text);
+      }
+
+      .review-title.mood-neutral mat-icon {
+        color: var(--colour-text-secondary);
+      }
+
       .duplicate-table {
         width: 100%;
         border-collapse: collapse;
@@ -890,21 +1156,23 @@ type UploadState =
         padding: 12px 10px;
         text-align: left;
         vertical-align: top;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        border-bottom: 1px solid var(--colour-border);
       }
 
       .duplicate-table th {
         position: sticky;
         top: 0;
-        background: #fffef8;
-        z-index: 1;
+        background: var(--colour-surface-elevated);
+        color: var(--colour-text-primary);
+        z-index: 2;
+        box-shadow: 0 1px 0 var(--colour-border);
       }
 
       .duplicate-modal__footer {
         display: flex;
         justify-content: flex-end;
         gap: 12px;
-        border-top: 1px solid rgba(148, 163, 184, 0.24);
+        border-top: 1px solid var(--colour-border);
       }
 
       .error-list {
@@ -916,6 +1184,77 @@ type UploadState =
       /* ── Upload actions ── */
       .upload-actions {
         justify-content: flex-end;
+      }
+
+      .source-options {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-md);
+      }
+
+      .source-option {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 4rem;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-primary);
+        text-align: left;
+      }
+
+      .source-option:hover:not(:disabled) {
+        border-color: var(--colour-primary);
+        background: var(--colour-surface-strong);
+      }
+
+      .source-option--selected {
+        border-color: var(--colour-primary);
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
+      }
+
+      .source-option__icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-elevated);
+        color: var(--colour-primary);
+      }
+
+      .source-option__copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+
+      .source-option__copy strong,
+      .source-option__copy small {
+        white-space: normal;
+        line-height: 1.3;
+      }
+
+      .source-option__copy small {
+        color: var(--colour-text-secondary);
+      }
+
+      .source-option__check {
+        color: var(--colour-primary);
+      }
+
+      @media (max-width: 700px) {
+        .source-options {
+          grid-template-columns: 1fr;
+        }
       }
 
       /* ── History ── */
@@ -1019,15 +1358,48 @@ type UploadState =
 })
 export class ImportComponent implements OnInit {
   @ViewChild("fileInput") fileInputRef!: ElementRef<HTMLInputElement>;
+  @ViewChild("reviewTableWrapper") private reviewTableWrapper?: ElementRef<HTMLElement>;
 
   private importService = inject(ImportService);
+  private importJobService = inject(ImportJobService);
   private appDialog = inject(AppDialogService);
+  private destroyRef = inject(DestroyRef);
+  readonly importJob$ = this.importJobService.job$;
 
   // File selection state
   selectedFile: File | null = null;
   isDragging = false;
   validationError: string | null = null;
   readonly validationErrorId = "import-validation-error";
+  importSource: ImportSource = "aidiary";
+
+  get acceptedFileTypes(): string {
+    return this.importSource === "daylio" ? ".daylio,.csv" : ".xlsx,.zip";
+  }
+
+  get acceptedFileDescription(): string {
+    return this.importSource === "daylio"
+      ? "Accepts *.Daylio export/backup files - maximum 50 MB"
+      : "Accepts .xlsx and .zip - maximum 50 MB";
+  }
+
+  get uploadSourceDescription(): string {
+    return this.importSource === "daylio"
+      ? "Select a *.Daylio export/backup file (max 50 MB)."
+      : "Select your completed workbook or export package (.xlsx or .zip, max 50 MB).";
+  }
+
+  get uploadCardTitle(): string {
+    return this.importSource === "daylio"
+      ? "Import Daylio entries"
+      : "Step 2 - Upload completed template";
+  }
+
+  get filePickerLabel(): string {
+    return this.importSource === "daylio"
+      ? "Choose a Daylio backup or CSV export for import"
+      : "Choose a workbook or export package for import";
+  }
 
   // Upload state
   uploadState: UploadState = "idle";
@@ -1038,6 +1410,10 @@ export class ImportComponent implements OnInit {
   isDuplicateModalOpen = false;
   isCommittingReview = false;
   selectedDuplicateRowIds = new Set<string>();
+  selectedReviewRowIds = new Set<string>();
+  reviewPage = 0;
+  reviewEntryTypes = new Map<string, "daily" | "dream">();
+  readonly reviewPageSize = 25;
   private processingMessageIndex = 0;
   private processingMessageTimerId: number | null = null;
   private readonly processingMessages = [
@@ -1062,10 +1438,29 @@ export class ImportComponent implements OnInit {
     "imported_count",
     "skipped_count",
     "status",
+    "actions",
   ];
+  revertingImportId: number | null = null;
+  isRemovingReview = false;
+  isBackgroundImportActive = false;
 
   ngOnInit(): void {
     this.loadHistory();
+    this.importJob$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((job) => {
+        this.isBackgroundImportActive =
+          job?.status === "queued" || job?.status === "running";
+        if (!job) return;
+        if (job.status === "completed" && job.result) {
+          this.importResult = job.result;
+          this.uploadState = job.result.status === "failed" ? "error" : job.result.status;
+          this.loadHistory();
+        } else if (job.status === "failed") {
+          this.uploadState = "error";
+          this.importErrorMessage = job.error || job.message;
+        }
+      });
   }
 
   canDeactivate(): boolean | Promise<boolean> {
@@ -1092,6 +1487,7 @@ export class ImportComponent implements OnInit {
   }
 
   triggerFilePicker(): void {
+    if (this.isBackgroundImportActive) return;
     this.fileInputRef.nativeElement.click();
   }
 
@@ -1131,7 +1527,7 @@ export class ImportComponent implements OnInit {
   }
 
   uploadFile(): void {
-    if (!this.selectedFile || this.validationError) return;
+    if (!this.selectedFile || this.validationError || this.isBackgroundImportActive) return;
 
     this.stopProcessingIndicator();
     this.uploadState = "uploading";
@@ -1147,7 +1543,7 @@ export class ImportComponent implements OnInit {
     this.selectedDuplicateRowIds.clear();
 
     this.importService
-      .uploadFile(this.selectedFile)
+      .uploadFile(this.selectedFile, this.importSource)
       .pipe(filter((event) => event !== null && event !== undefined))
       .subscribe({
         next: (event) => {
@@ -1166,6 +1562,14 @@ export class ImportComponent implements OnInit {
             this.importResult = event.result;
             const resultStatus = event.result.status;
             this.importSessionId = event.result.import_session_id ?? null;
+            this.selectedReviewRowIds = new Set(
+              (event.result.review_entries ?? [])
+                .filter((entry) => !entry.is_duplicate && entry.source_record_kind !== "mood_checkin")
+                .map((entry) => entry.row_id),
+            );
+            this.reviewEntryTypes = new Map(
+              (event.result.review_entries ?? []).map((entry) => [entry.row_id, entry.entry_type]),
+            );
             // Map backend 'failed' status to local 'error' UI state
             if (resultStatus === "failed") {
               this.uploadState = "error";
@@ -1262,6 +1666,7 @@ export class ImportComponent implements OnInit {
       partial: "warning_amber",
       failed: "cancel",
       empty: "info",
+      reverted: "undo",
     };
     return icons[status] ?? "help_outline";
   }
@@ -1272,8 +1677,37 @@ export class ImportComponent implements OnInit {
       partial: "Partial",
       failed: "Failed",
       empty: "Empty",
+      reverted: "Reverted",
     };
     return labels[status] ?? status;
+  }
+
+  async revertImport(row: ImportHistoryItem): Promise<void> {
+    const confirmed = await this.appDialog.confirm({
+      title: "Revert this import?",
+      message: `This permanently removes the ${row.imported_count} entries and attached media created by ${row.filename}. Other entries are not affected.`,
+      confirmText: "Revert import",
+      cancelText: "Keep entries",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    this.revertingImportId = row.id;
+    this.importService.revertImport(row.id).subscribe({
+      next: () => {
+        this.revertingImportId = null;
+        this.loadHistory();
+      },
+      error: (error: Error) => {
+        this.revertingImportId = null;
+        void this.appDialog.alert({
+          title: "Import could not be reverted",
+          message: error.message || "Please try again.",
+          confirmText: "Close",
+          variant: "error",
+        });
+      },
+    });
   }
 
   shouldShowTypeBreakdown(result: ImportResult): boolean {
@@ -1292,7 +1726,7 @@ export class ImportComponent implements OnInit {
       return;
     }
     this.selectedFile = file;
-    this.validationError = this.importService.validateFile(file);
+    this.validationError = this.importService.validateFile(file, this.importSource);
 
     // Reset any previous result when a new file is chosen
     this.resetImportFeedback();
@@ -1302,7 +1736,29 @@ export class ImportComponent implements OnInit {
     return (result.duplicate_entries?.length ?? 0) || 0;
   }
 
+  async changeImportSource(source: ImportSource): Promise<void> {
+    if (source === this.importSource) {
+      return;
+    }
+    if (!(await this.confirmResetPendingReview())) {
+      return;
+    }
+    this.importSource = source;
+    this.resetImportState();
+  }
+
+  isImportSourceLocked(): boolean {
+    return (
+      this.uploadState === "uploading" ||
+      this.uploadState === "processing" ||
+      this.uploadState === "review" ||
+      this.isCommittingReview ||
+      this.isBackgroundImportActive
+    );
+  }
+
   openDuplicateReview(): void {
+    this.reviewPage = 0;
     this.isDuplicateModalOpen = true;
   }
 
@@ -1322,30 +1778,30 @@ export class ImportComponent implements OnInit {
     return this.selectedDuplicateRowIds.has(rowId);
   }
 
-  commitReviewedImport(includeSelectedDuplicates: boolean): void {
+  commitReviewedImport(): void {
     if (!this.importSessionId) {
       return;
     }
 
     this.isCommittingReview = true;
-    const acceptedDuplicateRowIds = includeSelectedDuplicates
-      ? Array.from(this.selectedDuplicateRowIds)
-      : [];
+    const acceptedDuplicateRowIds = (this.importResult?.review_entries ?? [])
+      .filter((entry) => entry.is_duplicate && this.selectedReviewRowIds.has(entry.row_id))
+      .map((entry) => entry.row_id);
 
-    this.importService
-      .commitImportSession(this.importSessionId, acceptedDuplicateRowIds)
+    this.importJobService
+      .start(
+        this.importSessionId,
+        acceptedDuplicateRowIds,
+        Array.from(this.selectedReviewRowIds),
+        Object.fromEntries(this.reviewEntryTypes),
+      )
       .subscribe({
-        next: (result) => {
-          this.stopProcessingIndicator();
-          this.importResult = result;
-          this.uploadState = result.status === "failed" ? "error" : result.status;
+        next: () => {
           this.importSessionId = null;
           this.isDuplicateModalOpen = false;
           this.selectedDuplicateRowIds.clear();
           this.isCommittingReview = false;
-          if (this.shouldRefreshHistory(result.status)) {
-            this.loadHistory();
-          }
+          this.uploadState = "idle";
         },
         error: (err: Error) => {
           this.stopProcessingIndicator();
@@ -1355,6 +1811,89 @@ export class ImportComponent implements OnInit {
             err.message || "Import commit failed. Please try again.";
         },
       });
+  }
+
+  get paginatedReviewEntries(): ImportReviewEntry[] {
+    const start = this.reviewPage * this.reviewPageSize;
+    return (this.importResult?.review_entries ?? []).slice(start, start + this.reviewPageSize);
+  }
+
+  get reviewPageCount(): number {
+    return Math.ceil((this.importResult?.review_entries?.length ?? 0) / this.reviewPageSize);
+  }
+
+  toggleReviewSelection(rowId: string, checked: boolean): void {
+    if (checked) this.selectedReviewRowIds.add(rowId);
+    else this.selectedReviewRowIds.delete(rowId);
+  }
+
+  isReviewEntrySelected(rowId: string): boolean {
+    return this.selectedReviewRowIds.has(rowId);
+  }
+
+  selectAllReviewEntries(): void {
+    this.selectedReviewRowIds = new Set(
+      (this.importResult?.review_entries ?? []).map((entry) => entry.row_id),
+    );
+  }
+
+  clearReviewSelection(): void {
+    this.selectedReviewRowIds.clear();
+  }
+
+  changeReviewPage(delta: number): void {
+    this.reviewPage = Math.max(0, Math.min(this.reviewPage + delta, this.reviewPageCount - 1));
+    requestAnimationFrame(() => this.scrollReviewToTop());
+  }
+
+  scrollReviewToTop(): void {
+    this.reviewTableWrapper?.nativeElement.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  getReviewEntryType(entry: ImportReviewEntry): "daily" | "dream" {
+    return this.reviewEntryTypes.get(entry.row_id) ?? entry.entry_type;
+  }
+
+  setReviewEntryType(rowId: string, entryType: "daily" | "dream"): void {
+    this.reviewEntryTypes.set(rowId, entryType);
+  }
+
+  getMoodIcon(mood = ""): string {
+    const value = mood.toLowerCase();
+    if (/not too bad|not good|down|doubt|poor/.test(value)) return "sentiment_dissatisfied";
+    if (/awful|terrible|very bad|sad|angry/.test(value)) return "sentiment_very_dissatisfied";
+    if (/great|excellent|amazing|very good|happy/.test(value)) return "sentiment_very_satisfied";
+    if (/good|content|calm|quiet/.test(value)) return "sentiment_satisfied";
+    return "sentiment_neutral";
+  }
+
+  getMoodTone(mood = ""): "negative" | "low" | "neutral" | "positive" | "high" {
+    const value = mood.toLowerCase();
+    if (/not too bad|not good|down|doubt|poor/.test(value)) return "low";
+    if (/awful|terrible|very bad|sad|angry/.test(value)) return "negative";
+    if (/great|excellent|amazing|very good|happy/.test(value)) return "high";
+    if (/good|content|calm|quiet/.test(value)) return "positive";
+    return "neutral";
+  }
+
+  removePendingImport(): void {
+    if (!this.importSessionId || this.isRemovingReview) return;
+    this.isRemovingReview = true;
+    this.importService.cancelImportSession(this.importSessionId).subscribe({
+      next: () => {
+        this.isRemovingReview = false;
+        this.resetImportState();
+      },
+      error: () => {
+        this.isRemovingReview = false;
+        void this.appDialog.alert({
+          title: "Review could not be removed",
+          message: "Please try again.",
+          confirmText: "Close",
+          variant: "error",
+        });
+      },
+    });
   }
 
   private hasPendingReview(): boolean {
@@ -1383,6 +1922,9 @@ export class ImportComponent implements OnInit {
     this.importSessionId = null;
     this.isDuplicateModalOpen = false;
     this.selectedDuplicateRowIds.clear();
+    this.selectedReviewRowIds.clear();
+    this.reviewPage = 0;
+    this.reviewEntryTypes.clear();
   }
 
   private resetImportState(): void {

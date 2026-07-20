@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import time
 import zipfile
 import shutil
 
@@ -14,6 +15,7 @@ import pytest
 
 from app import create_app
 from services.import_service import DAILY_IMPORT_HEADERS, DREAM_IMPORT_HEADERS
+from services.nltk_enrichment import derive_daily_nltk_fields
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +53,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             daily_people_names TEXT,
             daily_places TEXT,
             tags TEXT,
+            mood TEXT,
             image_prompt TEXT,
             recycled_image_prompt TEXT,
             image_url TEXT,
@@ -90,6 +93,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             dream_people_names TEXT,
             dream_places TEXT,
             tags TEXT,
+            mood TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
@@ -251,26 +255,91 @@ def _tiny_png_bytes() -> bytes:
     )
 
 
+def _tiny_jpeg_bytes() -> bytes:
+    return b'\xff\xd8\xff\xd9'
+
+
+def _make_daylio_backup(*, include_photo: bool = False) -> bytes:
+    photo_id = 301
+    photo_checksum = 'synthetic-photo-checksum'
+    backup = {
+        'dayEntries': [{
+            'note_title': 'Native backup entry',
+            'note': 'Imported from a native backup.',
+            'tags': [201],
+            'assets': [photo_id] if include_photo else [],
+            'hour': 20,
+            'minute': 35,
+            'day': 19,
+            'month': 6,
+            'year': 2026,
+            'mood': 101,
+        }],
+        'customMoods': [{
+            'id': 101,
+            'custom_name': 'good',
+        }],
+        'tags': [{
+            'id': 201,
+            'name': 'friends',
+        }],
+        'assets': [{
+            'id': photo_id,
+            'checksum': photo_checksum,
+            'type': 1,
+        }] if include_photo else [],
+    }
+    payload = base64.b64encode(json.dumps(backup).encode('utf-8'))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('backup.daylio', payload)
+        if include_photo:
+            zf.writestr(f'assets/photos/2026/7/{photo_checksum}', _tiny_jpeg_bytes())
+    return buf.getvalue()
+
+
 def _upload(client, token: str, file_bytes: bytes, filename='test.xlsx',
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            source='aidiary'):
     """POST multipart file to /api/import/upload."""
     return client.post(
         '/api/import/upload',
         headers={'Authorization': f'Bearer {token}'},
-        data={'file': (io.BytesIO(file_bytes), filename, content_type)},
+        data={
+            'file': (io.BytesIO(file_bytes), filename, content_type),
+            'source': source,
+        },
         content_type='multipart/form-data',
     )
 
 
-def _commit_review(client, token: str, import_session_id: str, accepted_duplicate_row_ids=None):
+def _commit_review(client, token: str, import_session_id: str,
+                   accepted_duplicate_row_ids=None, selected_row_ids=None,
+                   entry_type_overrides=None):
     return client.post(
         '/api/import/commit',
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
             'import_session_id': import_session_id,
             'accepted_duplicate_row_ids': accepted_duplicate_row_ids or [],
+            'selected_row_ids': selected_row_ids,
+            'entry_type_overrides': entry_type_overrides or {},
         }),
         content_type='application/json',
+    )
+
+
+def _commit_all_review_entries(client, token: str, upload_response):
+    data = json.loads(upload_response.data)
+    review_entries = data.get('review_entries', [])
+    selected = [row['row_id'] for row in review_entries]
+    duplicates = [row['row_id'] for row in review_entries if row.get('is_duplicate')]
+    return _commit_review(
+        client,
+        token,
+        data['import_session_id'],
+        accepted_duplicate_row_ids=duplicates,
+        selected_row_ids=selected,
     )
 
 
@@ -374,6 +443,534 @@ class TestFileValidation:
 # ---------------------------------------------------------------------------
 
 class TestSuccessfulImport:
+    def test_nltk_rejects_mood_and_event_phrases_as_people_or_places(self):
+        derived = derive_daily_nltk_fields(
+            'Dinner invitation',
+            'Good feelings about a dinner invitation.',
+            excluded_terms={'daylio'},
+        )
+
+        assert derived['daily_people_names'] == ''
+        assert derived['daily_places'] == ''
+
+    def test_daylio_csv_import_maps_note_mood_activities_and_time(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,date,weekday,time,mood,activities,note_title,note\n'
+            '2026-07-19,19 July 2026,Sunday,8:35 PM,good,walk|friends,Evening walk,Had a calm evening.\n'
+        ).encode()
+
+        resp = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        resp = _commit_all_review_entries(client, token, resp)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_daily'] == 1
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            '''SELECT entry_date, entry_time, title, user_message, mood, tags, import_id
+               FROM dailydiary_entries WHERE title = ?''',
+            ('Evening walk',),
+        ).fetchone()
+        conn.close()
+        assert row['entry_date'] == '2026-07-19'
+        assert row['entry_time'] == '20:35'
+        assert row['user_message'] == 'Had a calm evening.'
+        assert row['mood'] == 'good'
+        assert {'walk', 'friends'}.issubset(set(row['tags'].split(',')))
+        assert row['import_id'] == data['import_id']
+
+    def test_daylio_title_and_mood_remain_separate(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,time,mood,activities,note_title,note\n'
+            '2026-07-16,19:05,good,walking,Very good,A Daylio export entry.\n'
+        ).encode()
+
+        resp = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        resp = _commit_all_review_entries(client, token, resp)
+
+        assert resp.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        row = conn.execute(
+            '''SELECT title, mood, tags, daily_people_names, daily_places
+               FROM dailydiary_entries WHERE entry_date = '2026-07-16' ''',
+        ).fetchone()
+        conn.close()
+        assert row[0] == 'Very good'
+        assert row[1] == 'good'
+        assert all('daylio' not in (value or '').lower() for value in row[2:])
+
+    def test_daylio_uses_mood_as_fallback_title_and_skips_checkins_without_notes(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,time,mood,activities,note_title,note\n'
+            '2026-07-16,19:05,very good,walking,,An authored Daylio note.\n'
+            '2026-07-16,21:10,quiet,reading,,\n'
+        ).encode()
+
+        preview = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+
+        assert preview.status_code == 200
+        data = json.loads(preview.data)
+        assert len(data['review_entries']) == 1
+        assert data['review_entries'][0]['title'] == 'Very good'
+        assert data['review_entries'][0]['mood'] == 'very good'
+        assert any(
+            'Skipped 1 Daylio mood/activity check-ins without authored notes.' in warning
+            for warning in data['warnings']
+        )
+
+        committed = _commit_all_review_entries(client, token, preview)
+        assert committed.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        rows = conn.execute(
+            'SELECT entry_time, title, user_message, mood FROM dailydiary_entries',
+        ).fetchall()
+        conn.close()
+        assert rows == [('19:05', 'Very good', 'An authored Daylio note.', 'very good')]
+
+    def test_daylio_same_day_matching_content_remains_distinct_at_different_times(self, client):
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-16,09:05,good,Repeated thought,Same authored text.\n'
+                '2026-07-16,21:10,good,Repeated thought,Same authored text.\n'
+            ).encode(),
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+
+        assert preview.status_code == 200
+        data = json.loads(preview.data)
+        assert len(data['review_entries']) == 2
+        assert data['summary']['duplicate_daily'] == 0
+
+    def test_daylio_html_notes_are_converted_to_plain_text(self, client):
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-16,19:05,good,Formatted note,'
+                '"<p style=""font-style: normal; font-size: 26px"">Readable '
+                '<strong>entry text</strong></p>"\n'
+            ).encode(),
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+
+        assert preview.status_code == 200
+        data = json.loads(preview.data)
+        assert data['review_entries'][0]['content_preview'] == 'Readable entry text'
+
+        committed = _commit_all_review_entries(client, token, preview)
+        assert committed.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        stored_text = conn.execute(
+            "SELECT user_message FROM dailydiary_entries WHERE title = 'Formatted note'",
+        ).fetchone()[0]
+        conn.close()
+        assert stored_text == 'Readable entry text'
+
+    def test_reviewed_import_can_run_as_background_job(self, client):
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-14,09:00,good,Morning note,First entry.\n'
+                '2026-07-14,21:00,quiet,Evening note,Second entry.\n'
+            ).encode(),
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        preview_data = json.loads(preview.data)
+        selected_ids = [row['row_id'] for row in preview_data['review_entries']]
+
+        started = client.post(
+            '/api/import/jobs',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({
+                'import_session_id': preview_data['import_session_id'],
+                'accepted_duplicate_row_ids': [],
+                'selected_row_ids': selected_ids,
+                'entry_type_overrides': {},
+            }),
+            content_type='application/json',
+        )
+        assert started.status_code == 202
+        job = json.loads(started.data)
+
+        for _ in range(100):
+            status_response = client.get(
+                f'/api/import/jobs/{job["id"]}',
+                headers={'Authorization': f'Bearer {token}'},
+            )
+            assert status_response.status_code == 200
+            job = json.loads(status_response.data)
+            if job['status'] in {'completed', 'failed'}:
+                break
+            time.sleep(0.02)
+
+        assert job['status'] == 'completed'
+        assert job['processed'] == 2
+        assert job['total'] == 2
+        assert job['percent'] == 100
+        assert job['result']['summary']['inserted_daily'] == 2
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        persisted_job = conn.execute(
+            '''SELECT status, processed, total, result_json, request_json, attempt_count
+               FROM import_jobs WHERE id = ?''',
+            (job['id'],),
+        ).fetchone()
+        conn.close()
+        assert persisted_job[0:3] == ('completed', 2, 2)
+        assert json.loads(persisted_job[3])['summary']['inserted_daily'] == 2
+        assert json.loads(persisted_job[4])['selected_row_ids'] == selected_ids
+        assert persisted_job[5] == 1
+
+    def test_polling_recovers_a_durable_import_job_after_worker_lease_expires(self, client):
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-15,18:30,good,Recovered note,Stored queue request.\n'
+            ).encode(),
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        preview_data = json.loads(preview.data)
+        selected_ids = [row['row_id'] for row in preview_data['review_entries']]
+        job_id = 'durable-recovery-job'
+        now = '2026-07-20T12:00:00Z'
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.execute(
+            '''INSERT INTO import_jobs
+               (id, user_id, import_session_id, status, processed, total, percent,
+                message, request_json, created_at, updated_at, worker_token,
+                lease_expires_at)
+               VALUES (?, 1, ?, 'running', 0, 1, 0, ?, ?, ?, ?, ?, ?)''',
+            (
+                job_id,
+                preview_data['import_session_id'],
+                'Import interrupted…',
+                json.dumps({
+                    'accepted_duplicate_row_ids': [],
+                    'selected_row_ids': selected_ids,
+                    'entry_type_overrides': {},
+                }),
+                now,
+                now,
+                'stale-worker',
+                '2026-07-20T11:59:00Z',
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        for _ in range(100):
+            status_response = client.get(
+                f'/api/import/jobs/{job_id}',
+                headers={'Authorization': f'Bearer {token}'},
+            )
+            assert status_response.status_code == 200
+            job = json.loads(status_response.data)
+            if job['status'] in {'completed', 'failed'}:
+                break
+            time.sleep(0.02)
+
+        assert job['status'] == 'completed'
+        assert job['result']['summary']['inserted_daily'] == 1
+
+    def test_daylio_csv_rejects_missing_date_header(self, client):
+        token = _register_and_login(client)
+        resp = _upload(
+            client,
+            token,
+            b'mood,note\ngood,No date\n',
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        assert resp.status_code == 422
+        assert 'date' in ' '.join(json.loads(resp.data)['errors']).lower()
+
+    def test_daylio_native_backup_imports_entries_and_photos(self, client):
+        token = _register_and_login(client)
+        resp = _upload(
+            client,
+            token,
+            _make_daylio_backup(include_photo=True),
+            filename='backup.daylio',
+            content_type='application/octet-stream',
+            source='daylio',
+        )
+        resp = _commit_all_review_entries(client, token, resp)
+        assert resp.status_code == 200
+        data = json.loads(resp.data)
+        assert data['summary']['inserted_daily'] == 1
+
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            '''SELECT id, entry_date, entry_time, mood, tags
+               FROM dailydiary_entries WHERE title = ?''',
+            ('Native backup entry',),
+        ).fetchone()
+        attachment = conn.execute(
+            '''SELECT original_filename, mime_type, asset_role
+               FROM entry_assets WHERE entry_type = 'daily' AND entry_id = ?''',
+            (row['id'],),
+        ).fetchone()
+        conn.close()
+
+        assert row['entry_date'] == '2026-07-19'
+        assert row['entry_time'] == '20:35'
+        assert row['mood'] == 'good'
+        assert 'friends' in row['tags'].split(',')
+        assert attachment['original_filename'] == 'daylio-photo-301.jpg'
+        assert attachment['mime_type'] == 'image/jpeg'
+        assert attachment['asset_role'] == 'attachment'
+
+    def test_daylio_native_backup_rejects_invalid_archive(self, client):
+        token = _register_and_login(client)
+        resp = _upload(
+            client,
+            token,
+            b'not a native backup',
+            filename='backup.daylio',
+            content_type='application/octet-stream',
+            source='daylio',
+        )
+        assert resp.status_code == 422
+        assert 'valid .daylio archive' in ' '.join(json.loads(resp.data)['errors'])
+
+    def test_completed_import_can_be_reverted_with_its_attachments(self, client):
+        token = _register_and_login(client)
+        upload_preview = _upload(
+            client,
+            token,
+            _make_daylio_backup(include_photo=True),
+            filename='backup.daylio',
+            content_type='application/octet-stream',
+            source='daylio',
+        )
+        upload = _commit_all_review_entries(client, token, upload_preview)
+        import_id = json.loads(upload.data)['import_id']
+
+        response = client.post(
+            f'/api/import/history/{import_id}/revert',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({'confirmation_text': 'REVERT IMPORT'}),
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        assert json.loads(response.data)['deleted_total'] == 1
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        assert conn.execute(
+            'SELECT COUNT(*) FROM dailydiary_entries WHERE import_id = ?',
+            (import_id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            'SELECT status FROM import_history WHERE id = ?',
+            (import_id,),
+        ).fetchone()[0] == 'reverted'
+        assert conn.execute('SELECT COUNT(*) FROM entry_assets').fetchone()[0] == 0
+        conn.close()
+
+    def test_selected_entry_deletion_is_explicit_and_user_scoped(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,time,mood,note_title,note\n'
+            '2026-07-14,19:00,good,Keep this,First entry.\n'
+            '2026-07-15,19:00,good,Delete this,Second entry.\n'
+        ).encode()
+        upload_preview = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        assert upload_preview.status_code == 200
+        assert _commit_all_review_entries(client, token, upload_preview).status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        delete_id = conn.execute(
+            "SELECT id FROM dailydiary_entries WHERE title = 'Delete this'",
+        ).fetchone()[0]
+        conn.close()
+
+        response = client.post(
+            '/api/entries/delete-selected',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({'entries': [{'type': 'daily', 'id': delete_id}]}),
+            content_type='application/json',
+        )
+
+        assert response.status_code == 200
+        assert json.loads(response.data)['deleted_total'] == 1
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        titles = {
+            row[0] for row in conn.execute('SELECT title FROM dailydiary_entries').fetchall()
+        }
+        conn.close()
+        assert titles == {'Keep this'}
+
+    def test_external_import_commits_only_selected_review_rows(self, client):
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-12,19:00,good,Include this,Selected entry.\n'
+                '2026-07-13,19:00,good,Leave this out,Unselected entry.\n'
+            ).encode(),
+            filename='daylio.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        preview_data = json.loads(preview.data)
+        assert preview_data['status'] == 'review_required'
+        assert len(preview_data['review_entries']) == 2
+        selected_id = next(
+            row['row_id'] for row in preview_data['review_entries']
+            if row['title'] == 'Include this'
+        )
+
+        committed = _commit_review(
+            client,
+            token,
+            preview_data['import_session_id'],
+            selected_row_ids=[selected_id],
+        )
+
+        assert committed.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        titles = {
+            row[0] for row in conn.execute('SELECT title FROM dailydiary_entries').fetchall()
+        }
+        conn.close()
+        assert titles == {'Include this'}
+
+    def test_daylio_review_can_convert_daily_candidate_to_dream(self, client):
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-11,08:15,uneasy,Night train,I dreamed about a train.\n'
+            ).encode(),
+            filename='daylio.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        preview_data = json.loads(preview.data)
+        row_id = preview_data['review_entries'][0]['row_id']
+
+        committed = _commit_review(
+            client,
+            token,
+            preview_data['import_session_id'],
+            selected_row_ids=[row_id],
+            entry_type_overrides={row_id: 'dream'},
+        )
+
+        assert committed.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        dream = conn.execute(
+            'SELECT title, plot, emotion FROM dreamdiary_entries',
+        ).fetchone()
+        daily_count = conn.execute('SELECT COUNT(*) FROM dailydiary_entries').fetchone()[0]
+        conn.close()
+        assert dream == ('Night train', 'I dreamed about a train.', 'uneasy')
+        assert daily_count == 0
+
+    def test_daylio_duplicate_uses_staged_review(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date,time,mood,activities,note_title,note\n'
+            '2026-07-18,19:10,good,reading,Quiet night,Read a book.\n'
+        ).encode()
+        upload_args = {
+            'filename': 'daylio_export.csv',
+            'content_type': 'text/csv',
+            'source': 'daylio',
+        }
+
+        first_preview = _upload(client, token, csv_bytes, **upload_args)
+        first = _commit_all_review_entries(client, token, first_preview)
+        second = _upload(client, token, csv_bytes, **upload_args)
+
+        assert first.status_code == 200
+        second_data = json.loads(second.data)
+        assert second_data['status'] == 'review_required'
+        assert second_data['summary']['duplicate_daily'] == 1
+        assert second_data['import_session_id']
+
+    def test_daylio_csv_accepts_semicolon_delimiter_and_combined_datetime(self, client):
+        token = _register_and_login(client)
+        csv_bytes = (
+            'full_date;mood;activities;note_title;note\n'
+            '2026-07-17T21:45;meh;rest|music;Quiet evening;Stayed home.\n'
+        ).encode()
+
+        resp = _upload(
+            client,
+            token,
+            csv_bytes,
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        resp = _commit_all_review_entries(client, token, resp)
+
+        assert resp.status_code == 200
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        row = conn.execute(
+            'SELECT entry_date, entry_time FROM dailydiary_entries WHERE title = ?',
+            ('Quiet evening',),
+        ).fetchone()
+        conn.close()
+        assert row == ('2026-07-17', '21:45')
+
     def test_daily_entries_inserted(self, client):
         token = _register_and_login(client)
         file_bytes = _make_xlsx(daily_rows=[
@@ -599,7 +1196,7 @@ class TestDuplicateHandling:
         assert duplicate['entry_type'] == 'daily'
         assert duplicate['entry_date'] == '2024-07-02'
         assert duplicate['title'] == 'Gym twice'
-        assert duplicate['reason'] == 'same_date_title_content'
+        assert duplicate['reason'] == 'same_date_time_title_content'
         assert 'Morning session' in duplicate['content_preview']
 
     def test_partial_duplicate(self, client):
