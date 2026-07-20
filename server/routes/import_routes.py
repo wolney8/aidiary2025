@@ -25,6 +25,8 @@ from services.import_service import (
     get_import_session,
     mark_import_session_consumed,
     record_import_history,
+    create_pending_import_history,
+    finalise_import_history,
     record_export_history,
     get_import_history,
 )
@@ -236,12 +238,23 @@ def upload_import():
             'import_id': None,
         }), 200
 
-    result = commit_import_preview(conn, user_id, preview, set())
+    import_id = create_pending_import_history(
+        conn,
+        user_id=user_id,
+        filename=filename,
+        file_size=file_size,
+    )
+    result = commit_import_preview(conn, user_id, preview, import_id, set())
     all_warnings = parse_warnings[:]
     any_inserted = result['inserted_daily'] + result['inserted_dreams'] > 0
     status_str = 'success' if any_inserted else 'skipped'
-    import_id = record_import_history(
-        conn, user_id, filename, file_size, result, all_warnings, status=status_str
+    finalise_import_history(
+        conn,
+        import_id=import_id,
+        user_id=user_id,
+        result=result,
+        warnings=all_warnings,
+        status=status_str,
     )
     conn.close()
 
@@ -298,10 +311,17 @@ def commit_import():
     parse_warnings = preview_payload.get('parse_warnings', [])
 
     try:
+        import_id = create_pending_import_history(
+            conn,
+            user_id=user_id,
+            filename=session['filename'],
+            file_size=session['file_size_bytes'],
+        )
         result = commit_import_preview(
             conn,
             user_id,
             preview_payload,
+            import_id,
             set(accepted_duplicate_row_ids),
         )
         status_str = 'success'
@@ -315,13 +335,12 @@ def commit_import():
                 f'{omitted_duplicates} duplicate entr{"y" if omitted_duplicates == 1 else "ies"} were left out.'
             )
 
-        import_id = record_import_history(
+        finalise_import_history(
             conn,
-            user_id,
-            session['filename'],
-            session['file_size_bytes'],
-            result,
-            final_warnings,
+            import_id=import_id,
+            user_id=user_id,
+            result=result,
+            warnings=final_warnings,
             status=status_str,
         )
         mark_import_session_consumed(conn, import_session_id)

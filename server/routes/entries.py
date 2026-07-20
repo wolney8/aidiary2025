@@ -369,6 +369,7 @@ def _serialise_entry_row(
     *,
     table_name: str,
     entry_kind: str,
+    include_import_metadata: bool = False,
 ) -> dict:
     entry = dict(row)
     if 'image_position_x' in entry or 'image_position_y' in entry:
@@ -385,6 +386,16 @@ def _serialise_entry_row(
             entry_type=entry_kind,
             entry_id=int(entry['id']),
         )
+    entry['import_metadata'] = None
+    if include_import_metadata and entry.get('import_id'):
+        history_row = conn.execute(
+            '''SELECT imported_at, filename
+               FROM import_history
+               WHERE id = ? AND user_id = ?''',
+            (entry['import_id'], entry['user_id']),
+        ).fetchone()
+        if history_row:
+            entry['import_metadata'] = dict(history_row)
     return entry
 
 
@@ -1069,6 +1080,7 @@ def get_daily_entry(entry_id):
         entry,
         table_name='dailydiary_entries',
         entry_kind='daily',
+        include_import_metadata=True,
     )
     conn.commit()
     conn.close()
@@ -1611,6 +1623,7 @@ def get_dream_entry(entry_id):
         entry,
         table_name='dreamdiary_entries',
         entry_kind='dream',
+        include_import_metadata=True,
     )
     conn.commit()
     conn.close()

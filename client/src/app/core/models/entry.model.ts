@@ -17,6 +17,11 @@ export interface EntryAsset {
   is_pdf?: boolean;
 }
 
+export interface EntryImportMetadata {
+  imported_at: string;
+  filename: string;
+}
+
 export interface DailyEntry {
   id?: number;
   user_id?: number;
@@ -39,6 +44,8 @@ export interface DailyEntry {
   image_position_y?: number;
   analysis_attachment_refs?: string;
   attachments?: EntryAsset[];
+  import_id?: number;
+  import_metadata?: EntryImportMetadata | null;
 }
 
 export interface DreamEntry {
@@ -72,6 +79,8 @@ export interface DreamEntry {
   tags?: string; // Comma-separated
   mood?: string; // New field for mood emoji
   ai_style?: string; // New field for AI response style
+  import_id?: number;
+  import_metadata?: EntryImportMetadata | null;
 }
 
 // Enhanced analysis interfaces
