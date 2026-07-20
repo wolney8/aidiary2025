@@ -41,6 +41,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS dailydiary_entries (
             id INTEGER PRIMARY KEY,
             user_id INTEGER,
+            import_id INTEGER,
             entry_date DATE,
             entry_time TEXT,
             entry_number INTEGER,
@@ -63,6 +64,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS dreamdiary_entries (
             id INTEGER PRIMARY KEY,
             user_id INTEGER,
+            import_id INTEGER,
             entry_date DATE,
             entry_time TEXT,
             entry_number INTEGER,
@@ -434,6 +436,40 @@ class TestSuccessfulImport:
 
 
 class TestImportIntegration:
+    def test_imported_entries_expose_source_metadata_on_detail(self, client):
+        token = _register_and_login(client)
+        file_bytes = _make_xlsx(
+            daily_rows=[['2025-03-01', 'Daily source', 'Daily body', 'Daily AI']],
+            dream_rows=[
+                ['2025-03-02', 'Dream source', 'Dream plot', '', '', '', '', '', '', '', '', '']
+            ],
+        )
+
+        import_resp = _upload(
+            client,
+            token,
+            file_bytes,
+            filename='source-package.xlsx',
+        )
+        assert import_resp.status_code == 200
+        import_id = json.loads(import_resp.data)['import_id']
+
+        headers = {'Authorization': f'Bearer {token}'}
+        daily_entries = json.loads(client.get('/api/daily', headers=headers).data)
+        dream_entries = json.loads(client.get('/api/dreams', headers=headers).data)
+
+        daily_detail = json.loads(
+            client.get(f"/api/daily/{daily_entries[0]['id']}", headers=headers).data
+        )
+        dream_detail = json.loads(
+            client.get(f"/api/dreams/{dream_entries[0]['id']}", headers=headers).data
+        )
+
+        for detail in (daily_detail, dream_detail):
+            assert detail['import_id'] == import_id
+            assert detail['import_metadata']['filename'] == 'source-package.xlsx'
+            assert detail['import_metadata']['imported_at']
+
     def test_imported_daily_entries_readable(self, client):
         token = _register_and_login(client)
         target_date = '2025-04-01'
@@ -617,11 +653,12 @@ class TestDuplicateHandling:
         conn = sqlite3.connect(os.environ['DB_PATH'])
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT tags FROM dailydiary_entries WHERE entry_date = '2024-09-03' ORDER BY id DESC"
+            "SELECT tags, import_id FROM dailydiary_entries WHERE entry_date = '2024-09-03' ORDER BY id DESC"
         ).fetchall()
         conn.close()
         assert len(rows) == 2
         assert '*Duplicate*' in (rows[0]['tags'] or '')
+        assert rows[0]['import_id'] == commit_data['import_id']
 
 
 # ---------------------------------------------------------------------------

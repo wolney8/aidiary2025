@@ -8,6 +8,7 @@ from typing import Callable
 
 _TARGET_COLUMNS: dict[str, dict[str, str]] = {
     'dailydiary_entries': {
+        'import_id': 'INTEGER',
         'entry_time': 'TEXT',
         'mood': 'TEXT',
         'ai_style': 'TEXT',
@@ -22,6 +23,7 @@ _TARGET_COLUMNS: dict[str, dict[str, str]] = {
         'analysis_attachment_refs': 'TEXT',
     },
     'dreamdiary_entries': {
+        'import_id': 'INTEGER',
         'entry_time': 'TEXT',
         'mood': 'TEXT',
         'ai_style': 'TEXT',

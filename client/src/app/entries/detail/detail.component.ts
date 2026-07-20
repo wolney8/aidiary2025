@@ -17,6 +17,7 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { MatExpansionModule } from "@angular/material/expansion";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { EntryAsset } from "../../core/models/entry.model";
@@ -40,6 +41,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
     MatButtonModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
+    MatExpansionModule,
     BackToTopComponent,
   ],
   template: `
@@ -740,6 +742,91 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         </div>
       </div>
 
+      <mat-expansion-panel
+        *ngIf="entry.import_metadata"
+        class="import-details-panel"
+        (opened)="isImportDetailsExpanded = true"
+        (closed)="isImportDetailsExpanded = false"
+      >
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <mat-icon aria-hidden="true">info</mat-icon>
+            {{ isImportDetailsExpanded ? "Less" : "More details" }}
+          </mat-panel-title>
+        </mat-expansion-panel-header>
+
+        <dl class="import-details-list">
+          <div class="import-detail-row" *ngIf="entry.import_metadata.imported_at">
+            <dt>Imported on</dt>
+            <dd>{{ formatImportedAt(entry.import_metadata.imported_at) }}</dd>
+          </div>
+          <div class="import-detail-row" *ngIf="entry.import_metadata.filename">
+            <dt>Source file</dt>
+            <dd class="import-source-file">{{ entry.import_metadata.filename }}</dd>
+          </div>
+          <div class="import-detail-row" *ngIf="entry.entry_date">
+            <dt>Date</dt>
+            <dd>{{ formatEntryDate(entry.entry_date) }}</dd>
+          </div>
+
+          <ng-container *ngIf="!isDream(); else dreamImportDetails">
+            <div class="import-detail-row import-detail-row--content" *ngIf="entry.user_message">
+              <dt>Your entry</dt>
+              <dd>
+                <p [class.import-copy--clamped]="!showFullImportedEntry">
+                  {{ entry.user_message }}
+                </p>
+                <button
+                  *ngIf="isLongImportText(entry.user_message)"
+                  mat-button
+                  type="button"
+                  class="import-copy-toggle"
+                  (click)="showFullImportedEntry = !showFullImportedEntry"
+                  [attr.aria-label]="
+                    showFullImportedEntry
+                      ? 'Show less of imported entry text'
+                      : 'Show full imported entry text'
+                  "
+                >
+                  {{ showFullImportedEntry ? "Show less" : "Show more" }}
+                </button>
+              </dd>
+            </div>
+            <div class="import-detail-row import-detail-row--content" *ngIf="entry.ai_response">
+              <dt>AI response</dt>
+              <dd>
+                <p [class.import-copy--clamped]="!showFullImportedAiResponse">
+                  {{ entry.ai_response }}
+                </p>
+                <button
+                  *ngIf="isLongImportText(entry.ai_response)"
+                  mat-button
+                  type="button"
+                  class="import-copy-toggle"
+                  (click)="showFullImportedAiResponse = !showFullImportedAiResponse"
+                  [attr.aria-label]="
+                    showFullImportedAiResponse
+                      ? 'Show less of imported AI response'
+                      : 'Show full imported AI response'
+                  "
+                >
+                  {{ showFullImportedAiResponse ? "Show less" : "Show more" }}
+                </button>
+              </dd>
+            </div>
+          </ng-container>
+
+          <ng-template #dreamImportDetails>
+            <ng-container *ngFor="let detail of getDreamImportDetails()">
+              <div class="import-detail-row import-detail-row--content" *ngIf="detail.value">
+                <dt>{{ detail.label }}</dt>
+                <dd>{{ detail.value }}</dd>
+              </div>
+            </ng-container>
+          </ng-template>
+        </dl>
+      </mat-expansion-panel>
+
       <app-back-to-top />
     </div>
   `,
@@ -1384,6 +1471,82 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         border: 1px solid var(--colour-border);
       }
 
+      .import-details-panel {
+        margin-top: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md) !important;
+        background: var(--colour-surface-elevated);
+        box-shadow: none !important;
+      }
+
+      .import-details-panel mat-panel-title {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        color: var(--colour-text-primary);
+        font-weight: 650;
+      }
+
+      .import-details-panel mat-panel-title mat-icon {
+        width: 20px;
+        height: 20px;
+        font-size: 20px;
+        color: var(--colour-primary);
+      }
+
+      .import-details-list {
+        display: grid;
+        gap: 0;
+        margin: 0;
+      }
+
+      .import-detail-row {
+        display: grid;
+        grid-template-columns: minmax(8rem, 0.28fr) minmax(0, 1fr);
+        gap: var(--spacing-md);
+        padding: var(--spacing-sm) 0;
+        border-top: 1px solid var(--colour-border);
+      }
+
+      .import-detail-row dt {
+        color: var(--colour-text-secondary);
+        font-weight: 650;
+      }
+
+      .import-detail-row dd,
+      .import-detail-row p {
+        min-width: 0;
+        margin: 0;
+        color: var(--colour-text-primary);
+        overflow-wrap: anywhere;
+        white-space: pre-line;
+      }
+
+      .import-source-file {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      .import-copy--clamped {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 4;
+      }
+
+      .import-copy-toggle {
+        min-width: 0;
+        margin-top: var(--spacing-xs);
+        padding-inline: var(--spacing-sm);
+        border-radius: var(--radius-pill);
+      }
+
+      @media (max-width: 640px) {
+        .import-detail-row {
+          grid-template-columns: 1fr;
+          gap: var(--spacing-xs);
+        }
+      }
+
       .metadata-section {
         margin-bottom: var(--spacing-md);
       }
@@ -1495,6 +1658,9 @@ export class DetailComponent implements OnInit, OnDestroy {
   showAllTags = false;
   showAllPeople = false;
   showAllPlaces = false;
+  isImportDetailsExpanded = false;
+  showFullImportedEntry = false;
+  showFullImportedAiResponse = false;
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get("id"));
@@ -1554,6 +1720,9 @@ export class DetailComponent implements OnInit, OnDestroy {
   private applyLoadedEntry(entry: unknown, entryType: "daily" | "dream"): void {
     this.entry = entry;
     this.entryType = entryType;
+    this.isImportDetailsExpanded = false;
+    this.showFullImportedEntry = false;
+    this.showFullImportedAiResponse = false;
     this.isLoadingEntry = false;
     this.loadErrorMessage = "";
     this.applyInitialAttachmentExpansion();
@@ -1605,6 +1774,49 @@ export class DetailComponent implements OnInit, OnDestroy {
     }
 
     return formatReadableLongDate(this.entry.entry_date) || "Entry";
+  }
+
+  formatEntryDate(value: string): string {
+    return formatReadableLongDate(value) || value;
+  }
+
+  formatImportedAt(value: string): string {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "long",
+      timeStyle: "short",
+    }).format(parsed);
+  }
+
+  isLongImportText(value: unknown): boolean {
+    return typeof value === "string" && value.trim().length > 320;
+  }
+
+  getDreamImportDetails(): Array<{ label: string; value: string }> {
+    const fields: Array<[string, unknown]> = [
+      ["Title", this.entry?.title],
+      ["Plot", this.entry?.plot],
+      ["Cast", this.entry?.cast],
+      ["Location", this.entry?.location],
+      ["Period", this.entry?.period],
+      ["Emotion", this.entry?.emotion],
+      ["Symbols and imagery", this.entry?.symbols_and_imagery],
+      ["Insight", this.entry?.insight],
+      ["Action", this.entry?.action],
+      ["Other", this.entry?.other],
+      ["Tags", this.entry?.tags],
+    ];
+
+    return fields
+      .map(([label, value]) => ({
+        label,
+        value: typeof value === "string" ? value.trim() : "",
+      }))
+      .filter((detail) => detail.value.length > 0);
   }
 
   getFriendlyTime(): string {

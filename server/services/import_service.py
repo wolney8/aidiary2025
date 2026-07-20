@@ -619,7 +619,12 @@ def parse_excel_workbook(file_bytes: bytes) -> dict:
 # Database insertion with duplicate detection
 # ---------------------------------------------------------------------------
 
-def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict:
+def insert_entries(
+    conn: sqlite3.Connection,
+    user_id: int,
+    parsed: dict,
+    import_id: int | None = None,
+) -> dict:
     """
     Insert parsed entries, skipping duplicates when the same entry type,
     same day, and same normalised title already exist for the user.
@@ -696,11 +701,12 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
         cursor.execute(
             '''INSERT INTO dailydiary_entries
-               (user_id, entry_date, entry_number, title, user_message,
+               (user_id, import_id, entry_date, entry_number, title, user_message,
                 ai_response, daily_people_names, daily_places, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 user_id,
+                import_id,
                 entry_date,
                 max_num + 1,
                 row['title'],
@@ -761,12 +767,13 @@ def insert_entries(conn: sqlite3.Connection, user_id: int, parsed: dict) -> dict
 
         cursor.execute(
             '''INSERT INTO dreamdiary_entries
-               (user_id, entry_date, entry_number, title, "cast", location,
+               (user_id, import_id, entry_date, entry_number, title, "cast", location,
                 period, emotion, plot, symbols_and_imagery, insight, action, other,
                 tags, dream_people_names, dream_places)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (
                 user_id,
+                import_id,
                 entry_date,
                 max_num + 1,
                 row['title'],
@@ -1037,6 +1044,7 @@ def _insert_daily_import_row(
     user_id: int,
     row: dict[str, str],
     *,
+    import_id: int,
     mark_duplicate: bool = False,
 ) -> None:
     entry_date = row['entry_date']
@@ -1055,11 +1063,12 @@ def _insert_daily_import_row(
 
     cursor.execute(
         '''INSERT INTO dailydiary_entries
-           (user_id, entry_date, entry_time, entry_number, title, user_message,
+           (user_id, import_id, entry_date, entry_time, entry_number, title, user_message,
             ai_response, daily_people_names, daily_places, tags)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             user_id,
+            import_id,
             entry_date,
             row.get('entry_time', _DEFAULT_IMPORT_TIMES['daily']),
             max_num + 1,
@@ -1094,6 +1103,7 @@ def _insert_dream_import_row(
     user_id: int,
     row: dict[str, str],
     *,
+    import_id: int,
     mark_duplicate: bool = False,
 ) -> None:
     entry_date = row['entry_date']
@@ -1105,12 +1115,13 @@ def _insert_dream_import_row(
 
     cursor.execute(
         '''INSERT INTO dreamdiary_entries
-           (user_id, entry_date, entry_time, entry_number, title, "cast", location,
+           (user_id, import_id, entry_date, entry_time, entry_number, title, "cast", location,
             period, emotion, plot, symbols_and_imagery, insight, action, other,
             tags, dream_people_names, dream_places)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             user_id,
+            import_id,
             entry_date,
             row.get('entry_time', _DEFAULT_IMPORT_TIMES['dream']),
             max_num + 1,
@@ -1151,6 +1162,7 @@ def commit_import_preview(
     conn: sqlite3.Connection,
     user_id: int,
     preview_payload: dict,
+    import_id: int,
     accepted_duplicate_row_ids: set[str] | None = None,
 ) -> dict:
     """Commit a staged import preview, optionally including accepted duplicates."""
@@ -1164,11 +1176,11 @@ def commit_import_preview(
 
     try:
         for row in preview_payload.get('ready_daily_rows', []):
-            _insert_daily_import_row(cursor, user_id, row)
+            _insert_daily_import_row(cursor, user_id, row, import_id=import_id)
             inserted_daily += 1
 
         for row in preview_payload.get('ready_dream_rows', []):
-            _insert_dream_import_row(cursor, user_id, row)
+            _insert_dream_import_row(cursor, user_id, row, import_id=import_id)
             inserted_dreams += 1
 
         duplicate_rows = preview_payload.get('duplicate_rows', [])
@@ -1180,11 +1192,23 @@ def commit_import_preview(
             if not isinstance(row_data, dict):
                 continue
             if entry_type == 'daily':
-                _insert_daily_import_row(cursor, user_id, row_data, mark_duplicate=True)
+                _insert_daily_import_row(
+                    cursor,
+                    user_id,
+                    row_data,
+                    import_id=import_id,
+                    mark_duplicate=True,
+                )
                 inserted_daily += 1
                 accepted_duplicate_daily += 1
             elif entry_type == 'dream':
-                _insert_dream_import_row(cursor, user_id, row_data, mark_duplicate=True)
+                _insert_dream_import_row(
+                    cursor,
+                    user_id,
+                    row_data,
+                    import_id=import_id,
+                    mark_duplicate=True,
+                )
                 inserted_dreams += 1
                 accepted_duplicate_dreams += 1
 
@@ -1562,6 +1586,59 @@ def record_import_history(
     )
     conn.commit()
     return cursor.lastrowid
+
+
+def create_pending_import_history(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    filename: str,
+    file_size: int,
+) -> int:
+    """Reserve an import history id before inserting entries linked to it."""
+    return record_import_history(
+        conn,
+        user_id,
+        filename,
+        file_size,
+        {
+            'inserted_daily': 0,
+            'skipped_daily': 0,
+            'inserted_dreams': 0,
+            'skipped_dreams': 0,
+        },
+        [],
+        status='processing',
+    )
+
+
+def finalise_import_history(
+    conn: sqlite3.Connection,
+    *,
+    import_id: int,
+    user_id: int,
+    result: dict,
+    warnings: list[str],
+    status: str,
+) -> None:
+    """Complete a reserved history row after its linked entries are committed."""
+    conn.execute(
+        '''UPDATE import_history
+           SET inserted_daily = ?, skipped_daily = ?,
+               inserted_dreams = ?, skipped_dreams = ?, warnings = ?, status = ?
+           WHERE id = ? AND user_id = ?''',
+        (
+            result.get('inserted_daily', 0),
+            result.get('skipped_daily', 0),
+            result.get('inserted_dreams', 0),
+            result.get('skipped_dreams', 0),
+            json.dumps(warnings) if warnings else None,
+            status,
+            import_id,
+            user_id,
+        ),
+    )
+    conn.commit()
 
 
 def get_import_history(conn: sqlite3.Connection, user_id: int) -> list[dict]:
