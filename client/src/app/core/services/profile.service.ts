@@ -42,4 +42,30 @@ export class ProfileService {
       tap((response) => this.authService.syncCurrentUser(response.user))
     );
   }
+
+  uploadProfilePicture(file: File): Observable<{ message: string; user: User }> {
+    const formData = new FormData();
+    formData.append('image', file);
+    const token = this.authService.getToken();
+    const headers = token
+      ? new HttpHeaders({ Authorization: `Bearer ${token}` })
+      : undefined;
+
+    return this.http.post<{ message: string; user: User }>(
+      `${this.apiUrl}/profile/picture`,
+      formData,
+      { headers },
+    ).pipe(
+      tap((response) => this.authService.syncCurrentUser(response.user)),
+    );
+  }
+
+  deleteProfilePicture(): Observable<{ message: string; user: User }> {
+    return this.http.delete<{ message: string; user: User }>(
+      `${this.apiUrl}/profile/picture`,
+      { headers: this.buildHeaders() },
+    ).pipe(
+      tap((response) => this.authService.syncCurrentUser(response.user)),
+    );
+  }
 }

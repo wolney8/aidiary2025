@@ -9,6 +9,7 @@ export interface User {
   sex?: string;
   goals?: string;
   display_name?: string;
+  profile_picture_url?: string | null;
   pronouns?: string;
   gender?: string;
   custom_guidance?: string;

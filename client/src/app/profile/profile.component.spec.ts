@@ -23,7 +23,10 @@ describe("ProfileComponent", () => {
   let appDialogServiceMock: jasmine.SpyObj<AppDialogService>;
   let updateProfileSpy: jasmine.Spy;
 
-  const profileServiceStub: Pick<ProfileService, "getProfile" | "updateProfile"> = {
+  const profileServiceStub: Pick<
+    ProfileService,
+    "getProfile" | "updateProfile" | "uploadProfilePicture" | "deleteProfilePicture"
+  > = {
     getProfile: () =>
       of({
         id: 1,
@@ -44,6 +47,24 @@ describe("ProfileComponent", () => {
         user: {
           id: 1,
           username: "tester",
+        } satisfies User,
+      }),
+    uploadProfilePicture: () =>
+      of({
+        message: "Profile picture updated",
+        user: {
+          id: 1,
+          username: "tester",
+          profile_picture_url: "http://localhost/media/profiles/1/avatar.jpg",
+        } satisfies User,
+      }),
+    deleteProfilePicture: () =>
+      of({
+        message: "Profile picture removed",
+        user: {
+          id: 1,
+          username: "tester",
+          profile_picture_url: null,
         } satisfies User,
       }),
   };
@@ -105,6 +126,36 @@ describe("ProfileComponent", () => {
 
   it("shows the display name counter", () => {
     expect(component.getDisplayNameLength()).toBe(4);
+  });
+
+  it("uploads a selected profile picture", () => {
+    const uploadSpy = spyOn(
+      profileServiceStub,
+      "uploadProfilePicture",
+    ).and.callThrough();
+    const file = new File(["image"], "avatar.png", { type: "image/png" });
+    const input = { files: [file], value: "avatar.png" } as unknown as HTMLInputElement;
+
+    component.onProfilePictureSelected({ target: input } as unknown as Event);
+
+    expect(uploadSpy).toHaveBeenCalledWith(file);
+    expect(component.profile?.profile_picture_url).toContain("avatar.jpg");
+    expect(component.successMessage).toBe("Profile picture updated");
+  });
+
+  it("removes the profile picture after confirmation", async () => {
+    const deleteSpy = spyOn(
+      profileServiceStub,
+      "deleteProfilePicture",
+    ).and.callThrough();
+    component.profile!.profile_picture_url = "http://localhost/avatar.jpg";
+
+    component.removeProfilePicture();
+    await fixture.whenStable();
+
+    expect(appDialogServiceMock.confirm).toHaveBeenCalled();
+    expect(deleteSpy).toHaveBeenCalled();
+    expect(component.profile?.profile_picture_url).toBeNull();
   });
 
   it("tracks pending changes after the profile is edited", () => {

@@ -47,6 +47,58 @@ import { User } from "../core/models/user.model";
         </mat-card-header>
 
         <mat-card-content>
+          <section class="profile-picture-section" aria-labelledby="profile-picture-heading">
+            <div class="profile-picture-preview">
+              <img
+                *ngIf="profile.profile_picture_url; else profilePictureFallback"
+                [src]="profile.profile_picture_url"
+                [alt]="getProfilePictureAlt()"
+              />
+              <ng-template #profilePictureFallback>
+                <mat-icon aria-hidden="true">person</mat-icon>
+              </ng-template>
+            </div>
+            <div class="profile-picture-copy">
+              <h3 id="profile-picture-heading">Profile picture</h3>
+              <p>JPEG, PNG, or WebP. Up to 5 MB.</p>
+              <div class="profile-picture-actions">
+                <input
+                  #profilePictureInput
+                  class="visually-hidden"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  (change)="onProfilePictureSelected($event)"
+                />
+                <button
+                  mat-stroked-button
+                  type="button"
+                  [disabled]="pictureSaving"
+                  (click)="profilePictureInput.click()"
+                >
+                  <mat-icon>upload</mat-icon>
+                  {{
+                    pictureSaving
+                      ? "Saving..."
+                      : profile.profile_picture_url
+                        ? "Replace"
+                        : "Upload"
+                  }}
+                </button>
+                <button
+                  *ngIf="profile.profile_picture_url"
+                  mat-raised-button
+                  color="warn"
+                  type="button"
+                  [disabled]="pictureSaving"
+                  (click)="removeProfilePicture()"
+                >
+                  <mat-icon>delete</mat-icon>
+                  Remove
+                </button>
+              </div>
+            </div>
+          </section>
+
           <form (ngSubmit)="onSubmit()">
             <h3 class="account-heading">Account and identity</h3>
 
@@ -161,6 +213,71 @@ import { User } from "../core/models/user.model";
         margin-right: var(--spacing-xs);
       }
 
+      .profile-picture-section {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-lg);
+        margin-bottom: var(--spacing-lg);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
+      }
+
+      .profile-picture-preview {
+        display: grid;
+        place-items: center;
+        width: 112px;
+        height: 112px;
+        flex: 0 0 112px;
+        overflow: hidden;
+        border: 2px solid var(--colour-border);
+        border-radius: 50%;
+        background: var(--colour-surface);
+        color: var(--colour-text-secondary);
+      }
+
+      .profile-picture-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .profile-picture-preview mat-icon {
+        width: 56px;
+        height: 56px;
+        font-size: 56px;
+      }
+
+      .profile-picture-copy h3,
+      .profile-picture-copy p {
+        margin: 0;
+      }
+
+      .profile-picture-copy p {
+        margin-top: var(--spacing-xs);
+        color: var(--colour-text-secondary);
+      }
+
+      .profile-picture-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        margin-top: var(--spacing-md);
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
       .field-grid {
         display: grid;
         gap: var(--spacing-md);
@@ -189,6 +306,13 @@ import { User } from "../core/models/user.model";
       .error {
         color: #c62828;
       }
+
+      @media (max-width: 600px) {
+        .profile-picture-section {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
     `,
   ],
 })
@@ -200,6 +324,7 @@ export class ProfileComponent implements OnInit {
 
   profile: User | null = null;
   saving = false;
+  pictureSaving = false;
   successMessage = "";
   errorMessage = "";
   private initialProfileSnapshot = "";
@@ -261,6 +386,77 @@ export class ProfileComponent implements OnInit {
 
   getDisplayNameLength(): number {
     return String(this.profile?.display_name || "").trim().length;
+  }
+
+  getProfilePictureAlt(): string {
+    const name =
+      this.profile?.display_name ||
+      this.profile?.first_name ||
+      this.profile?.username ||
+      "User";
+    return `${name}'s profile picture`;
+  }
+
+  onProfilePictureSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || !this.profile) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      this.errorMessage = "Choose a JPEG, PNG, or WebP image.";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.errorMessage = "Profile images must be 5 MB or smaller.";
+      return;
+    }
+
+    this.pictureSaving = true;
+    this.errorMessage = "";
+    this.successMessage = "";
+    this.profileService.uploadProfilePicture(file).subscribe({
+      next: (response) => {
+        this.profile = { ...response.user };
+        this.pictureSaving = false;
+        this.successMessage = response.message;
+      },
+      error: (error) => {
+        this.pictureSaving = false;
+        this.errorMessage =
+          error?.error?.error || "Profile picture upload failed. Please try again.";
+      },
+    });
+  }
+
+  removeProfilePicture(): void {
+    if (!this.profile?.profile_picture_url || this.pictureSaving) return;
+
+    void this.appDialog.confirm({
+      title: "Remove profile picture?",
+      message: "Your account will return to the standard profile icon.",
+      confirmText: "Remove picture",
+      cancelText: "Keep picture",
+      variant: "danger",
+    }).then((confirmed) => {
+      if (!confirmed) return;
+
+      this.pictureSaving = true;
+      this.errorMessage = "";
+      this.successMessage = "";
+      this.profileService.deleteProfilePicture().subscribe({
+        next: (response) => {
+          this.profile = { ...response.user };
+          this.pictureSaving = false;
+          this.successMessage = response.message;
+        },
+        error: (error) => {
+          this.pictureSaving = false;
+          this.errorMessage =
+            error?.error?.error || "Profile picture removal failed. Please try again.";
+        },
+      });
+    });
   }
 
   hasPendingChanges(): boolean {

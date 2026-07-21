@@ -63,6 +63,18 @@ def store_uploaded_image(image_bytes: bytes, *, user_id: int, entry_kind: str) -
     )
 
 
+def store_profile_image(image_bytes: bytes, *, user_id: int) -> str:
+    """Store a normalised profile image behind a cloud-portable storage key."""
+    if not image_bytes:
+        raise ValueError("No image bytes were provided for storage.")
+
+    storage_key = f"profiles/{user_id}/{uuid4().hex}.jpg"
+    image_path = _storage_key_to_path(storage_key)
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(image_bytes)
+    return storage_key
+
+
 def store_imported_image(
     image_bytes: bytes,
     *,
