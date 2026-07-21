@@ -76,6 +76,9 @@ and continue with any independent safe work.
    Inspect `git diff --stat` and the actual diff. Check scope, secrets, generated files,
    route/API contracts, existing databases, responsive states, and light/dark themes.
    Repeat the `enforce-platform-ux` review gate for every user-facing frontend diff.
+   For shared controls, compare enabled, hover, selected, focused, and disabled states
+   across every route that uses the primitive. Do not approve page-local fixes that
+   leave equivalent toggles, buttons, icon targets, or paginators inconsistent.
 6. **Validate**
    Run targeted checks during implementation and the applicable release-boundary checks
    before handoff. Do not claim lint, tests, or smoke coverage that did not run.
@@ -94,6 +97,9 @@ coherent. A batch is merge-ready only when:
 - applicable automated checks pass, or failures are reported precisely
 - user-visible changes have a concise combined smoke-test path
 - no known blocker is hidden behind a follow-up note
+- shared interactive controls use the global Material 3 shape/state tokens; compact
+  actions and segmented choices are pill-shaped, icon controls are centred 48px touch
+  targets, and cards/dialogs/tables retain appropriate rounded-container shapes
 
 Do not call partial implementation complete. Do not keep a branch open for unrelated
 polish after its acceptance criteria are met.

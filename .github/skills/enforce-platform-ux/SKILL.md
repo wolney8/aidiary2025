@@ -40,6 +40,9 @@ Apply this skill before editing user-facing UI and repeat the review before hand
 - Use `var(--radius-pill)` for chips, tags, filters, status labels, compact segmented
   choices, and suitable compact action buttons. Prefer these pill affordances over
   sharp rectangular boxes.
+- Treat button shape and state styling as shared platform primitives. Before adding
+  component CSS, inspect global button, icon-button, button-toggle, and paginator rules.
+  Do not duplicate those rules per route.
 - Do not turn cards, dialogs, tables, text fields, media frames, or page sections into
   pills. Use `--radius-sm`, `--radius-md`, or `--radius-lg` according to their container
   hierarchy.
@@ -82,6 +85,29 @@ Apply this skill before editing user-facing UI and repeat the review before hand
   requires it.
 - Preserve readable image overlays with a theme-appropriate gradient and sufficient text
   contrast.
+
+### Shared-control consistency check
+
+For every changed reusable control, compare this state matrix in both themes:
+
+| State | Required distinction |
+| --- | --- |
+| Enabled | Clearly interactive surface and readable label/icon |
+| Hover | Visible state layer without layout movement |
+| Selected/current | Strong fill plus non-colour indicator such as weight or border |
+| Focused | Unclipped focus outline |
+| Disabled/future | Lower emphasis while remaining legible and non-interactive |
+
+- Check the same primitive wherever it appears: list, calendar, search, settings,
+  create/edit, detail, import/export, and overlays.
+- Segmented filters and view choices must use one rounded group silhouette with no sharp
+  outer corners. Selected and available choices must never collapse into the same grey.
+- Text actions use pill geometry. Icon-only actions remain circular and centre the
+  Material icon within a 48px touch target.
+- Pagination uses one shared rounded surface at both the top and bottom of content and
+  must blend with the page background in light and dark themes.
+- Cards, tables, dialogs, form fields, media frames, and page sections are rounded
+  containers, not pills. Do not distort content containers to satisfy a button rule.
 
 ## 3. Enforce WCAG 2.2 AA
 

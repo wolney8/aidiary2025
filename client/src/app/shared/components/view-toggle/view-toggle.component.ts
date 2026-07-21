@@ -36,35 +36,15 @@ import { MatIconModule } from "@angular/material/icon";
     `
       .view-toggle {
         margin: var(--spacing-md) 0;
-      }
-
-      .view-toggle .mat-button-toggle {
-        border-color: var(--colour-border);
-        color: var(--colour-text-secondary);
-        transition: all 0.2s ease;
-      }
-
-      .view-toggle .mat-button-toggle:hover {
-        background: var(--colour-surface-muted);
-      }
-
-      .view-toggle .mat-button-toggle-checked {
-        background: var(--colour-primary);
-        color: #ffffff;
-      }
-
-      .view-toggle .mat-button-toggle-checked:hover {
-        background: var(--colour-primary-hover);
+        border-radius: var(--radius-pill);
       }
 
       .view-toggle.emphasise-daily .mat-button-toggle-checked {
-        background: linear-gradient(180deg, #1d4ed8 0%, #2563eb 100%);
         box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45);
         animation: activeFilterPulseBlue 2.2s ease-in-out infinite;
       }
 
       .view-toggle.emphasise-dreams .mat-button-toggle-checked {
-        background: linear-gradient(180deg, #6d28d9 0%, #7c3aed 100%);
         box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4);
         animation: activeFilterPulsePurple 2.2s ease-in-out infinite;
       }
@@ -90,6 +70,13 @@ import { MatIconModule } from "@angular/material/icon";
         }
         50% {
           box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.08);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .view-toggle.emphasise-daily .mat-button-toggle-checked,
+        .view-toggle.emphasise-dreams .mat-button-toggle-checked {
+          animation: none;
         }
       }
     `,
