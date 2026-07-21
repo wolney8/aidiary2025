@@ -1658,6 +1658,13 @@
   color: var(--colour-success-text);
 }
 
+.cbt-calendar-preview-card .calendar-preview-copy-block p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .calendar-preview-card-more {
   flex: 0 0 124px;
   min-height: 210px;
