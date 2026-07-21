@@ -1057,19 +1057,17 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       .pagination-container {
         display: flex;
         justify-content: center;
-        padding: 1rem 0;
-        border-top: 1px solid #e0e0e0;
-        background: #fafafa;
+        padding: var(--spacing-xs);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
       }
 
       .pagination-container:first-of-type {
-        border-top: none;
-        border-bottom: 1px solid #e0e0e0;
         margin-bottom: 1rem;
       }
 
       .pagination-container:last-of-type {
-        border-bottom: none;
         margin-top: 1rem;
       }
 
@@ -1185,10 +1183,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       :host-context(html[data-theme="dark"]) .pagination-container {
-        background: linear-gradient(
-          180deg,
-          var(--colour-surface-elevated) 0%,
-          var(--colour-surface) 100%
+        background: color-mix(
+          in srgb,
+          var(--colour-surface-muted) 78%,
+          var(--colour-background)
         );
         border-color: var(--colour-border);
       }

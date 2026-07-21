@@ -120,6 +120,11 @@ body {
   --colour-info-text: #1d4ed8;
   --colour-violet-bg: #ede9fe;
   --colour-violet-text: #6d28d9;
+  --colour-control-container: #f1f5f9;
+  --colour-control-hover: #e2e8f0;
+  --colour-control-selected: #1d4ed8;
+  --colour-control-selected-hover: #1e40af;
+  --colour-control-selected-text: #ffffff;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -159,6 +164,11 @@ html[data-theme="dark"] {
   --colour-info-text: #c9deff;
   --colour-violet-bg: #31254e;
   --colour-violet-text: #e0d2ff;
+  --colour-control-container: #162235;
+  --colour-control-hover: #24344d;
+  --colour-control-selected: #9bb8ff;
+  --colour-control-selected-hover: #bfd1ff;
+  --colour-control-selected-text: #07111d;
   --focus-outline: 2px solid #7fb0ff;
 }
 
@@ -227,11 +237,11 @@ html[data-theme="dark"] .mat-button-toggle-standalone.mat-button-toggle-appearan
 }
 
 html[data-theme="dark"] .mat-button-toggle-checked {
-  background: var(--colour-primary) !important;
+  background: var(--colour-control-selected) !important;
 }
 
 html[data-theme="dark"] .mat-button-toggle-checked .mat-button-toggle-label-content {
-  color: #08111f !important;
+  color: var(--colour-control-selected-text) !important;
 }
 
 html[data-theme="dark"] .mat-mdc-chip,
@@ -377,13 +387,10 @@ html[data-theme="dark"] .holiday-preview-chip.ng-star-inserted {
   border-color: rgba(155, 184, 255, 0.24) !important;
 }
 
-html[data-theme="dark"] .timeline-scroller,
 html[data-theme="dark"] .calendar-shell,
 html[data-theme="dark"] .calendar-preview-deck,
 html[data-theme="dark"] .important-day-preview-deck,
 html[data-theme="dark"] .important-day-image-modal-dialog,
-html[data-theme="dark"] .pagination-container,
-html[data-theme="dark"] .pagination-container.ng-star-inserted,
 html[data-theme="dark"] .entry-image-placeholder,
 html[data-theme="dark"] .entry-image-placeholder.ng-star-inserted,
 html[data-theme="dark"] .calendar-day,
@@ -410,8 +417,8 @@ html[data-theme="dark"] .icon-picker-panel {
 html[data-theme="dark"] .month-item.current,
 html[data-theme="dark"] .month-item.current.clickable,
 html[data-theme="dark"] .month-item.current.clickable.ng-star-inserted {
-  background: rgba(155, 184, 255, 0.16) !important;
-  color: var(--colour-text-primary) !important;
+  background: var(--colour-info-bg) !important;
+  color: var(--colour-info-text) !important;
   border-color: var(--colour-primary) !important;
 }
 
@@ -422,18 +429,18 @@ html[data-theme="dark"] .month-item.current .month {
 
 html[data-theme="dark"] .month-item.selected,
 html[data-theme="dark"] .month-item.selected.ng-star-inserted {
-  background: var(--colour-primary) !important;
-  color: #08111f !important;
+  background: var(--colour-control-selected) !important;
+  color: var(--colour-control-selected-text) !important;
 }
 
 html[data-theme="dark"] .month-item.selected .year,
 html[data-theme="dark"] .month-item.selected .month,
 html[data-theme="dark"] .month-item.selected .entry-count-badge {
-  color: #08111f !important;
+  color: var(--colour-control-selected-text) !important;
 }
 
 html[data-theme="dark"] .month-item.clickable:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--colour-control-hover) !important;
 }
 
 html[data-theme="dark"] .timeline-scroller button,
@@ -441,7 +448,7 @@ html[data-theme="dark"] .timeline-nav-button,
 html[data-theme="dark"] .selected-day-return,
 html[data-theme="dark"] .calendar-important-days-toggle,
 html[data-theme="dark"] .calendar-important-days-more {
-  background: var(--colour-surface-elevated) !important;
+  background: var(--colour-control-container) !important;
   color: var(--colour-text-primary) !important;
   border-color: var(--colour-border) !important;
 }
@@ -585,26 +592,92 @@ a:focus-visible,
   outline-offset: var(--focus-offset);
 }
 
-// Pill toggle styles
-.view-toggle {
-  .mat-button-toggle {
-    border-color: var(--colour-border);
-    color: var(--colour-text-secondary);
-    transition: all 0.2s ease;
-  }
+// Shared Material 3 control geometry and state treatment.
+.mat-mdc-button,
+.mat-mdc-raised-button,
+.mat-mdc-unelevated-button,
+.mat-mdc-outlined-button {
+  border-radius: var(--radius-pill) !important;
+}
 
-  .mat-button-toggle:hover {
-    background: var(--colour-surface-muted);
-  }
+.mat-mdc-icon-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+}
 
-  .mat-button-toggle-checked {
-    background-color: var(--colour-primary);
-    color: #ffffff;
-  }
+.mat-mdc-icon-button .mat-mdc-button-touch-target {
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+}
 
-  .mat-button-toggle-checked:hover {
-    background-color: var(--colour-primary-hover);
-  }
+.mat-mdc-icon-button .mat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  line-height: 1;
+}
+
+.mat-button-toggle-group-appearance-standard,
+.mat-button-toggle-group {
+  overflow: hidden;
+  border: 1px solid var(--colour-border) !important;
+  border-radius: var(--radius-pill) !important;
+  background: var(--colour-control-container);
+}
+
+.mat-button-toggle-group .mat-button-toggle {
+  border-color: var(--colour-border) !important;
+  background: transparent;
+  color: var(--colour-text-secondary);
+}
+
+.mat-button-toggle-group .mat-button-toggle:hover:not(.mat-button-toggle-checked) {
+  background: var(--colour-control-hover);
+  color: var(--colour-text-primary);
+}
+
+.mat-button-toggle-group .mat-button-toggle-checked {
+  background: var(--colour-control-selected) !important;
+  color: var(--colour-control-selected-text) !important;
+}
+
+.mat-button-toggle-group .mat-button-toggle-checked:hover {
+  background: var(--colour-control-selected-hover) !important;
+}
+
+.mat-button-toggle-group .mat-button-toggle-checked .mat-button-toggle-label-content {
+  color: var(--colour-control-selected-text) !important;
+  font-weight: 700;
+}
+
+.mat-button-toggle-group .mat-button-toggle-label-content {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagination-container {
+  box-sizing: border-box;
+  width: min(100%, 64rem);
+  margin-inline: auto;
+  padding: var(--spacing-xs);
+  overflow: hidden;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-muted);
+}
+
+.pagination-container .mat-mdc-paginator {
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: transparent;
+  color: var(--colour-text-primary);
 }
 
 // Timeline scroller
@@ -618,12 +691,12 @@ a:focus-visible,
   }
 
   &::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--colour-surface-muted);
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 3px;
+    background: var(--colour-border);
+    border-radius: var(--radius-pill);
   }
 }
 

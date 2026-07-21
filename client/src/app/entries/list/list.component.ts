@@ -139,11 +139,16 @@ type OccasionPreviewState = {
                 [emphasiseActiveFilter]="hasFocusedTypeFilter()"
                 (viewChange)="onViewChange($event)"
               ></app-view-toggle>
-              <div class="display-mode-toggle" aria-label="Entries display mode">
+              <div
+                class="display-mode-toggle"
+                role="group"
+                aria-label="Entries display mode"
+              >
                 <button
                   mat-stroked-button
                   type="button"
                   [class.active]="displayMode === 'cards'"
+                  [attr.aria-pressed]="displayMode === 'cards'"
                   (click)="setDisplayMode('cards')"
                 >
                   Cards
@@ -152,6 +157,7 @@ type OccasionPreviewState = {
                   mat-stroked-button
                   type="button"
                   [class.active]="displayMode === 'calendar'"
+                  [attr.aria-pressed]="displayMode === 'calendar'"
                   (click)="setDisplayMode('calendar')"
                 >
                   Calendar
@@ -180,8 +186,10 @@ type OccasionPreviewState = {
 
             <button
               mat-icon-button
+              class="timeline-step-button"
               (click)="scrollTimeline(-1)"
               [disabled]="timelineScrollIndex <= minScrollIndex"
+              aria-label="Show earlier months"
             >
               <mat-icon>chevron_left</mat-icon>
             </button>
@@ -209,8 +217,10 @@ type OccasionPreviewState = {
 
             <button
               mat-icon-button
+              class="timeline-step-button"
               (click)="scrollTimeline(1)"
               [disabled]="timelineScrollIndex >= maxScrollIndex"
+              aria-label="Show later months"
             >
               <mat-icon>chevron_right</mat-icon>
             </button>
