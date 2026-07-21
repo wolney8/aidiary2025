@@ -88,6 +88,7 @@ type UploadState =
       [accept]="acceptedFileTypes"
       class="sr-only"
       aria-hidden="true"
+      tabindex="-1"
       (change)="onFileSelected($event)"
     />
 
@@ -789,7 +790,7 @@ type UploadState =
       }
 
       .step-icon {
-        color: #7b3ff2;
+        color: var(--colour-primary);
       }
 
       mat-card-actions {
@@ -813,7 +814,7 @@ type UploadState =
         align-items: center;
         justify-content: center;
         gap: 8px;
-        border: 2px dashed #bdbdbd;
+        border: 2px dashed var(--colour-border);
         border-radius: 8px;
         padding: 32px 16px;
         cursor: pointer;
@@ -827,8 +828,8 @@ type UploadState =
 
       .drop-zone:hover,
       .drop-zone:focus-visible {
-        border-color: #7b3ff2;
-        background-color: rgba(123, 63, 242, 0.04);
+        border-color: var(--colour-primary);
+        background-color: var(--colour-info-bg);
       }
 
       .drop-zone:focus-visible {
@@ -837,33 +838,33 @@ type UploadState =
       }
 
       .drop-zone--has-file {
-        border-color: #388e3c;
-        background-color: rgba(56, 142, 60, 0.04);
+        border-color: var(--colour-success-text);
+        background-color: var(--colour-success-bg);
       }
 
       .drop-zone--invalid {
-        border-color: #c62828;
-        background-color: rgba(198, 40, 40, 0.04);
+        border-color: var(--colour-danger-text);
+        background-color: var(--colour-danger-bg);
       }
 
       .drop-zone--dragging {
-        border-color: #1565c0;
-        background-color: rgba(21, 101, 192, 0.08);
+        border-color: var(--colour-info-text);
+        background-color: var(--colour-info-bg);
       }
 
       .drop-icon {
         font-size: 48px;
         width: 48px;
         height: 48px;
-        color: #9e9e9e;
+        color: var(--colour-text-secondary);
       }
 
       .drop-zone--has-file .drop-icon {
-        color: #388e3c;
+        color: var(--colour-success-text);
       }
 
       .drop-zone--invalid .drop-icon {
-        color: #c62828;
+        color: var(--colour-danger-text);
       }
 
       .drop-primary {
@@ -893,7 +894,7 @@ type UploadState =
 
       .progress-label {
         font-size: 13px;
-        color: #555;
+        color: var(--colour-text-secondary);
         margin: 6px 0 0;
         text-align: right;
       }
@@ -911,7 +912,7 @@ type UploadState =
         width: 2rem;
         height: 2rem;
         border-radius: 999px;
-        border: 3px solid rgba(99, 102, 241, 0.18);
+        border: 3px solid var(--colour-border);
         border-top-color: var(--colour-primary);
         animation: import-processing-spin 900ms linear infinite;
       }
@@ -1014,7 +1015,7 @@ type UploadState =
         color: var(--colour-text-primary);
         border-radius: 18px;
         border: 1px solid var(--colour-border);
-        box-shadow: 0 28px 60px rgba(15, 23, 42, 0.24);
+        box-shadow: 0 28px 60px var(--colour-shadow-strong);
       }
 
       .duplicate-modal__header,
@@ -1277,7 +1278,7 @@ type UploadState =
 
       .loading-label {
         font-size: 13px;
-        color: #757575;
+        color: var(--colour-text-secondary);
         margin: 6px 0 0;
       }
 
@@ -1287,7 +1288,7 @@ type UploadState =
         align-items: center;
         gap: 8px;
         padding: 24px 0;
-        color: #9e9e9e;
+        color: var(--colour-text-secondary);
         font-size: 14px;
         text-align: center;
       }
@@ -1342,23 +1343,23 @@ type UploadState =
       }
 
       .status-chip--success {
-        background: #e8f5e9;
-        color: #1b5e20;
+        background: var(--colour-success-bg);
+        color: var(--colour-success-text);
       }
 
       .status-chip--partial {
-        background: #fff8e1;
-        color: #6d4c10;
+        background: var(--colour-warning-bg);
+        color: var(--colour-warning-text);
       }
 
       .status-chip--failed {
-        background: #ffebee;
-        color: #b71c1c;
+        background: var(--colour-danger-bg);
+        color: var(--colour-danger-text);
       }
 
       .status-chip--empty {
-        background: #e3f2fd;
-        color: #0d47a1;
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
       }
 
       @media (max-width: 600px) {

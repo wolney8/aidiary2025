@@ -38,6 +38,8 @@ follow-on work. Do not create a second accessibility handoff document for this i
 | A11Y-009 | Major | 2.4.7 AA | Calendar/import | Focus styling was removed from an important-day link and the import drop zone. Restored the shared focus outline and prevented Space from scrolling while activating file selection. |
 | A11Y-010 | Major | 4.1.2 A, 2.1.1 A | Calendar | A custom button-like calendar cell contained separate event buttons. Converted the cell to a structural container and added a discrete semantic day-action button. |
 | A11Y-011 | Major | 4.1.2 A | Notifications | Focusable notification articles acted as buttons while containing other actions. Kept articles structural and added an explicit keyboard-operable mark-read action. |
+| A11Y-012 | Major | 1.4.3 AA, 1.4.11 AA | Search/import/important days | Migrated legacy semantic surfaces, state text, boundaries, and category accents to shared light/dark theme tokens. Intentional elevation shadows also use shared tokens rather than route-local palettes. |
+| A11Y-014 | Advisory | Process | Automated coverage | Added `@axe-core/playwright` checks for login, registration, entry list in both themes, entry creation, populated search, Import, and Important Days. The exact Angular CDK focus-trap sentinel is excluded while `aria-hidden-focus` remains active elsewhere. The gate identified and remediated a hidden but keyboard-focusable Import file input. |
 
 ## Open Findings
 
@@ -46,9 +48,49 @@ follow-up issues before `#52` closes.
 
 | ID | Severity | WCAG | Area | Required follow-up |
 | --- | --- | --- | --- | --- |
-| A11Y-012 | Major | 1.4.3 AA, 1.4.11 AA | Search/import/important days | Legacy component styles still contain many route-local colour literals. Migrate semantic surfaces to shared tokens and verify every text, boundary, icon, hover, selected, and disabled pair in both themes with a contrast tool. |
 | A11Y-013 | Major | 2.4.11 AA, 1.4.10 AA | Overlays and responsive layout | Manually verify notification, calendar preview, transcript, and import-review overlays at 200% zoom and short viewport heights. Confirm focused controls remain visible and no horizontal page overflow occurs. |
-| A11Y-014 | Advisory | Process | Automated coverage | Add `axe-core` Playwright checks for public routes and authenticated representative routes. Current lint/build/smoke coverage does not calculate contrast or validate the accessibility tree comprehensively. |
+
+## Standards Coverage
+
+| WCAG criterion | Result | Evidence / residual check |
+| --- | --- | --- |
+| 1.1.1 Non-text Content | Pass by inspection | Meaningful image alternatives and decorative icon treatment reviewed; confirm with screen reader. |
+| 1.3.1 Info and Relationships | Pass by inspection | Page headings, landmarks, labels, groups, and tables use semantic structure. |
+| 1.3.2 Meaningful Sequence | Pass by inspection | DOM and visual order remain aligned in primary journeys. |
+| 1.3.4 Orientation | Pass by inspection | No route forces one device orientation. |
+| 1.3.5 Identify Input Purpose | Pass | Authentication fields expose autocomplete purposes. |
+| 1.4.1 Use of Colour | Pass by inspection | Selected/error states pair colour with text, icon, weight, or boundary changes. |
+| 1.4.3 Contrast Minimum | Automated pass on representative routes | Axe passes light/dark representative routes; manually verify data-dependent states. |
+| 1.4.4 Resize Text | Pending manual | Verify all scoped journeys at 200% zoom. |
+| 1.4.10 Reflow | Pending manual | Verify short and narrow viewports without horizontal page overflow. |
+| 1.4.11 Non-text Contrast | Automated pass on representative routes | Shared state/border tokens are now used in audited legacy components. |
+| 1.4.12 Text Spacing | Pending manual | Apply WCAG text-spacing overrides and check clipping/overlap. |
+| 2.1.1 Keyboard | Pass by source inspection | Pointer-only timeline, search, and calendar controls were remediated; complete keyboard smoke. |
+| 2.1.2 No Keyboard Trap | Pass by source inspection | Material dialogs trap and restore focus; complete overlay smoke. |
+| 2.4.1 Bypass Blocks | Pass | Keyboard-visible skip link targets the main landmark. |
+| 2.4.2 Page Titled | Pass | Angular routes define descriptive titles. |
+| 2.4.3 Focus Order | Pending manual | Verify shell, forms, cards, overlays, and dialogs end to end. |
+| 2.4.6 Headings and Labels | Pass by inspection | Primary pages expose descriptive level-one headings and labelled controls. |
+| 2.4.7 Focus Visible | Pass by source inspection | Shared focus outline restored for custom controls; complete visual smoke. |
+| 2.4.11 Focus Not Obscured | Pending manual | Verify sticky/scrolling overlays at 200% zoom and short heights. |
+| 2.5.8 Target Size Minimum | Pass by inspection | Primary actions use Material targets; confirm compact layouts manually. |
+| 3.2.3 Consistent Navigation | Pass by inspection | Shared top bar and side navigation remain consistent across authenticated routes. |
+| 3.3.1 Error Identification | Pass by inspection | Auth/import/create errors use labelled inline or alert/status feedback. |
+| 3.3.2 Labels or Instructions | Pass by inspection | Inputs use visible labels; placeholders are supplementary. |
+| 4.1.2 Name, Role, Value | Automated pass on representative routes | Axe passes after excluding only the framework-owned CDK focus sentinel. |
+| 4.1.3 Status Messages | Pass by inspection | Loading, import, notification, and validation status regions expose live/status semantics where required. |
+
+## Wireframe Gap Analysis
+
+| Wireframe area | Current implementation | Accessibility gap status |
+| --- | --- | --- |
+| Global shell | Responsive top bar, overlay navigation, skip link, search, account, theme, and notifications are implemented. | Automated representative check passes; keyboard/zoom smoke remains. |
+| Timeline scroller | Semantic month buttons expose current/disabled state and use shared control styling. | Source and automated checks pass on the empty entries route. |
+| Entry card grid | Daily, dream, thought-record, attachment, and image states extend the original card hierarchy. | Data-dependent card states require final manual light/dark and zoom review. |
+| Entry detail | Hero media, attachment controls, metadata, linked reflections, and actions extend the mapped detail layout. | Dialog, expanded image, transcript, and focus-restoration smoke remains. |
+| Search results | Keyboard-expandable cards, semantic status states, and tokenised surfaces preserve the mapped result hierarchy. | Test with populated results and 200% zoom remains. |
+| Side navigation | Existing destinations and close behavior match the shell mapping. | Keyboard order and focus return require final manual confirmation. |
+| Visual theme | Shared semantic tokens now cover audited search/import/important-day legacy states in light and dark modes. | Manual contrast review remains for data-dependent and overlay states. |
 
 ## Manual Verification Matrix
 
@@ -71,6 +113,7 @@ technology check before issue closure.
 | `cd client && npm run lint` | Passed |
 | `cd client && npm run build` | Passed; existing unused `autosave.service.ts` warning remains |
 | `cd client && npm run test:e2e:smoke` | Passed, 2 tests |
+| `cd client && npm run test:e2e:a11y` | Passed, 8 axe checks across public/authenticated, populated search/settings, and light/dark representative routes |
 | Focused login unit spec | Inconclusive: the corrected harness compiled, but Chrome Headless disconnected on the rerun before executing tests due to the repository's recurring Karma ping timeout |
 
 ## Exit Criteria

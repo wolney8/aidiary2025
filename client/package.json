@@ -7,6 +7,7 @@
     "build": "ng build",
     "test": "ng test",
     "lint": "eslint \"src/**/*.{ts,html}\" --max-warnings=0",
+    "test:e2e:a11y": "PLAYWRIGHT_PORT=4211 playwright test tests/e2e/accessibility.spec.ts",
     "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts",
     "test:e2e:inactivity": "PLAYWRIGHT_PORT=4210 PLAYWRIGHT_ANGULAR_CONFIGURATION=production playwright test tests/e2e/inactivity.spec.ts"
   },
@@ -33,6 +34,7 @@
     "@angular-eslint/template-parser": "^17.5.3",
     "@angular/cli": "^17.3.10",
     "@angular/compiler-cli": "^17.3.12",
+    "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "1.60.0",
     "@types/jasmine": "5.1.4",
     "@types/node": "^20.17.0",

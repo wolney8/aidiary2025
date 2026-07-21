@@ -455,10 +455,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .loading-message-card {
-        background: rgba(255, 255, 255, 0.95);
+        background: var(--colour-surface-elevated);
         backdrop-filter: blur(8px);
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        border: 1px solid var(--colour-border);
+        box-shadow: 0 8px 32px var(--colour-shadow-medium);
         max-width: 400px;
         pointer-events: auto;
       }
@@ -474,7 +474,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       .loading-text {
         margin: 0;
-        color: #616161;
+        color: var(--colour-text-secondary);
         font-size: 0.95rem;
         font-weight: 500;
       }
@@ -489,10 +489,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .skeleton-card {
-        background: white;
+        background: var(--colour-surface-elevated);
         border-radius: 8px;
         padding: 16px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px var(--colour-shadow-soft);
         /* Match actual entry-card dimensions exactly: 303 x 350 */
         height: 350px;
         width: 303px;
@@ -501,7 +501,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         display: flex;
         flex-direction: column;
         opacity: 0.8;
-        border: 1px solid #f0f0f0;
+        border: 1px solid var(--colour-border);
       }
 
       .skeleton-header {
@@ -517,9 +517,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         border-radius: 50%;
         background: linear-gradient(
           90deg,
-          #f0f0f0 25%,
-          #e0e0e0 50%,
-          #f0f0f0 75%
+          var(--colour-surface-muted) 25%,
+          var(--colour-surface-strong) 50%,
+          var(--colour-surface-muted) 75%
         );
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
@@ -533,9 +533,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         height: 16px;
         background: linear-gradient(
           90deg,
-          #f0f0f0 25%,
-          #e0e0e0 50%,
-          #f0f0f0 75%
+          var(--colour-surface-muted) 25%,
+          var(--colour-surface-strong) 50%,
+          var(--colour-surface-muted) 75%
         );
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
@@ -548,9 +548,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         height: 12px;
         background: linear-gradient(
           90deg,
-          #f0f0f0 25%,
-          #e0e0e0 50%,
-          #f0f0f0 75%
+          var(--colour-surface-muted) 25%,
+          var(--colour-surface-strong) 50%,
+          var(--colour-surface-muted) 75%
         );
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
@@ -568,9 +568,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         height: 120px; /* Match entry-image-placeholder height exactly */
         background: linear-gradient(
           90deg,
-          #f0f0f0 25%,
-          #e0e0e0 50%,
-          #f0f0f0 75%
+          var(--colour-surface-muted) 25%,
+          var(--colour-surface-strong) 50%,
+          var(--colour-surface-muted) 75%
         );
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
@@ -593,9 +593,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         height: 14px;
         background: linear-gradient(
           90deg,
-          #f0f0f0 25%,
-          #e0e0e0 50%,
-          #f0f0f0 75%
+          var(--colour-surface-muted) 25%,
+          var(--colour-surface-strong) 50%,
+          var(--colour-surface-muted) 75%
         );
         background-size: 200% 100%;
         animation: shimmer 1.5s infinite;
@@ -634,9 +634,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       .error-card {
         margin: 2rem auto;
         max-width: 500px;
-        background: #fff8f8;
-        border: 1px solid #ffcdd2;
-        color: #c62828;
+        background: var(--colour-danger-bg);
+        border: 1px solid var(--colour-danger-text);
+        color: var(--colour-danger-text);
       }
 
       .error-content {
@@ -652,26 +652,26 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         font-size: 48px;
         width: 48px;
         height: 48px;
-        color: #e57373;
+        color: var(--colour-danger-text);
       }
 
       .error-content h3 {
         margin: 0 0 1rem;
         font-size: 1.25rem;
         font-weight: 500;
-        color: #c62828;
+        color: var(--colour-danger-text);
       }
 
       .error-message {
         margin: 0 0 1.5rem;
-        color: #d32f2f;
+        color: var(--colour-danger-text);
         line-height: 1.5;
       }
 
       .error-suggestions {
         margin: 1.5rem 0;
         text-align: left;
-        background: #ffebee;
+        background: var(--colour-danger-bg);
         border-radius: 8px;
         padding: 1rem;
       }
@@ -680,13 +680,13 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         margin: 0 0 0.5rem;
         font-size: 0.9rem;
         font-weight: 500;
-        color: #c62828;
+        color: var(--colour-danger-text);
       }
 
       .error-suggestions ul {
         margin: 0;
         padding-left: 1.2rem;
-        color: #d32f2f;
+        color: var(--colour-danger-text);
       }
 
       .error-suggestions li {
@@ -709,8 +709,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         margin: 2rem auto;
         max-width: 500px;
         text-align: center;
-        background: #fafafa;
-        border: 1px solid #e0e0e0;
+        background: var(--colour-surface-elevated);
+        border: 1px solid var(--colour-border);
       }
 
       .no-results-content {
@@ -725,26 +725,26 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         font-size: 64px;
         width: 64px;
         height: 64px;
-        color: #9e9e9e;
+        color: var(--colour-text-secondary);
       }
 
       .no-results-content h3 {
         margin: 0 0 1rem;
         font-size: 1.5rem;
         font-weight: 500;
-        color: #424242;
+        color: var(--colour-text-primary);
       }
 
       .no-results-message {
         margin: 0 0 2rem;
-        color: #757575;
+        color: var(--colour-text-secondary);
         line-height: 1.5;
       }
 
       .search-suggestions {
         margin: 2rem 0;
         text-align: left;
-        background: #f5f5f5;
+        background: var(--colour-surface-muted);
         border-radius: 8px;
         padding: 1.5rem;
       }
@@ -753,13 +753,13 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         margin: 0 0 1rem;
         font-size: 1rem;
         font-weight: 500;
-        color: #424242;
+        color: var(--colour-text-primary);
       }
 
       .search-suggestions ul {
         margin: 0;
         padding-left: 1.2rem;
-        color: #616161;
+        color: var(--colour-text-secondary);
       }
 
       .search-suggestions li {
@@ -780,7 +780,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       .search-header h2 {
         font-size: 1.5rem;
         font-weight: 500;
-        color: #333;
+        color: var(--colour-text-primary);
       }
 
       .results-grid {
@@ -849,15 +849,15 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .connector-arrow {
-        background-color: #007bff;
-        color: white;
+        background-color: var(--colour-primary);
+        color: var(--colour-on-primary);
         border-radius: 50%;
         width: 32px;
         height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+        box-shadow: 0 2px 8px var(--colour-primary-shadow);
       }
 
       .connector-arrow mat-icon {
@@ -877,8 +877,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       /* When expanded, make the expanded card appear below and span wider */
       .expanded-details-card {
-        background-color: #f8f9fa;
-        border-left: 4px solid #007bff;
+        background-color: var(--colour-surface-elevated);
+        border-left: 4px solid var(--colour-primary);
         overflow: hidden;
         /* Use CSS custom properties for dynamic sizing and positioning */
         width: var(--expanded-width, min(900px, 90vw));
@@ -888,7 +888,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transform: translateX(var(--offset-x, 0px));
         /* Ensure it appears above other content */
         z-index: 20;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 20px var(--colour-shadow-medium);
         border-radius: 8px;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         /* Position relative to maintain document flow */
@@ -925,8 +925,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       /* Highlight the selected/expanded card */
       .result-container:has(.expanded-details-card) .entry-card {
-        border: 2px solid #007bff;
-        box-shadow: 0 4px 20px rgba(0, 123, 255, 0.15);
+        border: 2px solid var(--colour-primary);
+        box-shadow: 0 4px 20px var(--colour-primary-shadow);
       }
 
       /* Ensure search result card content fills properly */
@@ -939,13 +939,13 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .entry-card:hover {
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 4px 20px var(--colour-shadow-soft);
         transform: translateY(-2px);
       }
 
       .entry-image-placeholder {
         height: 120px; /* Reduced from 150px to give more space for text */
-        background: #f5f5f5;
+        background: var(--colour-surface-muted);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -957,7 +957,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           font-size: 36px; /* Slightly smaller icon */
           width: 36px;
           height: 36px;
-          color: #9e9e9e;
+          color: var(--colour-text-secondary);
         }
       }
       .match-snippets {
@@ -973,7 +973,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       .snippet {
         margin: 0;
         font-size: 0.9rem;
-        color: #495057;
+        color: var(--colour-text-secondary);
         line-height: 1.4;
         /* Text truncation for long snippets */
         overflow: hidden;
@@ -985,14 +985,14 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
         ::ng-deep mark {
           background: none;
-          color: #dc3545;
+          color: var(--colour-danger-text);
           font-weight: 500;
         }
       }
 
       /* Server may wrap matches in <span class="match">..</span> or <mark>..</mark> */
       ::ng-deep .match {
-        color: #dc3545;
+        color: var(--colour-danger-text);
         font-weight: 500;
       }
 
@@ -1001,7 +1001,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         justify-content: flex-end;
         align-items: center;
         padding: 12px 16px;
-        border-bottom: 1px solid #e9ecef;
+        border-bottom: 1px solid var(--colour-border);
       }
 
       .expanded-content {
@@ -1021,7 +1021,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .detail-row:hover {
-        background-color: rgba(0, 123, 255, 0.05);
+        background-color: var(--colour-info-bg);
         border-radius: 8px;
         margin: 0 -8px 16px -8px;
         padding: 8px;
@@ -1032,7 +1032,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         width: 24px;
         height: 24px;
         margin-right: 16px;
-        color: #6c757d;
+        color: var(--colour-text-secondary);
         font-size: 20px !important;
       }
 
@@ -1040,7 +1040,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         flex: 1;
         font-size: 0.9rem;
         line-height: 1.5;
-        color: #495057;
+        color: var(--colour-text-secondary);
         word-wrap: break-word;
       }
 
@@ -1051,12 +1051,12 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .close-btn {
-        color: #6c757d;
+        color: var(--colour-text-secondary);
         transition: color 0.2s ease;
       }
 
       .close-btn:hover {
-        color: #495057;
+        color: var(--colour-text-primary);
       }
 
       /* Pagination Styles - matching entries list exactly */
@@ -1110,7 +1110,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       :host-context(html[data-theme="dark"]) .loading-message-card {
-        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
+        box-shadow: 0 18px 36px var(--colour-shadow-medium);
       }
 
       :host-context(html[data-theme="dark"]) .loading-text,
@@ -1135,12 +1135,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       :host-context(html[data-theme="dark"]) .error-card {
-        background: linear-gradient(
-          180deg,
-          var(--colour-danger-bg) 0%,
-          rgba(69, 32, 42, 0.92) 100%
-        );
-        border-color: rgba(255, 196, 207, 0.22);
+        background: var(--colour-danger-bg);
+        border-color: var(--colour-danger-text);
         color: var(--colour-danger-text);
       }
 
@@ -1154,34 +1150,38 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       :host-context(html[data-theme="dark"]) .connector-arrow {
         background: var(--colour-primary);
-        color: #08111f;
-        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.3);
+        color: var(--colour-on-primary);
+        box-shadow: 0 8px 18px var(--colour-shadow-strong);
       }
 
       :host-context(html[data-theme="dark"]) .expanded-details-card {
         border-left-color: var(--colour-primary);
-        box-shadow: 0 20px 40px rgba(2, 6, 23, 0.28);
+        box-shadow: 0 20px 40px var(--colour-shadow-medium);
       }
 
       :host-context(html[data-theme="dark"]) .result-container:has(.expanded-details-card) .entry-card {
-        border-color: rgba(155, 184, 255, 0.32);
-        box-shadow: 0 16px 32px rgba(2, 6, 23, 0.24);
+        border-color: var(--colour-primary);
+        box-shadow: 0 16px 32px var(--colour-shadow-medium);
       }
 
       :host-context(html[data-theme="dark"]) .entry-card:hover {
-        box-shadow: 0 16px 28px rgba(2, 6, 23, 0.22);
+        box-shadow: 0 16px 28px var(--colour-shadow-soft);
       }
 
       :host-context(html[data-theme="dark"]) .entry-image-placeholder {
-        background: linear-gradient(180deg, #20314a 0%, #162235 100%);
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-strong) 0%,
+          var(--colour-surface-muted) 100%
+        );
       }
 
       :host-context(html[data-theme="dark"]) .entry-image-placeholder mat-icon {
-        color: rgba(203, 213, 225, 0.52);
+        color: var(--colour-text-secondary);
       }
 
       :host-context(html[data-theme="dark"]) .detail-row:hover {
-        background-color: rgba(155, 184, 255, 0.08);
+        background-color: var(--colour-info-bg);
       }
 
       :host-context(html[data-theme="dark"]) .expanded-header {
@@ -1204,9 +1204,9 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       :host-context(html[data-theme="dark"]) .skeleton-line {
         background: linear-gradient(
           90deg,
-          #1b2940 25%,
-          #24344d 50%,
-          #1b2940 75%
+          var(--colour-surface-elevated) 25%,
+          var(--colour-surface-strong) 50%,
+          var(--colour-surface-elevated) 75%
         );
         background-size: 200% 100%;
       }
