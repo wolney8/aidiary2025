@@ -328,7 +328,11 @@ type ImportantDayDraft = {
         padding: 1rem;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-md);
-        background: linear-gradient(180deg, #fcfcfd 0%, #ffffff 100%);
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-elevated) 0%,
+          var(--colour-surface) 100%
+        );
       }
 
       .form-section-heading h3 {
@@ -387,7 +391,11 @@ type ImportantDayDraft = {
         padding: 0.95rem 1rem;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-md);
-        background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%);
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-elevated) 0%,
+          var(--colour-surface) 100%
+        );
       }
 
       .icon-colour-picker {
@@ -427,13 +435,13 @@ type ImportantDayDraft = {
       .colour-choice {
         border: 1px solid var(--colour-border);
         border-radius: 0.85rem;
-        background: #ffffff;
+        background: var(--colour-surface-elevated);
       }
 
       .icon-choice.is-selected,
       .colour-choice.is-selected {
         border-color: var(--colour-primary);
-        box-shadow: 0 0 0 2px rgba(103, 80, 164, 0.12);
+        box-shadow: 0 0 0 2px var(--colour-info-bg);
       }
 
       .colour-picker-row {
@@ -459,7 +467,7 @@ type ImportantDayDraft = {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: rgba(15, 23, 42, 0.06);
+        background: var(--colour-surface-strong);
       }
 
       .preview-copy,
@@ -498,7 +506,11 @@ type ImportantDayDraft = {
         padding: 0.95rem 1rem;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-md);
-        background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%);
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-elevated) 0%,
+          var(--colour-surface) 100%
+        );
       }
 
       .important-day-heading {
@@ -525,12 +537,12 @@ type ImportantDayDraft = {
       }
 
       .delete-button {
-        border-color: #ef4444 !important;
-        color: #b91c1c !important;
+        border-color: var(--colour-danger-text) !important;
+        color: var(--colour-danger-text) !important;
       }
 
       .delete-button:hover {
-        background: #fef2f2 !important;
+        background: var(--colour-danger-bg) !important;
       }
 
       .empty-state {
@@ -553,77 +565,77 @@ type ImportantDayDraft = {
       }
 
       .accent-amber {
-        border-left-color: #d97706;
+        border-left-color: var(--colour-amber-border);
       }
 
       .accent-rose {
-        border-left-color: #e11d48;
+        border-left-color: var(--colour-rose-border);
       }
 
       .accent-blue {
-        border-left-color: #2563eb;
+        border-left-color: var(--colour-blue-border);
       }
 
       .accent-violet {
-        border-left-color: #7c3aed;
+        border-left-color: var(--colour-violet-border);
       }
 
       .accent-emerald {
-        border-left-color: #059669;
+        border-left-color: var(--colour-emerald-border);
       }
 
       .accent-slate {
-        border-left-color: #475569;
+        border-left-color: var(--colour-slate-border);
       }
 
       .accent-amber .important-day-icon,
       .accent-amber .preview-icon,
       .accent-swatch.accent-amber {
-        background: #fef3c7;
-        color: #b45309;
+        background: var(--colour-amber-bg);
+        color: var(--colour-amber-text);
       }
 
       .accent-rose .important-day-icon,
       .accent-rose .preview-icon,
       .accent-swatch.accent-rose {
-        background: #ffe4e6;
-        color: #be123c;
+        background: var(--colour-rose-bg);
+        color: var(--colour-rose-text);
       }
 
       .accent-blue .important-day-icon,
       .accent-blue .preview-icon,
       .accent-swatch.accent-blue {
-        background: #dbeafe;
-        color: #1d4ed8;
+        background: var(--colour-blue-bg);
+        color: var(--colour-blue-text);
       }
 
       .accent-violet .important-day-icon,
       .accent-violet .preview-icon,
       .accent-swatch.accent-violet {
-        background: #ede9fe;
-        color: #6d28d9;
+        background: var(--colour-violet-bg);
+        color: var(--colour-violet-text);
       }
 
       .accent-emerald .important-day-icon,
       .accent-emerald .preview-icon,
       .accent-swatch.accent-emerald {
-        background: #d1fae5;
-        color: #047857;
+        background: var(--colour-emerald-bg);
+        color: var(--colour-emerald-text);
       }
 
       .accent-slate .important-day-icon,
       .accent-slate .preview-icon,
       .accent-swatch.accent-slate {
-        background: #e2e8f0;
-        color: #334155;
+        background: var(--colour-slate-bg);
+        color: var(--colour-slate-text);
       }
 
       .success {
-        color: #2e7d32;
+        color: var(--colour-success-text);
       }
 
       .error {
-        color: #c62828;
+        color: var(--colour-danger-text);
       }
 
       @media (max-width: 900px) {
