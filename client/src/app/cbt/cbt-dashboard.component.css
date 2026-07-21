@@ -93,6 +93,71 @@
   gap: var(--spacing-sm);
 }
 
+.cbt-insights {
+  display: grid;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-elevated);
+}
+
+.cbt-insights-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.cbt-insights-heading mat-icon {
+  color: var(--colour-primary);
+}
+
+.cbt-insights-heading h2,
+.cbt-insight-grid,
+.cbt-insight-metric dt,
+.cbt-insight-metric dd {
+  margin: 0;
+}
+
+.cbt-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-xs);
+}
+
+.cbt-insight-metric {
+  display: flex;
+  min-width: 0;
+  min-height: 5.5rem;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
+  background: var(--colour-surface-muted);
+}
+
+.cbt-insight-metric dt {
+  color: var(--colour-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.cbt-insight-metric dd {
+  color: var(--colour-text-primary);
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.cbt-insight-metric dd span {
+  color: var(--colour-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .cbt-section-heading {
   display: flex;
   align-items: center;
@@ -230,6 +295,14 @@
 
   .cbt-card-actions {
     justify-content: flex-start;
+  }
+
+  .cbt-insight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cbt-insight-metric {
+    min-height: 0;
   }
 }
 

@@ -49,6 +49,35 @@
 
   <ng-container *ngIf="!isLoading && !errorMessage">
     <section
+      class="cbt-insights"
+      *ngIf="completed.length"
+      aria-labelledby="cbt-insights-heading"
+      data-testid="cbt-reflection-overview"
+    >
+      <header class="cbt-insights-heading">
+        <mat-icon aria-hidden="true">insights</mat-icon>
+        <h2 id="cbt-insights-heading">Reflection overview</h2>
+      </header>
+      <dl class="cbt-insight-grid">
+        <div class="cbt-insight-metric">
+          <dt>Completed</dt>
+          <dd>{{ completed.length }}</dd>
+        </div>
+        <div class="cbt-insight-metric">
+          <dt>Lower peak rating</dt>
+          <dd>
+            {{ lowerPeakRatingCount }}
+            <span *ngIf="ratedCompleted.length">of {{ ratedCompleted.length }}</span>
+          </dd>
+        </div>
+        <div class="cbt-insight-metric">
+          <dt>Average peak change</dt>
+          <dd>{{ getAveragePeakRatingChangeLabel() }}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section
       class="cbt-record-section"
       aria-labelledby="draft-records-heading"
       data-testid="cbt-draft-records"

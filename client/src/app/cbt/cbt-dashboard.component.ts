@@ -47,6 +47,33 @@ export class CbtDashboardComponent implements OnInit {
     );
   }
 
+  get ratedCompleted(): CbtWorksheet[] {
+    return this.completed.filter(
+      (worksheet) =>
+        worksheet.before_peak_intensity !== null &&
+        worksheet.after_peak_intensity !== null,
+    );
+  }
+
+  get lowerPeakRatingCount(): number {
+    return this.ratedCompleted.filter(
+      (worksheet) =>
+        worksheet.after_peak_intensity! < worksheet.before_peak_intensity!,
+    ).length;
+  }
+
+  get averagePeakRatingChange(): number | null {
+    if (!this.ratedCompleted.length) return null;
+    const totalChange = this.ratedCompleted.reduce(
+      (total, worksheet) =>
+        total +
+        (worksheet.after_peak_intensity! - worksheet.before_peak_intensity!),
+      0,
+    );
+    const averageChange = totalChange / this.ratedCompleted.length;
+    return Math.sign(averageChange) * Math.round(Math.abs(averageChange));
+  }
+
   ngOnInit(): void {
     this.loadWorksheets();
   }
@@ -147,5 +174,14 @@ export class CbtDashboardComponent implements OnInit {
       return null;
     }
     return `${worksheet.before_peak_intensity}% to ${worksheet.after_peak_intensity}%`;
+  }
+
+  getAveragePeakRatingChangeLabel(): string {
+    const change = this.averagePeakRatingChange;
+    if (change === null) return "Not available";
+    if (change === 0) return "No change";
+    return `${Math.abs(change)} point${Math.abs(change) === 1 ? "" : "s"} ${
+      change < 0 ? "lower" : "higher"
+    }`;
   }
 }
