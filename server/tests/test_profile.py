@@ -2,8 +2,11 @@ import json
 import os
 import sqlite3
 import tempfile
+from io import BytesIO
+from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from app import create_app
 
@@ -11,8 +14,10 @@ from app import create_app
 @pytest.fixture
 def client_with_legacy_user_schema():
     db_fd, db_path = tempfile.mkstemp()
+    media_root = tempfile.mkdtemp()
     os.environ["DB_PATH"] = db_path
     os.environ["JWT_SECRET"] = "test-secret"
+    os.environ["MEDIA_ROOT"] = media_root
 
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -44,6 +49,12 @@ def client_with_legacy_user_schema():
 
     os.close(db_fd)
     os.unlink(db_path)
+    for path in sorted(Path(media_root).rglob('*'), reverse=True):
+        if path.is_file():
+            path.unlink()
+        else:
+            path.rmdir()
+    Path(media_root).rmdir()
 
 
 def _register_and_get_token(client) -> str:
@@ -95,6 +106,73 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "allow_ai_attachment_context" in columns
     assert "holiday_country_code" in columns
     assert "show_public_holidays" in columns
+    assert "profile_picture_storage_key" in columns
+
+
+def test_profile_picture_upload_normalises_replaces_and_deletes(
+    client_with_legacy_user_schema,
+):
+    client, db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    source = BytesIO()
+    Image.new("RGB", (900, 500), (30, 120, 210)).save(source, format="PNG")
+    response = client.post(
+        "/api/profile/picture",
+        headers=headers,
+        data={"image": (BytesIO(source.getvalue()), "portrait.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert payload["user"]["profile_picture_url"].endswith(".jpg")
+
+    with sqlite3.connect(db_path) as conn:
+        storage_key = conn.execute(
+            "SELECT profile_picture_storage_key FROM users WHERE id = 1"
+        ).fetchone()[0]
+    image_path = Path(os.environ["MEDIA_ROOT"]) / storage_key
+    assert image_path.exists()
+    with Image.open(image_path) as stored_image:
+        assert stored_image.size == (400, 400)
+        assert stored_image.format == "JPEG"
+
+    replacement = BytesIO()
+    Image.new("RGB", (300, 700), (180, 40, 80)).save(replacement, format="WEBP")
+    replace_response = client.post(
+        "/api/profile/picture",
+        headers=headers,
+        data={"image": (BytesIO(replacement.getvalue()), "replacement.webp")},
+        content_type="multipart/form-data",
+    )
+    assert replace_response.status_code == 200
+    assert not image_path.exists()
+
+    delete_response = client.delete("/api/profile/picture", headers=headers)
+    assert delete_response.status_code == 200
+    assert json.loads(delete_response.data)["user"]["profile_picture_url"] is None
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT profile_picture_storage_key FROM users WHERE id = 1"
+        ).fetchone()[0] is None
+
+
+def test_profile_picture_upload_rejects_invalid_content(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.post(
+        "/api/profile/picture",
+        headers={"Authorization": f"Bearer {token}"},
+        data={"image": (BytesIO(b"not an image"), "fake.jpg")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == "Choose a valid JPEG, PNG, or WebP image"
 
 
 def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_schema):

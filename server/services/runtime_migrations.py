@@ -41,6 +41,7 @@ _TARGET_COLUMNS: dict[str, dict[str, str]] = {
 }
 
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
+    'profile_picture_storage_key': 'TEXT',
     'display_name': 'TEXT',
     'pronouns': 'TEXT',
     'gender': 'TEXT',

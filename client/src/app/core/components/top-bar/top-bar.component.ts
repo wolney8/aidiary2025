@@ -305,10 +305,21 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         </button>
         <button
           mat-icon-button
+          class="account-menu-trigger"
           [matMenuTriggerFor]="userMenu"
           aria-label="Open account menu"
         >
-          <mat-icon>account_circle</mat-icon>
+          <ng-container *ngIf="currentUser$ | async as user">
+            <img
+              *ngIf="user.profile_picture_url; else accountIcon"
+              class="account-avatar"
+              [src]="user.profile_picture_url"
+              alt=""
+            />
+            <ng-template #accountIcon>
+              <mat-icon>account_circle</mat-icon>
+            </ng-template>
+          </ng-container>
         </button>
       </div>
 
@@ -526,6 +537,17 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         align-items: center;
         gap: var(--spacing-sm);
         flex-shrink: 0;
+      }
+      .account-menu-trigger {
+        overflow: hidden;
+      }
+      .account-avatar {
+        display: block;
+        width: 32px;
+        height: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.36);
+        border-radius: 50%;
+        object-fit: cover;
       }
       .compact-actions {
         display: flex;
@@ -911,6 +933,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
         user?.display_name || user?.first_name || user?.username || null,
     ),
   );
+  readonly currentUser$ = this.authService.currentUser$;
 
   versionLabel = APP_VERSION;
   readonly isDarkTheme = this.themeService.isDark;

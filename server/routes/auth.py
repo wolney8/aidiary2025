@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token
 import bcrypt
 import sqlite3
 import re
+from services.media_storage import resolve_image_url
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -61,6 +62,15 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+def _profile_picture_select(cursor: sqlite3.Cursor) -> str:
+    columns = {
+        row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()
+    }
+    if 'profile_picture_storage_key' in columns:
+        return 'profile_picture_storage_key'
+    return 'NULL AS profile_picture_storage_key'
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register new user with bcrypt password hashing."""
@@ -107,7 +117,8 @@ def register():
                 'id': user_id,
                 'username': username,
                 'first_name': first_name,
-                'last_name': last_name
+                'last_name': last_name,
+                'profile_picture_url': None,
             }
         }), 201
         
@@ -129,8 +140,10 @@ def login():
     conn = get_db()
     cursor = conn.cursor()
     
+    profile_picture_select = _profile_picture_select(cursor)
     user = cursor.execute(
-        'SELECT id, username, password, first_name FROM users WHERE username = ?',
+        f'''SELECT id, username, password, first_name, {profile_picture_select}
+            FROM users WHERE username = ?''',
         (username,)
     ).fetchone()
     
@@ -165,6 +178,9 @@ def login():
         'user': {
             'id': user['id'],
             'username': user['username'],
-            'first_name': user['first_name']
+            'first_name': user['first_name'],
+            'profile_picture_url': resolve_image_url(
+                user['profile_picture_storage_key']
+            ),
         }
     }), 200
