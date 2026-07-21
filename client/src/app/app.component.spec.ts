@@ -174,6 +174,16 @@ describe("AppComponent inactivity integration", () => {
     expect(authServiceMock.logout).toHaveBeenCalled();
   });
 
+  it("stops inactivity tracking and logs out when the session expires", () => {
+    inactivityServiceMock.stopTracking.calls.reset();
+    authServiceMock.logout.calls.reset();
+
+    expiredSubject.next();
+
+    expect(inactivityServiceMock.stopTracking).toHaveBeenCalledTimes(1);
+    expect(authServiceMock.logout).toHaveBeenCalledTimes(1);
+  });
+
   it("hides the chat companion throughout the CBT workflow", () => {
     routerEvents.next(new NavigationEnd(1, "/cbt/12", "/cbt/12"));
 

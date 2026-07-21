@@ -26,6 +26,8 @@ describe("InactivityService", () => {
 
     tick(1);
     expect(warningStates[warningStates.length - 1]).toBeTrue();
+
+    service.stopTracking();
   }));
 
   it("enters warning phase after delay", fakeAsync(() => {
@@ -39,6 +41,8 @@ describe("InactivityService", () => {
 
     tick(1);
     expect(warningStates[warningStates.length - 1]).toBeTrue();
+
+    service.stopTracking();
   }));
 
   it("emits countdown and expired event", fakeAsync(() => {
@@ -127,5 +131,7 @@ describe("InactivityService", () => {
 
     expect(warningStates[warningStates.length - 1]).toBeFalse();
     expect(service.getCountdownSeconds()).toBe(2);
+
+    service.stopTracking();
   }));
 });

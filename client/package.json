@@ -7,7 +7,8 @@
     "build": "ng build",
     "test": "ng test",
     "lint": "eslint \"src/**/*.{ts,html}\" --max-warnings=0",
-    "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts"
+    "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts",
+    "test:e2e:inactivity": "PLAYWRIGHT_PORT=4210 PLAYWRIGHT_ANGULAR_CONFIGURATION=production playwright test tests/e2e/inactivity.spec.ts"
   },
   "private": true,
   "dependencies": {
