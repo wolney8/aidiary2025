@@ -1,0 +1,112 @@
+import { ComponentFixture, TestBed } from "@angular/core/testing";
+import { provideNoopAnimations } from "@angular/platform-browser/animations";
+import { Subject, of } from "rxjs";
+import { AppDialogService } from "../../../core/services/app-dialog.service";
+import { AuthService } from "../../../core/services/auth.service";
+import { ChatService } from "../../../core/services/chat.service";
+import { ChatCompanionComponent } from "./chat-companion.component";
+
+describe("ChatCompanionComponent", () => {
+  let fixture: ComponentFixture<ChatCompanionComponent>;
+  let component: ChatCompanionComponent;
+  let stream: Subject<string>;
+  let chatService: {
+    getOrCreateConversationId: jasmine.Spy;
+    resetConversationId: jasmine.Spy;
+    getHistory: jasmine.Spy;
+    sendMessage: jasmine.Spy;
+    clearConversation: jasmine.Spy;
+  };
+  let dialogService: { confirm: jasmine.Spy };
+
+  beforeEach(async () => {
+    stream = new Subject<string>();
+    chatService = {
+      getOrCreateConversationId: jasmine
+        .createSpy("getOrCreateConversationId")
+        .and.returnValue("conversation-1"),
+      resetConversationId: jasmine
+        .createSpy("resetConversationId")
+        .and.returnValue("conversation-2"),
+      getHistory: jasmine.createSpy("getHistory").and.returnValue(of([])),
+      sendMessage: jasmine.createSpy("sendMessage").and.returnValue(stream),
+      clearConversation: jasmine
+        .createSpy("clearConversation")
+        .and.returnValue(of(void 0)),
+    };
+    dialogService = {
+      confirm: jasmine.createSpy("confirm").and.resolveTo(true),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [ChatCompanionComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: ChatService, useValue: chatService },
+        { provide: AppDialogService, useValue: dialogService },
+        {
+          provide: AuthService,
+          useValue: {
+            getCurrentUser: () => ({
+              id: 1,
+              username: "tester",
+              chatgpt_daily_diary_coachname: "Sage",
+            }),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ChatCompanionComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it("opens an accessible panel and loads history", () => {
+    component.open();
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[role="dialog"]');
+    expect(panel).not.toBeNull();
+    expect(panel.getAttribute("aria-label")).toBe("Chat with Sage");
+    expect(chatService.getHistory).toHaveBeenCalledWith("conversation-1");
+  });
+
+  it("shows typing until the first streamed chunk arrives", () => {
+    component.open();
+    component.draft = "How have I been feeling?";
+    component.send();
+
+    expect(component.isStreaming()).toBeTrue();
+    expect(component.showTypingIndicator()).toBeTrue();
+    expect(chatService.sendMessage).toHaveBeenCalledWith(
+      "conversation-1",
+      "How have I been feeling?",
+    );
+
+    stream.next("You seem more settled.");
+
+    expect(component.showTypingIndicator()).toBeFalse();
+    expect(component.messages().at(-1)?.content).toBe("You seem more settled.");
+
+    stream.complete();
+    expect(component.isStreaming()).toBeFalse();
+  });
+
+  it("uses the app confirmation flow before clearing conversation", async () => {
+    component.messages.set([
+      {
+        conversation_id: "conversation-1",
+        role: "user",
+        content: "Hello",
+      },
+    ]);
+
+    await component.clearConversation();
+
+    expect(dialogService.confirm).toHaveBeenCalled();
+    expect(chatService.clearConversation).toHaveBeenCalledWith("conversation-1");
+    expect(component.messages()).toEqual([]);
+    expect(chatService.resetConversationId).toHaveBeenCalled();
+  });
+});

@@ -17,6 +17,7 @@ import {
 } from "./shared/components/inactivity-warning/inactivity-warning.component";
 import { environment } from "../environments/environment";
 import { environment as environmentProd } from "../environments/environment.prod";
+import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-companion.component";
 
 @Component({
   selector: "app-root",
@@ -27,6 +28,7 @@ import { environment as environmentProd } from "../environments/environment.prod
     TopBarComponent,
     SideNavComponent,
     MatSidenavModule,
+    ChatCompanionComponent,
   ],
   template: `
     <ng-container *ngIf="isAuthenticated; else publicLayout">
@@ -40,6 +42,7 @@ import { environment as environmentProd } from "../environments/environment.prod
           <main class="main-content">
             <router-outlet></router-outlet>
           </main>
+          <app-chat-companion></app-chat-companion>
         </mat-sidenav-content>
       </mat-sidenav-container>
     </ng-container>
