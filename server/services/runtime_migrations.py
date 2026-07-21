@@ -189,6 +189,54 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 )
 """
 
+_CBT_WORKSHEETS_DDL = """
+CREATE TABLE IF NOT EXISTS cbt_worksheets (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    worksheet_type    TEXT NOT NULL DEFAULT 'thought_record',
+    title             TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL DEFAULT 'draft'
+                      CHECK(status IN ('draft', 'completed')),
+    current_step      INTEGER NOT NULL DEFAULT 1 CHECK(current_step BETWEEN 1 AND 7),
+    record_date       TEXT NOT NULL DEFAULT CURRENT_DATE,
+    linked_entry_type TEXT CHECK(linked_entry_type IN ('daily', 'dream')),
+    linked_entry_id   INTEGER,
+    created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at      TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CHECK(
+        (linked_entry_type IS NULL AND linked_entry_id IS NULL) OR
+        (linked_entry_type IS NOT NULL AND linked_entry_id IS NOT NULL)
+    )
+)
+"""
+
+_CBT_THOUGHT_RECORD_DATA_DDL = """
+CREATE TABLE IF NOT EXISTS cbt_thought_record_data (
+    worksheet_id         INTEGER PRIMARY KEY,
+    situation            TEXT NOT NULL DEFAULT '',
+    feelings_before_json TEXT NOT NULL DEFAULT '[]',
+    unhelpful_thoughts   TEXT NOT NULL DEFAULT '',
+    evidence_for         TEXT NOT NULL DEFAULT '',
+    evidence_against     TEXT NOT NULL DEFAULT '',
+    balanced_thought     TEXT NOT NULL DEFAULT '',
+    feelings_after_json  TEXT NOT NULL DEFAULT '[]',
+    next_step            TEXT NOT NULL DEFAULT '',
+    ai_response          TEXT NOT NULL DEFAULT '',
+    ai_responded_at      TEXT,
+    ai_response_outdated INTEGER NOT NULL DEFAULT 0
+                         CHECK(ai_response_outdated IN (0, 1)),
+    FOREIGN KEY (worksheet_id) REFERENCES cbt_worksheets(id) ON DELETE CASCADE
+)
+"""
+
+_CBT_THOUGHT_RECORD_DATA_COLUMNS: dict[str, str] = {
+    'ai_response': "TEXT NOT NULL DEFAULT ''",
+    'ai_responded_at': 'TEXT',
+    'ai_response_outdated': 'INTEGER NOT NULL DEFAULT 0 CHECK(ai_response_outdated IN (0, 1))',
+}
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -475,4 +523,84 @@ def ensure_chat_messages_table(
     if log:
         log('Runtime migration ensured table exists: %s', 'chat_messages')
 
+    return True
+
+
+def ensure_cbt_worksheet_tables(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure additive, user-scoped storage exists for structured CBT worksheets."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute(_CBT_WORKSHEETS_DDL)
+        conn.execute(_CBT_THOUGHT_RECORD_DATA_DDL)
+        worksheet_columns = {
+            row[1]
+            for row in conn.execute('PRAGMA table_info(cbt_worksheets)').fetchall()
+        }
+        if 'record_date' not in worksheet_columns:
+            conn.execute('ALTER TABLE cbt_worksheets ADD COLUMN record_date TEXT')
+            if log:
+                log('Runtime migration added column %s.%s', 'cbt_worksheets', 'record_date')
+        data_columns = {
+            row[1]
+            for row in conn.execute('PRAGMA table_info(cbt_thought_record_data)').fetchall()
+        }
+        for column_name, column_definition in _CBT_THOUGHT_RECORD_DATA_COLUMNS.items():
+            if column_name in data_columns:
+                continue
+            conn.execute(
+                f'ALTER TABLE cbt_thought_record_data ADD COLUMN {column_name} {column_definition}'
+            )
+            if log:
+                log(
+                    'Runtime migration added column %s.%s',
+                    'cbt_thought_record_data',
+                    column_name,
+                )
+        conn.execute(
+            """
+            UPDATE cbt_worksheets
+            SET record_date = COALESCE(
+                CASE linked_entry_type
+                    WHEN 'daily' THEN (
+                        SELECT entry_date
+                        FROM dailydiary_entries
+                        WHERE id = linked_entry_id AND user_id = cbt_worksheets.user_id
+                    )
+                    WHEN 'dream' THEN (
+                        SELECT entry_date
+                        FROM dreamdiary_entries
+                        WHERE id = linked_entry_id AND user_id = cbt_worksheets.user_id
+                    )
+                END,
+                date(created_at),
+                date('now')
+            )
+            WHERE record_date IS NULL OR record_date = ''
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cbt_worksheets_user_status
+            ON cbt_worksheets(user_id, status, updated_at DESC, id DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cbt_worksheets_linked_entry
+            ON cbt_worksheets(user_id, linked_entry_type, linked_entry_id)
+            WHERE linked_entry_id IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cbt_worksheets_user_date
+            ON cbt_worksheets(user_id, record_date, id)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured CBT worksheet tables exist')
     return True

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from "@angular/core/testing";
+import { NavigationEnd, Router } from "@angular/router";
 import { BehaviorSubject, Subject } from "rxjs";
 import { MatDialog, MatDialogRef } from "@angular/material/dialog";
 import { AppComponent } from "./app.component";
@@ -33,12 +34,14 @@ describe("AppComponent inactivity integration", () => {
   let dialogMock: {
     open: any;
   };
+  let routerEvents: Subject<NavigationEnd>;
 
   beforeEach(async () => {
     warningStateSubject = new Subject<boolean>();
     countdownSubject = new Subject<number>();
     expiredSubject = new Subject<void>();
     currentUserSubject = new BehaviorSubject<User | null>(null);
+    routerEvents = new Subject<NavigationEnd>();
 
     authServiceMock = {
       currentUser$: currentUserSubject,
@@ -77,6 +80,10 @@ describe("AppComponent inactivity integration", () => {
         { provide: AuthService, useValue: authServiceMock },
         { provide: InactivityService, useValue: inactivityServiceMock },
         { provide: MatDialog, useValue: dialogMock },
+        {
+          provide: Router,
+          useValue: { url: "/entries", events: routerEvents },
+        },
       ],
     }).compileComponents();
 
@@ -165,5 +172,14 @@ describe("AppComponent inactivity integration", () => {
     closeResult$.next("logout");
 
     expect(authServiceMock.logout).toHaveBeenCalled();
+  });
+
+  it("hides the chat companion throughout the CBT workflow", () => {
+    routerEvents.next(new NavigationEnd(1, "/cbt/12", "/cbt/12"));
+
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+
+    routerEvents.next(new NavigationEnd(2, "/entries", "/entries"));
+    expect(fixture.componentInstance.showChatCompanion).toBeTrue();
   });
 });

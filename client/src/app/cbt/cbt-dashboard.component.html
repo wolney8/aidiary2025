@@ -1,0 +1,201 @@
+<section class="cbt-dashboard" data-testid="cbt-dashboard">
+  <header class="cbt-dashboard-header">
+    <div>
+      <p class="cbt-eyebrow">Structured reflection</p>
+      <h1>Thought records</h1>
+      <p>
+        Work through a difficult situation using seven short prompts. Save a
+        draft and return whenever you need to.
+      </p>
+    </div>
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      [disabled]="isCreating"
+      (click)="startThoughtRecord()"
+      data-testid="cbt-start-button"
+    >
+      <mat-icon aria-hidden="true">add</mat-icon>
+      {{ isCreating ? "Starting…" : "New thought record" }}
+    </button>
+  </header>
+
+  <aside class="cbt-safety-note" aria-label="About this reflection tool">
+    <mat-icon aria-hidden="true">health_and_safety</mat-icon>
+    <p>
+      This is a self-reflection tool, not medical advice or emergency support.
+      If you need urgent mental health help, use
+      <a
+        href="https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/"
+        target="_blank"
+        rel="noopener noreferrer"
+      >NHS urgent support</a>.
+    </p>
+  </aside>
+
+  <div class="cbt-status" *ngIf="isLoading" role="status">
+    <mat-progress-spinner mode="indeterminate" diameter="42" />
+    <span>Loading thought records…</span>
+  </div>
+
+  <div class="cbt-status cbt-status-error" *ngIf="errorMessage" role="alert">
+    <mat-icon aria-hidden="true">error_outline</mat-icon>
+    <span>{{ errorMessage }}</span>
+    <button mat-stroked-button type="button" (click)="loadWorksheets()">
+      Try again
+    </button>
+  </div>
+
+  <ng-container *ngIf="!isLoading && !errorMessage">
+    <section
+      class="cbt-record-section"
+      aria-labelledby="draft-records-heading"
+      data-testid="cbt-draft-records"
+    >
+      <div class="cbt-section-heading">
+        <div>
+          <h2 id="draft-records-heading">Continue a draft</h2>
+          <p>Pick up from the last saved step.</p>
+        </div>
+        <span class="cbt-count-pill">{{ drafts.length }}</span>
+      </div>
+
+      <div class="cbt-record-grid" *ngIf="drafts.length; else noDrafts">
+        <mat-card
+          class="cbt-record-card"
+          *ngFor="let worksheet of drafts"
+          [attr.data-testid]="'cbt-record-card-' + worksheet.id"
+        >
+          <mat-card-header>
+            <mat-icon
+              mat-card-avatar
+              class="cbt-record-avatar cbt-record-avatar-draft"
+              aria-hidden="true"
+            >edit_note</mat-icon>
+            <mat-card-title>{{ getWorksheetTitle(worksheet) }}</mat-card-title>
+            <mat-card-subtitle>
+              {{ worksheet.record_date | date: "d MMM y" }} · Updated
+              {{ worksheet.updated_at | date: "d MMM y, HH:mm" }}
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <span class="cbt-status-pill">{{ getProgressLabel(worksheet) }}</span>
+            <p>{{ worksheet.situation || "No situation added yet." }}</p>
+          </mat-card-content>
+          <mat-card-actions class="cbt-card-actions" align="end">
+            <button
+              mat-button
+              class="cbt-card-action cbt-card-action-delete"
+              type="button"
+              (click)="deleteWorksheet(worksheet)"
+              [attr.data-testid]="'cbt-delete-record-' + worksheet.id"
+            >
+              <mat-icon aria-hidden="true">delete</mat-icon>
+              Delete
+            </button>
+            <a
+              mat-flat-button
+              color="primary"
+              class="cbt-card-action"
+              [routerLink]="['/cbt', worksheet.id]"
+              [attr.data-testid]="'cbt-continue-record-' + worksheet.id"
+            >
+              <mat-icon aria-hidden="true">arrow_forward</mat-icon>
+              Continue
+            </a>
+          </mat-card-actions>
+        </mat-card>
+      </div>
+      <ng-template #noDrafts>
+        <div class="cbt-empty-state">
+          <mat-icon aria-hidden="true">task_alt</mat-icon>
+          <p>No unfinished thought records.</p>
+        </div>
+      </ng-template>
+    </section>
+
+    <section
+      class="cbt-record-section"
+      aria-labelledby="completed-records-heading"
+      data-testid="cbt-completed-records"
+    >
+      <div class="cbt-section-heading">
+        <div>
+          <h2 id="completed-records-heading">Completed reflections</h2>
+          <p>Review balanced perspectives and changes in feeling intensity.</p>
+        </div>
+        <span class="cbt-count-pill">{{ completed.length }}</span>
+      </div>
+
+      <div class="cbt-record-grid" *ngIf="completed.length; else noCompleted">
+        <mat-card
+          class="cbt-record-card"
+          *ngFor="let worksheet of completed"
+          [attr.data-testid]="'cbt-record-card-' + worksheet.id"
+        >
+          <mat-card-header>
+            <mat-icon
+              mat-card-avatar
+              class="cbt-record-avatar cbt-record-avatar-complete"
+              aria-hidden="true"
+            >psychology_alt</mat-icon>
+            <mat-card-title>{{ getWorksheetTitle(worksheet) }}</mat-card-title>
+            <mat-card-subtitle>
+              {{ worksheet.record_date | date: "d MMM y" }} · Completed
+              {{ worksheet.completed_at | date: "d MMM y" }}
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="cbt-insight-row">
+              <span class="cbt-status-pill cbt-status-pill-complete">Completed</span>
+              <span *ngIf="getIntensityLabel(worksheet) as intensity">
+                Peak feeling: {{ intensity }}
+              </span>
+            </div>
+            <p>{{ worksheet.balanced_thought }}</p>
+          </mat-card-content>
+          <mat-card-actions class="cbt-card-actions" align="end">
+            <button
+              mat-button
+              class="cbt-card-action cbt-card-action-delete"
+              type="button"
+              (click)="deleteWorksheet(worksheet)"
+              [attr.data-testid]="'cbt-delete-record-' + worksheet.id"
+            >
+              <mat-icon aria-hidden="true">delete</mat-icon>
+              Delete
+            </button>
+            <a
+              mat-stroked-button
+              class="cbt-card-action"
+              [routerLink]="['/cbt', worksheet.id]"
+              [attr.data-testid]="'cbt-review-record-' + worksheet.id"
+            >
+              <mat-icon aria-hidden="true">visibility</mat-icon>
+              Review
+            </a>
+            <button
+              mat-flat-button
+              color="primary"
+              class="cbt-card-action"
+              type="button"
+              (click)="editWorksheet(worksheet)"
+              [attr.aria-label]="'Edit ' + getWorksheetTitle(worksheet)"
+              [attr.data-testid]="'cbt-edit-record-' + worksheet.id"
+            >
+              <mat-icon aria-hidden="true">edit</mat-icon>
+              Edit
+            </button>
+          </mat-card-actions>
+        </mat-card>
+      </div>
+      <ng-template #noCompleted>
+        <div class="cbt-empty-state">
+          <mat-icon aria-hidden="true">history_edu</mat-icon>
+          <p>Completed reflections will appear here.</p>
+        </div>
+      </ng-template>
+    </section>
+  </ng-container>
+</section>

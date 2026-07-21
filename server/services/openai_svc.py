@@ -160,6 +160,23 @@ class OpenAIService:
         },
     }
 
+    THOUGHT_RECORD_ANALYSIS_RESPONSE_FORMAT = {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'thought_record_analysis',
+            'description': 'Supportive response to a completed CBT thought record.',
+            'strict': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'ai_response': {'type': 'string'},
+                },
+                'required': ['ai_response'],
+                'additionalProperties': False,
+            },
+        },
+    }
+
     DAILY_ANALYSIS_RESPONSE_SCHEMA = """Respond in JSON format:
 {
     "ai_response": "Your supportive response here",
@@ -532,6 +549,34 @@ Additional requirements for this retry:
             'If you mention an attachment, refer to it naturally in human language, such as your attachment "filename.ext", and use any provided derived text carefully.',
             'Do not fabricate facts or prior memories that are not supported by the provided dream or context.',
             cls.DREAM_ANALYSIS_RESPONSE_SCHEMA,
+        ])
+
+    @classmethod
+    def _build_thought_record_system_prompt(
+        cls,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> str:
+        options = cls._normalise_analysis_options(analysis_options)
+        tone_guidance = cls.TONE_GUIDANCE.get(
+            options['ai_tone'], cls.TONE_GUIDANCE[DEFAULT_AI_TONE]
+        )
+        verbosity_guidance = cls.VERBOSITY_GUIDANCE.get(
+            options['ai_verbosity'], cls.VERBOSITY_GUIDANCE[DEFAULT_AI_VERBOSITY]
+        )
+        focus_guidance = cls.FOCUS_GUIDANCE.get(
+            options['ai_focus'], cls.FOCUS_GUIDANCE[DEFAULT_AI_FOCUS]
+        )
+        return '\n'.join([
+            'You are a supportive CBT reflection coach responding to a structured thought record that may still be in progress.',
+            'Acknowledge the situation and feelings without diagnosing or presenting yourself as a therapist.',
+            'Use only the sections that contain meaningful information. Where available, compare the evidence for and against the unhelpful thought, assess the balanced perspective, and note meaningful changes in feeling intensity.',
+            'Offer one grounded observation or practical next step when useful. Do not repeat the worksheet mechanically.',
+            tone_guidance,
+            verbosity_guidance,
+            focus_guidance,
+            cls._build_daily_length_guidance(options),
+            'Use the optional personal context lightly and never invent facts.',
+            'Respond in JSON with exactly one string field named ai_response.',
         ])
 
     def _resolve_analysis_max_tokens(self, analysis_options: dict[str, Any] | None = None) -> int:
@@ -1396,6 +1441,40 @@ Additional requirements for this retry:
             )
         )
     
+    def analyse_thought_record(
+        self,
+        text: str,
+        *,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> str:
+        """Generate a persisted response for a completed CBT thought record."""
+        normalised_options = self._normalise_analysis_options(analysis_options)
+        user_content = self._build_analysis_user_content(
+            text,
+            None,
+            normalised_options['personal_context'],
+        )
+        try:
+            response = self._create_analysis_completion(
+                self._build_thought_record_system_prompt(analysis_options),
+                user_content,
+                response_format=self.THOUGHT_RECORD_ANALYSIS_RESPONSE_FORMAT,
+                analysis_options=analysis_options,
+            )
+            result = self._extract_valid_json_payload(
+                response.choices[0].message.content,
+                ('ai_response',),
+            )
+            ai_response = str((result or {}).get('ai_response') or '').strip()
+            if not ai_response:
+                raise ValueError('Thought record analysis returned no response')
+            return ai_response
+        except Exception as exc:
+            if self._is_rate_limit_like_error(exc):
+                raise AnalysisRateLimitError('AI analysis rate-limited') from exc
+            logger.exception('Thought record analysis failed')
+            raise
+
     def analyse_daily_entry(
         self,
         text: str,

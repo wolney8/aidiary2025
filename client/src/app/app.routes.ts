@@ -56,6 +56,25 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "cbt",
+    title: "Thought records | AI Diary",
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import("./cbt/cbt-dashboard.component").then(
+        (m) => m.CbtDashboardComponent,
+      ),
+  },
+  {
+    path: "cbt/:id",
+    title: "Thought record | AI Diary",
+    canActivate: [authGuard],
+    canDeactivate: [pendingChangesGuard],
+    loadComponent: () =>
+      import("./cbt/cbt-worksheet.component").then(
+        (m) => m.CbtWorksheetComponent,
+      ),
+  },
+  {
     path: "profile",
     title: "Profile | AI Diary",
     canActivate: [authGuard],

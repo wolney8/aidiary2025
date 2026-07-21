@@ -2,12 +2,12 @@
 import { Component, DestroyRef, inject, isDevMode } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { CommonModule } from "@angular/common";
-import { RouterOutlet } from "@angular/router";
+import { NavigationEnd, Router, RouterOutlet } from "@angular/router";
 import { TopBarComponent } from "./core/components/top-bar/top-bar.component";
 import { SideNavComponent } from "./core/components/side-nav/side-nav.component";
 import { MatSidenavModule } from "@angular/material/sidenav";
 import { MatDialog, MatDialogRef } from "@angular/material/dialog";
-import { distinctUntilChanged } from "rxjs";
+import { distinctUntilChanged, filter } from "rxjs";
 import { AuthService } from "./core/services/auth.service";
 import { InactivityService } from "./core/services/inactivity.service";
 import { ThemeService } from "./core/services/theme.service";
@@ -46,7 +46,10 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
           <main id="main-content" class="main-content" tabindex="-1">
             <router-outlet></router-outlet>
           </main>
-          <app-chat-companion data-testid="chat-companion"></app-chat-companion>
+          <app-chat-companion
+            *ngIf="showChatCompanion"
+            data-testid="chat-companion"
+          ></app-chat-companion>
         </mat-sidenav-content>
       </mat-sidenav-container>
     </ng-container>
@@ -99,6 +102,7 @@ export class AppComponent {
   private readonly authService = inject(AuthService);
   private readonly inactivityService = inject(InactivityService);
   private readonly themeService = inject(ThemeService);
+  private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
   private readonly destroyRef = inject(DestroyRef);
   private readonly inactivityConfig = isDevMode()
@@ -112,9 +116,19 @@ export class AppComponent {
 
   title = "AI Diary";
   isAuthenticated = this.authService.isAuthenticated();
+  showChatCompanion = !this.isCbtRoute(this.router.url);
 
   constructor() {
     this.themeService.mode();
+
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((event) => {
+        this.showChatCompanion = !this.isCbtRoute(event.urlAfterRedirects);
+      });
 
     this.authService.currentUser$
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -201,5 +215,9 @@ export class AppComponent {
     this.closeWarningDialog();
     this.inactivityService.stopTracking();
     this.authService.logout();
+  }
+
+  private isCbtRoute(url: string): boolean {
+    return /^\/cbt(?:\/|\?|#|$)/.test(url);
   }
 }

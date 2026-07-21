@@ -68,6 +68,20 @@ import { AuthService } from "../../services/auth.service";
 
         <a
           mat-list-item
+          routerLink="/cbt"
+          routerLinkActive="is-active"
+          [routerLinkActiveOptions]="{ exact: false }"
+          #cbtRla="routerLinkActive"
+          [attr.aria-current]="cbtRla.isActive ? 'page' : null"
+          (click)="closeSidenav.emit()"
+          data-testid="nav-thought-records"
+        >
+          <mat-icon matListItemIcon>psychology_alt</mat-icon>
+          <span matListItemTitle>Thought Records</span>
+        </a>
+
+        <a
+          mat-list-item
           routerLink="/profile"
           routerLinkActive="is-active"
           [routerLinkActiveOptions]="{ exact: true }"

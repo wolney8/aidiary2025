@@ -64,6 +64,32 @@ def test_daily_analysis_requests_strict_structured_output(mock_openai):
 
 
 @patch('services.openai_svc.OpenAI')
+def test_thought_record_analysis_uses_structured_response_and_personalisation(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'ai_response': 'The evidence supports a more balanced interpretation.'
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    result = OpenAIService().analyse_thought_record(
+        'Situation: A difficult meeting\nBalanced perspective: I can ask for clarity.',
+        analysis_options={
+            'ai_verbosity': 'detailed',
+            'personal_context': 'Display name: Alex',
+        },
+    )
+
+    assert result.startswith('The evidence supports')
+    request = mock_client.chat.completions.create.call_args.kwargs
+    assert request['response_format']['json_schema']['name'] == 'thought_record_analysis'
+    assert 'Display name: Alex' in request['messages'][1]['content']
+    assert request['max_tokens'] > DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+
+
+@patch('services.openai_svc.OpenAI')
 def test_dream_analysis_requests_strict_structured_output_on_retry(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
     mock_client = MagicMock()

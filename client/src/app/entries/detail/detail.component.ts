@@ -21,6 +21,8 @@ import { MatExpansionModule } from "@angular/material/expansion";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { EntryAsset } from "../../core/models/entry.model";
+import { CbtWorksheet } from "../../core/models/cbt.model";
+import { CbtService } from "../../core/services/cbt.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
 import { formatReadableLongDate } from "../../shared/utils/date-display";
 
@@ -475,6 +477,73 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
           </mat-card-content>
         </mat-card>
       </div>
+
+      <section
+        class="entry-reflections"
+        aria-labelledby="entry-reflections-heading"
+        data-testid="entry-cbt-reflections"
+      >
+        <div class="entry-reflections-header">
+          <div>
+            <h2 id="entry-reflections-heading">Thought records</h2>
+            <p>Use a structured reflection for this entry, or revisit one already linked.</p>
+          </div>
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="isCreatingCbtWorksheet"
+            (click)="startLinkedThoughtRecord()"
+            data-testid="entry-start-cbt-button"
+          >
+            <mat-icon aria-hidden="true">psychology_alt</mat-icon>
+            {{ isCreatingCbtWorksheet ? "Starting…" : "New thought record" }}
+          </button>
+        </div>
+
+        <div class="entry-reflections-status" *ngIf="isLoadingCbtWorksheets" role="status">
+          <mat-progress-spinner mode="indeterminate" diameter="24" />
+          <span>Loading linked thought records…</span>
+        </div>
+
+        <p class="entry-reflections-error" *ngIf="cbtErrorMessage" role="alert">
+          {{ cbtErrorMessage }}
+        </p>
+
+        <div class="entry-reflection-grid" *ngIf="!isLoadingCbtWorksheets && linkedCbtWorksheets.length">
+          <article
+            class="entry-reflection-card"
+            *ngFor="let worksheet of linkedCbtWorksheets"
+            [attr.data-testid]="'entry-thought-record-card-' + worksheet.id"
+          >
+            <div class="entry-reflection-card-heading">
+              <span class="entry-reflection-status" [class.is-complete]="worksheet.status === 'completed'">
+                {{ worksheet.status === "completed" ? "Completed" : "Draft" }}
+              </span>
+              <span *ngIf="getCbtIntensityLabel(worksheet) as intensity">{{ intensity }}</span>
+            </div>
+            <h3>{{ worksheet.title || worksheet.situation || "Untitled thought record" }}</h3>
+            <p *ngIf="worksheet.status === 'completed'">
+              {{ worksheet.balanced_thought }}
+            </p>
+            <p *ngIf="worksheet.status === 'draft'">Step {{ worksheet.current_step }} of 7</p>
+            <a
+              mat-stroked-button
+              class="entry-reflection-action"
+              [routerLink]="['/cbt', worksheet.id]"
+              [queryParams]="{ returnEntryId: entry.id, returnEntryType: entryType }"
+              [attr.data-testid]="'entry-thought-record-open-' + worksheet.id"
+            >
+              <mat-icon aria-hidden="true">{{ worksheet.status === "completed" ? "visibility" : "arrow_forward" }}</mat-icon>
+              {{ worksheet.status === "completed" ? "Review" : "Continue" }}
+            </a>
+          </article>
+        </div>
+
+        <p class="entry-reflections-empty" *ngIf="!isLoadingCbtWorksheets && !linkedCbtWorksheets.length && !cbtErrorMessage">
+          No thought records are linked to this entry yet.
+        </p>
+      </section>
 
       <section class="entry-attachments" aria-label="Entry attachments">
         <button
@@ -1196,6 +1265,105 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         margin: 0;
       }
 
+      .entry-reflections {
+        display: grid;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-md);
+        padding: var(--spacing-sm);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+      }
+
+      .entry-reflections-header,
+      .entry-reflection-card-heading,
+      .entry-reflections-status {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+      }
+
+      .entry-reflections-header {
+        gap: var(--spacing-sm);
+        justify-content: space-between;
+      }
+
+      .entry-reflections-header > div {
+        display: grid;
+        gap: var(--spacing-xs);
+      }
+
+      .entry-reflections-header h2,
+      .entry-reflections-header p,
+      .entry-reflection-card h3,
+      .entry-reflection-card p,
+      .entry-reflections-empty,
+      .entry-reflections-error {
+        margin: 0;
+      }
+
+      .entry-reflections-header h2 {
+        font-size: 1.15rem;
+      }
+
+      .entry-reflections-header p,
+      .entry-reflection-card p,
+      .entry-reflections-empty,
+      .entry-reflection-card-heading {
+        color: var(--colour-text-secondary);
+      }
+
+      .entry-reflection-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+        gap: var(--spacing-xs);
+      }
+
+      .entry-reflection-card {
+        display: grid;
+        align-content: start;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .entry-reflection-card > a {
+        justify-self: end;
+      }
+
+      .entry-reflection-action {
+        min-height: 2.75rem;
+        margin-top: var(--spacing-xs);
+      }
+
+      .entry-reflection-card-heading {
+        flex-wrap: wrap;
+        justify-content: space-between;
+        font-size: 0.82rem;
+      }
+
+      .entry-reflection-status {
+        display: inline-flex;
+        min-height: 1.75rem;
+        align-items: center;
+        padding: 0.2rem 0.65rem;
+        border-radius: var(--radius-pill);
+        background: var(--colour-warning-bg);
+        color: var(--colour-warning-text);
+        font-weight: 800;
+      }
+
+      .entry-reflection-status.is-complete {
+        background: var(--colour-success-bg);
+        color: var(--colour-success-text);
+      }
+
+      .entry-reflections-error {
+        color: var(--colour-danger-text);
+      }
+
       .entry-attachments {
         margin-bottom: var(--spacing-md);
         padding: 0.55rem 0.75rem;
@@ -1612,6 +1780,22 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
       .ai-attachment-context mat-chip-listbox {
         display: block;
       }
+
+      @media (max-width: 640px) {
+        .entry-reflections-header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .entry-reflections-header > button {
+          width: 100%;
+        }
+
+        .entry-reflection-action {
+          width: 100%;
+          justify-self: stretch;
+        }
+      }
     `,
   ],
 })
@@ -1620,6 +1804,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private appDialog = inject(AppDialogService);
   private entriesService = inject(EntriesService);
+  private cbtService = inject(CbtService);
   @ViewChild("dreamImageInput") dreamImageInput?: ElementRef<HTMLInputElement>;
   @ViewChild("attachmentInput") attachmentInput?: ElementRef<HTMLInputElement>;
   @ViewChild("entryImageSurface") entryImageSurface?: ElementRef<HTMLDivElement>;
@@ -1661,6 +1846,10 @@ export class DetailComponent implements OnInit, OnDestroy {
   isImportDetailsExpanded = false;
   showFullImportedEntry = false;
   showFullImportedAiResponse = false;
+  linkedCbtWorksheets: CbtWorksheet[] = [];
+  isLoadingCbtWorksheets = false;
+  isCreatingCbtWorksheet = false;
+  cbtErrorMessage = "";
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get("id"));
@@ -1727,6 +1916,72 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.loadErrorMessage = "";
     this.applyInitialAttachmentExpansion();
     this.syncDreamImageUiFromEntry();
+    this.loadLinkedCbtWorksheets();
+  }
+
+  startLinkedThoughtRecord(): void {
+    if (!this.entry || this.isCreatingCbtWorksheet) return;
+    this.isCreatingCbtWorksheet = true;
+    this.cbtErrorMessage = "";
+    this.cbtService
+      .createWorksheet({
+        title: `Reflection: ${this.getTitle()}`.slice(0, 100),
+        record_date: this.entry.entry_date,
+        linked_entry_type: this.entryType,
+        linked_entry_id: this.entry.id,
+      })
+      .subscribe({
+        next: (worksheet) => {
+          this.isCreatingCbtWorksheet = false;
+          void this.router.navigate(["/cbt", worksheet.id], {
+            queryParams: {
+              returnEntryId: this.entry.id,
+              returnEntryType: this.entryType,
+            },
+          });
+        },
+        error: () => {
+          this.isCreatingCbtWorksheet = false;
+          this.cbtErrorMessage = "A linked thought record could not be started.";
+        },
+      });
+  }
+
+  getCbtIntensityLabel(worksheet: CbtWorksheet): string | null {
+    if (
+      worksheet.before_peak_intensity === null ||
+      worksheet.after_peak_intensity === null
+    ) {
+      return null;
+    }
+    const change =
+      worksheet.after_peak_intensity - worksheet.before_peak_intensity;
+    if (change === 0) return "No intensity change";
+    return change < 0
+      ? `${Math.abs(change)} point reduction`
+      : `${change} point increase`;
+  }
+
+  private loadLinkedCbtWorksheets(): void {
+    if (!this.entry?.id) return;
+    this.isLoadingCbtWorksheets = true;
+    this.cbtErrorMessage = "";
+    this.cbtService
+      .listWorksheets({
+        linkedEntryType: this.entryType,
+        linkedEntryId: this.entry.id,
+      })
+      .subscribe({
+        next: (worksheets) => {
+          this.linkedCbtWorksheets = worksheets;
+          this.isLoadingCbtWorksheets = false;
+        },
+        error: () => {
+          this.linkedCbtWorksheets = [];
+          this.isLoadingCbtWorksheets = false;
+          this.cbtErrorMessage = "Linked thought records could not be loaded.";
+        },
+      });
   }
 
   private applyEntryLoadError(): void {
