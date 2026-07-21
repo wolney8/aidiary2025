@@ -169,6 +169,20 @@ def test_chat_context_handles_missing_diary_tables(tmp_path):
     assert 'Recent diary entries' not in context
 
 
+def test_chat_system_prompt_stays_within_context_budget(tmp_path):
+    database_path = str(tmp_path / 'context.db')
+    _create_context_database(database_path)
+    with sqlite3.connect(database_path) as conn:
+        conn.execute(
+            "INSERT INTO users (id, username, password, first_name) VALUES (1, 'one', 'hash', 'Alex')"
+        )
+
+    prompt = ChatContextService(database_path, token_budget=100).build_system_prompt(1)
+
+    assert estimate_tokens(prompt) <= 100
+    assert prompt.startswith('You are a supportive AI diary companion.')
+
+
 def test_chat_messages_runtime_migration_is_idempotent(tmp_path):
     database_path = str(tmp_path / 'chat.db')
     with sqlite3.connect(database_path) as conn:

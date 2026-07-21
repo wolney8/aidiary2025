@@ -3,7 +3,9 @@ import os
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
+from extensions import limiter
 from services.runtime_migrations import (
     ensure_chat_messages_table,
     ensure_entry_ai_metadata_table,
@@ -49,6 +51,16 @@ def create_app():
         app.logger.warning('JWT_SECRET is not configured; using local development secret')
     app.config['JWT_SECRET_KEY'] = jwt_secret or 'dev-secret-key'
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
+    app.config['CHAT_RATE_LIMIT'] = os.getenv('CHAT_RATE_LIMIT', '20 per hour')
+    try:
+        app.config['CHAT_DAILY_TOKEN_BUDGET'] = max(
+            1,
+            int(os.getenv('CHAT_DAILY_TOKEN_BUDGET', '50000')),
+        )
+    except ValueError:
+        app.logger.warning('Invalid CHAT_DAILY_TOKEN_BUDGET; using 50000')
+        app.config['CHAT_DAILY_TOKEN_BUDGET'] = 50000
+    app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
     env_db_path = os.getenv('DB_PATH')
     fallback_path = os.path.join(app.root_path, 'db', 'app.db')
 
@@ -139,6 +151,7 @@ def create_app():
     
     # JWT initialisation
     JWTManager(app)
+    limiter.init_app(app)
     # --- DEBUG: helpful JWT logging for local development ---
     # These handlers will log common JWT errors so the developer can
     # see why a token was rejected (missing, expired, invalid signature).
@@ -157,6 +170,10 @@ def create_app():
     def _handle_500(err):
         app.logger.error('500 Internal Server Error: %s', err)
         return {'msg': 'Internal Server Error'}, 500
+
+    @app.errorhandler(RateLimitExceeded)
+    def _handle_chat_rate_limit(_err):
+        return {'error': 'Rate limit exceeded. Try again in 60 minutes.'}, 429
 
     @app.before_request
     def _log_jwt_presence():

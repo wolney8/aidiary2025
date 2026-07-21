@@ -1,11 +1,13 @@
 import json
 import os
 import tempfile
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
 from app import create_app
+from extensions import limiter
 
 
 @pytest.fixture
@@ -17,6 +19,7 @@ def client():
 
     app = create_app()
     app.config['TESTING'] = True
+    app.config['RATELIMIT_ENABLED'] = False
 
     with app.test_client() as client:
         import sqlite3
@@ -47,6 +50,25 @@ def client():
 
     os.close(db_fd)
     os.unlink(db_path)
+
+
+@pytest.fixture(autouse=True)
+def mocked_chat_services():
+    with (
+        patch('routes.chat.ChatContextService') as context_service,
+        patch('routes.chat.OpenAIService') as openai_service,
+    ):
+        context_service.return_value.build_system_prompt.return_value = 'System context'
+        openai_service.return_value.chat_companion.return_value = iter(['Helpful ', 'reply'])
+        yield context_service, openai_service
+
+
+def _sse_events(response) -> list[dict]:
+    events = []
+    for block in response.get_data(as_text=True).strip().split('\n\n'):
+        assert block.startswith('data: ')
+        events.append(json.loads(block.removeprefix('data: ')))
+    return events
 
 
 def _register_and_get_token(client, username: str) -> str:
@@ -103,7 +125,7 @@ def test_chat_validation_errors(client):
     assert too_long_message_response.status_code == 400
 
 
-def test_chat_send_history_clear_flow(client):
+def test_chat_send_history_clear_flow(client, mocked_chat_services):
     token = _register_and_get_token(client, 'chat_flow_user')
     conversation_id = str(uuid4())
 
@@ -115,9 +137,22 @@ def test_chat_send_history_clear_flow(client):
     )
 
     assert send_response.status_code == 200
-    send_data = json.loads(send_response.data)
-    assert send_data['conversation_id'] == conversation_id
-    assert 'assistant_reply' in send_data
+    assert send_response.mimetype == 'text/event-stream'
+    events = _sse_events(send_response)
+    assert events == [
+        {'chunk': 'Helpful ', 'done': False},
+        {'chunk': 'reply', 'done': False},
+        {'chunk': '', 'done': True, 'token_count': 4},
+    ]
+
+    context_service, openai_service = mocked_chat_services
+    context_service.return_value.build_system_prompt.assert_called_once_with(1)
+    call_kwargs = openai_service.return_value.chat_companion.call_args.kwargs
+    assert call_kwargs['system_prompt'] == 'System context'
+    assert call_kwargs['messages'][-1] == {
+        'role': 'user',
+        'content': 'How am I doing?',
+    }
 
     history_response = client.get(
         f'/api/chat/history?conversation_id={conversation_id}',
@@ -131,6 +166,7 @@ def test_chat_send_history_clear_flow(client):
     assert history_data['messages'][0]['role'] == 'user'
     assert history_data['messages'][0]['message'] == 'How am I doing?'
     assert history_data['messages'][1]['role'] == 'assistant'
+    assert history_data['messages'][1]['message'] == 'Helpful reply'
 
     clear_response = client.delete(
         f'/api/chat/conversation?conversation_id={conversation_id}',
@@ -158,6 +194,7 @@ def test_chat_user_isolation_by_token(client):
         headers={'Authorization': f'Bearer {token_a}'},
         data=json.dumps({'conversation_id': conversation_id, 'message': 'User A secret'}),
         content_type='application/json',
+        buffered=True,
     )
     assert send_a.status_code == 200
 
@@ -202,3 +239,89 @@ def test_chat_returns_503_when_storage_not_initialised(client):
     assert send_response.status_code == 503
     data = json.loads(send_response.data)
     assert data['error'] == 'chat storage not initialised'
+
+
+def test_chat_daily_budget_rejects_before_openai(client, mocked_chat_services):
+    token = _register_and_get_token(client, 'chat_budget_user')
+    conversation_id = str(uuid4())
+    client.application.config['CHAT_DAILY_TOKEN_BUDGET'] = 100
+
+    db_path = client.application.config['DATABASE_PATH']
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO chat_messages (
+                user_id, conversation_id, role, content, token_count, created_at
+            ) VALUES (1, ?, 'assistant', 'prior usage', 100, CURRENT_TIMESTAMP)
+            """,
+            (conversation_id,),
+        )
+
+    response = client.post(
+        '/api/chat/message',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'conversation_id': conversation_id, 'message': 'Hello'}),
+        content_type='application/json',
+    )
+
+    assert response.status_code == 429
+    assert json.loads(response.data) == {
+        'error': 'Daily chat limit reached. Resets at midnight.',
+    }
+    _, openai_service = mocked_chat_services
+    openai_service.assert_not_called()
+
+
+def test_chat_history_returns_only_last_50_messages(client):
+    token = _register_and_get_token(client, 'chat_history_limit_user')
+    conversation_id = str(uuid4())
+    db_path = client.application.config['DATABASE_PATH']
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        conn.executemany(
+            """
+            INSERT INTO chat_messages (user_id, conversation_id, role, content, token_count)
+            VALUES (1, ?, 'user', ?, 1)
+            """,
+            [(conversation_id, f'message-{index:02d}') for index in range(60)],
+        )
+
+    response = client.get(
+        f'/api/chat/history?conversation_id={conversation_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    messages = json.loads(response.data)['messages']
+    assert len(messages) == 50
+    assert messages[0]['message'] == 'message-10'
+    assert messages[-1]['message'] == 'message-59'
+
+
+def test_chat_rate_limit_is_applied_per_user(client):
+    token = _register_and_get_token(client, 'chat_rate_user')
+    client.application.config['RATELIMIT_ENABLED'] = True
+    client.application.config['CHAT_RATE_LIMIT'] = '2 per hour'
+    limiter.reset()
+
+    responses = []
+    for index in range(3):
+        responses.append(client.post(
+            '/api/chat/message',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({
+                'conversation_id': str(uuid4()),
+                'message': f'Hello {index}',
+            }),
+            content_type='application/json',
+            buffered=True,
+        ))
+
+    assert [response.status_code for response in responses] == [200, 200, 429]
+    assert json.loads(responses[-1].data) == {
+        'error': 'Rate limit exceeded. Try again in 60 minutes.',
+    }
+    client.application.config['RATELIMIT_ENABLED'] = False
