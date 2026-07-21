@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { ActivatedRoute, Router } from "@angular/router";
+import { MatDialog } from "@angular/material/dialog";
 import { of, throwError } from "rxjs";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import { CbtService } from "../../core/services/cbt.service";
@@ -10,11 +11,13 @@ describe("DetailComponent entry routing", () => {
   let fixture: ComponentFixture<DetailComponent>;
   let getDailyEntry: jasmine.Spy;
   let getDreamEntry: jasmine.Spy;
+  let openDialog: jasmine.Spy;
   let entryType: string | null;
 
   beforeEach(async () => {
     entryType = "dream";
     getDailyEntry = jasmine.createSpy("getDailyEntry");
+    openDialog = jasmine.createSpy("open");
     getDreamEntry = jasmine
       .createSpy("getDreamEntry")
       .and.returnValue(of({ id: 7, title: "Dream" }));
@@ -49,6 +52,10 @@ describe("DetailComponent entry routing", () => {
         {
           provide: AppDialogService,
           useValue: { confirm: jasmine.createSpy("confirm") },
+        },
+        {
+          provide: MatDialog,
+          useValue: { open: openDialog },
         },
         {
           provide: CbtService,
@@ -97,5 +104,42 @@ describe("DetailComponent entry routing", () => {
     expect(component.entry).toBeNull();
     expect(component.isLoadingEntry).toBeFalse();
     expect(component.loadErrorMessage).toContain("could not be found");
+  });
+
+  it("opens image attachments together in the entry gallery", () => {
+    const component = createComponent();
+    component.entry = {
+      id: 7,
+      attachments: [
+        {
+          id: 1,
+          original_filename: "one.jpg",
+          url: "/media/one.jpg",
+          is_image: true,
+        },
+        {
+          id: 2,
+          original_filename: "notes.pdf",
+          url: "/media/notes.pdf",
+          is_pdf: true,
+        },
+        {
+          id: 3,
+          original_filename: "two.jpg",
+          url: "/media/two.jpg",
+          is_image: true,
+        },
+      ],
+    };
+
+    component.openAttachmentImageGallery(component.entry.attachments[2]);
+
+    expect(openDialog).toHaveBeenCalled();
+    const config = openDialog.calls.mostRecent().args[1];
+    expect(config.data.initialImageId).toBe(3);
+    expect(config.data.images.map((image: { id: number }) => image.id)).toEqual([
+      1,
+      3,
+    ]);
   });
 });

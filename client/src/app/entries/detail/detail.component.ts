@@ -18,12 +18,17 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { MatExpansionModule } from "@angular/material/expansion";
+import { MatDialog } from "@angular/material/dialog";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { EntryAsset } from "../../core/models/entry.model";
 import { CbtWorksheet } from "../../core/models/cbt.model";
 import { CbtService } from "../../core/services/cbt.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
+import {
+  EntryImageGalleryComponent,
+  EntryImageGalleryData,
+} from "../../shared/components/entry-image-gallery/entry-image-gallery.component";
 import { formatReadableLongDate } from "../../shared/utils/date-display";
 
 const MAX_ATTACHMENTS_PER_ENTRY = 3;
@@ -568,7 +573,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
           *ngIf="isAttachmentsExpanded"
         >
           <p class="entry-attachments-status">
-            Click an attachment tile to open it. Changes happen in edit mode.
+            Select a tile to preview or open it. Changes happen in edit mode.
           </p>
 
           <div
@@ -579,30 +584,39 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
               class="entry-attachment-card"
               *ngFor="let attachment of getAttachments()"
             >
-              <a
+              <button
+                *ngIf="attachment.is_image; else fileAttachmentPreview"
                 class="entry-attachment-preview"
-                [href]="attachment.url"
-                target="_blank"
-                rel="noopener"
+                type="button"
+                (click)="openAttachmentImageGallery(attachment)"
                 [attr.aria-label]="getAttachmentOpenLabel(attachment)"
-                [class.image]="attachment.is_image"
-                [class.audio]="attachment.is_audio"
-                [class.pdf]="attachment.is_pdf"
+                data-testid="entry-attachment-image-preview"
               >
                 <img
-                  *ngIf="attachment.is_image"
                   [src]="attachment.url"
                   [alt]="attachment.original_filename"
                 />
-                <div class="entry-attachment-pdf-tile" *ngIf="attachment.is_pdf">
-                  <mat-icon>picture_as_pdf</mat-icon>
-                  <span>PDF</span>
-                </div>
-                <div class="entry-attachment-audio-tile" *ngIf="attachment.is_audio">
-                  <mat-icon>graphic_eq</mat-icon>
-                  <span>Audio</span>
-                </div>
-              </a>
+              </button>
+              <ng-template #fileAttachmentPreview>
+                <a
+                  class="entry-attachment-preview"
+                  [href]="attachment.url"
+                  target="_blank"
+                  rel="noopener"
+                  [attr.aria-label]="getAttachmentOpenLabel(attachment)"
+                  [class.audio]="attachment.is_audio"
+                  [class.pdf]="attachment.is_pdf"
+                >
+                  <div class="entry-attachment-pdf-tile" *ngIf="attachment.is_pdf">
+                    <mat-icon>picture_as_pdf</mat-icon>
+                    <span>PDF</span>
+                  </div>
+                  <div class="entry-attachment-audio-tile" *ngIf="attachment.is_audio">
+                    <mat-icon>graphic_eq</mat-icon>
+                    <span>Audio</span>
+                  </div>
+                </a>
+              </ng-template>
               <div class="entry-attachment-meta">
                 <div class="entry-attachment-copy">
                   <h4>{{ attachment.original_filename }}</h4>
@@ -1438,8 +1452,10 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
       }
 
       .entry-attachment-preview {
+        width: 100%;
         min-height: 58px;
         max-height: 58px;
+        padding: 0;
         border-radius: var(--radius-sm);
         border: 1px solid var(--colour-border);
         background:
@@ -1451,6 +1467,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         overflow: hidden;
         text-decoration: none;
         color: inherit;
+        cursor: pointer;
         transition:
           border-color 160ms ease,
           box-shadow 160ms ease,
@@ -1803,6 +1820,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private appDialog = inject(AppDialogService);
+  private dialog = inject(MatDialog);
   private entriesService = inject(EntriesService);
   private cbtService = inject(CbtService);
   @ViewChild("dreamImageInput") dreamImageInput?: ElementRef<HTMLInputElement>;
@@ -2126,6 +2144,34 @@ export class DetailComponent implements OnInit, OnDestroy {
 
   getAttachments(): EntryAsset[] {
     return Array.isArray(this.entry?.attachments) ? this.entry.attachments : [];
+  }
+
+  getImageAttachments(): EntryAsset[] {
+    return this.getAttachments().filter(
+      (attachment) => Boolean(attachment.is_image && attachment.url),
+    );
+  }
+
+  openAttachmentImageGallery(attachment: EntryAsset): void {
+    const images = this.getImageAttachments();
+    if (!attachment?.is_image || !images.length) {
+      return;
+    }
+
+    this.dialog.open<EntryImageGalleryComponent, EntryImageGalleryData>(
+      EntryImageGalleryComponent,
+      {
+        data: {
+          images,
+          initialImageId: attachment.id,
+        },
+        autoFocus: "dialog",
+        restoreFocus: true,
+        maxWidth: "calc(100vw - 1rem)",
+        maxHeight: "calc(100vh - 1rem)",
+        panelClass: "entry-image-gallery-dialog",
+      },
+    );
   }
 
   canAddMoreAttachments(): boolean {
