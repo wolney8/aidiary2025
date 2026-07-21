@@ -12,7 +12,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from extensions import limiter
 from services.chat_context_svc import ChatContextService, estimate_tokens
-from services.openai_svc import OpenAIService
+from services.openai_svc import ChatStreamError, OpenAIService
 
 
 chat_bp = Blueprint('chat', __name__)
@@ -37,6 +37,13 @@ def _parse_conversation_id(raw_value: str | None) -> str | None:
         return str(UUID(raw_value))
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+def _parse_request_id(raw_value: str | None) -> str | None:
+    """Return a canonical retry key, or None for legacy callers."""
+    if raw_value is None:
+        return None
+    return _parse_conversation_id(raw_value)
 
 
 def _normalise_message(raw_message: str | None) -> str | None:
@@ -105,14 +112,34 @@ def _persist_message(
     conversation_id: str,
     role: str,
     content: str,
+    request_id: str | None = None,
 ) -> None:
     conn.execute(
         """
-        INSERT INTO chat_messages (user_id, conversation_id, role, content, token_count)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO chat_messages (
+            user_id, conversation_id, request_id, role, content, token_count
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (user_id, conversation_id, role, content, _token_count(content)),
+        (user_id, conversation_id, request_id, role, content, _token_count(content)),
     )
+
+
+def _load_request_messages(
+    conn: sqlite3.Connection,
+    user_id: int,
+    request_id: str | None,
+) -> dict[str, str]:
+    if request_id is None:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT role, content
+        FROM chat_messages
+        WHERE user_id = ? AND request_id = ?
+        """,
+        (user_id, request_id),
+    ).fetchall()
+    return {row['role']: row['content'] for row in rows}
 
 
 def _prune_conversation(
@@ -150,6 +177,10 @@ def send_message():
     if conversation_id is None:
         return jsonify({'error': 'Invalid conversation_id'}), 400
 
+    request_id = _parse_request_id(data.get('request_id'))
+    if data.get('request_id') is not None and request_id is None:
+        return jsonify({'error': 'Invalid request_id'}), 400
+
     message = _normalise_message(data.get('message'))
     if message is None:
         return jsonify({'error': 'Message must be non-empty and at most 2000 characters'}), 400
@@ -159,18 +190,24 @@ def send_message():
 
     conn = get_db()
     try:
-        projected_usage = _daily_token_usage(conn, user_id) + _token_count(message)
-        if projected_usage > current_app.config['CHAT_DAILY_TOKEN_BUDGET']:
-            return jsonify({'error': 'Daily chat limit reached. Resets at midnight.'}), 429
+        existing_request = _load_request_messages(conn, user_id, request_id)
+        if existing_request.get('user') not in (None, message):
+            return jsonify({'error': 'request_id is already used by another message'}), 409
 
-        _persist_message(
-            conn,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            role='user',
-            content=message,
-        )
-        conn.commit()
+        if 'user' not in existing_request:
+            projected_usage = _daily_token_usage(conn, user_id) + _token_count(message)
+            if projected_usage > current_app.config['CHAT_DAILY_TOKEN_BUDGET']:
+                return jsonify({'error': 'Daily chat limit reached. Resets at midnight.'}), 429
+
+            _persist_message(
+                conn,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                role='user',
+                content=message,
+                request_id=request_id,
+            )
+            conn.commit()
         model_history = _load_model_history(conn, user_id, conversation_id)
     except sqlite3.OperationalError as exc:
         if _is_missing_chat_table(exc):
@@ -179,11 +216,15 @@ def send_message():
     finally:
         conn.close()
 
-    system_prompt = ChatContextService(database_path).build_system_prompt(user_id)
-    model_stream = OpenAIService().chat_companion(
-        messages=model_history,
-        system_prompt=system_prompt,
-    )
+    completed_reply = existing_request.get('assistant')
+    if completed_reply is None:
+        system_prompt = ChatContextService(database_path).build_system_prompt(user_id)
+        model_stream = OpenAIService().chat_companion(
+            messages=model_history,
+            system_prompt=system_prompt,
+        )
+    else:
+        model_stream = iter([completed_reply])
 
     @stream_with_context
     def generate_events() -> Iterator[str]:
@@ -196,7 +237,7 @@ def send_message():
                 yield _sse_event({'chunk': chunk, 'done': False})
 
             assistant_reply = ''.join(assistant_chunks)
-            if assistant_reply:
+            if assistant_reply and completed_reply is None:
                 stream_conn = get_db()
                 try:
                     _persist_message(
@@ -205,6 +246,7 @@ def send_message():
                         conversation_id=conversation_id,
                         role='assistant',
                         content=assistant_reply,
+                        request_id=request_id,
                     )
                     _prune_conversation(stream_conn, user_id, conversation_id)
                     stream_conn.commit()
@@ -216,13 +258,23 @@ def send_message():
                 'done': True,
                 'token_count': _token_count(assistant_reply),
             })
-        except Exception:
+        except ChatStreamError:
             current_app.logger.exception('Chat response stream failed')
             yield _sse_event({
                 'chunk': '',
                 'done': True,
                 'token_count': _token_count(''.join(assistant_chunks)),
+                'error': 'The chat service is temporarily unavailable. Please try again.',
+                'error_code': 'provider_unavailable',
+            })
+        except Exception:
+            current_app.logger.exception('Unexpected chat response stream failure')
+            yield _sse_event({
+                'chunk': '',
+                'done': True,
+                'token_count': _token_count(''.join(assistant_chunks)),
                 'error': 'The chat response could not be completed.',
+                'error_code': 'stream_failed',
             })
 
     return Response(

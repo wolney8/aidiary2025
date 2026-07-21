@@ -8,6 +8,7 @@ import pytest
 
 from app import create_app
 from extensions import limiter
+from services.openai_svc import ChatStreamError
 
 
 @pytest.fixture
@@ -182,6 +183,70 @@ def test_chat_send_history_clear_flow(client, mocked_chat_services):
 
     cleared_data = json.loads(history_after_clear.data)
     assert cleared_data['messages'] == []
+
+
+def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_chat_services):
+    token = _register_and_get_token(client, 'chat_retry_user')
+    conversation_id = str(uuid4())
+    request_id = str(uuid4())
+    _, openai_service = mocked_chat_services
+
+    def failed_stream():
+        raise ChatStreamError('provider unavailable')
+        yield
+
+    openai_service.return_value.chat_companion.return_value = failed_stream()
+    payload = {
+        'conversation_id': conversation_id,
+        'request_id': request_id,
+        'message': 'Please help me reflect.',
+    }
+
+    failed_response = client.post(
+        '/api/chat/message',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps(payload),
+        content_type='application/json',
+        buffered=True,
+    )
+    failed_events = _sse_events(failed_response)
+    assert failed_events[-1]['error_code'] == 'provider_unavailable'
+
+    openai_service.return_value.chat_companion.return_value = iter(['Recovered reply'])
+    retry_response = client.post(
+        '/api/chat/message',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps(payload),
+        content_type='application/json',
+        buffered=True,
+    )
+    assert _sse_events(retry_response)[-1]['done'] is True
+
+    history_response = client.get(
+        f'/api/chat/history?conversation_id={conversation_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    messages = json.loads(history_response.data)['messages']
+    assert [message['message'] for message in messages] == [
+        'Please help me reflect.',
+        'Recovered reply',
+    ]
+
+    replay_response = client.post(
+        '/api/chat/message',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps(payload),
+        content_type='application/json',
+        buffered=True,
+    )
+    replay_events = _sse_events(replay_response)
+    assert replay_events[0]['chunk'] == 'Recovered reply'
+
+    replayed_history = client.get(
+        f'/api/chat/history?conversation_id={conversation_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert len(json.loads(replayed_history.data)['messages']) == 2
 
 
 def test_chat_user_isolation_by_token(client):

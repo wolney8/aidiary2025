@@ -10,6 +10,19 @@ import {
 import { AuthService } from "./auth.service";
 
 const CONVERSATION_ID_KEY = "chat_conversation_id";
+const CHAT_STREAM_IDLE_TIMEOUT_MS = 45_000;
+const MAX_PRE_STREAM_RETRIES = 1;
+
+export class ChatRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly retryable = false,
+  ) {
+    super(message);
+    this.name = "ChatRequestError";
+  }
+}
 
 @Injectable({ providedIn: "root" })
 export class ChatService {
@@ -19,10 +32,22 @@ export class ChatService {
 
   sendMessage(conversationId: string, message: string): Observable<string> {
     return new Observable<string>((observer) => {
-      const controller = new AbortController();
+      const requestId = crypto.randomUUID();
+      let activeController: AbortController | null = null;
+      let cancelled = false;
 
-      void this.streamMessage(conversationId, message, controller, observer);
-      return () => controller.abort();
+      void this.streamMessage(
+        conversationId,
+        message,
+        requestId,
+        observer,
+        (controller) => (activeController = controller),
+        () => cancelled,
+      );
+      return () => {
+        cancelled = true;
+        activeController?.abort();
+      };
     });
   }
 
@@ -67,66 +92,156 @@ export class ChatService {
   private async streamMessage(
     conversationId: string,
     message: string,
-    controller: AbortController,
+    requestId: string,
     observer: {
       next(value: string): void;
       error(error: unknown): void;
       complete(): void;
       closed: boolean;
     },
+    setActiveController: (controller: AbortController) => void,
+    isCancelled: () => boolean,
   ): Promise<void> {
-    try {
-      const token = this.authService.getToken();
-      const response = await fetch(`${this.apiUrl}/chat/message`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          message,
-        }),
-        signal: controller.signal,
-      });
+    let emittedChunk = false;
 
-      if (!response.ok) {
-        const errorPayload = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(errorPayload?.error || "Chat request failed.");
-      }
-      if (!response.body) throw new Error("Chat response stream is unavailable.");
+    for (let attempt = 0; attempt <= MAX_PRE_STREAM_RETRIES; attempt += 1) {
+      const controller = new AbortController();
+      setActiveController(controller);
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      try {
+        const token = this.authService.getToken();
+        const response = await fetch(`${this.apiUrl}/chat/message`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            message,
+            request_id: requestId,
+          }),
+          signal: controller.signal,
+        });
 
-      while (!observer.closed) {
-        const { value, done } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done });
-        const blocks = buffer.split("\n\n");
-        buffer = blocks.pop() ?? "";
-
-        for (const block of blocks) {
-          const event = this.parseEvent(block);
-          if (!event) continue;
-          if (event.error) throw new Error(event.error);
-          if (event.chunk) observer.next(event.chunk);
-          if (event.done) {
-            observer.complete();
-            return;
-          }
+        if (!response.ok) {
+          const errorPayload = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new ChatRequestError(
+            errorPayload?.error || "Chat request failed.",
+            response.status === 429 ? "rate_limited" : "server_error",
+            response.status >= 500,
+          );
+        }
+        if (!response.body) {
+          throw new ChatRequestError(
+            "Chat response stream is unavailable.",
+            "stream_unavailable",
+            true,
+          );
         }
 
-        if (done) break;
-      }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      if (!observer.closed) observer.complete();
-    } catch (error) {
-      if (controller.signal.aborted || observer.closed) return;
-      observer.error(error instanceof Error ? error : new Error("Chat request failed."));
+        while (!observer.closed && !isCancelled()) {
+          const { value, done } = await this.readWithTimeout(reader, controller);
+          buffer += decoder.decode(value, { stream: !done });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() ?? "";
+
+          for (const block of blocks) {
+            const event = this.parseEvent(block);
+            if (!event) continue;
+            if (event.error) {
+              throw new ChatRequestError(
+                event.error,
+                event.error_code || "stream_failed",
+                event.error_code === "provider_unavailable",
+              );
+            }
+            if (event.chunk) {
+              emittedChunk = true;
+              observer.next(event.chunk);
+            }
+            if (event.done) {
+              observer.complete();
+              return;
+            }
+          }
+
+          if (done) break;
+        }
+
+        if (!observer.closed && !isCancelled()) {
+          throw new ChatRequestError(
+            "The chat response ended unexpectedly. Please try again.",
+            "stream_incomplete",
+            true,
+          );
+        }
+        return;
+      } catch (error) {
+        if (isCancelled() || observer.closed) return;
+
+        const chatError = this.normaliseError(error, controller.signal.aborted);
+        const canRetry = chatError.retryable && !emittedChunk && attempt < MAX_PRE_STREAM_RETRIES;
+        if (canRetry) continue;
+
+        observer.error(chatError);
+        return;
+      }
     }
+  }
+
+  private async readWithTimeout(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    controller: AbortController,
+  ): Promise<ReadableStreamReadResult<Uint8Array>> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            controller.abort();
+            reject(
+              new ChatRequestError(
+                "The chat response timed out. Please try again.",
+                "timeout",
+                true,
+              ),
+            );
+          }, CHAT_STREAM_IDLE_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
+  }
+
+  private normaliseError(error: unknown, wasAborted: boolean): ChatRequestError {
+    if (error instanceof ChatRequestError) return error;
+    if (wasAborted) {
+      return new ChatRequestError(
+        "The chat response timed out. Please try again.",
+        "timeout",
+        true,
+      );
+    }
+    if (error instanceof TypeError) {
+      return new ChatRequestError(
+        "Chat is temporarily unavailable. Check your connection and try again.",
+        "network",
+        true,
+      );
+    }
+    return new ChatRequestError(
+      error instanceof Error ? error.message : "Chat request failed.",
+      "unknown",
+    );
   }
 
   private parseEvent(block: string): ChatStreamEvent | null {

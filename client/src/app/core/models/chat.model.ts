@@ -24,4 +24,5 @@ export interface ChatStreamEvent {
   done: boolean;
   token_count?: number;
   error?: string;
+  error_code?: string;
 }
