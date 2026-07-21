@@ -36,6 +36,7 @@ import { AppDialogService } from "../../core/services/app-dialog.service";
 import { AuthService } from "../../core/services/auth.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
+import { CbtService } from "../../core/services/cbt.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
 import {
   formatReadableLongDate,
@@ -49,6 +50,7 @@ import {
   AIStyleOption,
   DreamFieldOptions,
 } from "../../core/models/entry.model";
+import { CbtWorksheet } from "../../core/models/cbt.model";
 
 const UK_DATE_FORMATS = {
   parse: {
@@ -726,6 +728,81 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               </div>
             </ng-template>
           </section>
+
+          <section
+            class="entry-thought-records"
+            aria-labelledby="entry-thought-records-heading"
+            data-testid="entry-thought-records"
+          >
+            <div class="entry-thought-records-header">
+              <div>
+                <h3 id="entry-thought-records-heading">Thought records</h3>
+                <p>Save this entry and continue in a linked reflection.</p>
+              </div>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="saveAndStartThoughtRecord()"
+                [disabled]="isSaving"
+                data-testid="entry-save-start-thought-record"
+              >
+                <mat-icon aria-hidden="true">psychology_alt</mat-icon>
+                Save &amp; start
+              </button>
+            </div>
+
+            <div
+              class="entry-thought-records-status"
+              *ngIf="isEditing && isLoadingLinkedThoughtRecords"
+              role="status"
+            >
+              <mat-progress-spinner mode="indeterminate" diameter="22" />
+              <span>Loading thought records…</span>
+            </div>
+
+            <p
+              class="entry-thought-records-error"
+              *ngIf="linkedThoughtRecordsError"
+              role="alert"
+            >
+              {{ linkedThoughtRecordsError }}
+            </p>
+
+            <div
+              class="entry-thought-record-list"
+              *ngIf="isEditing && !isLoadingLinkedThoughtRecords && linkedThoughtRecords.length"
+            >
+              <article
+                class="entry-thought-record-row"
+                *ngFor="let worksheet of linkedThoughtRecords"
+                [attr.data-testid]="'entry-linked-thought-record-' + worksheet.id"
+              >
+                <mat-icon aria-hidden="true">psychology_alt</mat-icon>
+                <div>
+                  <strong>{{ worksheet.title || worksheet.situation || "Untitled thought record" }}</strong>
+                  <span>
+                    {{ worksheet.status === "completed" ? "Completed" : "Draft · Step " + worksheet.current_step + " of 7" }}
+                  </span>
+                </div>
+                <button
+                  mat-stroked-button
+                  type="button"
+                  (click)="saveAndOpenThoughtRecord(worksheet)"
+                  [disabled]="isSaving"
+                  [attr.aria-label]="'Save entry and open ' + (worksheet.title || worksheet.situation || 'thought record')"
+                >
+                  Save &amp; open
+                </button>
+              </article>
+            </div>
+
+            <p
+              class="entry-thought-records-empty"
+              *ngIf="isEditing && !isLoadingLinkedThoughtRecords && !linkedThoughtRecords.length && !linkedThoughtRecordsError"
+            >
+              No thought records linked yet.
+            </p>
+          </section>
           </fieldset>
 
           <div class="save-progress" *ngIf="isSaving" aria-live="polite">
@@ -1034,6 +1111,97 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         font-size: 0.92rem;
       }
 
+      .entry-thought-records {
+        display: grid;
+        gap: var(--spacing-sm);
+        margin: var(--spacing-md) 0;
+        padding: var(--spacing-sm);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .entry-thought-records-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+      }
+
+      .entry-thought-records-header h3,
+      .entry-thought-records-header p,
+      .entry-thought-records-empty,
+      .entry-thought-records-error {
+        margin: 0;
+      }
+
+      .entry-thought-records-header p,
+      .entry-thought-records-empty {
+        margin-top: 0.2rem;
+        color: var(--colour-text-secondary);
+      }
+
+      .entry-thought-records-header button,
+      .entry-thought-record-row button {
+        min-height: 2.75rem;
+        flex: 0 0 auto;
+      }
+
+      .entry-thought-records-status {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        color: var(--colour-text-secondary);
+      }
+
+      .entry-thought-records-error {
+        color: var(--colour-danger-text);
+      }
+
+      .entry-thought-record-list {
+        display: grid;
+        gap: var(--spacing-xs);
+      }
+
+      .entry-thought-record-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface);
+      }
+
+      .entry-thought-record-row > mat-icon {
+        display: grid;
+        width: 2.5rem;
+        height: 2.5rem;
+        place-items: center;
+        border-radius: var(--radius-pill);
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
+      }
+
+      .entry-thought-record-row > div {
+        display: grid;
+        min-width: 0;
+        gap: 0.2rem;
+      }
+
+      .entry-thought-record-row strong,
+      .entry-thought-record-row span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .entry-thought-record-row span {
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+      }
+
       .entry-attachment-row-actions {
         display: flex;
         align-items: center;
@@ -1112,6 +1280,23 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
           flex-direction: column;
         }
 
+        .entry-thought-records-header {
+          flex-direction: column;
+        }
+
+        .entry-thought-records-header button {
+          width: 100%;
+        }
+
+        .entry-thought-record-row {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .entry-thought-record-row button {
+          grid-column: 1 / -1;
+          width: 100%;
+        }
+
         .entry-attachments-actions {
           width: 100%;
           justify-content: flex-start;
@@ -1139,6 +1324,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   private authService = inject(AuthService);
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
+  private cbtService = inject(CbtService);
   @ViewChild("pendingAttachmentInput")
   pendingAttachmentInput?: ElementRef<HTMLInputElement>;
 
@@ -1165,6 +1351,13 @@ export class CreateComponent implements OnInit, OnDestroy {
   attachmentsMarkedForRemoval: EntryAsset[] = [];
   pendingAttachments: PendingAttachment[] = [];
   derivingAttachmentTextIds = new Set<number>();
+  linkedThoughtRecords: CbtWorksheet[] = [];
+  isLoadingLinkedThoughtRecords = false;
+  linkedThoughtRecordsError = "";
+  private thoughtRecordAfterSave:
+    | { mode: "start" }
+    | { mode: "open"; worksheetId: number }
+    | null = null;
 
   // Enhanced fields for both entry types
   selectedMood = "";
@@ -1415,6 +1608,10 @@ export class CreateComponent implements OnInit, OnDestroy {
             .filter((p: string) => p)
         : [];
     }
+
+    if (this.editingId !== null) {
+      this.loadLinkedThoughtRecords(this.editingId, type);
+    }
   }
 
   saveAsDraft(): void {
@@ -1425,6 +1622,21 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.persistEntry(true);
   }
 
+  saveAndStartThoughtRecord(): void {
+    if (this.isSaving) return;
+    this.thoughtRecordAfterSave = { mode: "start" };
+    this.persistEntry(this.leaveItToAI);
+  }
+
+  saveAndOpenThoughtRecord(worksheet: CbtWorksheet): void {
+    if (this.isSaving) return;
+    this.thoughtRecordAfterSave = {
+      mode: "open",
+      worksheetId: worksheet.id,
+    };
+    this.persistEntry(this.isEditing && this.leaveItToAI);
+  }
+
   private persistEntry(shouldAnalyse: boolean): void {
     this.errorMessage = "";
 
@@ -1432,11 +1644,13 @@ export class CreateComponent implements OnInit, OnDestroy {
 
     if (!normalisedEntryDate) {
       this.errorMessage = "Please select a date for this entry.";
+      this.thoughtRecordAfterSave = null;
       return;
     }
 
     if (this.isFutureDate(normalisedEntryDate)) {
       this.errorMessage = "Entries cannot be created or moved to a future date.";
+      this.thoughtRecordAfterSave = null;
       return;
     }
 
@@ -1445,6 +1659,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     // Content validation - required for daily entries, optional for dreams
     if (this.selectedType === "daily" && !this.content.trim()) {
       this.errorMessage = "Please add some notes so the AI has context.";
+      this.thoughtRecordAfterSave = null;
       return;
     }
 
@@ -1458,6 +1673,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     if (!entryTime) {
       this.errorMessage = "Please select a valid time for this entry.";
       this.isSaving = false;
+      this.thoughtRecordAfterSave = null;
       return;
     }
 
@@ -1613,6 +1829,16 @@ export class CreateComponent implements OnInit, OnDestroy {
       ? `Your entry was saved, but ${attachmentMessages.join("; ")}.`
       : undefined;
 
+    if (this.thoughtRecordAfterSave) {
+      await this.completeThoughtRecordNavigation(
+        entryId,
+        entryType,
+        analysisWarning,
+        attachmentWarning,
+      );
+      return;
+    }
+
     this.finishNavigation(entryId, {
       analysisWarning,
       attachmentWarning,
@@ -1733,6 +1959,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     },
   ): void {
     this.isSaving = false;
+    this.thoughtRecordAfterSave = null;
     this.resetForm();
 
     const queryParams =
@@ -1751,6 +1978,130 @@ export class CreateComponent implements OnInit, OnDestroy {
         : undefined;
 
     this.router.navigate(["/entries", entryId], { queryParams });
+  }
+
+  private async completeThoughtRecordNavigation(
+    entryId: number,
+    entryType: "daily" | "dream",
+    analysisWarning?: string,
+    attachmentWarning?: string,
+  ): Promise<void> {
+    const action = this.thoughtRecordAfterSave;
+    if (!action) {
+      this.finishNavigation(entryId, {
+        analysisWarning,
+        attachmentWarning,
+      });
+      return;
+    }
+
+    let worksheetId = action.mode === "open" ? action.worksheetId : null;
+    if (action.mode === "start") {
+      try {
+        const entryDate = this.coerceEntryDate(this.entryDate);
+        const worksheet = await firstValueFrom(
+          this.cbtService.createWorksheet({
+            title: this.getLinkedThoughtRecordTitle(),
+            record_date: entryDate
+              ? this.serialiseDateAsLocalIso(entryDate)
+              : undefined,
+            linked_entry_type: entryType,
+            linked_entry_id: entryId,
+          }),
+        );
+        worksheetId = worksheet.id;
+      } catch {
+        const thoughtRecordWarning =
+          "Your entry was saved, but the linked thought record could not be started.";
+        this.thoughtRecordAfterSave = null;
+        this.finishNavigation(entryId, {
+          analysisWarning,
+          attachmentWarning: [attachmentWarning, thoughtRecordWarning]
+            .filter(Boolean)
+            .join(" "),
+        });
+        return;
+      }
+    }
+
+    const warningMessage = this.getThoughtRecordNavigationWarning(
+      analysisWarning,
+      attachmentWarning,
+    );
+    if (warningMessage) {
+      await this.appDialog.alert({
+        title: "Entry saved with a warning",
+        message: warningMessage,
+        variant: "warning",
+        confirmText: "Continue",
+      });
+    }
+
+    if (worksheetId === null) {
+      this.thoughtRecordAfterSave = null;
+      this.finishNavigation(entryId, {
+        attachmentWarning:
+          "Your entry was saved, but the thought record could not be opened.",
+      });
+      return;
+    }
+
+    this.isSaving = false;
+    this.resetForm();
+    await this.router.navigate(["/cbt", worksheetId], {
+      queryParams: {
+        returnEntryId: entryId,
+        returnEntryType: entryType,
+      },
+    });
+  }
+
+  private loadLinkedThoughtRecords(
+    entryId: number,
+    entryType: "daily" | "dream",
+  ): void {
+    this.isLoadingLinkedThoughtRecords = true;
+    this.linkedThoughtRecordsError = "";
+    this.cbtService
+      .listWorksheets({
+        linkedEntryType: entryType,
+        linkedEntryId: entryId,
+      })
+      .subscribe({
+        next: (worksheets) => {
+          this.linkedThoughtRecords = worksheets;
+          this.isLoadingLinkedThoughtRecords = false;
+        },
+        error: () => {
+          this.linkedThoughtRecords = [];
+          this.isLoadingLinkedThoughtRecords = false;
+          this.linkedThoughtRecordsError =
+            "Linked thought records could not be loaded.";
+        },
+      });
+  }
+
+  private getLinkedThoughtRecordTitle(): string {
+    const sourceText =
+      this.entryTitle.trim() ||
+      (this.selectedType === "daily"
+        ? this.content.trim()
+        : this.dreamPlot.trim()) ||
+      "Diary entry";
+    return `Reflection: ${sourceText.replace(/\s+/g, " ")}`.slice(0, 100);
+  }
+
+  private getThoughtRecordNavigationWarning(
+    analysisWarning?: string,
+    attachmentWarning?: string,
+  ): string {
+    const messages = attachmentWarning ? [attachmentWarning] : [];
+    if (analysisWarning === "ai-save-failed") {
+      messages.push("The AI response could not be saved.");
+    } else if (analysisWarning === "ai-rate-limit") {
+      messages.push("AI analysis could not run because its usage limit was reached.");
+    }
+    return messages.join(" ");
   }
 
   private isRateLimitAnalysisError(error: unknown): boolean {
@@ -2326,6 +2677,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   private handleSaveError(error: unknown, fallbackMessage: string): void {
+    this.thoughtRecordAfterSave = null;
     if (error instanceof HttpErrorResponse) {
       const apiMessage =
         typeof error.error?.error === "string" ? error.error.error : "";
@@ -2401,6 +2753,10 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.clearPendingAttachments();
     this.existingAttachments = [];
     this.attachmentsMarkedForRemoval = [];
+    this.linkedThoughtRecords = [];
+    this.linkedThoughtRecordsError = "";
+    this.isLoadingLinkedThoughtRecords = false;
+    this.thoughtRecordAfterSave = null;
     this.entryDate = new Date();
     this.entryTime = this.getCurrentLocalTime();
     this.initialDate = this.entryDate.toDateString();
@@ -2453,10 +2809,16 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   getSaveProgressTitle(): string {
+    if (this.thoughtRecordAfterSave) {
+      return "Saving entry and opening thought record";
+    }
     return this.leaveItToAI ? "Saving entry and running AI analysis" : "Saving entry";
   }
 
   getSaveProgressDescription(): string {
+    if (this.thoughtRecordAfterSave) {
+      return "Your entry and attachments will be saved before the reflection opens.";
+    }
     return this.leaveItToAI
       ? "This can take a moment while the app saves your entry, gathers context, and generates the response."
       : "This can take a moment while the app saves your entry and attachments.";
