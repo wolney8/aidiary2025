@@ -997,6 +997,81 @@ def test_analyse_daily_entry_passes_recent_context_without_contract_change(
 
 @patch('routes.analyse.derive_daily_nltk_fields')
 @patch('routes.analyse.OpenAIService')
+def test_analyse_daily_entry_can_use_completed_thought_record_context(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+    import sqlite3
+
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    user_id = conn.execute(
+        'SELECT id FROM users WHERE username = ?',
+        ('testuser',),
+    ).fetchone()[0]
+    cursor = conn.execute(
+        '''
+        INSERT INTO cbt_worksheets (
+            user_id, title, status, current_step, record_date, completed_at
+        ) VALUES (?, ?, 'completed', 7, '2026-05-20', CURRENT_TIMESTAMP)
+        ''',
+        (user_id, 'Coffee plans with Katie'),
+    )
+    worksheet_id = int(cursor.lastrowid)
+    conn.execute(
+        '''
+        INSERT INTO cbt_thought_record_data (
+            worksheet_id, situation, unhelpful_thoughts, evidence_for,
+            evidence_against, balanced_thought, next_step
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''',
+        (
+            worksheet_id,
+            'Katie cancelled our coffee plans and I felt rejected.',
+            'Katie does not value our friendship.',
+            'The plans changed at short notice.',
+            'Katie explained that she was unwell.',
+            'A cancellation does not prove the friendship is unimportant.',
+            'Wait and suggest another coffee date.',
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'Context-aware response',
+        'tags': 'reflection',
+        'people_names': 'Katie',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.side_effect = [
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+        {'tags': '', 'daily_people_names': '', 'daily_places': ''},
+    ]
+
+    response = client.post(
+        '/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'mode': 'daily',
+            'text': 'Katie changed our coffee plans again and I noticed the same rejection fear.',
+            'reference_date': '2026-06-01',
+        },
+    )
+
+    assert response.status_code == 200
+    related_context = mock_service.analyse_daily_entry.call_args.kwargs['related_context']
+    assert related_context is not None
+    assert '[related 1 thought record]' in related_context
+    assert 'Coffee plans with Katie' in related_context
+    assert 'On 20 May 2026' in related_context
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
 def test_analyse_daily_entry_suppresses_history_when_user_setting_disabled(
     mock_service_cls,
     mock_daily_nltk,

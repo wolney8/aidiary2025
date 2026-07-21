@@ -7,6 +7,7 @@ from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
 from services.runtime_migrations import (
+    ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
     ensure_entry_ai_metadata_table,
     ensure_entry_assets_table,
@@ -144,6 +145,11 @@ def create_app():
         ensure_chat_messages_table(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime chat messages migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_cbt_worksheet_tables(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime CBT worksheet migration skipped due to error: %s', migration_exc)
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
@@ -199,6 +205,7 @@ def create_app():
     from routes.important_days import important_days_bp
     from routes.public_holidays import public_holidays_bp
     from routes.chat import chat_bp
+    from routes.cbt import cbt_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
@@ -208,6 +215,7 @@ def create_app():
     app.register_blueprint(important_days_bp, url_prefix='/api')
     app.register_blueprint(public_holidays_bp, url_prefix='/api')
     app.register_blueprint(chat_bp, url_prefix='/api')
+    app.register_blueprint(cbt_bp, url_prefix='/api')
 
     try:
         recovered_jobs = recover_import_jobs(app)

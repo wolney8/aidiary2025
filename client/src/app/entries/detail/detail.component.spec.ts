@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { ActivatedRoute, Router } from "@angular/router";
 import { of, throwError } from "rxjs";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import { CbtService } from "../../core/services/cbt.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { DetailComponent } from "./detail.component";
 
@@ -48,6 +49,15 @@ describe("DetailComponent entry routing", () => {
         {
           provide: AppDialogService,
           useValue: { confirm: jasmine.createSpy("confirm") },
+        },
+        {
+          provide: CbtService,
+          useValue: {
+            listWorksheets: jasmine
+              .createSpy("listWorksheets")
+              .and.returnValue(of([])),
+            createWorksheet: jasmine.createSpy("createWorksheet"),
+          },
         },
       ],
     }).compileComponents();

@@ -1308,6 +1308,7 @@
 
 .calendar-day-icons {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: auto;
   align-items: flex-end;
@@ -1348,6 +1349,12 @@
   color: #6d28d9;
 }
 
+.calendar-entry-icon.thought-record {
+  border-color: color-mix(in srgb, var(--colour-success-text) 28%, transparent);
+  background: var(--colour-success-bg);
+  color: var(--colour-success-text);
+}
+
 :host-context(html[data-theme="dark"]) .calendar-entry-icon.daily {
   background: linear-gradient(180deg, #1a2740 0%, #111b2e 100%) !important;
   border-color: rgba(155, 184, 255, 0.24) !important;
@@ -1358,6 +1365,12 @@
   background: linear-gradient(180deg, #241b3c 0%, #171123 100%) !important;
   border-color: rgba(224, 210, 255, 0.22) !important;
   color: #decfff !important;
+}
+
+:host-context(html[data-theme="dark"]) .calendar-entry-icon.thought-record {
+  background: linear-gradient(180deg, #163c3a 0%, #102a2a 100%) !important;
+  border-color: rgba(153, 246, 228, 0.24) !important;
+  color: #99f6e4 !important;
 }
 
 .calendar-entry-icon mat-icon {
@@ -1385,6 +1398,26 @@
 
 .calendar-entry-icon.dream .calendar-entry-count {
   background: #6d28d9;
+}
+
+.calendar-entry-icon.thought-record .calendar-entry-count {
+  background: var(--colour-success-text);
+  color: var(--colour-surface-elevated);
+}
+
+.legend-thought-record-icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--colour-success-text);
+  font-size: 1rem;
+  line-height: 1rem;
+}
+
+:host-context(html[data-theme="dark"])
+  .cbt-calendar-preview-card
+  .calendar-preview-card-title
+  > mat-icon {
+  color: #99f6e4 !important;
 }
 
 .calendar-day-plus {
@@ -1609,6 +1642,20 @@
   transform: translateY(-1px);
   border-color: rgba(59, 130, 246, 0.35);
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+.cbt-calendar-preview-card {
+  border-color: color-mix(in srgb, var(--colour-success-text) 24%, var(--colour-border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--colour-success-bg) 54%, var(--colour-surface-elevated)) 0%,
+      var(--colour-surface-elevated) 100%
+    );
+}
+
+.cbt-calendar-preview-card .calendar-preview-card-title > mat-icon {
+  color: var(--colour-success-text);
 }
 
 .calendar-preview-card-more {

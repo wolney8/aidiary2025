@@ -482,6 +482,40 @@ def _delete_entry_assets(
     return [str(row['storage_key'] or '').strip() for row in rows if row['storage_key']]
 
 
+def _unlink_cbt_worksheets(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    entry_type: str | None = None,
+    entry_id: int | None = None,
+) -> None:
+    """Preserve reflections while removing links to entries being deleted."""
+    try:
+        if entry_type is None or entry_id is None:
+            conn.execute(
+                '''
+                UPDATE cbt_worksheets
+                SET linked_entry_type = NULL, linked_entry_id = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ? AND linked_entry_id IS NOT NULL
+                ''',
+                (user_id,),
+            )
+            return
+        conn.execute(
+            '''
+            UPDATE cbt_worksheets
+            SET linked_entry_type = NULL, linked_entry_id = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND linked_entry_type = ? AND linked_entry_id = ?
+            ''',
+            (user_id, entry_type, entry_id),
+        )
+    except sqlite3.OperationalError as exc:
+        if 'no such table' not in str(exc).lower():
+            raise
+
+
 def _get_attachment_limit_for_mime_type(mime_type: str) -> int:
     if mime_type.startswith('audio/'):
         return MAX_ENTRY_AUDIO_ATTACHMENT_BYTES
@@ -1288,6 +1322,12 @@ def delete_daily_entry(entry_id):
         entry_type='daily',
         entry_id=entry_id,
     )
+    _unlink_cbt_worksheets(
+        conn,
+        user_id=user_id,
+        entry_type='daily',
+        entry_id=entry_id,
+    )
 
     cursor.execute('''
         DELETE FROM dailydiary_entries
@@ -1859,6 +1899,12 @@ def delete_dream_entry(entry_id):
         entry_type='dream',
         entry_id=entry_id,
     )
+    _unlink_cbt_worksheets(
+        conn,
+        user_id=user_id,
+        entry_type='dream',
+        entry_id=entry_id,
+    )
 
     cursor.execute('''
         DELETE FROM dreamdiary_entries
@@ -2191,6 +2237,12 @@ def delete_selected_entries():
                 entry_type=entry_type,
                 entry_id=entry_id,
             ))
+            _unlink_cbt_worksheets(
+                conn,
+                user_id=user_id,
+                entry_type=entry_type,
+                entry_id=entry_id,
+            )
             deleted[entry_type] += conn.execute(
                 f'DELETE FROM {table_name} WHERE id = ? AND user_id = ?',
                 (entry_id, user_id),
@@ -2245,6 +2297,7 @@ def bulk_delete_entries():
     ).fetchall()
     storage_keys = [str(row['storage_key'] or '').strip() for row in image_rows if row['storage_key']]
     conn.execute('DELETE FROM entry_assets WHERE user_id = ?', (user_id,))
+    _unlink_cbt_worksheets(conn, user_id=user_id)
     daily_deleted = conn.execute(
         'DELETE FROM dailydiary_entries WHERE user_id = ?',
         (user_id,),

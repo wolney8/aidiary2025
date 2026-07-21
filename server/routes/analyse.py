@@ -532,6 +532,7 @@ def _build_related_history_context(
         rows = conn.execute(
             '''
             SELECT id, entry_date, entry_number, title, user_message AS body,
+                   'daily' AS source_type,
                    tags, daily_people_names AS people_names, daily_places AS places
             FROM dailydiary_entries
             WHERE user_id = ?
@@ -547,6 +548,7 @@ def _build_related_history_context(
             '''
             SELECT id, entry_date, entry_number, title,
                    COALESCE(plot, summary, interpretation, '') AS body,
+                   'dream' AS source_type,
                    tags, dream_people_names AS people_names, dream_places AS places
             FROM dreamdiary_entries
             WHERE user_id = ?
@@ -557,6 +559,35 @@ def _build_related_history_context(
             ''',
             (user_id, reference_date, reference_date, current_entry_id, current_entry_id, RELATED_CONTEXT_SCAN_LIMIT),
         ).fetchall()
+
+    rows = list(rows)
+    try:
+        thought_record_rows = conn.execute(
+            '''
+            SELECT w.id, w.record_date AS entry_date, 0 AS entry_number,
+                   COALESCE(NULLIF(w.title, ''), 'Thought record') AS title,
+                   TRIM(
+                       SUBSTR(d.situation, 1, 1000) || ' ' ||
+                       SUBSTR(d.unhelpful_thoughts, 1, 1000) || ' ' ||
+                       SUBSTR(d.evidence_for, 1, 700) || ' ' ||
+                       SUBSTR(d.evidence_against, 1, 700) || ' ' ||
+                       SUBSTR(d.balanced_thought, 1, 1000) || ' ' ||
+                       SUBSTR(d.next_step, 1, 500)
+                   ) AS body,
+                   'thought_record' AS source_type,
+                   '' AS tags, '' AS people_names, '' AS places
+            FROM cbt_worksheets w
+            JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
+            WHERE w.user_id = ? AND w.status = 'completed'
+              AND (? IS NULL OR w.record_date <= ?)
+            ORDER BY w.record_date DESC, w.id DESC
+            LIMIT ?
+            ''',
+            (user_id, reference_date, reference_date, RELATED_CONTEXT_SCAN_LIMIT),
+        ).fetchall()
+        rows.extend(thought_record_rows)
+    except sqlite3.OperationalError:
+        pass
 
     ranked: list[tuple[float, sqlite3.Row, dict[str, list[str] | float]]] = []
     for row in rows:
@@ -609,7 +640,15 @@ def _build_related_history_context(
         snippet = _truncate_text(str(row['body'] or ''), 240)
         title = _truncate_text(str(row['title'] or ''), 80)
         date_label = _format_human_reference_date(row['entry_date'])
-        header = f"[related {index}] On {date_label}, shared theme: {theme_text}"
+        source_label = (
+            'thought record'
+            if row['source_type'] == 'thought_record'
+            else 'entry'
+        )
+        header = (
+            f"[related {index} {source_label}] On {date_label}, "
+            f"shared theme: {theme_text}"
+        )
         if title:
             header += f" | title: {title}"
         section = f"{header}\nSnapshot: {snippet}"

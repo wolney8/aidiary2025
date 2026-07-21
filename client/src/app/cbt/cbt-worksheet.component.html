@@ -1,0 +1,298 @@
+<section class="cbt-workspace" data-testid="cbt-worksheet">
+  <div class="cbt-loading" *ngIf="isLoading" role="status">
+    <mat-progress-spinner mode="indeterminate" diameter="44" />
+    <span>Loading thought record…</span>
+  </div>
+
+  <div class="cbt-error" *ngIf="!isLoading && errorMessage && !worksheet" role="alert">
+    <mat-icon aria-hidden="true">error_outline</mat-icon>
+    <p>{{ errorMessage }}</p>
+    <button mat-stroked-button type="button" (click)="goBack()">
+      Back to thought records
+    </button>
+  </div>
+
+  <ng-container *ngIf="worksheet as record">
+    <header class="cbt-workspace-header">
+      <button
+        mat-stroked-button
+        class="cbt-back-action"
+        type="button"
+        (click)="goBack()"
+        data-testid="cbt-back-button"
+      >
+        <mat-icon aria-hidden="true">arrow_back</mat-icon>
+        Back
+      </button>
+      <div class="cbt-workspace-heading">
+        <p class="cbt-eyebrow">Seven-step thought record</p>
+        <h1>
+          {{
+            isEditingCompleted
+              ? "Edit reflection"
+              : isReadOnly
+                ? "Review reflection"
+                : "Work through the situation"
+          }}
+        </h1>
+        <p *ngIf="record.linked_entry_id">
+          Linked to {{ record.linked_entry_type }} entry #{{ record.linked_entry_id }}
+        </p>
+      </div>
+      <div class="cbt-header-actions">
+        <span
+          class="cbt-status-pill"
+          [class.is-complete]="record.status === 'completed'"
+        >
+          {{ record.status === "completed" ? "Completed" : "Draft" }}
+        </span>
+        <button
+          *ngIf="isReadOnly && !isEditingCompleted"
+          mat-stroked-button
+          type="button"
+          (click)="editWorksheet()"
+          data-testid="cbt-edit-button"
+        >
+          <mat-icon aria-hidden="true">edit</mat-icon>
+          Edit reflection
+        </button>
+      </div>
+    </header>
+
+    <mat-progress-bar
+      mode="determinate"
+      [value]="((selectedIndex + 1) / 7) * 100"
+      [attr.aria-label]="'Step ' + (selectedIndex + 1) + ' of 7'"
+    />
+
+    <mat-card class="cbt-title-card">
+      <mat-card-content>
+        <mat-form-field appearance="outline" class="cbt-title-field">
+          <mat-label>Reflection title</mat-label>
+          <input
+            matInput
+            [(ngModel)]="record.title"
+            name="cbtTitle"
+            maxlength="100"
+            [disabled]="isReadOnly || isBusy"
+          />
+          <mat-hint>Optional, for finding this reflection later.</mat-hint>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="cbt-date-field">
+          <mat-label>Thought record date</mat-label>
+          <input
+            matInput
+            [matDatepicker]="recordDatePicker"
+            [ngModel]="recordDate"
+            (ngModelChange)="onRecordDateChange($event)"
+            name="cbtRecordDate"
+            [max]="maxDate"
+            [disabled]="isReadOnly || isBusy"
+            required
+            data-testid="cbt-record-date"
+          />
+          <mat-datepicker-toggle
+            matIconSuffix
+            [for]="recordDatePicker"
+          ></mat-datepicker-toggle>
+          <mat-datepicker #recordDatePicker></mat-datepicker>
+        </mat-form-field>
+      </mat-card-content>
+    </mat-card>
+
+    <fieldset class="cbt-step-fieldset" [disabled]="isBusy">
+      <legend class="visually-hidden">Thought record prompts</legend>
+      <mat-stepper
+        #stepper
+        orientation="vertical"
+        [linear]="false"
+        [selectedIndex]="selectedIndex"
+        (selectionChange)="onStepSelected($event.selectedIndex)"
+      >
+        <mat-step label="The situation">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy">
+              <span>1 of 7</span>
+              <h2>What happened?</h2>
+              <p>Describe the situation factually: where, when, what happened, and who was there.</p>
+            </div>
+            <mat-form-field appearance="outline">
+              <mat-label>Situation</mat-label>
+              <textarea matInput rows="6" maxlength="6000" [(ngModel)]="record.situation" name="situation" [readonly]="isReadOnly"></textarea>
+              <mat-hint align="end">{{ record.situation.length }} / 6000</mat-hint>
+            </mat-form-field>
+            <div class="cbt-step-actions">
+              <button mat-flat-button color="primary" type="button" [disabled]="isStepForwardDisabled" (click)="moveStep(1)">{{ stepForwardLabel }}</button>
+            </div>
+          </div>
+        </mat-step>
+
+        <mat-step label="Feelings at the time">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy">
+              <span>2 of 7</span>
+              <h2>How did you feel at first?</h2>
+              <p>Name each feeling and rate its intensity from 0 to 100.</p>
+            </div>
+            <div class="cbt-feeling-list">
+              <div class="cbt-feeling-row" *ngFor="let feeling of record.feelings_before; let index = index">
+                <mat-form-field appearance="outline">
+                  <mat-label>Feeling</mat-label>
+                  <input matInput maxlength="40" [(ngModel)]="feeling.label" [name]="'beforeFeeling' + index" [readonly]="isReadOnly" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Intensity</mat-label>
+                  <input matInput type="number" min="0" max="100" [(ngModel)]="feeling.intensity" [name]="'beforeIntensity' + index" [readonly]="isReadOnly" />
+                  <span matTextSuffix>%</span>
+                </mat-form-field>
+                <button *ngIf="!isReadOnly" mat-icon-button type="button" (click)="removeFeeling('before', index)" [attr.aria-label]="'Remove ' + (feeling.label || 'feeling')">
+                  <mat-icon aria-hidden="true">close</mat-icon>
+                </button>
+              </div>
+              <button *ngIf="!isReadOnly" mat-stroked-button type="button" (click)="addFeeling('before')" [disabled]="record.feelings_before.length >= 8">
+                <mat-icon aria-hidden="true">add</mat-icon>
+                Add feeling
+              </button>
+            </div>
+            <div class="cbt-step-actions">
+              <button mat-stroked-button type="button" (click)="moveStep(-1)">Back</button>
+              <button mat-flat-button color="primary" type="button" [disabled]="isStepForwardDisabled" (click)="moveStep(1)">{{ stepForwardLabel }}</button>
+            </div>
+          </div>
+        </mat-step>
+
+        <mat-step label="Unhelpful thoughts">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy"><span>3 of 7</span><h2>What went through your mind?</h2><p>Capture the thoughts, images, or assumptions that appeared.</p></div>
+            <mat-form-field appearance="outline"><mat-label>Thoughts</mat-label><textarea matInput rows="6" maxlength="6000" [(ngModel)]="record.unhelpful_thoughts" name="unhelpfulThoughts" [readonly]="isReadOnly"></textarea></mat-form-field>
+            <div class="cbt-step-actions"><button mat-stroked-button type="button" (click)="moveStep(-1)">Back</button><button mat-flat-button color="primary" type="button" [disabled]="isStepForwardDisabled" (click)="moveStep(1)">{{ stepForwardLabel }}</button></div>
+          </div>
+        </mat-step>
+
+        <mat-step label="Evidence that supports the thought">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy"><span>4 of 7</span><h2>What facts support it?</h2><p>Focus on observable facts rather than feelings or predictions.</p></div>
+            <mat-form-field appearance="outline"><mat-label>Supporting evidence</mat-label><textarea matInput rows="6" maxlength="6000" [(ngModel)]="record.evidence_for" name="evidenceFor" [readonly]="isReadOnly"></textarea></mat-form-field>
+            <div class="cbt-step-actions"><button mat-stroked-button type="button" (click)="moveStep(-1)">Back</button><button mat-flat-button color="primary" type="button" [disabled]="isStepForwardDisabled" (click)="moveStep(1)">{{ stepForwardLabel }}</button></div>
+          </div>
+        </mat-step>
+
+        <mat-step label="Evidence against the thought">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy"><span>5 of 7</span><h2>What suggests it is not completely true?</h2><p>Consider other facts, previous experiences, and what you would say to someone else.</p></div>
+            <mat-form-field appearance="outline"><mat-label>Evidence against</mat-label><textarea matInput rows="6" maxlength="6000" [(ngModel)]="record.evidence_against" name="evidenceAgainst" [readonly]="isReadOnly"></textarea></mat-form-field>
+            <div class="cbt-step-actions"><button mat-stroked-button type="button" (click)="moveStep(-1)">Back</button><button mat-flat-button color="primary" type="button" [disabled]="isStepForwardDisabled" (click)="moveStep(1)">{{ stepForwardLabel }}</button></div>
+          </div>
+        </mat-step>
+
+        <mat-step label="A balanced perspective">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy"><span>6 of 7</span><h2>What is a more realistic or neutral thought?</h2><p>Use both sides of the evidence. It does not need to be artificially positive.</p></div>
+            <mat-form-field appearance="outline"><mat-label>Balanced thought</mat-label><textarea matInput rows="6" maxlength="6000" [(ngModel)]="record.balanced_thought" name="balancedThought" [readonly]="isReadOnly"></textarea></mat-form-field>
+            <div class="cbt-step-actions"><button mat-stroked-button type="button" (click)="moveStep(-1)">Back</button><button mat-flat-button color="primary" type="button" [disabled]="isStepForwardDisabled" (click)="moveStep(1)">{{ stepForwardLabel }}</button></div>
+          </div>
+        </mat-step>
+
+        <mat-step label="How you feel now">
+          <div class="cbt-step-content">
+            <div class="cbt-step-copy"><span>7 of 7</span><h2>What has changed?</h2><p>Rate your feelings again and note one helpful next step, if there is one.</p></div>
+            <div class="cbt-feeling-list">
+              <div class="cbt-feeling-row" *ngFor="let feeling of record.feelings_after; let index = index">
+                <mat-form-field appearance="outline"><mat-label>Feeling</mat-label><input matInput maxlength="40" [(ngModel)]="feeling.label" [name]="'afterFeeling' + index" [readonly]="isReadOnly" /></mat-form-field>
+                <mat-form-field appearance="outline"><mat-label>Intensity</mat-label><input matInput type="number" min="0" max="100" [(ngModel)]="feeling.intensity" [name]="'afterIntensity' + index" [readonly]="isReadOnly" /><span matTextSuffix>%</span></mat-form-field>
+                <button *ngIf="!isReadOnly" mat-icon-button type="button" (click)="removeFeeling('after', index)" [attr.aria-label]="'Remove ' + (feeling.label || 'feeling')"><mat-icon aria-hidden="true">close</mat-icon></button>
+              </div>
+              <button *ngIf="!isReadOnly" mat-stroked-button type="button" (click)="addFeeling('after')" [disabled]="record.feelings_after.length >= 8"><mat-icon aria-hidden="true">add</mat-icon>Add feeling</button>
+            </div>
+            <mat-form-field appearance="outline"><mat-label>Helpful next step (optional)</mat-label><textarea matInput rows="4" maxlength="6000" [(ngModel)]="record.next_step" name="nextStep" [readonly]="isReadOnly"></textarea></mat-form-field>
+            <div class="cbt-step-actions"><button mat-stroked-button type="button" (click)="moveStep(-1)">Back</button><button *ngIf="record.status === 'draft'" mat-flat-button color="primary" type="button" (click)="completeWorksheet()">Complete thought record</button></div>
+          </div>
+        </mat-step>
+      </mat-stepper>
+    </fieldset>
+
+    <mat-card
+      class="cbt-ai-response-card"
+      data-testid="cbt-ai-response"
+    >
+      <mat-card-header>
+        <mat-icon mat-card-avatar aria-hidden="true">auto_awesome</mat-icon>
+        <mat-card-title>AI response</mat-card-title>
+        <span
+          *ngIf="isAiResponseOutdated"
+          class="cbt-ai-outdated-pill"
+          data-testid="cbt-ai-response-outdated"
+        >Outdated</span>
+        <button
+          *ngIf="record.ai_response; else generateAiButton"
+          mat-icon-button
+          class="cbt-ai-refresh-button"
+          type="button"
+          [disabled]="isBusy"
+          [attr.aria-label]="aiResponseActionLabel"
+          [matTooltip]="aiResponseActionLabel"
+          (click)="generateAiResponse()"
+          data-testid="cbt-refresh-ai-response"
+        >
+          <mat-icon aria-hidden="true">refresh</mat-icon>
+        </button>
+        <ng-template #generateAiButton>
+        <button
+          mat-stroked-button
+          class="cbt-ai-generate-button"
+          type="button"
+          [disabled]="isBusy"
+          (click)="generateAiResponse()"
+          data-testid="cbt-generate-ai-response"
+        >
+          <mat-icon aria-hidden="true">auto_awesome</mat-icon>
+          {{ aiResponseActionLabel }}
+        </button>
+        </ng-template>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="cbt-ai-loading" *ngIf="isGeneratingAi" role="status">
+          <mat-progress-spinner mode="indeterminate" diameter="28" />
+          <span>Generating response…</span>
+        </div>
+        <p *ngIf="!isGeneratingAi && record.ai_response" class="cbt-ai-response-text">
+          {{ record.ai_response }}
+        </p>
+      </mat-card-content>
+    </mat-card>
+
+    <footer
+      class="cbt-save-bar"
+      *ngIf="!isReadOnly || isSaving || savedMessage || errorMessage"
+    >
+      <div class="cbt-save-state" aria-live="polite">
+        <mat-progress-spinner *ngIf="isSaving" mode="indeterminate" diameter="22" />
+        <span *ngIf="isSaving">{{ isEditingCompleted ? "Saving changes…" : "Saving draft…" }}</span>
+        <span class="cbt-save-success" *ngIf="!isSaving && savedMessage">{{ savedMessage }}</span>
+        <span class="cbt-save-error" *ngIf="!isSaving && errorMessage" role="alert">{{ errorMessage }}</span>
+      </div>
+      <div class="cbt-save-actions" *ngIf="!isReadOnly">
+        <button
+          mat-stroked-button
+          type="button"
+          [disabled]="isBusy"
+          (click)="cancelAndExit()"
+          data-testid="cbt-cancel-button"
+        >
+          Cancel
+        </button>
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          [disabled]="isBusy || !hasChangesToSave"
+          (click)="saveAndExit()"
+          data-testid="cbt-save-button"
+        >
+          <mat-icon aria-hidden="true">save</mat-icon>
+          {{ isEditingCompleted || aiResponseAwaitingSave ? "Save" : "Save draft" }}
+        </button>
+      </div>
+    </footer>
+  </ng-container>
+</section>

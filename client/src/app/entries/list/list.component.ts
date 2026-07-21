@@ -17,6 +17,7 @@ import { MatTooltipModule } from "@angular/material/tooltip";
 import { ViewToggleComponent } from "../../shared/components/view-toggle/view-toggle.component";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
+import { CbtService } from "../../core/services/cbt.service";
 import { ImportantDaysService } from "../../core/services/important-days.service";
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
 import {
@@ -26,6 +27,7 @@ import {
 import { DailyEntry, DreamEntry } from "../../core/models/entry.model";
 import { ImportantDay } from "../../core/models/important-day.model";
 import { PublicHoliday } from "../../core/models/public-holiday.model";
+import { CbtWorksheet } from "../../core/models/cbt.model";
 
 type TimelineMonth = {
   label: string;
@@ -50,6 +52,7 @@ type CalendarDay = {
   isFuture: boolean;
   status: CalendarStatus;
   entries: EntryItem[];
+  thoughtRecords: CbtWorksheet[];
   importantDays: ImportantDay[];
   publicHolidays: PublicHoliday[];
 };
@@ -72,6 +75,18 @@ type ImportantDayPreviewState = {
   phase: "open" | "closing";
   direction: "left-to-right" | "right-to-left";
   importantDays: ImportantDay[];
+  dateLabel: string;
+  top: number;
+  left: number;
+  placement: "above" | "below";
+};
+
+type CbtPreviewState = {
+  dayKey: string;
+  phase: "open" | "closing";
+  direction: "left-to-right" | "right-to-left";
+  records: CbtWorksheet[];
+  totalCount: number;
   dateLabel: string;
   top: number;
   left: number;
@@ -556,6 +571,12 @@ type OccasionPreviewState = {
                     <span class="legend-swatch complete"></span>
                     Daily and dream
                   </span>
+                  <span class="legend-item" *ngIf="currentView === 'all'">
+                    <mat-icon class="legend-thought-record-icon" aria-hidden="true">
+                      psychology_alt
+                    </mat-icon>
+                    Thought record
+                  </span>
                 </div>
               </div>
 
@@ -651,7 +672,10 @@ type OccasionPreviewState = {
                       </span>
                     </span>
                   </button>
-                  <div class="calendar-day-icons" *ngIf="day.entries.length > 0; else emptyDayAction">
+                  <div
+                    class="calendar-day-icons"
+                    *ngIf="day.entries.length > 0 || day.thoughtRecords.length > 0; else emptyDayAction"
+                  >
                     <button
                       type="button"
                       class="calendar-entry-icon daily"
@@ -673,6 +697,18 @@ type OccasionPreviewState = {
                     >
                       <mat-icon>nights_stay</mat-icon>
                       <span class="calendar-entry-count">{{ getEntryCountByType(day, 'dream') }}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="calendar-entry-icon thought-record"
+                      *ngIf="day.thoughtRecords.length > 0"
+                      [class.preview-active]="isCbtPreviewActive(day)"
+                      [attr.aria-label]="'Preview ' + day.thoughtRecords.length + ' thought record' + (day.thoughtRecords.length === 1 ? '' : 's') + ' for ' + getCalendarDayDateLabel(day)"
+                      (click)="toggleCbtPreview(day, $event)"
+                      data-testid="calendar-thought-record-marker"
+                    >
+                      <mat-icon>psychology_alt</mat-icon>
+                      <span class="calendar-entry-count">{{ day.thoughtRecords.length }}</span>
                     </button>
                   </div>
                   <ng-template #emptyDayAction>
@@ -782,6 +818,72 @@ type OccasionPreviewState = {
                   >
                     <mat-icon>arrow_forward</mat-icon>
                     <span>{{ getCalendarPreviewMoreLabel() }}</span>
+                  </button>
+                </div>
+              </section>
+              <section
+                class="calendar-preview-deck cbt-preview-deck"
+                *ngIf="cbtPreview"
+                [class.preview-left-to-right]="cbtPreview.direction === 'left-to-right'"
+                [class.preview-right-to-left]="cbtPreview.direction === 'right-to-left'"
+                [class.preview-below]="cbtPreview.placement === 'below'"
+                [class.preview-above]="cbtPreview.placement === 'above'"
+                [class.closing]="cbtPreview.phase === 'closing'"
+                [style.top.px]="cbtPreview.top"
+                [style.left.px]="cbtPreview.left"
+                (click)="$event.stopPropagation()"
+                aria-label="Thought record preview deck"
+                data-testid="calendar-thought-record-preview"
+              >
+                <header class="calendar-preview-header">
+                  <div>
+                    <strong>Thought records</strong>
+                    <span>{{ cbtPreview.dateLabel }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="calendar-preview-close"
+                    aria-label="Close thought record preview"
+                    (click)="closeCbtPreview($event)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </header>
+                <div class="calendar-preview-cards">
+                  <button
+                    type="button"
+                    class="calendar-preview-card cbt-calendar-preview-card"
+                    *ngFor="let record of getCbtPreviewRecords(); let previewIndex = index"
+                    [style.--preview-index]="previewIndex"
+                    (click)="openThoughtRecord(record, $event)"
+                  >
+                    <div class="calendar-preview-card-title">
+                      <mat-icon>psychology_alt</mat-icon>
+                      <div>
+                        <span>{{ getThoughtRecordTitle(record) }}</span>
+                        <small>{{ record.status === 'completed' ? 'Completed' : 'Draft · Step ' + record.current_step + ' of 7' }}</small>
+                      </div>
+                    </div>
+                    <div class="calendar-preview-card-copy">
+                      <div class="calendar-preview-copy-block">
+                        <span class="calendar-preview-copy-label">Situation</span>
+                        <p>{{ record.situation || 'No situation added yet.' }}</p>
+                      </div>
+                      <div class="calendar-preview-copy-block" *ngIf="record.balanced_thought">
+                        <span class="calendar-preview-copy-label">Balanced thought</span>
+                        <p>{{ record.balanced_thought }}</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="calendar-preview-card calendar-preview-card-more"
+                    [style.--preview-index]="getCbtPreviewRecords().length"
+                    (click)="openThoughtRecordsDashboard($event)"
+                    aria-label="View all thought records"
+                  >
+                    <mat-icon>arrow_forward</mat-icon>
+                    <span>{{ getCbtPreviewMoreLabel() }}</span>
                   </button>
                 </div>
               </section>
@@ -898,6 +1000,7 @@ type OccasionPreviewState = {
 })
 export class ListComponent implements OnInit, OnDestroy {
   private entriesService = inject(EntriesService);
+  private cbtService = inject(CbtService);
   private importantDaysService = inject(ImportantDaysService);
   private publicHolidaysService = inject(PublicHolidaysService);
   protected readonly searchService = inject(SearchService);
@@ -930,6 +1033,7 @@ export class ListComponent implements OnInit, OnDestroy {
   currentView: "all" | "daily" | "dreams" = "all";
   dailyEntries: EntryItem[] = [];
   dreamEntries: EntryItem[] = [];
+  thoughtRecords: CbtWorksheet[] = [];
   importantDays: ImportantDay[] = [];
   publicHolidays: PublicHoliday[] = [];
   publicHolidayCountryCode = "";
@@ -940,12 +1044,14 @@ export class ListComponent implements OnInit, OnDestroy {
   private pendingMonthSelection: { monthIndex: number; year: number } | null =
     null;
   calendarPreview: CalendarPreviewState | null = null;
+  cbtPreview: CbtPreviewState | null = null;
   importantDayPreview: ImportantDayPreviewState | null = null;
   occasionPreview: OccasionPreviewState | null = null;
   showImportantDays = false;
   showAllImportantDays = false;
   private loadedHolidayYears = new Set<number>();
   private previewCloseTimerId: number | null = null;
+  private cbtPreviewCloseTimerId: number | null = null;
   private importantDayPreviewCloseTimerId: number | null = null;
   private occasionPreviewCloseTimerId: number | null = null;
 
@@ -968,6 +1074,8 @@ export class ListComponent implements OnInit, OnDestroy {
       } else {
         this.currentView = "all";
       }
+      this.displayMode =
+        params.get("display") === "calendar" ? "calendar" : "cards";
 
       const monthParam = Number(params.get("month"));
       const yearParam = Number(params.get("year"));
@@ -1018,7 +1126,11 @@ export class ListComponent implements OnInit, OnDestroy {
 
   generateTimelineFromEntries(): void {
     // Get all entries to determine date range
-    const allEntries = [...this.dailyEntries, ...this.dreamEntries];
+    const allEntries = [
+      ...this.dailyEntries,
+      ...this.dreamEntries,
+      ...this.thoughtRecords.map((record) => ({ entry_date: record.record_date })),
+    ];
 
     if (allEntries.length === 0) {
       // No entries yet, generate basic timeline around current month
@@ -1225,10 +1337,10 @@ export class ListComponent implements OnInit, OnDestroy {
     this.maxScrollIndex = Math.max(0, this.allMonths.length - 5);
 
     // Calculate min scroll index based on earliest entry with data
-    const allEntries = [...this.dailyEntries, ...this.dreamEntries];
-    if (allEntries.length > 0) {
+    const activityDates = this.getCalendarActivityDates();
+    if (activityDates.length > 0) {
       const earliestDate = new Date(
-        Math.min(...allEntries.map((e) => new Date(e.entry_date).getTime())),
+        Math.min(...activityDates.map((activityDate) => activityDate.getTime())),
       );
       const earliestMonthIndex = this.allMonths.findIndex(
         (m) =>
@@ -1324,6 +1436,7 @@ export class ListComponent implements OnInit, OnDestroy {
   loadEntries(): void {
     let dailyLoaded = false;
     let dreamLoaded = false;
+    let thoughtRecordsLoaded = false;
     let importantDaysLoaded = false;
     let holidaySettingsLoaded = false;
 
@@ -1331,6 +1444,7 @@ export class ListComponent implements OnInit, OnDestroy {
       if (
         dailyLoaded &&
         dreamLoaded &&
+        thoughtRecordsLoaded &&
         importantDaysLoaded &&
         holidaySettingsLoaded
       ) {
@@ -1352,6 +1466,19 @@ export class ListComponent implements OnInit, OnDestroy {
       this.dreamEntries = entries.map((e) => ({ ...e, type: "dream" }));
       dreamLoaded = true;
       checkAndGenerateTimeline();
+    });
+
+    this.cbtService.listWorksheets().subscribe({
+      next: (worksheets) => {
+        this.thoughtRecords = worksheets;
+        thoughtRecordsLoaded = true;
+        checkAndGenerateTimeline();
+      },
+      error: () => {
+        this.thoughtRecords = [];
+        thoughtRecordsLoaded = true;
+        checkAndGenerateTimeline();
+      },
     });
 
     this.importantDaysService.getImportantDays().subscribe({
@@ -1396,6 +1523,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
   onViewChange(view: string): void {
     this.closeCalendarPreview();
+    this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
     this.currentView = view as "all" | "daily" | "dreams";
     this.selectedDay = null;
@@ -1417,6 +1545,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
   setDisplayMode(mode: "cards" | "calendar"): void {
     this.closeCalendarPreview();
+    this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
     this.displayMode = mode;
     if (mode === "calendar") {
@@ -1425,10 +1554,12 @@ export class ListComponent implements OnInit, OnDestroy {
       this.currentPage = 0;
       this.updatePaginatedEntries();
     }
+    this.updateListQueryParams();
   }
 
   clearSelectedDay(): void {
     this.closeCalendarPreview();
+    this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
     this.selectedDay = null;
     this.displayMode = "calendar";
@@ -1516,6 +1647,10 @@ export class ListComponent implements OnInit, OnDestroy {
       day.entries.length > 0
         ? `${day.entries.length} entr${day.entries.length === 1 ? "y" : "ies"}`
         : "no entries";
+    const thoughtRecordLabel =
+      day.thoughtRecords.length > 0
+        ? ` ${day.thoughtRecords.length} thought record${day.thoughtRecords.length === 1 ? "" : "s"}.`
+        : "";
     const importantDayLabel =
       day.importantDays.length > 0
         ? ` Important day${day.importantDays.length === 1 ? "" : "s"}: ${day.importantDays
@@ -1529,7 +1664,7 @@ export class ListComponent implements OnInit, OnDestroy {
             .join(", ")}.`
         : "";
 
-    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.${importantDayLabel}${publicHolidayLabel}`;
+    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.${thoughtRecordLabel}${importantDayLabel}${publicHolidayLabel}`;
   }
 
   getCurrentMonthImportantDays(): ImportantDay[] {
@@ -1769,6 +1904,7 @@ export class ListComponent implements OnInit, OnDestroy {
   toggleImportantDayPreview(day: CalendarDay, event: MouseEvent): void {
     event.stopPropagation();
     this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.importantDays.length === 0) {
@@ -1888,6 +2024,84 @@ export class ListComponent implements OnInit, OnDestroy {
     return day.entries.filter((entry) => entry.type === type).length;
   }
 
+  getThoughtRecordTitle(record: CbtWorksheet): string {
+    return record.title || record.situation || "Untitled thought record";
+  }
+
+  getCbtPreviewRecords(): CbtWorksheet[] {
+    return this.cbtPreview?.records ?? [];
+  }
+
+  getCbtPreviewMoreLabel(): string {
+    return (this.cbtPreview?.totalCount ?? 0) > 3
+      ? "View all records"
+      : "Thought records";
+  }
+
+  isCbtPreviewActive(day: CalendarDay): boolean {
+    return (
+      this.cbtPreview?.dayKey === this.toDateKey(day.date) &&
+      this.cbtPreview.phase === "open"
+    );
+  }
+
+  toggleCbtPreview(day: CalendarDay, event: MouseEvent): void {
+    event.stopPropagation();
+    this.closeCalendarPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+
+    if (!day.isCurrentMonth || day.thoughtRecords.length === 0) return;
+
+    const dayKey = this.toDateKey(day.date);
+    if (
+      this.cbtPreview?.dayKey === dayKey &&
+      this.cbtPreview.phase === "open"
+    ) {
+      this.closeCbtPreview();
+      return;
+    }
+
+    if (this.cbtPreviewCloseTimerId) {
+      window.clearTimeout(this.cbtPreviewCloseTimerId);
+      this.cbtPreviewCloseTimerId = null;
+    }
+
+    const records = day.thoughtRecords.slice(0, 3);
+    const overlayPosition = this.getCalendarPreviewPosition(
+      event.currentTarget as HTMLElement,
+      records.length,
+    );
+    this.cbtPreview = {
+      dayKey,
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      records,
+      totalCount: day.thoughtRecords.length,
+      dateLabel: this.getCalendarDayDateLabel(day),
+      top: overlayPosition.top,
+      left: overlayPosition.left,
+      placement: overlayPosition.placement,
+    };
+  }
+
+  openThoughtRecord(record: CbtWorksheet, event?: Event): void {
+    event?.stopPropagation();
+    this.closeCbtPreview(undefined, true);
+    const queryParams: Record<string, string | number> = { returnTo: "calendar" };
+    if (this.selectedMonth) {
+      queryParams["month"] = (this.selectedMonth as any).monthIndex + 1;
+      queryParams["year"] = this.selectedMonth.year;
+    }
+    void this.router.navigate(["/cbt", record.id], { queryParams });
+  }
+
+  openThoughtRecordsDashboard(event?: Event): void {
+    event?.stopPropagation();
+    this.closeCbtPreview(undefined, true);
+    void this.router.navigate(["/cbt"]);
+  }
+
   getCalendarPreviewEntries(): EntryItem[] {
     return this.calendarPreview?.entries ?? [];
   }
@@ -1929,6 +2143,7 @@ export class ListComponent implements OnInit, OnDestroy {
     }
 
     this.closeCalendarPreview();
+    this.closeCbtPreview(undefined, true);
     this.closeImportantDayPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
     if (!day.isCurrentMonth) {
@@ -1963,6 +2178,7 @@ export class ListComponent implements OnInit, OnDestroy {
   ): void {
     event.stopPropagation();
     this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
     this.closeImportantDayPreview(undefined, true);
 
     if (!day.isCurrentMonth || !this.hasDayOccasions(day)) {
@@ -2024,6 +2240,7 @@ export class ListComponent implements OnInit, OnDestroy {
     event: MouseEvent,
   ): void {
     event.stopPropagation();
+    this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.isFuture) {
@@ -2147,20 +2364,21 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   hasEntries(): boolean {
-    return this.dailyEntries.length + this.dreamEntries.length > 0;
+    return (
+      this.dailyEntries.length +
+        this.dreamEntries.length +
+        this.thoughtRecords.length >
+      0
+    );
   }
 
   jumpToFirstEntry(): void {
-    const allEntries = [...this.dailyEntries, ...this.dreamEntries];
-    if (allEntries.length === 0) return;
+    const activityDates = this.getCalendarActivityDates();
+    if (activityDates.length === 0) return;
 
-    // Find earliest entry
-    const earliestEntry = allEntries.reduce((earliest, entry) =>
-      new Date(entry.entry_date) < new Date(earliest.entry_date)
-        ? entry
-        : earliest,
+    const earliestDate = new Date(
+      Math.min(...activityDates.map((activityDate) => activityDate.getTime())),
     );
-    const earliestDate = new Date(earliestEntry.entry_date);
 
     // Find corresponding month in timeline
     const earliestMonth = this.allMonths.find(
@@ -2279,18 +2497,39 @@ export class ListComponent implements OnInit, OnDestroy {
           : [...this.dailyEntries, ...this.dreamEntries];
 
     this.allMonths.forEach((month) => {
-      const count = entriesForCount.filter((entry) => {
+      const entryCount = entriesForCount.filter((entry) => {
         const entryDate = new Date(entry.entry_date);
         return (
           entryDate.getMonth() === (month as any).monthIndex &&
           entryDate.getFullYear() === month.year
         );
       }).length;
+      const thoughtRecordCount =
+        this.currentView === "all"
+          ? this.thoughtRecords.filter((record) => {
+              const recordDate = new Date(`${record.record_date}T12:00:00`);
+              return (
+                recordDate.getMonth() === (month as any).monthIndex &&
+                recordDate.getFullYear() === month.year
+              );
+            }).length
+          : 0;
+      const count = entryCount + thoughtRecordCount;
 
       month.entryCount = count > 0 ? count : undefined;
     });
 
     this.updateVisibleMonths();
+  }
+
+  private getCalendarActivityDates(): Date[] {
+    return [
+      ...this.dailyEntries.map((entry) => new Date(entry.entry_date)),
+      ...this.dreamEntries.map((entry) => new Date(entry.entry_date)),
+      ...this.thoughtRecords.map(
+        (record) => new Date(`${record.record_date}T12:00:00`),
+      ),
+    ].filter((activityDate) => !Number.isNaN(activityDate.getTime()));
   }
 
   getEntryTitle(entry: any): string {
@@ -2419,6 +2658,7 @@ export class ListComponent implements OnInit, OnDestroy {
     const gridStartDate = new Date(year, monthIndex, 1 - startOffset);
     const todayKey = this.toDateKey(new Date());
     const entriesByDate = new Map<string, EntryItem[]>();
+    const thoughtRecordsByDate = new Map<string, CbtWorksheet[]>();
     const importantDaysByDate = new Map<string, ImportantDay[]>();
     const publicHolidaysByDate = new Map<string, PublicHoliday[]>();
 
@@ -2428,6 +2668,14 @@ export class ListComponent implements OnInit, OnDestroy {
       dateEntries.push(entry);
       entriesByDate.set(key, dateEntries);
     });
+
+    if (this.currentView === "all") {
+      this.thoughtRecords.forEach((record) => {
+        const records = thoughtRecordsByDate.get(record.record_date) ?? [];
+        records.push(record);
+        thoughtRecordsByDate.set(record.record_date, records);
+      });
+    }
 
     this.importantDays.forEach((importantDay) => {
       const key = this.toMonthDayKey(importantDay.month, importantDay.day);
@@ -2454,6 +2702,7 @@ export class ListComponent implements OnInit, OnDestroy {
       date.setDate(gridStartDate.getDate() + index);
       const key = this.toDateKey(date);
       const dateEntries = entriesByDate.get(key) ?? [];
+      const dateThoughtRecords = thoughtRecordsByDate.get(key) ?? [];
       const matchingImportantDays = (
         importantDaysByDate.get(this.toMonthDayKey(date.getMonth() + 1, date.getDate())) ?? []
       ).filter((importantDay) => {
@@ -2475,6 +2724,7 @@ export class ListComponent implements OnInit, OnDestroy {
         isFuture: date.getTime() > new Date().setHours(23, 59, 59, 999),
         status: this.getCalendarStatus(dateEntries),
         entries: dateEntries,
+        thoughtRecords: dateThoughtRecords,
         importantDays: matchingImportantDays,
         publicHolidays: matchingPublicHolidays,
       };
@@ -2558,6 +2808,7 @@ export class ListComponent implements OnInit, OnDestroy {
   private getListQueryParamsWithoutSearch(): Record<string, string | number> {
     return {
       ...this.getDetailContextParams(),
+      ...(this.displayMode === "calendar" ? { display: "calendar" } : {}),
     };
   }
 
@@ -2872,6 +3123,30 @@ export class ListComponent implements OnInit, OnDestroy {
     }, 180);
   }
 
+  closeCbtPreview(event?: Event, immediate = false): void {
+    event?.stopPropagation();
+    if (!this.cbtPreview) return;
+
+    if (this.cbtPreviewCloseTimerId) {
+      window.clearTimeout(this.cbtPreviewCloseTimerId);
+      this.cbtPreviewCloseTimerId = null;
+    }
+
+    if (immediate) {
+      this.cbtPreview = null;
+      return;
+    }
+
+    this.cbtPreview = { ...this.cbtPreview, phase: "closing" };
+    const closingPreviewKey = this.cbtPreview.dayKey;
+    this.cbtPreviewCloseTimerId = window.setTimeout(() => {
+      if (this.cbtPreview?.dayKey === closingPreviewKey) {
+        this.cbtPreview = null;
+      }
+      this.cbtPreviewCloseTimerId = null;
+    }, 180);
+  }
+
   closeImportantDayPreview(event?: Event, immediate = false): void {
     event?.stopPropagation();
 
@@ -2954,6 +3229,13 @@ export class ListComponent implements OnInit, OnDestroy {
       this.closeCalendarPreview();
     }
 
+    if (this.cbtPreview) {
+      if (target.closest(".cbt-preview-deck, .calendar-entry-icon.thought-record")) {
+        return;
+      }
+      this.closeCbtPreview();
+    }
+
     if (this.importantDayPreview) {
       if (target.closest(".important-day-preview-deck, .calendar-important-day-badge")) {
         return;
@@ -2977,6 +3259,13 @@ export class ListComponent implements OnInit, OnDestroy {
       return;
     }
 
+
+    if (this.cbtPreview) {
+      event.preventDefault();
+      this.closeCbtPreview();
+      return;
+    }
+
     if (this.importantDayPreview) {
       event.preventDefault();
       this.closeImportantDayPreview();
@@ -2994,6 +3283,9 @@ export class ListComponent implements OnInit, OnDestroy {
     if (this.calendarPreview) {
       this.closeCalendarPreview(undefined, true);
     }
+    if (this.cbtPreview) {
+      this.closeCbtPreview(undefined, true);
+    }
     if (this.importantDayPreview) {
       this.closeImportantDayPreview(undefined, true);
     }
@@ -3006,6 +3298,9 @@ export class ListComponent implements OnInit, OnDestroy {
   onWindowResize(): void {
     if (this.calendarPreview) {
       this.closeCalendarPreview(undefined, true);
+    }
+    if (this.cbtPreview) {
+      this.closeCbtPreview(undefined, true);
     }
     if (this.importantDayPreview) {
       this.closeImportantDayPreview(undefined, true);
@@ -3022,6 +3317,9 @@ export class ListComponent implements OnInit, OnDestroy {
     }
     if (this.previewCloseTimerId) {
       window.clearTimeout(this.previewCloseTimerId);
+    }
+    if (this.cbtPreviewCloseTimerId) {
+      window.clearTimeout(this.cbtPreviewCloseTimerId);
     }
     if (this.importantDayPreviewCloseTimerId) {
       window.clearTimeout(this.importantDayPreviewCloseTimerId);

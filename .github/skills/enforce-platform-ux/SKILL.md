@@ -27,6 +27,11 @@ Apply this skill before editing user-facing UI and repeat the review before hand
   predictable reading/tab order.
 - Align related controls to the same grid and spacing rhythm. Avoid isolated offsets and
   magic positioning used to compensate for an incorrect container.
+- Use the repository spacing tokens for component padding and gaps. Adjacent actions must
+  declare at least `var(--spacing-xs)` between their visible boundaries; never assume a
+  Material action container supplies spacing automatically.
+- Give repeated cards and rows consistent header, content, and action padding so wrapped
+  titles or additional actions do not shift equivalent controls out of alignment.
 - Keep content responsive without horizontal page overflow. Verify compact, medium, and
   large layouts; do not merely hide required actions at narrower widths.
 - Keep loading, empty, error, and success states in the same layout region as the content
@@ -141,7 +146,8 @@ For every changed reusable control, compare this state matrix in both themes:
 Before handoff:
 
 1. Inspect the actual diff for one-off CSS, hardcoded colours, duplicated components,
-   inconsistent labels, mixed icon styles, and desktop-only assumptions.
+   inconsistent labels, touching controls, uneven container padding, mixed icon styles,
+   and desktop-only assumptions.
 2. Compare the result with the nearest equivalent AI Diary screen.
 3. Run the applicable frontend build, tests, lint, and smoke checks from
    `docs/playbooks/testing-and-validation.md`.
