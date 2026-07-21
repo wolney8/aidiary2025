@@ -66,10 +66,25 @@ describe("ChatCompanionComponent", () => {
     component.open();
     fixture.detectChanges();
 
-    const panel = fixture.nativeElement.querySelector('[role="dialog"]');
+    const panel = fixture.nativeElement.querySelector(
+      '[data-testid="chat-panel"]',
+    );
     expect(panel).not.toBeNull();
     expect(panel.getAttribute("aria-label")).toBe("Chat with Sage");
     expect(chatService.getHistory).toHaveBeenCalledWith("conversation-1");
+  });
+
+  it("exposes stable hooks for the trigger and primary chat controls", () => {
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[data-testid="chat-open-button"]')).not.toBeNull();
+
+    component.open();
+    fixture.detectChanges();
+
+    expect(host.querySelector('[data-testid="chat-close-button"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="chat-message-thread"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="chat-message-input"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="chat-send-button"]')).not.toBeNull();
   });
 
   it("shows typing until the first streamed chunk arrives", () => {

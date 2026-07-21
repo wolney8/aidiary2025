@@ -37,6 +37,9 @@ describe("ChatService", () => {
     const request = httpTesting.expectOne(
       `${environment.apiBaseUrl}/chat/history?conversation_id=conversation-1`,
     );
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer test-token",
+    );
     request.flush({
       conversation_id: "conversation-1",
       messages: [
@@ -67,6 +70,9 @@ describe("ChatService", () => {
       `${environment.apiBaseUrl}/chat/conversation?conversation_id=conversation-1`,
     );
     expect(request.request.method).toBe("DELETE");
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer test-token",
+    );
     request.flush(null);
   });
 

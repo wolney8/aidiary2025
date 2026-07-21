@@ -74,6 +74,20 @@ Apply this skill before editing user-facing UI and repeat the review before hand
 - Keep paired leading/trailing icons optically aligned and equally inset from container
   edges.
 
+### Stable inspection and test hooks
+
+- Give user-visible components descriptive, feature-scoped class names that describe
+  purpose, such as `chat-message-thread` or `import-review-table`. Do not use generated
+  Angular Material classes, DOM position, or visual appearance as the component's public
+  inspection vocabulary.
+- Add stable `data-testid` attributes to primary surfaces, controls, state containers,
+  rows, tables, and modal boundaries that automated tests or user feedback must identify.
+  Use lowercase kebab-case prefixed by the feature, such as `chat-open-button`.
+- Keep `data-testid` independent of translated labels and CSS. Never style from it, and
+  do not add IDs to every decorative wrapper; hooks should identify meaningful boundaries.
+- Prefer semantic elements and accessible names first. A test ID supplements correct
+  roles, labels, and structure; it never replaces them.
+
 ### Theme and CSS
 
 - Use repository colour, surface, text, border, radius, and shadow variables. Do not

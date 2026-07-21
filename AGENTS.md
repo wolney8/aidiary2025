@@ -100,6 +100,9 @@ coherent. A batch is merge-ready only when:
 - shared interactive controls use the global Material 3 shape/state tokens; compact
   actions and segmented choices are pill-shaped, icon controls are centred 48px touch
   targets, and cards/dialogs/tables retain appropriate rounded-container shapes
+- user-facing interactive boundaries expose descriptive feature-scoped classes and
+  stable `data-testid` hooks where they are needed for tests or precise feedback; never
+  depend on generated Angular Material class names as the product-facing selector
 
 Do not call partial implementation complete. Do not keep a branch open for unrelated
 polish after its acceptance criteria are met.

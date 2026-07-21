@@ -35,6 +35,7 @@ import { ChatService } from "../../../core/services/chat.service";
     <section
       *ngIf="isOpen()"
       class="chat-panel"
+      data-testid="chat-panel"
       role="dialog"
       aria-modal="false"
       [attr.aria-label]="'Chat with ' + coachName()"
@@ -42,8 +43,8 @@ import { ChatService } from "../../../core/services/chat.service";
       [cdkTrapFocusAutoCapture]="true"
       (keydown.escape)="close()"
     >
-      <header class="chat-header">
-        <div class="chat-heading">
+      <header class="chat-header" data-testid="chat-header">
+        <div class="chat-heading" data-testid="chat-heading">
           <span class="coach-icon" aria-hidden="true">
             <mat-icon>auto_awesome</mat-icon>
           </span>
@@ -60,6 +61,7 @@ import { ChatService } from "../../../core/services/chat.service";
             aria-label="Clear conversation"
             [disabled]="isStreaming() || messages().length === 0"
             (click)="clearConversation()"
+            data-testid="chat-clear-button"
           >
             <mat-icon>delete_sweep</mat-icon>
           </button>
@@ -69,6 +71,7 @@ import { ChatService } from "../../../core/services/chat.service";
             matTooltip="Close chat"
             aria-label="Close chat"
             (click)="close()"
+            data-testid="chat-close-button"
           >
             <mat-icon>close</mat-icon>
           </button>
@@ -78,18 +81,25 @@ import { ChatService } from "../../../core/services/chat.service";
       <div
         #messageThread
         class="message-thread"
+        data-testid="chat-message-thread"
         aria-live="polite"
         aria-relevant="additions text"
         [attr.aria-busy]="isLoading() || isStreaming()"
       >
-        <div *ngIf="isLoading()" class="chat-state" role="status">
+        <div
+          *ngIf="isLoading()"
+          class="chat-loading-state"
+          data-testid="chat-loading-state"
+          role="status"
+        >
           <mat-icon aria-hidden="true">history</mat-icon>
           <span>Loading your conversation…</span>
         </div>
 
         <div
           *ngIf="!isLoading() && messages().length === 0"
-          class="chat-empty"
+          class="chat-empty-state"
+          data-testid="chat-empty-state"
         >
           <mat-icon aria-hidden="true">forum</mat-icon>
           <h3>Start a conversation</h3>
@@ -99,6 +109,7 @@ import { ChatService } from "../../../core/services/chat.service";
         <article
           *ngFor="let message of messages(); trackBy: trackMessage"
           class="message-row"
+          data-testid="chat-message-row"
           [class.message-row-user]="message.role === 'user'"
         >
           <div class="message-bubble" [class.user-bubble]="message.role === 'user'">
@@ -110,7 +121,12 @@ import { ChatService } from "../../../core/services/chat.service";
           </div>
         </article>
 
-        <div *ngIf="showTypingIndicator()" class="typing-row" role="status">
+        <div
+          *ngIf="showTypingIndicator()"
+          class="chat-typing-indicator"
+          data-testid="chat-typing-indicator"
+          role="status"
+        >
           <span class="visually-hidden">{{ coachName() }} is responding</span>
           <span class="typing-dot" aria-hidden="true"></span>
           <span class="typing-dot" aria-hidden="true"></span>
@@ -118,16 +134,26 @@ import { ChatService } from "../../../core/services/chat.service";
         </div>
       </div>
 
-      <p *ngIf="errorMessage()" class="chat-error" role="alert">
+      <p
+        *ngIf="errorMessage()"
+        class="chat-error-message"
+        data-testid="chat-error-message"
+        role="alert"
+      >
         <mat-icon aria-hidden="true">error</mat-icon>
         <span>{{ errorMessage() }}</span>
       </p>
 
-      <form class="chat-composer" (ngSubmit)="send()">
+      <form
+        class="chat-composer"
+        data-testid="chat-composer"
+        (ngSubmit)="send()"
+      >
         <label class="visually-hidden" for="chat-message-input">Message</label>
         <textarea
           #messageInput
           id="chat-message-input"
+          data-testid="chat-message-input"
           name="chatMessage"
           [(ngModel)]="draft"
           rows="2"
@@ -140,13 +166,14 @@ import { ChatService } from "../../../core/services/chat.service";
           mat-fab
           type="submit"
           class="send-button"
+          data-testid="chat-send-button"
           aria-label="Send message"
           [disabled]="!canSend()"
         >
           <mat-icon>send</mat-icon>
         </button>
       </form>
-      <div class="composer-meta">
+      <div class="chat-composer-meta" data-testid="chat-composer-meta">
         <span>Enter to send · Shift+Enter for a new line</span>
         <span>{{ draft.length }} / 2000</span>
       </div>
@@ -158,6 +185,7 @@ import { ChatService } from "../../../core/services/chat.service";
       mat-fab
       type="button"
       class="chat-fab"
+      data-testid="chat-open-button"
       aria-label="Open diary companion chat"
       [attr.aria-expanded]="isOpen()"
       (click)="open()"
@@ -257,7 +285,7 @@ import { ChatService } from "../../../core/services/chat.service";
       }
 
       .chat-heading p,
-      .composer-meta,
+      .chat-composer-meta,
       .message-bubble time {
         color: var(--colour-text-secondary);
         font-size: 0.78rem;
@@ -272,20 +300,20 @@ import { ChatService } from "../../../core/services/chat.service";
         scrollbar-gutter: stable;
       }
 
-      .chat-state,
-      .chat-empty {
+      .chat-loading-state,
+      .chat-empty-state {
         display: flex;
         align-items: center;
         justify-content: center;
         color: var(--colour-text-secondary);
       }
 
-      .chat-state {
+      .chat-loading-state {
         min-height: 100%;
         gap: 0.5rem;
       }
 
-      .chat-empty {
+      .chat-empty-state {
         min-height: 100%;
         flex-direction: column;
         gap: 0.5rem;
@@ -293,19 +321,19 @@ import { ChatService } from "../../../core/services/chat.service";
         text-align: center;
       }
 
-      .chat-empty > mat-icon {
+      .chat-empty-state > mat-icon {
         width: 2rem;
         height: 2rem;
         font-size: 2rem;
         color: var(--colour-primary);
       }
 
-      .chat-empty h3 {
+      .chat-empty-state h3 {
         color: var(--colour-text-primary);
         font-size: 1rem;
       }
 
-      .chat-empty p {
+      .chat-empty-state p {
         max-width: 18rem;
         line-height: 1.45;
       }
@@ -357,7 +385,7 @@ import { ChatService } from "../../../core/services/chat.service";
         opacity: 0.82;
       }
 
-      .typing-row {
+      .chat-typing-indicator {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
@@ -384,7 +412,7 @@ import { ChatService } from "../../../core/services/chat.service";
         animation-delay: 0.3s;
       }
 
-      .chat-error {
+      .chat-error-message {
         display: flex;
         align-items: flex-start;
         gap: 0.5rem;
@@ -397,7 +425,7 @@ import { ChatService } from "../../../core/services/chat.service";
         line-height: 1.35;
       }
 
-      .chat-error mat-icon {
+      .chat-error-message mat-icon {
         width: 1.15rem;
         height: 1.15rem;
         flex: 0 0 1.15rem;
@@ -447,7 +475,7 @@ import { ChatService } from "../../../core/services/chat.service";
         box-shadow: none;
       }
 
-      .composer-meta {
+      .chat-composer-meta {
         display: flex;
         justify-content: space-between;
         gap: 0.75rem;
@@ -498,11 +526,11 @@ import { ChatService } from "../../../core/services/chat.service";
           max-width: 88%;
         }
 
-        .composer-meta span:first-child {
+        .chat-composer-meta span:first-child {
           display: none;
         }
 
-        .composer-meta {
+        .chat-composer-meta {
           justify-content: flex-end;
         }
       }
