@@ -562,19 +562,20 @@
   font-size: 64px;
   width: 64px;
   height: 64px;
-  color: #999;
+  color: var(--colour-text-secondary);
+  opacity: 0.62;
   margin-bottom: 1rem;
 }
 
 .no-entries-card h3 {
   margin: 0 0 1rem 0;
-  color: #333;
+  color: var(--colour-text-primary);
   font-weight: 500;
 }
 
 .no-entries-card p {
   margin: 0 0 2rem 0;
-  color: #666;
+  color: var(--colour-text-secondary);
   line-height: 1.5;
 }
 
@@ -2097,8 +2098,9 @@ html[data-theme="dark"] .month-item.future .month {
 }
 
 html[data-theme="dark"] .entry-count-badge {
-  background: var(--colour-info-bg);
-  color: var(--colour-info-text);
+  background: var(--colour-primary);
+  color: var(--colour-on-primary);
+  box-shadow: 0 0 0 1px var(--colour-surface-elevated);
 }
 
 html[data-theme="dark"] .timeline-scroller button:not([disabled]):hover,
@@ -2354,7 +2356,12 @@ html[data-theme="dark"] .month-item.current,
 html[data-theme="dark"] .month-item.current.ng-star-inserted {
   background: var(--colour-info-bg) !important;
   border-color: var(--colour-primary) !important;
-  color: var(--colour-text-primary) !important;
+  color: var(--colour-info-text) !important;
+}
+
+html[data-theme="dark"] .month-item.current .year,
+html[data-theme="dark"] .month-item.current .month {
+  color: var(--colour-info-text) !important;
 }
 
 html[data-theme="dark"] .month-item.clickable:hover {
@@ -2370,6 +2377,23 @@ html[data-theme="dark"] .month-item.selected.ng-star-inserted {
 html[data-theme="dark"] .month-item.selected .year,
 html[data-theme="dark"] .month-item.selected .month {
   color: var(--colour-control-selected-text) !important;
+}
+
+html[data-theme="dark"] .month-item.current.selected,
+html[data-theme="dark"] .month-item.current.selected.clickable {
+  background: var(--colour-control-selected) !important;
+  color: var(--colour-control-selected-text) !important;
+}
+
+html[data-theme="dark"] .month-item.current.selected .year,
+html[data-theme="dark"] .month-item.current.selected .month {
+  color: var(--colour-control-selected-text) !important;
+}
+
+html[data-theme="dark"] .month-item.selected .entry-count-badge {
+  background: var(--colour-surface-elevated) !important;
+  color: var(--colour-primary) !important;
+  box-shadow: 0 0 0 1px var(--colour-on-primary);
 }
 
 html[data-theme="dark"] .timeline-scroller button,

@@ -468,7 +468,7 @@ html[data-theme="dark"] .month-item.current.clickable.ng-star-inserted {
 
 html[data-theme="dark"] .month-item.current .year,
 html[data-theme="dark"] .month-item.current .month {
-  color: var(--colour-text-primary) !important;
+  color: var(--colour-info-text) !important;
 }
 
 html[data-theme="dark"] .month-item.selected,
@@ -478,9 +478,39 @@ html[data-theme="dark"] .month-item.selected.ng-star-inserted {
 }
 
 html[data-theme="dark"] .month-item.selected .year,
-html[data-theme="dark"] .month-item.selected .month,
-html[data-theme="dark"] .month-item.selected .entry-count-badge {
+html[data-theme="dark"] .month-item.selected .month {
   color: var(--colour-control-selected-text) !important;
+}
+
+html[data-theme="dark"] .month-item.current.selected,
+html[data-theme="dark"] .month-item.current.selected.clickable {
+  background: var(--colour-control-selected) !important;
+  color: var(--colour-control-selected-text) !important;
+}
+
+html[data-theme="dark"] .month-item.current.selected .year,
+html[data-theme="dark"] .month-item.current.selected .month {
+  color: var(--colour-control-selected-text) !important;
+}
+
+html[data-theme="dark"] .entry-count-badge {
+  background: var(--colour-primary) !important;
+  color: var(--colour-on-primary) !important;
+  box-shadow: 0 0 0 1px var(--colour-surface-elevated);
+}
+
+html[data-theme="dark"] .month-item.selected .entry-count-badge {
+  background: var(--colour-surface-elevated) !important;
+  color: var(--colour-primary) !important;
+  box-shadow: 0 0 0 1px var(--colour-on-primary);
+}
+
+html[data-theme="dark"] .no-entries-card h3 {
+  color: var(--colour-text-primary) !important;
+}
+
+html[data-theme="dark"] .no-entries-card p {
+  color: var(--colour-text-secondary) !important;
 }
 
 html[data-theme="dark"] .month-item.clickable:hover {
