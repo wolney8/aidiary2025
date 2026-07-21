@@ -174,6 +174,19 @@ CREATE TABLE IF NOT EXISTS public_holiday_cache (
 )
 """
 
+_CHAT_MESSAGES_DDL = """
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    conversation_id TEXT NOT NULL,
+    role            TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content         TEXT NOT NULL,
+    token_count     INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+"""
+
 
 def ensure_entry_mood_style_columns(
     database_path: str,
@@ -421,5 +434,31 @@ def ensure_public_holiday_cache_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'public_holiday_cache')
+
+    return True
+
+
+def ensure_chat_messages_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure durable, user-scoped storage exists for chat conversations."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_CHAT_MESSAGES_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
+            ON chat_messages(user_id, conversation_id, created_at, id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_user_created
+            ON chat_messages(user_id, created_at DESC, id DESC)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'chat_messages')
 
     return True
