@@ -1,4 +1,4 @@
-import { HttpClient } from "@angular/common/http";
+import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { Injectable, inject } from "@angular/core";
 import { Observable, map } from "rxjs";
 import { environment } from "../../../environments/environment";
@@ -55,6 +55,7 @@ export class ChatService {
     return this.http
       .get<ChatHistoryResponse>(`${this.apiUrl}/chat/history`, {
         params: { conversation_id: conversationId },
+        headers: this.buildAuthHeaders(),
       })
       .pipe(
         map((response) =>
@@ -72,7 +73,15 @@ export class ChatService {
   clearConversation(conversationId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/chat/conversation`, {
       params: { conversation_id: conversationId },
+      headers: this.buildAuthHeaders(),
     });
+  }
+
+  private buildAuthHeaders(): HttpHeaders {
+    const token = this.authService.getToken();
+    return token
+      ? new HttpHeaders({ Authorization: `Bearer ${token}` })
+      : new HttpHeaders();
   }
 
   getOrCreateConversationId(): string {

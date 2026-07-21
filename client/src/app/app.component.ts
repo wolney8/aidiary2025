@@ -32,7 +32,10 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
   ],
   template: `
     <ng-container *ngIf="isAuthenticated; else publicLayout">
-      <mat-sidenav-container class="app-container">
+      <mat-sidenav-container
+        class="authenticated-app-shell"
+        data-testid="authenticated-app-shell"
+      >
         <mat-sidenav #sidenav mode="over" position="start">
           <app-side-nav (closeSidenav)="sidenav.close()"></app-side-nav>
         </mat-sidenav>
@@ -42,7 +45,7 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
           <main class="main-content">
             <router-outlet></router-outlet>
           </main>
-          <app-chat-companion></app-chat-companion>
+          <app-chat-companion data-testid="chat-companion"></app-chat-companion>
         </mat-sidenav-content>
       </mat-sidenav-container>
     </ng-container>
@@ -55,7 +58,7 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
   `,
   styles: [
     `
-      .app-container {
+      .authenticated-app-shell {
         height: 100vh;
       }
 
