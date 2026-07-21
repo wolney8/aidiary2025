@@ -199,6 +199,9 @@ def test_chat_messages_runtime_migration_is_idempotent(tmp_path):
             row[1] for row in conn.execute('PRAGMA index_list(chat_messages)').fetchall()
         }
 
-    assert {'user_id', 'conversation_id', 'role', 'content', 'token_count'} <= columns
+    assert {
+        'user_id', 'conversation_id', 'request_id', 'role', 'content', 'token_count'
+    } <= columns
     assert 'idx_chat_messages_conversation' in indexes
     assert 'idx_chat_messages_user_created' in indexes
+    assert 'idx_chat_messages_request_role' in indexes

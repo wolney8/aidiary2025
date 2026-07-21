@@ -15,6 +15,10 @@ from services.ai_config import ALLOWED_ANALYSIS_MODELS, DEFAULT_ANALYSIS_MODEL
 logger = logging.getLogger(__name__)
 
 
+class ChatStreamError(RuntimeError):
+    """Raised when a chat stream cannot be started or completed."""
+
+
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 30.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 700
@@ -1748,12 +1752,13 @@ Additional requirements for this retry:
                 messages=request_messages,
                 max_tokens=max_tokens,
                 stream=True,
+                timeout=self.request_timeout_seconds,
             )
 
             for chunk in stream:
                 delta_text = chunk.choices[0].delta.content
                 if delta_text:
                     yield delta_text
-        except Exception:
+        except Exception as exc:
             logger.exception('OpenAI chat companion streaming failed')
-            yield ''
+            raise ChatStreamError('Chat provider request failed') from exc

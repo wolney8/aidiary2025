@@ -1584,7 +1584,7 @@ def test_chat_companion_uses_chat_model_override_and_system_prompt_first(mock_op
 
 
 @patch('services.openai_svc.OpenAI')
-def test_chat_companion_error_yields_safe_fallback(mock_openai):
+def test_chat_companion_error_raises_stream_error(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 
     mock_client = MagicMock()
@@ -1592,9 +1592,13 @@ def test_chat_companion_error_yields_safe_fallback(mock_openai):
     mock_client.chat.completions.create.side_effect = RuntimeError('OpenAI failed')
 
     service = OpenAIService()
-    result = list(service.chat_companion(messages=[{'role': 'user', 'content': 'Hi'}], system_prompt='System'))
+    from services.openai_svc import ChatStreamError
 
-    assert result == ['']
+    with pytest.raises(ChatStreamError):
+        list(service.chat_companion(
+            messages=[{'role': 'user', 'content': 'Hi'}],
+            system_prompt='System',
+        ))
 
 
 @patch('services.openai_svc.OpenAI')

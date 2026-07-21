@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
     conversation_id TEXT NOT NULL,
+    request_id      TEXT,
     role            TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
     content         TEXT NOT NULL,
     token_count     INTEGER NOT NULL DEFAULT 0,
@@ -445,6 +446,11 @@ def ensure_chat_messages_table(
     """Ensure durable, user-scoped storage exists for chat conversations."""
     with sqlite3.connect(database_path, timeout=10) as conn:
         conn.execute(_CHAT_MESSAGES_DDL)
+        columns = {
+            row[1] for row in conn.execute('PRAGMA table_info(chat_messages)').fetchall()
+        }
+        if 'request_id' not in columns:
+            conn.execute('ALTER TABLE chat_messages ADD COLUMN request_id TEXT')
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
@@ -455,6 +461,13 @@ def ensure_chat_messages_table(
             """
             CREATE INDEX IF NOT EXISTS idx_chat_messages_user_created
             ON chat_messages(user_id, created_at DESC, id DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_request_role
+            ON chat_messages(user_id, request_id, role)
+            WHERE request_id IS NOT NULL
             """
         )
 
