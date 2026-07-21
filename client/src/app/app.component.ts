@@ -31,6 +31,7 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
     ChatCompanionComponent,
   ],
   template: `
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <ng-container *ngIf="isAuthenticated; else publicLayout">
       <mat-sidenav-container
         class="authenticated-app-shell"
@@ -42,7 +43,7 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
 
         <mat-sidenav-content>
           <app-top-bar (toggleSidenav)="sidenav.toggle()"></app-top-bar>
-          <main class="main-content">
+          <main id="main-content" class="main-content" tabindex="-1">
             <router-outlet></router-outlet>
           </main>
           <app-chat-companion data-testid="chat-companion"></app-chat-companion>
@@ -51,7 +52,7 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
     </ng-container>
 
     <ng-template #publicLayout>
-      <main class="main-content public-main-content">
+      <main id="main-content" class="main-content public-main-content" tabindex="-1">
         <router-outlet></router-outlet>
       </main>
     </ng-template>
@@ -60,6 +61,25 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
     `
       .authenticated-app-shell {
         height: 100vh;
+      }
+
+      .skip-link {
+        position: fixed;
+        top: var(--spacing-xs);
+        left: var(--spacing-xs);
+        z-index: 2000;
+        padding: 0.75rem 1rem;
+        border-radius: var(--radius-pill);
+        background: var(--colour-primary);
+        color: var(--colour-on-primary);
+        font-weight: 700;
+        text-decoration: none;
+        transform: translateY(-150%);
+        transition: transform 0.15s ease;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
       }
 
       .main-content {

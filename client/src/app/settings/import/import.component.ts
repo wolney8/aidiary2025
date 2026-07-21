@@ -206,7 +206,7 @@ type UploadState =
             [attr.aria-describedby]="validationError ? validationErrorId : null"
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
-            (keydown.space)="triggerFilePicker()"
+            (keydown.space)="$event.preventDefault(); triggerFilePicker()"
             (dragover)="onDragOver($event)"
             (dragleave)="onDragLeave()"
             (drop)="onDrop($event)"
@@ -829,6 +829,11 @@ type UploadState =
       .drop-zone:focus-visible {
         border-color: #7b3ff2;
         background-color: rgba(123, 63, 242, 0.04);
+      }
+
+      .drop-zone:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
       }
 
       .drop-zone--has-file {

@@ -7,11 +7,13 @@ export const routes: Routes = [
   { path: "", redirectTo: "/login", pathMatch: "full" },
   {
     path: "login",
+    title: "Login | AI Diary",
     loadComponent: () =>
       import("./auth/login/login.component").then((m) => m.LoginComponent),
   },
   {
     path: "register",
+    title: "Create account | AI Diary",
     loadComponent: () =>
       import("./auth/register/register.component").then(
         (m) => m.RegisterComponent,
@@ -19,12 +21,14 @@ export const routes: Routes = [
   },
   {
     path: "entries",
+    title: "Entries | AI Diary",
     canActivate: [authGuard],
     loadComponent: () =>
       import("./entries/list/list.component").then((m) => m.ListComponent),
   },
   {
     path: "entries/create",
+    title: "New entry | AI Diary",
     canActivate: [authGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
@@ -34,6 +38,7 @@ export const routes: Routes = [
   },
   {
     path: "entries/:id/edit",
+    title: "Edit entry | AI Diary",
     canActivate: [authGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
@@ -43,6 +48,7 @@ export const routes: Routes = [
   },
   {
     path: "entries/:id",
+    title: "View entry | AI Diary",
     canActivate: [authGuard],
     loadComponent: () =>
       import("./entries/detail/detail.component").then(
@@ -51,6 +57,7 @@ export const routes: Routes = [
   },
   {
     path: "profile",
+    title: "Profile | AI Diary",
     canActivate: [authGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
@@ -58,6 +65,7 @@ export const routes: Routes = [
   },
   {
     path: "settings",
+    title: "Settings | AI Diary",
     canActivate: [authGuard],
     loadComponent: () =>
       import("./settings/settings.component").then((m) => m.SettingsComponent),
@@ -69,6 +77,7 @@ export const routes: Routes = [
       },
       {
         path: "personalisation",
+        title: "Customisation | AI Diary",
         canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
           import("./settings/personalisation/personalisation.component").then(
@@ -77,6 +86,7 @@ export const routes: Routes = [
       },
       {
         path: "important-days",
+        title: "Important days | AI Diary",
         loadComponent: () =>
           import("./settings/important-days/important-days.component").then(
             (m) => m.ImportantDaysComponent,
@@ -84,6 +94,7 @@ export const routes: Routes = [
       },
       {
         path: "import",
+        title: "Import | AI Diary",
         canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
           import("./settings/import/import.component").then(
@@ -92,6 +103,7 @@ export const routes: Routes = [
       },
       {
         path: "export",
+        title: "Export | AI Diary",
         loadComponent: () =>
           import("./settings/export/export.component").then(
             (m) => m.ExportComponent,

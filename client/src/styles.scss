@@ -592,6 +592,18 @@ a:focus-visible,
   outline-offset: var(--focus-offset);
 }
 
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 // Shared Material 3 control geometry and state treatment.
 .mat-mdc-button,
 .mat-mdc-raised-button,
