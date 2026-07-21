@@ -31,6 +31,17 @@ import {
       <nav class="settings-nav" aria-label="Settings sections">
         <a
           mat-stroked-button
+          routerLink="/settings/appearance"
+          routerLinkActive="is-active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          data-testid="settings-nav-appearance"
+        >
+          <mat-icon>palette</mat-icon>
+          Appearance
+        </a>
+
+        <a
+          mat-stroked-button
           routerLink="/settings/personalisation"
           routerLinkActive="is-active"
           [routerLinkActiveOptions]="{ exact: true }"
@@ -100,8 +111,9 @@ import {
       }
 
       .settings-nav a.is-active {
-        border-color: var(--colour-primary);
-        color: var(--colour-primary);
+        border-color: var(--colour-control-selected);
+        background: var(--colour-control-selected);
+        color: var(--colour-control-selected-text);
       }
 
       .settings-content {

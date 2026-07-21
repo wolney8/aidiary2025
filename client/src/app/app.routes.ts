@@ -95,6 +95,14 @@ export const routes: Routes = [
         redirectTo: "personalisation",
       },
       {
+        path: "appearance",
+        title: "Appearance | AI Diary",
+        loadComponent: () =>
+          import("./settings/appearance/appearance.component").then(
+            (m) => m.AppearanceComponent,
+          ),
+      },
+      {
         path: "personalisation",
         title: "Customisation | AI Diary",
         canDeactivate: [pendingChangesGuard],
