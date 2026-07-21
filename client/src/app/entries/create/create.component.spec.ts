@@ -7,6 +7,7 @@ import { AppDialogService } from "../../core/services/app-dialog.service";
 import { AuthService } from "../../core/services/auth.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
+import { CbtService } from "../../core/services/cbt.service";
 import {
   DailyAnalysisResponse,
   DailyEntry,
@@ -22,6 +23,7 @@ describe("CreateComponent save reliability", () => {
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let entriesServiceMock: jasmine.SpyObj<EntriesService>;
   let analysisServiceMock: jasmine.SpyObj<AnalysisService>;
+  let cbtServiceMock: jasmine.SpyObj<CbtService>;
 
   beforeEach(async () => {
     routerMock = jasmine.createSpyObj<Router>("Router", ["navigate"]);
@@ -54,6 +56,11 @@ describe("CreateComponent save reliability", () => {
       "AnalysisService",
       ["analyseText"],
     );
+    cbtServiceMock = jasmine.createSpyObj<CbtService>("CbtService", [
+      "listWorksheets",
+      "createWorksheet",
+    ]);
+    cbtServiceMock.listWorksheets.and.returnValue(of([]));
 
     await TestBed.configureTestingModule({
       imports: [CreateComponent],
@@ -63,6 +70,7 @@ describe("CreateComponent save reliability", () => {
         { provide: AuthService, useValue: authServiceMock },
         { provide: EntriesService, useValue: entriesServiceMock },
         { provide: AnalysisService, useValue: analysisServiceMock },
+        { provide: CbtService, useValue: cbtServiceMock },
         {
           provide: ActivatedRoute,
           useValue: {
