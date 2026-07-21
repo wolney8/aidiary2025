@@ -56,23 +56,35 @@
     >
       <header class="cbt-insights-heading">
         <mat-icon aria-hidden="true">insights</mat-icon>
-        <h2 id="cbt-insights-heading">Reflection overview</h2>
+        <div>
+          <h2 id="cbt-insights-heading">Reflection overview</h2>
+          <p>Completed records and before-and-after feeling ratings.</p>
+        </div>
       </header>
       <dl class="cbt-insight-grid">
         <div class="cbt-insight-metric">
           <dt>Completed</dt>
-          <dd>{{ completed.length }}</dd>
+          <dd>
+            <strong>{{ completed.length }}</strong>
+            <span>Thought records finished</span>
+          </dd>
         </div>
         <div class="cbt-insight-metric">
           <dt>Lower peak rating</dt>
           <dd>
-            {{ lowerPeakRatingCount }}
-            <span *ngIf="ratedCompleted.length">of {{ ratedCompleted.length }}</span>
+            <strong>
+              {{ lowerPeakRatingCount }}
+              <span *ngIf="ratedCompleted.length">of {{ ratedCompleted.length }}</span>
+            </strong>
+            <span>Rated records ending lower</span>
           </dd>
         </div>
         <div class="cbt-insight-metric">
           <dt>Average peak change</dt>
-          <dd>{{ getAveragePeakRatingChangeLabel() }}</dd>
+          <dd>
+            <strong>{{ getAveragePeakRatingChangeLabel() }}</strong>
+            <span>Across rated records</span>
+          </dd>
         </div>
       </dl>
     </section>
