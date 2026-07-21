@@ -101,6 +101,17 @@ class ChatContextService:
 
         return self._fit_to_budget('\n\n'.join(sections))
 
+    def build_system_prompt(self, user_id: int) -> str:
+        """Return the companion instructions and bounded private context."""
+        context = self.build_context(user_id)
+        prompt = (
+            'You are a supportive AI diary companion. Respond with empathy, '
+            'specificity, and practical perspective without diagnosing the user. '
+            'Use prior diary details selectively and acknowledge uncertainty.\n\n'
+            f'{context}'
+        )
+        return self._fit_to_budget(prompt)
+
     def _load_identity(self, conn: sqlite3.Connection, user_id: int) -> str:
         if not self._table_exists(conn, 'users'):
             return ''

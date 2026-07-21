@@ -1,21 +1,31 @@
-"""Chat routes backed by SQLite chat_messages storage."""
+"""Authenticated SSE chat routes backed by durable SQLite history."""
 
+from __future__ import annotations
+
+import json
 import sqlite3
+from collections.abc import Iterator
 from uuid import UUID
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 from flask_jwt_extended import get_jwt_identity, jwt_required
+
+from extensions import limiter
+from services.chat_context_svc import ChatContextService, estimate_tokens
+from services.openai_svc import OpenAIService
+
 
 chat_bp = Blueprint('chat', __name__)
 
 MAX_MESSAGE_LENGTH = 2000
 MAX_MESSAGES_PER_CONVERSATION = 100
+MODEL_HISTORY_LIMIT = 20
+HISTORY_RESPONSE_LIMIT = 50
 
 
 def get_db() -> sqlite3.Connection:
-    """Get database connection for chat storage."""
-    db_path = current_app.config['DATABASE_PATH']
-    conn = sqlite3.connect(db_path, timeout=30)
+    """Get a user-data connection for chat storage."""
+    conn = sqlite3.connect(current_app.config['DATABASE_PATH'], timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -33,29 +43,107 @@ def _normalise_message(raw_message: str | None) -> str | None:
     if not isinstance(raw_message, str):
         return None
     message = raw_message.strip()
-    if not message:
-        return None
-    if len(message) > MAX_MESSAGE_LENGTH:
+    if not message or len(message) > MAX_MESSAGE_LENGTH:
         return None
     return message
 
 
-def _assistant_placeholder_reply(message: str) -> str:
-    # Deterministic response for first mergeable slice (no model call yet).
-    preview = message[:160]
-    return f"Assistant placeholder reply: {preview}"
-
-
 def _token_count(text: str) -> int:
-    return len(text.split())
+    return estimate_tokens(text)
 
 
 def _is_missing_chat_table(exc: sqlite3.OperationalError) -> bool:
     return 'no such table: chat_messages' in str(exc).lower()
 
 
+def _chat_rate_limit() -> str:
+    return str(current_app.config['CHAT_RATE_LIMIT'])
+
+
+def _chat_rate_limit_key() -> str:
+    return str(get_jwt_identity())
+
+
+def _daily_token_usage(conn: sqlite3.Connection, user_id: int) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(token_count), 0) AS total
+        FROM chat_messages
+        WHERE user_id = ? AND date(created_at) = date('now')
+        """,
+        (user_id,),
+    ).fetchone()
+    return int(row['total'] or 0)
+
+
+def _load_model_history(
+    conn: sqlite3.Connection,
+    user_id: int,
+    conversation_id: str,
+) -> list[dict[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT role, content
+        FROM (
+            SELECT id, role, content
+            FROM chat_messages
+            WHERE user_id = ? AND conversation_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        )
+        ORDER BY id ASC
+        """,
+        (user_id, conversation_id, MODEL_HISTORY_LIMIT),
+    ).fetchall()
+    return [{'role': row['role'], 'content': row['content']} for row in rows]
+
+
+def _persist_message(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    conversation_id: str,
+    role: str,
+    content: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO chat_messages (user_id, conversation_id, role, content, token_count)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (user_id, conversation_id, role, content, _token_count(content)),
+    )
+
+
+def _prune_conversation(
+    conn: sqlite3.Connection,
+    user_id: int,
+    conversation_id: str,
+) -> None:
+    conn.execute(
+        """
+        DELETE FROM chat_messages
+        WHERE user_id = ?
+          AND conversation_id = ?
+          AND id NOT IN (
+              SELECT id
+              FROM chat_messages
+              WHERE user_id = ? AND conversation_id = ?
+              ORDER BY id DESC
+              LIMIT ?
+          )
+        """,
+        (user_id, conversation_id, user_id, conversation_id, MAX_MESSAGES_PER_CONVERSATION),
+    )
+
+
+def _sse_event(payload: dict[str, object]) -> str:
+    return f'data: {json.dumps(payload, ensure_ascii=False)}\n\n'
+
+
 @chat_bp.route('/chat/message', methods=['POST'])
 @jwt_required()
+@limiter.limit(_chat_rate_limit, key_func=_chat_rate_limit_key)
 def send_message():
     data = request.get_json(silent=True) or {}
     conversation_id = _parse_conversation_id(data.get('conversation_id'))
@@ -67,44 +155,23 @@ def send_message():
         return jsonify({'error': 'Message must be non-empty and at most 2000 characters'}), 400
 
     user_id = int(get_jwt_identity())
-    assistant_reply = _assistant_placeholder_reply(message)
+    database_path = current_app.config['DATABASE_PATH']
 
     conn = get_db()
-    cursor = conn.cursor()
-
     try:
-        cursor.execute(
-            '''
-            INSERT INTO chat_messages (user_id, conversation_id, role, content, token_count)
-            VALUES (?, ?, ?, ?, ?)
-            ''',
-            (user_id, conversation_id, 'user', message, _token_count(message)),
-        )
-        cursor.execute(
-            '''
-            INSERT INTO chat_messages (user_id, conversation_id, role, content, token_count)
-            VALUES (?, ?, ?, ?, ?)
-            ''',
-            (user_id, conversation_id, 'assistant', assistant_reply, _token_count(assistant_reply)),
-        )
+        projected_usage = _daily_token_usage(conn, user_id) + _token_count(message)
+        if projected_usage > current_app.config['CHAT_DAILY_TOKEN_BUDGET']:
+            return jsonify({'error': 'Daily chat limit reached. Resets at midnight.'}), 429
 
-        # Keep storage bounded per conversation, preserving most recent messages.
-        cursor.execute(
-            '''
-            DELETE FROM chat_messages
-            WHERE user_id = ?
-              AND conversation_id = ?
-              AND id NOT IN (
-                  SELECT id
-                  FROM chat_messages
-                  WHERE user_id = ? AND conversation_id = ?
-                  ORDER BY id DESC
-                  LIMIT ?
-              )
-            ''',
-            (user_id, conversation_id, user_id, conversation_id, MAX_MESSAGES_PER_CONVERSATION),
+        _persist_message(
+            conn,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            role='user',
+            content=message,
         )
         conn.commit()
+        model_history = _load_model_history(conn, user_id, conversation_id)
     except sqlite3.OperationalError as exc:
         if _is_missing_chat_table(exc):
             return jsonify({'error': 'chat storage not initialised'}), 503
@@ -112,10 +179,57 @@ def send_message():
     finally:
         conn.close()
 
-    return jsonify({
-        'conversation_id': conversation_id,
-        'assistant_reply': assistant_reply,
-    }), 200
+    system_prompt = ChatContextService(database_path).build_system_prompt(user_id)
+    model_stream = OpenAIService().chat_companion(
+        messages=model_history,
+        system_prompt=system_prompt,
+    )
+
+    @stream_with_context
+    def generate_events() -> Iterator[str]:
+        assistant_chunks: list[str] = []
+        try:
+            for chunk in model_stream:
+                if not chunk:
+                    continue
+                assistant_chunks.append(chunk)
+                yield _sse_event({'chunk': chunk, 'done': False})
+
+            assistant_reply = ''.join(assistant_chunks)
+            if assistant_reply:
+                stream_conn = get_db()
+                try:
+                    _persist_message(
+                        stream_conn,
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        role='assistant',
+                        content=assistant_reply,
+                    )
+                    _prune_conversation(stream_conn, user_id, conversation_id)
+                    stream_conn.commit()
+                finally:
+                    stream_conn.close()
+
+            yield _sse_event({
+                'chunk': '',
+                'done': True,
+                'token_count': _token_count(assistant_reply),
+            })
+        except Exception:
+            current_app.logger.exception('Chat response stream failed')
+            yield _sse_event({
+                'chunk': '',
+                'done': True,
+                'token_count': _token_count(''.join(assistant_chunks)),
+                'error': 'The chat response could not be completed.',
+            })
+
+    return Response(
+        generate_events(),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
 
 
 @chat_bp.route('/chat/history', methods=['GET'])
@@ -126,19 +240,21 @@ def get_history():
         return jsonify({'error': 'Invalid conversation_id'}), 400
 
     user_id = int(get_jwt_identity())
-
     conn = get_db()
-    cursor = conn.cursor()
-
     try:
-        rows = cursor.execute(
-            '''
-            SELECT role, content
-            FROM chat_messages
-            WHERE user_id = ? AND conversation_id = ?
-            ORDER BY created_at ASC, id ASC
-            ''',
-            (user_id, conversation_id),
+        rows = conn.execute(
+            """
+            SELECT role, content, token_count, created_at
+            FROM (
+                SELECT id, role, content, token_count, created_at
+                FROM chat_messages
+                WHERE user_id = ? AND conversation_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            ORDER BY id ASC
+            """,
+            (user_id, conversation_id, HISTORY_RESPONSE_LIMIT),
         ).fetchall()
     except sqlite3.OperationalError as exc:
         if _is_missing_chat_table(exc):
@@ -147,11 +263,17 @@ def get_history():
     finally:
         conn.close()
 
-    messages = [{'role': row['role'], 'message': row['content']} for row in rows]
-
     return jsonify({
         'conversation_id': conversation_id,
-        'messages': messages,
+        'messages': [
+            {
+                'role': row['role'],
+                'message': row['content'],
+                'token_count': row['token_count'],
+                'created_at': row['created_at'],
+            }
+            for row in rows
+        ],
     }), 200
 
 
@@ -163,12 +285,9 @@ def clear_conversation():
         return jsonify({'error': 'Invalid conversation_id'}), 400
 
     user_id = int(get_jwt_identity())
-
     conn = get_db()
-    cursor = conn.cursor()
-
     try:
-        cursor.execute(
+        conn.execute(
             'DELETE FROM chat_messages WHERE user_id = ? AND conversation_id = ?',
             (user_id, conversation_id),
         )
