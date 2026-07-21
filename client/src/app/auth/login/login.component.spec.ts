@@ -13,6 +13,9 @@ describe("LoginComponent returnUrl navigation", () => {
   };
   let routerMock: {
     navigateByUrl: (...args: unknown[]) => unknown;
+    events: ReturnType<typeof of>;
+    createUrlTree: (...args: unknown[]) => object;
+    serializeUrl: (...args: unknown[]) => string;
   };
 
   beforeEach(async () => {
@@ -35,6 +38,9 @@ describe("LoginComponent returnUrl navigation", () => {
 
     routerMock = {
       navigateByUrl: jasmine.createSpy("navigateByUrl"),
+      events: of(),
+      createUrlTree: jasmine.createSpy("createUrlTree").and.returnValue({}),
+      serializeUrl: jasmine.createSpy("serializeUrl").and.returnValue("/register"),
     };
 
     await TestBed.configureTestingModule({
@@ -108,5 +114,27 @@ describe("LoginComponent returnUrl navigation", () => {
     fixture.detectChanges();
 
     expect(component.sessionInfoMessage).toBe("");
+  });
+
+  it("exposes an accessible page heading and credential autocomplete hints", () => {
+    fixture.detectChanges();
+
+    const heading = fixture.nativeElement.querySelector("h1");
+    const username = fixture.nativeElement.querySelector('input[name="username"]');
+    const password = fixture.nativeElement.querySelector('input[name="password"]');
+
+    expect(heading?.textContent).toContain("Login to AI Diary");
+    expect(username?.getAttribute("autocomplete")).toBe("username");
+    expect(password?.getAttribute("autocomplete")).toBe("current-password");
+  });
+
+  it("announces validation failures as alerts", () => {
+    fixture.detectChanges();
+
+    component.onSubmit();
+    fixture.detectChanges();
+
+    const alert = fixture.nativeElement.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Please enter both username and password");
   });
 });

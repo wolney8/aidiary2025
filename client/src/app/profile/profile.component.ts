@@ -43,7 +43,7 @@ import { User } from "../core/models/user.model";
 
       <mat-card>
         <mat-card-header>
-          <mat-card-title>Profile</mat-card-title>
+          <h1 mat-card-title>Profile</h1>
         </mat-card-header>
 
         <mat-card-content>

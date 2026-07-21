@@ -118,6 +118,7 @@ type OccasionPreviewState = {
   styleUrl: "./list.component.css",
   template: `
     <div class="list-container">
+      <h1 class="visually-hidden">Diary entries</h1>
       <ng-container *ngIf="searchService.results$ | async as searchState">
         <!-- Search Results View -->
         <ng-container *ngIf="searchState.active">
@@ -195,24 +196,28 @@ type OccasionPreviewState = {
             </button>
 
             <div class="timeline-months">
-              <div
+              <button
+                type="button"
                 class="month-item"
                 *ngFor="let item of visibleMonths"
                 [class.current]="item.isCurrent"
                 [class.selected]="item.isSelected"
                 [class.future]="item.isFuture"
                 [class.clickable]="!item.isFuture"
+                [disabled]="item.isFuture"
+                [attr.aria-current]="item.isSelected ? 'date' : null"
+                [attr.aria-label]="getTimelineMonthAriaLabel(item)"
                 (click)="selectMonth(item)"
               >
-                <div class="year">{{ item.year }}</div>
-                <div class="month">{{ item.label }}</div>
-                <div
+                <span class="year">{{ item.year }}</span>
+                <span class="month">{{ item.label }}</span>
+                <span
                   class="entry-count-badge"
                   *ngIf="item.entryCount && !item.isFuture"
                 >
                   {{ item.entryCount }}
-                </div>
-              </div>
+                </span>
+              </button>
             </div>
 
             <button
@@ -569,14 +574,20 @@ type OccasionPreviewState = {
                   [class.status-daily]="day.status === 'daily'"
                   [class.status-dream]="day.status === 'dream'"
                   [class.status-complete]="day.status === 'complete'"
-                  [attr.role]="day.isCurrentMonth && !day.isFuture ? 'button' : null"
-                  [attr.tabindex]="day.isCurrentMonth && !day.isFuture ? 0 : null"
-                  [attr.aria-label]="getCalendarDayLabel(day)"
                   (click)="onCalendarDaySelect(day, $event)"
-                  (keydown.enter)="onCalendarDayKeydown($event, day)"
-                  (keydown.space)="onCalendarDayKeydown($event, day)"
                 >
-                  <span class="calendar-day-number">{{ day.dayNumber }}</span>
+                  <button
+                    *ngIf="day.isCurrentMonth && !day.isFuture; else unavailableDayNumber"
+                    type="button"
+                    class="calendar-day-action"
+                    [attr.aria-label]="getCalendarDayLabel(day)"
+                    (click)="$event.stopPropagation(); onCalendarDaySelect(day, $event)"
+                  >
+                    {{ day.dayNumber }}
+                  </button>
+                  <ng-template #unavailableDayNumber>
+                    <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
+                  </ng-template>
                   <button
                     #occasionBadge
                     type="button"
@@ -1245,6 +1256,27 @@ export class ListComponent implements OnInit, OnDestroy {
       this.timelineScrollIndex = newIndex;
       this.updateVisibleMonths();
     }
+  }
+
+  getTimelineMonthAriaLabel(month: TimelineMonth): string {
+    const parts = [`${month.label} ${month.year}`];
+
+    if (month.isCurrent) {
+      parts.push("current month");
+    }
+    if (month.isSelected) {
+      parts.push("selected");
+    }
+    if (month.entryCount) {
+      parts.push(
+        `${month.entryCount} ${month.entryCount === 1 ? "entry" : "entries"}`,
+      );
+    }
+    if (month.isFuture) {
+      parts.push("unavailable");
+    }
+
+    return parts.join(", ");
   }
 
   selectMonth(month: TimelineMonth): void {
@@ -1918,11 +1950,6 @@ export class ListComponent implements OnInit, OnDestroy {
     this.currentPage = 0;
     this.filterEntries();
     this.updatePaginatedEntries();
-  }
-
-  onCalendarDayKeydown(event: Event, day: CalendarDay): void {
-    event.preventDefault();
-    this.onCalendarDaySelect(day);
   }
 
   getOccasionPreviewDirection(): "left-to-right" | "right-to-left" {

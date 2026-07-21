@@ -288,7 +288,13 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           <!-- Main Card View (Fixed Size) -->
           <mat-card
             class="entry-card"
+            role="button"
+            tabindex="0"
+            [attr.aria-expanded]="isExpanded(result.id)"
+            [attr.aria-label]="'Review search result ' + result.title"
             (click)="toggleExpand(result.id); $event.stopPropagation()"
+            (keydown.enter)="toggleExpand(result.id); $event.stopPropagation()"
+            (keydown.space)="$event.preventDefault(); toggleExpand(result.id); $event.stopPropagation()"
           >
             <mat-card-header>
               <mat-icon mat-card-avatar>

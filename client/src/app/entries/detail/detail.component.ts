@@ -69,7 +69,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
           Back
         </button>
         <div class="date-heading">
-          <h2>{{ getFriendlyDate() }}</h2>
+          <h1>{{ getFriendlyDate() }}</h1>
           <p *ngIf="getFriendlyTime()">{{ getFriendlyTime() }}</p>
         </div>
         <div class="action-buttons">
@@ -884,7 +884,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         gap: 0.15rem;
       }
 
-      .date-nav h2 {
+      .date-nav h1 {
         margin: 0;
         text-align: center;
         justify-self: center;
@@ -1450,7 +1450,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
           grid-template-columns: 1fr;
         }
 
-        .date-nav h2 {
+        .date-nav h1 {
           text-align: center;
         }
 

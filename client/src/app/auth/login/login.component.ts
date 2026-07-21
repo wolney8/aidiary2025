@@ -24,31 +24,32 @@ import { AuthService } from "../../core/services/auth.service";
     MatIconModule,
   ],
   template: `
-    <div class="auth-container">
-      <mat-card>
+    <div class="auth-container" data-testid="login-page">
+      <mat-card class="auth-card">
         <mat-card-header>
-          <mat-card-title>Login to AI Diary</mat-card-title>
+          <h1 mat-card-title>Login to AI Diary</h1>
         </mat-card-header>
 
         <mat-card-content>
-          <div *ngIf="sessionInfoMessage" class="info-message">
-            <mat-icon>info</mat-icon>
+          <div *ngIf="sessionInfoMessage" class="info-message" role="status">
+            <mat-icon aria-hidden="true">info</mat-icon>
             <span>{{ sessionInfoMessage }}</span>
           </div>
 
           <!-- Error Message Display -->
-          <div *ngIf="errorMessage" class="error-message">
-            <mat-icon>error</mat-icon>
+          <div *ngIf="errorMessage" class="error-message" role="alert" data-testid="login-error">
+            <mat-icon aria-hidden="true">error</mat-icon>
             <span>{{ errorMessage }}</span>
           </div>
 
-          <form (ngSubmit)="onSubmit()">
+          <form (ngSubmit)="onSubmit()" [attr.aria-busy]="isLoading">
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Username</mat-label>
               <input
                 matInput
                 [(ngModel)]="credentials.username"
                 name="username"
+                autocomplete="username"
                 required
               />
             </mat-form-field>
@@ -60,6 +61,7 @@ import { AuthService } from "../../core/services/auth.service";
                 type="password"
                 [(ngModel)]="credentials.password"
                 name="password"
+                autocomplete="current-password"
                 required
               />
             </mat-form-field>
@@ -70,6 +72,7 @@ import { AuthService } from "../../core/services/auth.service";
               type="submit"
               class="full-width"
               [disabled]="isLoading"
+              data-testid="login-submit"
             >
               {{ isLoading ? "Logging in..." : "Login" }}
             </button>
@@ -85,16 +88,22 @@ import { AuthService } from "../../core/services/auth.service";
   styles: [
     `
       .auth-container {
+        box-sizing: border-box;
         display: flex;
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        background: #f5f5f5;
+        padding: var(--spacing-md);
+        background: var(--colour-background);
       }
 
       mat-card {
         max-width: 400px;
         width: 100%;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        color: var(--colour-text-primary);
       }
 
       .full-width {
@@ -110,26 +119,26 @@ import { AuthService } from "../../core/services/auth.service";
       .error-message {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--spacing-xs);
         padding: 12px;
-        margin-bottom: 16px;
-        background-color: #ffebee;
-        border: 1px solid #e57373;
-        border-radius: 4px;
-        color: #c62828;
+        margin-bottom: var(--spacing-sm);
+        background-color: var(--colour-danger-bg);
+        border: 1px solid var(--colour-danger-text);
+        border-radius: var(--radius-md);
+        color: var(--colour-danger-text);
         font-size: 14px;
       }
 
       .info-message {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--spacing-xs);
         padding: 12px;
-        margin-bottom: 16px;
-        background-color: #e3f2fd;
-        border: 1px solid #64b5f6;
-        border-radius: 4px;
-        color: #0d47a1;
+        margin-bottom: var(--spacing-sm);
+        background-color: var(--colour-info-bg);
+        border: 1px solid var(--colour-info-text);
+        border-radius: var(--radius-md);
+        color: var(--colour-info-text);
         font-size: 14px;
       }
 

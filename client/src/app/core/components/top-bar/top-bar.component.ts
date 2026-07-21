@@ -112,6 +112,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               class="search-button"
               (click)="filterResults()"
               [disabled]="isSearching"
+              aria-label="Search diary entries"
             >
               <mat-progress-spinner
                 *ngIf="isSearching"
@@ -125,6 +126,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               class="search-input"
               type="search"
               placeholder="Search entries, tags, people, dates..."
+              aria-label="Search entries, tags, people, and dates"
               formControlName="query"
               (keydown.enter)="$event.preventDefault(); filterResults()"
               (focus)="onSearchInputFocus()"
@@ -190,13 +192,19 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
             <div
               class="search-history-item"
               *ngFor="let historyItem of filteredSearchHistory"
-              (click)="selectHistoryItem(historyItem)"
             >
-              <mat-icon class="history-icon">history</mat-icon>
-              <span
-                class="history-text"
-                [innerHTML]="highlightMatch(historyItem, currentSearchQuery)"
-              ></span>
+              <button
+                class="history-select"
+                type="button"
+                (click)="selectHistoryItem(historyItem)"
+                [attr.aria-label]="'Search for ' + historyItem"
+              >
+                <mat-icon class="history-icon" aria-hidden="true">history</mat-icon>
+                <span
+                  class="history-text"
+                  [innerHTML]="highlightMatch(historyItem, currentSearchQuery)"
+                ></span>
+              </button>
               <button
                 class="history-remove"
                 (click)="removeHistoryItem(historyItem, $event)"
@@ -352,12 +360,9 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               *ngFor="let notification of getVisibleNotifications(notifications)"
               class="notification-item"
               [class.notification-item--unread]="notification.unread"
-              tabindex="0"
               role="article"
               [attr.aria-label]="notification.title + (notification.unread ? ', unread' : '')"
               (click)="markNotificationRead(notification.id)"
-              (keydown.enter)="markNotificationRead(notification.id)"
-              (keydown.space)="$event.preventDefault(); markNotificationRead(notification.id)"
             >
               <span
                 *ngIf="notification.unread"
@@ -384,6 +389,15 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
                 Progress has not updated recently. The import is still being monitored.
               </p>
               <div class="notification-item__actions">
+                <button
+                  *ngIf="notification.unread"
+                  mat-button
+                  type="button"
+                  (click)="$event.stopPropagation(); markNotificationRead(notification.id)"
+                  [attr.aria-label]="'Mark ' + notification.title + ' as read'"
+                >
+                  Mark read
+                </button>
                 <button
                   mat-stroked-button
                   type="button"
@@ -672,12 +686,8 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         cursor: pointer;
       }
       .notification-item:hover,
-      .notification-item:focus-visible {
+      .notification-item:focus-within {
         border-color: var(--colour-primary);
-      }
-      .notification-item:focus-visible {
-        outline: var(--focus-outline);
-        outline-offset: var(--focus-offset);
       }
       .notification-item--unread {
         background: var(--colour-info-bg);
@@ -774,10 +784,28 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .search-history-item {
         display: flex;
         align-items: center;
-        padding: 12px 16px;
-        cursor: pointer;
         border-bottom: 1px solid var(--colour-border);
         transition: background-color 0.2s ease;
+      }
+
+      .history-select {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        min-width: 0;
+        min-height: 48px;
+        padding: 12px 8px 12px 16px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        text-align: left;
+      }
+
+      .history-select:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: calc(-1 * var(--focus-offset));
       }
 
       .search-history-item:hover {
@@ -823,7 +851,10 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         border: none;
         color: var(--colour-text-secondary);
         cursor: pointer;
-        padding: 4px;
+        width: 40px;
+        height: 40px;
+        margin-right: 8px;
+        padding: 8px;
         border-radius: var(--radius-sm);
         opacity: 0;
         transition:

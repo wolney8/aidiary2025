@@ -97,6 +97,10 @@
 }
 
 .month-item {
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: center;
   min-width: 100px;
   padding: 0.75rem 1rem;
@@ -104,6 +108,11 @@
   transition: all 0.2s ease;
   border: 2px solid transparent;
   position: relative;
+}
+
+.month-item:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
 }
 
 .month-item.clickable {
@@ -168,6 +177,7 @@
 }
 
 .month-item .year {
+  display: block;
   font-size: 11px;
   color: inherit;
   opacity: 0.8;
@@ -175,6 +185,7 @@
 }
 
 .month-item .month {
+  display: block;
   font-size: 14px;
   font-weight: 500;
 }
@@ -930,8 +941,12 @@
 .calendar-important-day-entry-link:hover,
 .calendar-important-day-entry-link:focus-visible {
   border-color: var(--colour-primary);
-  outline: none;
   background: rgba(255, 255, 255, 0.96);
+}
+
+.calendar-important-day-entry-link:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
 }
 
 :host-context(html[data-theme="dark"]) .calendar-important-day-entry-link:hover,
@@ -1073,11 +1088,11 @@
     border-color 0.2s ease;
 }
 
-.calendar-day[role="button"] {
+.calendar-day:not(.outside-month):not(.unavailable) {
   cursor: pointer;
 }
 
-.calendar-day[role="button"]:hover {
+.calendar-day:not(.outside-month):not(.unavailable):hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
@@ -1113,10 +1128,35 @@
   border-color: #86efac;
 }
 
-.calendar-day-number {
+.calendar-day-number,
+.calendar-day-action {
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--colour-text-primary);
+}
+
+.calendar-day-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.2rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.calendar-day-action:hover {
+  background: var(--colour-control-hover);
+}
+
+.calendar-day-action:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
 }
 
 .calendar-important-day-badge {

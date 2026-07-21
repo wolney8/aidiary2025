@@ -127,9 +127,9 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
             Back
           </button>
 
-          <mat-card-title
-            >{{ isEditing ? "Edit" : "New" }} Diary Entry</mat-card-title
-          >
+          <h1 mat-card-title>
+            {{ isEditing ? "Edit" : "New" }} Diary Entry
+          </h1>
 
           <mat-slide-toggle [(ngModel)]="leaveItToAI" [disabled]="isSaving">
             Respond with AI

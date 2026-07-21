@@ -22,14 +22,14 @@ import { AuthService } from '../../core/services/auth.service';
     MatButtonModule
   ],
   template: `
-    <div class="auth-container">
-      <mat-card>
+    <div class="auth-container" data-testid="register-page">
+      <mat-card class="auth-card">
         <mat-card-header>
-          <mat-card-title>Create Account</mat-card-title>
+          <h1 mat-card-title>Create Account</h1>
         </mat-card-header>
         
         <mat-card-content>
-          <form (ngSubmit)="onSubmit()">
+          <form (ngSubmit)="onSubmit()" [attr.aria-busy]="submitting">
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Username</mat-label>
               <input
@@ -37,6 +37,7 @@ import { AuthService } from '../../core/services/auth.service';
                 [(ngModel)]="formData.username"
                 name="username"
                 maxlength="32"
+                autocomplete="username"
                 required
               >
               <mat-hint>Use 3-32 letters, numbers, dots, underscores, or hyphens.</mat-hint>
@@ -50,6 +51,7 @@ import { AuthService } from '../../core/services/auth.service';
                 [(ngModel)]="formData.password"
                 name="password"
                 maxlength="128"
+                autocomplete="new-password"
                 required
               >
               <mat-hint>Use 8-128 characters with letters and numbers.</mat-hint>
@@ -62,6 +64,7 @@ import { AuthService } from '../../core/services/auth.service';
                 type="password"
                 [(ngModel)]="confirmPassword"
                 name="confirmPassword"
+                autocomplete="new-password"
                 required
               >
             </mat-form-field>
@@ -73,6 +76,7 @@ import { AuthService } from '../../core/services/auth.service';
                 [(ngModel)]="formData.first_name"
                 name="first_name"
                 maxlength="12"
+                autocomplete="given-name"
               >
             </mat-form-field>
             
@@ -83,6 +87,7 @@ import { AuthService } from '../../core/services/auth.service';
                 [(ngModel)]="formData.last_name"
                 name="last_name"
                 maxlength="12"
+                autocomplete="family-name"
               >
             </mat-form-field>
             
@@ -92,12 +97,13 @@ import { AuthService } from '../../core/services/auth.service';
               type="submit"
               class="full-width"
               [disabled]="submitting"
+              data-testid="register-submit"
             >
               {{ submitting ? "Creating account..." : "Register" }}
             </button>
           </form>
 
-          <p class="status error" *ngIf="errorMessage">{{ errorMessage }}</p>
+          <p class="status error" *ngIf="errorMessage" role="alert" data-testid="register-error">{{ errorMessage }}</p>
           
           <p class="login-link">
             Already have an account? <a routerLink="/login">Login here</a>
@@ -108,16 +114,22 @@ import { AuthService } from '../../core/services/auth.service';
   `,
   styles: [`
     .auth-container {
+      box-sizing: border-box;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background: #f5f5f5;
+      padding: var(--spacing-md);
+      background: var(--colour-background);
     }
     
     mat-card {
       max-width: 400px;
       width: 100%;
+      border: 1px solid var(--colour-border);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-elevated);
+      color: var(--colour-text-primary);
     }
     
     .full-width {
@@ -135,7 +147,11 @@ import { AuthService } from '../../core/services/auth.service';
     }
 
     .error {
-      color: #c62828;
+      padding: 12px;
+      border: 1px solid var(--colour-danger-text);
+      border-radius: var(--radius-md);
+      background: var(--colour-danger-bg);
+      color: var(--colour-danger-text);
     }
   `]
 })
