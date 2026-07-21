@@ -172,6 +172,50 @@ html[data-theme="dark"] {
   --focus-outline: 2px solid #7fb0ff;
 }
 
+html[data-theme-preset="ocean"] {
+  --colour-primary: #0369a1;
+  --colour-primary-hover: #075985;
+  --colour-accent: #0891b2;
+  --colour-toolbar: linear-gradient(90deg, #0c4a6e 0%, #0369a1 52%, #0e7490 100%);
+  --colour-control-selected: #0369a1;
+  --colour-control-selected-hover: #075985;
+  --focus-outline: 2px solid #0369a1;
+}
+
+html[data-theme="dark"][data-theme-preset="ocean"] {
+  --colour-primary: #7dd3fc;
+  --colour-on-primary: #082f49;
+  --colour-primary-hover: #bae6fd;
+  --colour-accent: #67e8f9;
+  --colour-toolbar: linear-gradient(90deg, #0b1f33 0%, #0c2d48 52%, #123f4a 100%);
+  --colour-control-selected: #7dd3fc;
+  --colour-control-selected-hover: #bae6fd;
+  --colour-control-selected-text: #082f49;
+  --focus-outline: 2px solid #7dd3fc;
+}
+
+html[data-theme-preset="forest"] {
+  --colour-primary: #166534;
+  --colour-primary-hover: #14532d;
+  --colour-accent: #0f766e;
+  --colour-toolbar: linear-gradient(90deg, #14532d 0%, #166534 52%, #0f766e 100%);
+  --colour-control-selected: #166534;
+  --colour-control-selected-hover: #14532d;
+  --focus-outline: 2px solid #166534;
+}
+
+html[data-theme="dark"][data-theme-preset="forest"] {
+  --colour-primary: #86efac;
+  --colour-on-primary: #052e16;
+  --colour-primary-hover: #bbf7d0;
+  --colour-accent: #5eead4;
+  --colour-toolbar: linear-gradient(90deg, #0c2418 0%, #123522 52%, #123d38 100%);
+  --colour-control-selected: #86efac;
+  --colour-control-selected-hover: #bbf7d0;
+  --colour-control-selected-text: #052e16;
+  --focus-outline: 2px solid #86efac;
+}
+
 html[data-theme="dark"] body {
   background:
     radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 34%),
