@@ -37,6 +37,7 @@ import { AuthService } from "../../core/services/auth.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import { CbtService } from "../../core/services/cbt.service";
+import { ImportantDaysService } from "../../core/services/important-days.service";
 import { BackToTopComponent } from "../../shared/components/back-to-top/back-to-top.component";
 import {
   formatReadableLongDate,
@@ -51,6 +52,12 @@ import {
   DreamFieldOptions,
 } from "../../core/models/entry.model";
 import { CbtWorksheet } from "../../core/models/cbt.model";
+import {
+  ImportantDayAccentColor,
+  ImportantDayCategory,
+  ImportantDayIcon,
+  ImportantDayRecurrence,
+} from "../../core/models/important-day.model";
 
 const UK_DATE_FORMATS = {
   parse: {
@@ -129,11 +136,13 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
             Back
           </button>
 
-          <h1 mat-card-title>
-            {{ isEditing ? "Edit" : "New" }} Diary Entry
-          </h1>
+          <h1 mat-card-title>{{ getWorkflowHeading() }}</h1>
 
-          <mat-slide-toggle [(ngModel)]="leaveItToAI" [disabled]="isSaving">
+          <mat-slide-toggle
+            *ngIf="isDiaryWorkflow()"
+            [(ngModel)]="leaveItToAI"
+            [disabled]="isSaving"
+          >
             Respond with AI
           </mat-slide-toggle>
         </mat-card-header>
@@ -142,15 +151,19 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
           <fieldset class="entry-form-shell" [disabled]="isSaving">
           <mat-button-toggle-group
             class="entry-type-toggle"
+            data-testid="entry-type-toggle"
             [(ngModel)]="selectedType"
             name="entryType"
             [disabled]="isEditing || isSaving"
             aria-label="Entry type toggle"
             (change)="onTypeChange($event)"
           >
-            <mat-button-toggle value="daily">Daily Entry</mat-button-toggle>
-            <mat-button-toggle value="dream">Dream Entry</mat-button-toggle>
+            <mat-button-toggle value="daily" data-testid="entry-type-daily">Daily Entry</mat-button-toggle>
+            <mat-button-toggle value="dream" data-testid="entry-type-dream">Dream Entry</mat-button-toggle>
+            <mat-button-toggle value="important-day" data-testid="entry-type-important-day">Important Day</mat-button-toggle>
+            <mat-button-toggle value="thought-record" data-testid="entry-type-thought-record">Thought Record</mat-button-toggle>
           </mat-button-toggle-group>
+          <ng-container *ngIf="isDiaryWorkflow()">
           <p class="hint" *ngIf="leaveItToAI">
             We'll run an AI analysis straight after saving this entry.
           </p>
@@ -803,6 +816,102 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               No thought records linked yet.
             </p>
           </section>
+          </ng-container>
+
+          <section
+            *ngIf="selectedType === 'important-day'"
+            class="embedded-workflow"
+            data-testid="embedded-important-day-form"
+          >
+            <div class="embedded-workflow-heading">
+              <mat-icon aria-hidden="true">event</mat-icon>
+              <div>
+                <h2>Important day details</h2>
+                <p>Create the calendar marker here.</p>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Label</mat-label>
+              <input matInput [(ngModel)]="importantDayLabel" name="importantDayLabel" maxlength="80" required />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Date</mat-label>
+              <input matInput [matDatepicker]="importantDayPicker" [(ngModel)]="entryDate" name="importantDayDate" />
+              <mat-datepicker-toggle matIconSuffix [for]="importantDayPicker"></mat-datepicker-toggle>
+              <mat-datepicker #importantDayPicker></mat-datepicker>
+            </mat-form-field>
+            <div class="embedded-workflow-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Recurrence</mat-label>
+                <mat-select [(ngModel)]="importantDayRecurrence" name="importantDayRecurrence">
+                  <mat-option value="yearly">Every year</mat-option>
+                  <mat-option value="once">Once</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Category</mat-label>
+                <mat-select [(ngModel)]="importantDayCategory" name="importantDayCategory">
+                  <mat-option value="birthday">Birthday</mat-option>
+                  <mat-option value="anniversary">Anniversary</mat-option>
+                  <mat-option value="milestone">Milestone</mat-option>
+                  <mat-option value="other">Other</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Icon</mat-label>
+                <mat-select [(ngModel)]="importantDayIcon" name="importantDayIcon">
+                  <mat-option *ngFor="let option of importantDayIconOptions" [value]="option.value">
+                    <mat-icon aria-hidden="true">{{ option.value }}</mat-icon>
+                    {{ option.label }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Colour</mat-label>
+                <mat-select [(ngModel)]="importantDayAccent" name="importantDayAccent">
+                  <mat-option *ngFor="let option of importantDayAccentOptions" [value]="option.value">
+                    {{ option.label }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+            </div>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Note</mat-label>
+              <textarea matInput [(ngModel)]="importantDayNote" name="importantDayNote" rows="4" maxlength="500"></textarea>
+            </mat-form-field>
+          </section>
+
+          <section
+            *ngIf="selectedType === 'thought-record'"
+            class="embedded-workflow"
+            data-testid="embedded-thought-record-form"
+          >
+            <div class="embedded-workflow-heading">
+              <mat-icon aria-hidden="true">psychology_alt</mat-icon>
+              <div>
+                <h2>Thought record</h2>
+                <p>Start with the situation and a more balanced view.</p>
+              </div>
+            </div>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Thought record date</mat-label>
+              <input matInput [matDatepicker]="thoughtRecordPicker" [(ngModel)]="entryDate" name="thoughtRecordDate" [max]="maxDate" />
+              <mat-datepicker-toggle matIconSuffix [for]="thoughtRecordPicker"></mat-datepicker-toggle>
+              <mat-datepicker #thoughtRecordPicker></mat-datepicker>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Title</mat-label>
+              <input matInput [(ngModel)]="thoughtRecordTitle" name="thoughtRecordTitle" maxlength="100" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Situation</mat-label>
+              <textarea matInput [(ngModel)]="thoughtRecordSituation" name="thoughtRecordSituation" rows="5" required></textarea>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Balanced thought</mat-label>
+              <textarea matInput [(ngModel)]="thoughtRecordBalancedThought" name="thoughtRecordBalancedThought" rows="5"></textarea>
+            </mat-form-field>
+          </section>
           </fieldset>
 
           <div class="save-progress" *ngIf="isSaving" aria-live="polite">
@@ -827,7 +936,18 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               Cancel
             </button>
 
-            <ng-container *ngIf="!leaveItToAI; else aiActions">
+            <ng-container *ngIf="!isDiaryWorkflow()">
+              <button
+                mat-raised-button
+                color="primary"
+                (click)="saveEmbeddedWorkflow()"
+                [disabled]="isSaving"
+              >
+                {{ getEmbeddedSaveLabel() }}
+              </button>
+            </ng-container>
+
+            <ng-container *ngIf="isDiaryWorkflow() && !leaveItToAI; else aiActions">
               <button
                 mat-raised-button
                 color="primary"
@@ -840,6 +960,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
 
             <ng-template #aiActions>
               <button
+                *ngIf="isDiaryWorkflow()"
                 mat-raised-button
                 color="primary"
                 (click)="saveAndAnalyse()"
@@ -880,6 +1001,48 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-md);
         background-color: var(--colour-surface-muted);
+      }
+
+      .embedded-workflow {
+        display: grid;
+        gap: var(--spacing-sm);
+        margin-top: var(--spacing-md);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
+      }
+
+      .embedded-workflow-heading {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+      }
+
+      .embedded-workflow-heading > mat-icon {
+        display: grid;
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: 0 0 2.5rem;
+        place-items: center;
+        border-radius: var(--radius-pill);
+        background: var(--colour-info-bg);
+        color: var(--colour-info-text);
+      }
+
+      .embedded-workflow-heading h2,
+      .embedded-workflow-heading p {
+        margin: 0;
+      }
+
+      .embedded-workflow-heading p {
+        color: var(--colour-text-secondary);
+      }
+
+      .embedded-workflow-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-sm);
       }
 
       .dream-fields h3 {
@@ -1313,6 +1476,10 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         .actions {
           flex-direction: column;
         }
+
+        .embedded-workflow-grid {
+          grid-template-columns: 1fr;
+        }
       }
     `,
   ],
@@ -1325,6 +1492,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   private entriesService = inject(EntriesService);
   private analysisService = inject(AnalysisService);
   private cbtService = inject(CbtService);
+  private importantDaysService = inject(ImportantDaysService);
   @ViewChild("pendingAttachmentInput")
   pendingAttachmentInput?: ElementRef<HTMLInputElement>;
 
@@ -1340,8 +1508,14 @@ export class CreateComponent implements OnInit, OnDestroy {
   places: string[] = [];
   leaveItToAI = false;
   allowAiAttachmentContext = false;
-  selectedType: "daily" | "dream" = "daily";
-  private previousSelectedType: "daily" | "dream" = "daily";
+  selectedType: "daily" | "dream" | "important-day" | "thought-record" =
+    "daily";
+  private previousSelectedType:
+    | "daily"
+    | "dream"
+    | "important-day"
+    | "thought-record" = "daily";
+  private allowNavigation = false;
   isSaving = false;
   errorMessage = "";
   maxDate = new Date();
@@ -1373,6 +1547,42 @@ export class CreateComponent implements OnInit, OnDestroy {
   dreamInsight = "";
   dreamAction = "";
   dreamOther = "";
+
+  importantDayLabel = "";
+  importantDayRecurrence: ImportantDayRecurrence = "yearly";
+  importantDayCategory: ImportantDayCategory = "other";
+  importantDayIcon: ImportantDayIcon = "event";
+  importantDayAccent: ImportantDayAccentColor = "blue";
+  importantDayNote = "";
+  thoughtRecordTitle = "";
+  thoughtRecordSituation = "";
+  thoughtRecordBalancedThought = "";
+
+  readonly importantDayIconOptions: Array<{
+    value: ImportantDayIcon;
+    label: string;
+  }> = [
+    { value: "event", label: "Calendar" },
+    { value: "cake", label: "Birthday" },
+    { value: "favorite", label: "Heart" },
+    { value: "celebration", label: "Celebration" },
+    { value: "star", label: "Star" },
+    { value: "flag", label: "Flag" },
+    { value: "sentiment_neutral", label: "Neutral" },
+    { value: "sentiment_dissatisfied", label: "Difficult" },
+    { value: "mood_bad", label: "Sad" },
+  ];
+  readonly importantDayAccentOptions: Array<{
+    value: ImportantDayAccentColor;
+    label: string;
+  }> = [
+    { value: "amber", label: "Amber" },
+    { value: "rose", label: "Rose" },
+    { value: "blue", label: "Blue" },
+    { value: "violet", label: "Violet" },
+    { value: "emerald", label: "Emerald" },
+    { value: "slate", label: "Slate" },
+  ];
 
   readonly separatorKeysCodes = [ENTER, COMMA] as const;
   private initialDate = this.describeEntryDate(this.entryDate);
@@ -1426,6 +1636,28 @@ export class CreateComponent implements OnInit, OnDestroy {
       this.aiStyleOptions.find((style) => style.value === this.selectedAIStyle)
         ?.label || "Friendly & Supportive"
     );
+  }
+
+  isDiaryWorkflow(): boolean {
+    return this.selectedType === "daily" || this.selectedType === "dream";
+  }
+
+  getWorkflowHeading(): string {
+    const prefix = this.isEditing ? "Edit" : "New";
+    const labels = {
+      daily: "Daily Entry",
+      dream: "Dream Entry",
+      "important-day": "Important Day Entry",
+      "thought-record": "Thought Record Entry",
+    } as const;
+    return `${prefix} ${labels[this.selectedType]}`;
+  }
+
+  getEmbeddedSaveLabel(): string {
+    if (this.isSaving) return "Saving…";
+    return this.selectedType === "important-day"
+      ? "Save Important Day"
+      : "Save Thought Record";
   }
 
   private normaliseAIStyleValue(value: string | null | undefined): string {
@@ -1514,9 +1746,14 @@ export class CreateComponent implements OnInit, OnDestroy {
 
       // Check for entry type parameter
       const typeParam = params.get("type");
-      if (typeParam === "dream" || typeParam === "daily") {
-      this.selectedType = typeParam;
-      this.previousSelectedType = typeParam;
+      if (
+        typeParam === "dream" ||
+        typeParam === "daily" ||
+        typeParam === "important-day" ||
+        typeParam === "thought-record"
+      ) {
+        this.selectedType = typeParam;
+        this.previousSelectedType = typeParam;
       }
 
     });
@@ -1620,6 +1857,75 @@ export class CreateComponent implements OnInit, OnDestroy {
 
   saveAndAnalyse(): void {
     this.persistEntry(true);
+  }
+
+  async saveEmbeddedWorkflow(): Promise<void> {
+    if (this.isSaving || this.isDiaryWorkflow()) return;
+    this.errorMessage = "";
+    const date = this.coerceEntryDate(this.entryDate);
+    if (!date) {
+      this.errorMessage = "Please select a valid date.";
+      return;
+    }
+
+    this.isSaving = true;
+    try {
+      if (this.selectedType === "important-day") {
+        if (!this.importantDayLabel.trim()) {
+          this.errorMessage = "Add a label for this important day.";
+          return;
+        }
+        await firstValueFrom(
+          this.importantDaysService.createImportantDay({
+            label: this.importantDayLabel.trim(),
+            starts_on: this.serialiseDateAsLocalIso(date),
+            original_year: date.getFullYear(),
+            category: this.importantDayCategory,
+            recurrence: this.importantDayRecurrence,
+            icon_name: this.importantDayIcon,
+            accent_color: this.importantDayAccent,
+            note: this.importantDayNote.trim(),
+          }),
+        );
+      } else {
+        if (this.isFutureDate(date)) {
+          this.errorMessage = "Thought records cannot be dated in the future.";
+          return;
+        }
+        if (!this.thoughtRecordSituation.trim()) {
+          this.errorMessage = "Add the situation for this thought record.";
+          return;
+        }
+        await firstValueFrom(
+          this.cbtService.createWorksheet({
+            title: this.thoughtRecordTitle.trim(),
+            record_date: this.serialiseDateAsLocalIso(date),
+            situation: this.thoughtRecordSituation.trim(),
+            balanced_thought: this.thoughtRecordBalancedThought.trim(),
+            current_step: this.thoughtRecordBalancedThought.trim() ? 6 : 1,
+          }),
+        );
+      }
+      this.allowNavigation = true;
+      void this.router.navigate(["/entries"], {
+        queryParams: this.getEmbeddedReturnQueryParams(date),
+      });
+    } catch (error: unknown) {
+      this.handleSaveError(error, "This item could not be saved. Try again.");
+    } finally {
+      this.isSaving = false;
+    }
+  }
+
+  private getEmbeddedReturnQueryParams(
+    date: Date,
+  ): Record<string, string | number> {
+    return {
+      ...this.backQueryParams,
+      display: this.route.snapshot.queryParamMap.get("display") || "calendar",
+      month: date.getMonth() + 1,
+      year: date.getFullYear(),
+    };
   }
 
   saveAndStartThoughtRecord(): void {
@@ -1958,24 +2264,21 @@ export class CreateComponent implements OnInit, OnDestroy {
       showAttachments?: boolean;
     },
   ): void {
+    const queryParams: Record<string, string | number> = {
+      ...this.backQueryParams,
+      entryType: this.selectedType,
+      ...(warnings?.analysisWarning
+        ? { analysisWarning: warnings.analysisWarning }
+        : {}),
+      ...(warnings?.attachmentWarning
+        ? { attachmentWarning: warnings.attachmentWarning }
+        : {}),
+      ...(warnings?.showAttachments ? { showAttachments: "1" } : {}),
+    };
+
     this.isSaving = false;
     this.thoughtRecordAfterSave = null;
     this.resetForm();
-
-    const queryParams =
-      warnings?.analysisWarning ||
-      warnings?.attachmentWarning ||
-      warnings?.showAttachments
-        ? {
-            ...(warnings.analysisWarning
-              ? { analysisWarning: warnings.analysisWarning }
-              : {}),
-            ...(warnings.attachmentWarning
-              ? { attachmentWarning: warnings.attachmentWarning }
-              : {}),
-            ...(warnings.showAttachments ? { showAttachments: "1" } : {}),
-          }
-        : undefined;
 
     this.router.navigate(["/entries", entryId], { queryParams });
   }
@@ -2316,13 +2619,18 @@ export class CreateComponent implements OnInit, OnDestroy {
     }
 
     if (this.isEditing && this.editingId !== null) {
+      const queryParams = {
+        ...this.backQueryParams,
+        entryType: this.selectedType,
+      };
       this.resetForm();
-      this.router.navigate(["/entries", this.editingId]);
+      this.router.navigate(["/entries", this.editingId], { queryParams });
       return;
     }
 
+    const queryParams = { ...this.backQueryParams };
     this.resetForm();
-    this.router.navigate(["/entries"]);
+    this.router.navigate(["/entries"], { queryParams });
   }
 
   addTag(event: MatChipInputEvent): void {
@@ -2369,18 +2677,21 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   async onTypeChange(event: MatButtonToggleChange): Promise<void> {
-    const nextType = event.value as "daily" | "dream";
+    const nextType = event.value as
+      | "daily"
+      | "dream"
+      | "important-day"
+      | "thought-record";
     const previousType = this.previousSelectedType;
 
     if (nextType === previousType) {
       return;
     }
 
-    if (this.hasTypeSpecificContent(previousType)) {
+    if (this.hasUnsavedChanges(previousType)) {
       const confirmed = await this.appDialog.confirm({
         title: "Switch entry type?",
-        message:
-          "Switching entry type will clear the current type-specific content.",
+        message: "Switching workflow will clear the current type-specific content.",
         confirmText: "Switch type",
         cancelText: "Keep current type",
         variant: "warning",
@@ -2394,8 +2705,12 @@ export class CreateComponent implements OnInit, OnDestroy {
 
     if (previousType === "daily") {
       this.content = "";
-    } else {
+    } else if (previousType === "dream") {
       this.resetDreamFields();
+    } else if (previousType === "important-day") {
+      this.resetImportantDayFields();
+    } else {
+      this.resetThoughtRecordFields();
     }
 
     this.previousSelectedType = nextType;
@@ -2413,7 +2728,23 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.dreamOther = "";
   }
 
+  private resetImportantDayFields(): void {
+    this.importantDayLabel = "";
+    this.importantDayRecurrence = "yearly";
+    this.importantDayCategory = "other";
+    this.importantDayIcon = "event";
+    this.importantDayAccent = "blue";
+    this.importantDayNote = "";
+  }
+
+  private resetThoughtRecordFields(): void {
+    this.thoughtRecordTitle = "";
+    this.thoughtRecordSituation = "";
+    this.thoughtRecordBalancedThought = "";
+  }
+
   canDeactivate(): boolean | Promise<boolean> {
+    if (this.allowNavigation) return true;
     return this.canLeaveCreateScreen();
   }
 
@@ -2580,7 +2911,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   private captureBackQueryParams(): void {
     const sourceParams = this.route.snapshot.queryParams;
 
-    ["type", "month", "year", "search"].forEach((key) => {
+    ["type", "show", "display", "month", "year", "search"].forEach((key) => {
       if (sourceParams[key] !== undefined && sourceParams[key] !== null) {
         this.backQueryParams[key] = sourceParams[key];
       }
@@ -2690,9 +3021,34 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.handleError(fallbackMessage);
   }
 
-  private hasUnsavedChanges(): boolean {
-      const hasBasicChanges = Boolean(
-        (this.entryTitle && this.entryTitle.trim()) ||
+  private hasUnsavedChanges(
+    type: "daily" | "dream" | "important-day" | "thought-record" =
+      this.selectedType,
+  ): boolean {
+    const dateChanged =
+      this.describeEntryDate(this.entryDate) !== this.initialDate;
+    if (type === "important-day") {
+      return Boolean(
+        this.importantDayLabel.trim() ||
+          this.importantDayNote.trim() ||
+          this.importantDayRecurrence !== "yearly" ||
+          this.importantDayCategory !== "other" ||
+          this.importantDayIcon !== "event" ||
+          this.importantDayAccent !== "blue" ||
+          dateChanged,
+      );
+    }
+    if (type === "thought-record") {
+      return Boolean(
+        this.thoughtRecordTitle.trim() ||
+          this.thoughtRecordSituation.trim() ||
+          this.thoughtRecordBalancedThought.trim() ||
+          dateChanged,
+      );
+    }
+
+    const hasBasicChanges = Boolean(
+      (this.entryTitle && this.entryTitle.trim()) ||
         (this.content && this.content.trim()) ||
         this.tags.length ||
         this.peopleNames.length ||
@@ -2703,12 +3059,12 @@ export class CreateComponent implements OnInit, OnDestroy {
         (this.leaveItToAI &&
           this.allowAiAttachmentContext !==
             this.getAttachmentContextDefaultValue()) ||
-        this.describeEntryDate(this.entryDate) !== this.initialDate ||
-        this.entryTime !== this.initialTime
+        dateChanged ||
+      this.entryTime !== this.initialTime,
     );
 
     const hasDreamChanges =
-      this.selectedType === "dream" &&
+      type === "dream" &&
       Boolean(
         this.dreamCast.trim() ||
         this.dreamLocation.trim() ||
@@ -2726,24 +3082,6 @@ export class CreateComponent implements OnInit, OnDestroy {
       hasDreamChanges ||
       this.pendingAttachments.length > 0 ||
       this.attachmentsMarkedForRemoval.length > 0
-    );
-  }
-
-  private hasTypeSpecificContent(type: "daily" | "dream"): boolean {
-    if (type === "daily") {
-      return Boolean(this.content.trim());
-    }
-
-    return Boolean(
-      this.dreamCast.trim() ||
-        this.dreamLocation.trim() ||
-        this.dreamPeriod.trim() ||
-        this.dreamEmotion.trim() ||
-        this.dreamPlot.trim() ||
-        this.dreamSymbolsAndImagery.trim() ||
-        this.dreamInsight.trim() ||
-        this.dreamAction.trim() ||
-        this.dreamOther.trim(),
     );
   }
 
@@ -2773,6 +3111,8 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.selectedMood = "";
     this.selectedAIStyle = "friendly";
     this.resetDreamFields();
+    this.resetImportantDayFields();
+    this.resetThoughtRecordFields();
   }
 
   hasAttachmentContextCandidates(): boolean {
@@ -2809,6 +3149,12 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   getSaveProgressTitle(): string {
+    if (this.selectedType === "important-day") {
+      return "Saving important day";
+    }
+    if (this.selectedType === "thought-record") {
+      return "Saving thought record";
+    }
     if (this.thoughtRecordAfterSave) {
       return "Saving entry and opening thought record";
     }
@@ -2816,6 +3162,9 @@ export class CreateComponent implements OnInit, OnDestroy {
   }
 
   getSaveProgressDescription(): string {
+    if (!this.isDiaryWorkflow()) {
+      return "This should only take a moment.";
+    }
     if (this.thoughtRecordAfterSave) {
       return "Your entry and attachments will be saved before the reflection opens.";
     }

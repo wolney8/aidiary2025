@@ -155,6 +155,8 @@ def _normalise_profile_update(field: str, value):
         return normalised
     if field == 'show_public_holidays':
         return 1 if bool(value) else 0
+    if field == 'show_on_this_day':
+        return 1 if bool(value) else 0
     if field == 'ai_tone':
         return _normalise_choice(value, allowed=ALLOWED_AI_TONES, field_label='AI tone')
     if field == 'ai_verbosity':
@@ -222,7 +224,8 @@ def _select_profile(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row | Non
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
                display_name, pronouns, gender, custom_guidance, timezone,
-               holiday_country_code, show_public_holidays, ai_tone, ai_verbosity,
+               holiday_country_code, show_public_holidays, show_on_this_day,
+               ai_tone, ai_verbosity,
                ai_focus, ai_model, allow_ai_history, allow_ai_attachment_context,
                profile_picture_storage_key
         FROM users WHERE id = ?
@@ -259,7 +262,7 @@ def update_profile():
         'dailydiary_api_key', 'dreamdiary_api_key',
         'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname',
         'display_name', 'pronouns', 'gender', 'custom_guidance',
-        'timezone', 'holiday_country_code', 'show_public_holidays',
+        'timezone', 'holiday_country_code', 'show_public_holidays', 'show_on_this_day',
         'ai_tone', 'ai_verbosity',
         'ai_focus', 'ai_model', 'allow_ai_history', 'allow_ai_attachment_context'
     ]

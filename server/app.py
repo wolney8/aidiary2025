@@ -11,6 +11,7 @@ from services.runtime_migrations import (
     ensure_chat_messages_table,
     ensure_entry_ai_metadata_table,
     ensure_entry_assets_table,
+    ensure_entry_resurfacing_preferences_table,
     ensure_entry_mood_style_columns,
     ensure_export_history_table,
     ensure_import_sessions_table,
@@ -142,6 +143,11 @@ def create_app():
         app.logger.warning('Runtime public holiday cache migration skipped due to error: %s', migration_exc)
 
     try:
+        ensure_entry_resurfacing_preferences_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime entry resurfacing migration skipped due to error: %s', migration_exc)
+
+    try:
         ensure_chat_messages_table(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime chat messages migration skipped due to error: %s', migration_exc)
@@ -204,6 +210,7 @@ def create_app():
     from routes.import_routes import import_bp, recover_import_jobs
     from routes.important_days import important_days_bp
     from routes.public_holidays import public_holidays_bp
+    from routes.on_this_day import on_this_day_bp
     from routes.chat import chat_bp
     from routes.cbt import cbt_bp
     
@@ -214,6 +221,7 @@ def create_app():
     app.register_blueprint(import_bp, url_prefix='/api')
     app.register_blueprint(important_days_bp, url_prefix='/api')
     app.register_blueprint(public_holidays_bp, url_prefix='/api')
+    app.register_blueprint(on_this_day_bp, url_prefix='/api')
     app.register_blueprint(chat_bp, url_prefix='/api')
     app.register_blueprint(cbt_bp, url_prefix='/api')
 

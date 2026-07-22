@@ -7,6 +7,7 @@ import { AppDialogService } from "../../core/services/app-dialog.service";
 import { AuthService } from "../../core/services/auth.service";
 import { CbtService } from "../../core/services/cbt.service";
 import { EntriesService } from "../../core/services/entries.service";
+import { ImportantDaysService } from "../../core/services/important-days.service";
 import { CreateComponent } from "./create.component";
 
 describe("CreateComponent thought record linking", () => {
@@ -34,6 +35,12 @@ describe("CreateComponent thought record linking", () => {
         { provide: Router, useValue: router },
         { provide: EntriesService, useValue: entriesService },
         { provide: CbtService, useValue: cbtService },
+        {
+          provide: ImportantDaysService,
+          useValue: jasmine.createSpyObj("ImportantDaysService", [
+            "createImportantDay",
+          ]),
+        },
         { provide: AnalysisService, useValue: {} },
         {
           provide: AuthService,

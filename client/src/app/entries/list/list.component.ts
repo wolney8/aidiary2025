@@ -14,12 +14,13 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatTooltipModule } from "@angular/material/tooltip";
-import { ViewToggleComponent } from "../../shared/components/view-toggle/view-toggle.component";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
 import { CbtService } from "../../core/services/cbt.service";
 import { ImportantDaysService } from "../../core/services/important-days.service";
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
+import { OnThisDayService } from "../../core/services/on-this-day.service";
+import { AppDialogService } from "../../core/services/app-dialog.service";
 import {
   SearchFilters,
   SearchService,
@@ -28,6 +29,10 @@ import { DailyEntry, DreamEntry } from "../../core/models/entry.model";
 import { ImportantDay } from "../../core/models/important-day.model";
 import { PublicHoliday } from "../../core/models/public-holiday.model";
 import { CbtWorksheet } from "../../core/models/cbt.model";
+import {
+  OnThisDayEntry,
+  OnThisDayFeed,
+} from "../../core/models/on-this-day.model";
 
 type TimelineMonth = {
   label: string;
@@ -40,9 +45,32 @@ type TimelineMonth = {
 };
 
 type EntryItem = (DailyEntry | DreamEntry) & { type: "daily" | "dream" };
+type ThoughtRecordItem = CbtWorksheet & { type: "thought_record" };
+type CardItem = EntryItem | ThoughtRecordItem;
+type ContentFilter =
+  | "daily"
+  | "dreams"
+  | "thought-records"
+  | "important-days"
+  | "on-this-day";
 
 type CalendarStatus = "none" | "daily" | "dream" | "complete";
 type CalendarPreviewType = "daily" | "dream";
+type CalendarDayMetricType =
+  | "daily"
+  | "dream"
+  | "thought_record"
+  | "occasion"
+  | "on_this_day";
+
+type CalendarDayMetric = {
+  type: CalendarDayMetricType;
+  icon: string;
+  count: number;
+  label: string;
+  cssClass: string;
+  testId?: string;
+};
 
 type CalendarDay = {
   date: Date;
@@ -72,6 +100,8 @@ type CalendarPreviewState = {
 
 type ImportantDayPreviewState = {
   dayKey: string;
+  scope: "day" | "month";
+  heading: string;
   phase: "open" | "closing";
   direction: "left-to-right" | "right-to-left";
   importantDays: ImportantDay[];
@@ -83,6 +113,7 @@ type ImportantDayPreviewState = {
 
 type CbtPreviewState = {
   dayKey: string;
+  heading: string;
   phase: "open" | "closing";
   direction: "left-to-right" | "right-to-left";
   records: CbtWorksheet[];
@@ -115,6 +146,18 @@ type OccasionPreviewState = {
   placement: "above" | "below";
 };
 
+type OnThisDayPreviewState = {
+  scope: "day" | "month";
+  heading: string;
+  phase: "open" | "closing";
+  direction: "left-to-right" | "right-to-left";
+  entries: OnThisDayEntry[];
+  dateLabel: string;
+  top: number;
+  left: number;
+  placement: "above" | "below";
+};
+
 @Component({
   selector: "app-list",
   standalone: true,
@@ -127,7 +170,6 @@ type OccasionPreviewState = {
     MatPaginatorModule,
     MatChipsModule,
     MatTooltipModule,
-    ViewToggleComponent,
     SearchResultsComponent,
   ],
   styleUrl: "./list.component.css",
@@ -150,34 +192,70 @@ type OccasionPreviewState = {
         <ng-container *ngIf="!searchState.active">
           <div class="list-header">
             <div class="list-controls">
-              <app-view-toggle
-                [value]="currentView"
-                [emphasiseActiveFilter]="hasFocusedTypeFilter()"
-                (viewChange)="onViewChange($event)"
-              ></app-view-toggle>
               <div
                 class="display-mode-toggle"
+                [class.calendar-active]="displayMode === 'calendar'"
                 role="group"
                 aria-label="Entries display mode"
+                data-testid="entries-display-mode-toggle"
               >
                 <button
-                  mat-stroked-button
                   type="button"
                   [class.active]="displayMode === 'cards'"
                   [attr.aria-pressed]="displayMode === 'cards'"
                   (click)="setDisplayMode('cards')"
+                  data-testid="entries-display-cards"
                 >
                   Cards
                 </button>
                 <button
-                  mat-stroked-button
                   type="button"
                   [class.active]="displayMode === 'calendar'"
                   [attr.aria-pressed]="displayMode === 'calendar'"
                   (click)="setDisplayMode('calendar')"
+                  data-testid="entries-display-calendar"
                 >
                   Calendar
                 </button>
+              </div>
+              <div class="content-filter-row">
+                <mat-chip-listbox
+                  class="content-filter-chips"
+                  multiple
+                  aria-label="Filter visible diary content"
+                  data-testid="entries-content-filters"
+                >
+                  <ng-container *ngFor="let option of contentFilterOptions">
+                    <mat-chip-option
+                      *ngIf="!isContentFilterDisabled(option.value)"
+                      [selected]="isContentFilterActive(option.value)"
+                      [class.is-active]="isContentFilterActive(option.value)"
+                      (selectionChange)="$event.isUserInput && setContentFilter(option.value, $event.selected)"
+                      [attr.data-testid]="'entries-filter-' + option.value"
+                    >
+                      <mat-icon aria-hidden="true">{{ option.icon }}</mat-icon>
+                      {{ option.label }}
+                    </mat-chip-option>
+                  </ng-container>
+                </mat-chip-listbox>
+                <span
+                  *ngIf="isContentFilterDisabled('on-this-day')"
+                  class="disabled-filter-tooltip"
+                  role="group"
+                  tabindex="0"
+                  aria-label="On this day unavailable. Enable it in Customisation."
+                  matTooltip="Enable On this day in Customisation."
+                >
+                  <button
+                    type="button"
+                    class="content-filter-disabled"
+                    data-testid="entries-filter-on-this-day"
+                    disabled
+                  >
+                    <mat-icon aria-hidden="true">history</mat-icon>
+                    On this day
+                  </button>
+                </span>
               </div>
             </div>
             <button
@@ -254,6 +332,185 @@ type OccasionPreviewState = {
             </button>
           </div>
 
+          <div
+            class="monthly-context-shelves"
+            *ngIf="getCurrentMonthImportantDays().length > 0 || getCurrentMonthOnThisDayEntries().length > 0"
+            data-testid="entries-monthly-context-shelves"
+          >
+            <button
+              *ngIf="getCurrentMonthImportantDays().length > 0"
+              type="button"
+              class="on-this-day-summary calendar-important-days-summary-trigger"
+              data-testid="calendar-important-days-summary-trigger"
+              [attr.aria-expanded]="importantDayPreview?.scope === 'month' && importantDayPreview?.phase === 'open'"
+              [attr.aria-controls]="displayMode === 'cards' ? 'cards-important-day-preview' : 'important-day-preview'"
+              (click)="toggleMonthlyImportantDaysPreview($event)"
+            >
+              <span class="on-this-day-summary-icon important-days" aria-hidden="true">
+                <mat-icon>event</mat-icon>
+              </span>
+              <span class="on-this-day-summary-copy">
+                <strong>Important days this month</strong>
+                <small>{{ getCurrentMonthImportantDaysSummaryLabel() }}</small>
+              </span>
+              <mat-icon aria-hidden="true">chevron_right</mat-icon>
+            </button>
+            <button
+              *ngIf="getCurrentMonthOnThisDayEntries().length > 0"
+              type="button"
+              class="on-this-day-summary calendar-on-this-day-summary-trigger"
+              data-testid="calendar-on-this-day-month-summary-trigger"
+              [attr.aria-expanded]="onThisDayPreview?.scope === 'month' && onThisDayPreview?.phase === 'open'"
+              [attr.aria-controls]="displayMode === 'cards' ? 'cards-on-this-day-preview' : 'on-this-day-preview'"
+              (click)="toggleMonthlyOnThisDayPreview($event)"
+            >
+              <span class="on-this-day-summary-icon on-this-day" aria-hidden="true">
+                <mat-icon>history</mat-icon>
+              </span>
+              <span class="on-this-day-summary-copy">
+                <strong>On this day this month</strong>
+                <small>{{ getCurrentMonthOnThisDaySummaryLabel() }}</small>
+              </span>
+              <mat-icon aria-hidden="true">chevron_right</mat-icon>
+            </button>
+          </div>
+
+          <ng-container *ngIf="displayMode === 'cards'">
+            <section
+              id="cards-on-this-day-preview"
+              class="calendar-preview-deck on-this-day-preview-deck"
+              *ngIf="onThisDayPreview"
+              [class.preview-left-to-right]="onThisDayPreview.direction === 'left-to-right'"
+              [class.preview-right-to-left]="onThisDayPreview.direction === 'right-to-left'"
+              [class.preview-below]="onThisDayPreview.placement === 'below'"
+              [class.preview-above]="onThisDayPreview.placement === 'above'"
+              [class.closing]="onThisDayPreview.phase === 'closing'"
+              [style.top.px]="onThisDayPreview.top"
+              [style.left.px]="onThisDayPreview.left"
+              (click)="$event.stopPropagation()"
+              aria-label="On this day preview deck"
+              data-testid="cards-on-this-day-preview"
+            >
+              <header class="calendar-preview-header">
+                <div>
+                  <strong>{{ onThisDayPreview.heading }}</strong>
+                  <span>{{ onThisDayPreview.dateLabel }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="calendar-preview-close"
+                  aria-label="Close On this day preview"
+                  (click)="closeOnThisDayPreview($event)"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+              </header>
+              <div class="calendar-preview-cards">
+                <article
+                  class="calendar-preview-card on-this-day-preview-card"
+                  *ngFor="let entry of onThisDayPreview.entries; let previewIndex = index"
+                  [style.--preview-index]="previewIndex"
+                  [class.has-preview-image]="entry.image_url"
+                >
+                  <div
+                    class="calendar-preview-card-image"
+                    *ngIf="entry.image_url"
+                    [style.background-image]="getOnThisDayImageStyle(entry)"
+                    aria-hidden="true"
+                  ></div>
+                  <button
+                    type="button"
+                    class="on-this-day-card-open"
+                    (click)="openOnThisDayEntry(entry, $event)"
+                    [attr.aria-label]="'View ' + entry.title"
+                  >
+                    <div class="calendar-preview-card-title">
+                      <mat-icon aria-hidden="true">{{ getOnThisDayIcon(entry) }}</mat-icon>
+                      <div>
+                        <span>{{ entry.title }}</span>
+                        <small>{{ getOnThisDayEntryDateLabel(entry) }}</small>
+                      </div>
+                    </div>
+                    <div class="calendar-preview-card-copy">
+                      <div class="calendar-preview-copy-block">
+                        <span class="calendar-preview-copy-label">Memory</span>
+                        <p>{{ entry.preview || 'No preview available.' }}</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    class="on-this-day-hide"
+                    (click)="hideOnThisDayEntry(entry, $event)"
+                    [attr.aria-label]="'Hide ' + entry.title + ' from On this day'"
+                    matTooltip="Hide this memory"
+                  >
+                    <mat-icon>visibility_off</mat-icon>
+                  </button>
+                </article>
+              </div>
+            </section>
+
+            <section
+              id="cards-important-day-preview"
+              class="calendar-preview-deck important-day-preview-deck"
+              *ngIf="importantDayPreview"
+              [class.monthly-important-day-preview]="importantDayPreview.scope === 'month'"
+              [class.monthly-preview-single]="importantDayPreview.importantDays.length === 1"
+              [class.monthly-preview-double]="importantDayPreview.importantDays.length === 2"
+              [class.preview-left-to-right]="getImportantDayPreviewDirection() === 'left-to-right'"
+              [class.preview-right-to-left]="getImportantDayPreviewDirection() === 'right-to-left'"
+              [class.preview-below]="importantDayPreview.placement === 'below'"
+              [class.preview-above]="importantDayPreview.placement === 'above'"
+              [class.closing]="importantDayPreview.phase === 'closing'"
+              [style.top.px]="importantDayPreview.top"
+              [style.left.px]="importantDayPreview.left"
+              (click)="$event.stopPropagation()"
+              aria-label="Important day preview deck"
+              data-testid="cards-important-day-preview"
+            >
+              <header class="calendar-preview-header">
+                <div>
+                  <strong>{{ importantDayPreview.heading }}</strong>
+                  <span>{{ importantDayPreview.dateLabel }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="calendar-preview-close"
+                  aria-label="Close important day preview"
+                  (click)="closeImportantDayPreview($event)"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+              </header>
+              <div class="calendar-important-day-preview-cards">
+                <article
+                  class="calendar-important-day-card"
+                  *ngFor="let importantDay of importantDayPreview.importantDays"
+                  [ngClass]="'accent-' + importantDay.accent_color"
+                >
+                  <div class="calendar-important-day-card-icon" aria-hidden="true">
+                    <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
+                  </div>
+                  <div class="calendar-important-day-card-copy">
+                    <div class="calendar-important-day-card-heading">
+                      <strong>{{ importantDay.label }}</strong>
+                      <span>{{ formatImportantDaySummaryLabel(importantDay) }}</span>
+                    </div>
+                    <p class="calendar-important-day-card-note" *ngIf="importantDay.note">
+                      {{ importantDay.note }}
+                    </p>
+                    <div class="calendar-important-day-card-meta">
+                      <span>{{ getImportantDayRecurrenceLabel(importantDay) }}</span>
+                      <span>{{ getImportantDayElapsedLabel(importantDay) }}</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </ng-container>
+
           <div class="selected-day-banner" *ngIf="selectedDay && displayMode === 'cards'">
             <div>
               <strong>{{ getSelectedDayLabel() }}</strong>
@@ -297,33 +554,6 @@ type OccasionPreviewState = {
             </button>
           </div>
 
-          <div
-            class="filter-status-banner"
-            *ngIf="hasFocusedTypeFilter()"
-            [class.filter-status-daily]="currentView === 'daily'"
-            [class.filter-status-dreams]="currentView === 'dreams'"
-            role="status"
-            aria-live="polite"
-          >
-            <div class="filter-status-copy">
-              <mat-icon>{{
-                currentView === "daily" ? "book" : "nights_stay"
-              }}</mat-icon>
-              <div>
-                <strong>{{ getFocusedFilterHeading() }}</strong>
-                <span>{{ getFocusedFilterDescription() }}</span>
-              </div>
-            </div>
-            <button
-              mat-stroked-button
-              type="button"
-              class="filter-status-clear"
-              (click)="onViewChange('all')"
-            >
-              Show all entries
-            </button>
-          </div>
-
           <ng-container *ngIf="displayMode === 'cards'; else calendarMode">
             <!-- Top Pagination -->
             <div class="pagination-container">
@@ -344,11 +574,8 @@ type OccasionPreviewState = {
               <mat-card class="no-entries-card">
                 <mat-card-content>
                   <mat-icon class="no-entries-icon">calendar_today</mat-icon>
-                  <h3>No entries found</h3>
-                  <p>
-                    No entries for this time period. Start documenting your
-                    journey!
-                  </p>
+                  <h3>{{ getEmptyStateHeading() }}</h3>
+                  <p>{{ getEmptyStateMessage() }}</p>
                   <button
                     mat-raised-button
                     color="primary"
@@ -381,7 +608,7 @@ type OccasionPreviewState = {
               >
                 <mat-card-header>
                   <mat-icon mat-card-avatar>
-                    {{ entry.type === "dream" ? "nights_stay" : "book" }}
+                    {{ getCardItemIcon(entry) }}
                   </mat-icon>
                   <mat-card-title>{{
                     getEntryTitle(entry)
@@ -412,8 +639,11 @@ type OccasionPreviewState = {
                     </div>
                   </div>
                   <ng-template #entryCardPlaceholder>
-                    <div class="entry-image-placeholder">
-                      <mat-icon>pie_chart</mat-icon>
+                    <div
+                      class="entry-image-placeholder"
+                      [class.thought-record-placeholder]="entry.type === 'thought_record'"
+                    >
+                      <mat-icon>{{ entry.type === "thought_record" ? "psychology_alt" : "pie_chart" }}</mat-icon>
                     </div>
                   </ng-template>
                   <div class="entry-card-copy">
@@ -444,7 +674,7 @@ type OccasionPreviewState = {
                     color="primary"
                     (click)="openEntryDetail(entry, $event)"
                   >
-                    VIEW ENTRY
+                    {{ entry.type === "thought_record" ? "REVIEW RECORD" : "VIEW ENTRY" }}
                   </button>
                 </mat-card-actions>
               </mat-card>
@@ -476,81 +706,24 @@ type OccasionPreviewState = {
                   </p>
                   <div
                     class="calendar-important-days-summary"
-                    *ngIf="getCurrentMonthImportantDays().length > 0"
+                    *ngIf="getCurrentMonthThoughtRecords().length > 0"
                   >
-                    <div class="calendar-important-days-summary-header">
-                      <span class="calendar-important-days-summary-label">
-                        Important days this month
-                      </span>
-                      <button
-                        mat-stroked-button
-                        type="button"
-                        class="calendar-important-days-toggle"
-                        (click)="toggleImportantDaysVisibility()"
-                      >
-                        {{ showImportantDays ? "Hide" : "Show" }}
-                      </button>
-                    </div>
-                    <div
-                      class="calendar-important-days-summary-list"
-                      *ngIf="!showImportantDays"
-                    >
-                      <span
-                        class="calendar-important-days-summary-chip"
-                        *ngFor="let importantDay of getCollapsedCurrentMonthImportantDays()"
-                        [ngClass]="'accent-' + importantDay.accent_color"
-                      >
-                        <mat-icon aria-hidden="true">{{
-                          getImportantDayIcon(importantDay)
-                        }}</mat-icon>
-                        {{ formatImportantDaySummaryLabel(importantDay) }}
-                      </span>
-                      <span
-                        class="calendar-important-days-summary-ellipsis"
-                        *ngIf="hasCollapsedImportantDayOverflow()"
-                        aria-hidden="true"
-                      >
-                        ...
-                      </span>
-                    </div>
-                  </div>
-                  <div
-                    class="calendar-important-day-cards"
-                    *ngIf="showImportantDays && getCurrentMonthImportantDays().length > 0"
-                  >
-                    <article
-                      class="calendar-important-day-card"
-                      *ngFor="let importantDay of getExpandedCurrentMonthImportantDays()"
-                      [ngClass]="'accent-' + importantDay.accent_color"
-                    >
-                      <div class="calendar-important-day-card-icon" aria-hidden="true">
-                        <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
-                      </div>
-                      <div class="calendar-important-day-card-copy">
-                        <div class="calendar-important-day-card-heading">
-                          <strong>{{ importantDay.label }}</strong>
-                          <span>{{ formatImportantDaySummaryLabel(importantDay) }}</span>
-                        </div>
-                        <p class="calendar-important-day-card-note" *ngIf="importantDay.note">
-                          {{ importantDay.note }}
-                        </p>
-                        <div class="calendar-important-day-card-meta">
-                          <span>{{ getImportantDayRecurrenceLabel(importantDay) }}</span>
-                          <span>{{ getImportantDayElapsedLabel(importantDay) }}</span>
-                          <span>
-                            {{ getImportantDayMatchingEntryCountLabel(importantDay) }}
-                          </span>
-                        </div>
-                      </div>
-                    </article>
                     <button
-                      mat-stroked-button
                       type="button"
-                      class="calendar-important-days-more"
-                      *ngIf="getCurrentMonthImportantDays().length > 2"
-                      (click)="toggleImportantDaysExpanded()"
+                      class="on-this-day-summary calendar-thought-records-summary-trigger"
+                      data-testid="calendar-thought-records-summary-trigger"
+                      [attr.aria-expanded]="cbtPreview?.dayKey === getCurrentMonthThoughtRecordsKey() && cbtPreview?.phase === 'open'"
+                      aria-controls="thought-record-preview"
+                      (click)="toggleMonthlyCbtPreview($event)"
                     >
-                      {{ showAllImportantDays ? "Show fewer" : "+" + (getCurrentMonthImportantDays().length - 2) + " more" }}
+                      <span class="on-this-day-summary-icon thought-records" aria-hidden="true">
+                        <mat-icon>psychology_alt</mat-icon>
+                      </span>
+                      <span class="on-this-day-summary-copy">
+                        <strong>Thought records this month</strong>
+                        <small>{{ getCurrentMonthThoughtRecordsSummaryLabel() }}</small>
+                      </span>
+                      <mat-icon aria-hidden="true">chevron_right</mat-icon>
                     </button>
                   </div>
                 </div>
@@ -559,165 +732,242 @@ type OccasionPreviewState = {
                     <span class="legend-swatch none"></span>
                     No entries
                   </span>
-                  <span class="legend-item">
+                  <span class="legend-item" *ngIf="isContentFilterActive('daily')">
                     <span class="legend-swatch daily"></span>
                     Daily only
                   </span>
-                  <span class="legend-item">
+                  <span
+                    class="legend-item"
+                    *ngIf="isContentFilterActive('dreams')"
+                  >
                     <span class="legend-swatch dream"></span>
                     Dream only
                   </span>
-                  <span class="legend-item">
+                  <span
+                    class="legend-item"
+                    *ngIf="isContentFilterActive('daily') && isContentFilterActive('dreams')"
+                  >
                     <span class="legend-swatch complete"></span>
                     Daily and dream
                   </span>
-                  <span class="legend-item" *ngIf="currentView === 'all'">
+                  <span
+                    class="legend-item"
+                    *ngIf="isContentFilterActive('thought-records')"
+                  >
                     <mat-icon class="legend-thought-record-icon" aria-hidden="true">
                       psychology_alt
                     </mat-icon>
                     Thought record
                   </span>
+                  <span class="legend-item" *ngIf="shouldShowOnThisDay()">
+                    <mat-icon class="legend-on-this-day-icon" aria-hidden="true">
+                      history
+                    </mat-icon>
+                    On this day
+                  </span>
                 </div>
               </div>
 
-              <div class="calendar-weekdays" aria-hidden="true">
-                <span *ngFor="let weekday of weekdays">{{ weekday }}</span>
-              </div>
+              <div
+                class="calendar-board"
+                tabindex="0"
+                aria-label="Calendar grid. Scroll horizontally on smaller screens."
+              >
+                <div class="calendar-weekdays" aria-hidden="true">
+                  <span *ngFor="let weekday of weekdays">{{ weekday }}</span>
+                </div>
 
-              <div class="calendar-grid">
-                <div
-                  class="calendar-day"
-                  *ngFor="let day of calendarDays"
-                  [class.outside-month]="!day.isCurrentMonth"
-                  [class.unavailable]="day.isFuture"
-                  [class.today]="day.isToday"
-                  [class.has-entries]="day.status !== 'none'"
-                  [class.status-daily]="day.status === 'daily'"
-                  [class.status-dream]="day.status === 'dream'"
-                  [class.status-complete]="day.status === 'complete'"
-                  (click)="onCalendarDaySelect(day, $event)"
-                >
-                  <button
-                    *ngIf="day.isCurrentMonth && !day.isFuture; else unavailableDayNumber"
-                    type="button"
-                    class="calendar-day-action"
-                    [attr.aria-label]="getCalendarDayLabel(day)"
-                    (click)="$event.stopPropagation(); onCalendarDaySelect(day, $event)"
-                  >
-                    {{ day.dayNumber }}
-                  </button>
-                  <ng-template #unavailableDayNumber>
-                    <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
-                  </ng-template>
-                  <button
-                    #occasionBadge
-                    type="button"
-                    class="calendar-important-day-badge"
-                    [class.holiday-leading]="isHolidayLeadingOccasion(day)"
-                    *ngIf="day.importantDays.length > 0"
-                    [attr.aria-label]="getImportantDayAriaLabel(day)"
-                    [class.is-expandable]="day.importantDays.length > 1"
-                    [matTooltip]="getOccasionTooltip(day)"
-                    [matTooltipShowDelay]="500"
-                    (click)="toggleImportantDayPreview(day, $event)"
-                  >
-                    <mat-icon aria-hidden="true">{{
-                      getImportantDayIcon(day.importantDays[0])
-                    }}</mat-icon>
-                    <span class="calendar-important-day-badge-stack">
-                      <span
-                        class="calendar-important-day-badge-chip"
-                        *ngFor="let importantDay of getVisibleDayImportantDays(day)"
-                        [ngClass]="'accent-' + importantDay.accent_color"
-                      >
-                        {{ getCompactImportantDayBadgeText(importantDay) }}
-                      </span>
-                      <span
-                        class="calendar-important-day-badge-chip calendar-important-day-badge-overflow"
-                        *ngIf="day.importantDays.length > 2"
-                      >
-                        +{{ day.importantDays.length - 2 }}
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    #occasionBadge
-                    type="button"
-                    class="calendar-important-day-badge holiday-leading"
-                    *ngIf="day.importantDays.length === 0 && day.publicHolidays.length > 0"
-                    [attr.aria-label]="getOccasionAriaLabel(day)"
-                    [class.is-expandable]="getDayOccasionCount(day) > 1"
-                    [matTooltip]="getOccasionTooltip(day)"
-                    [matTooltipShowDelay]="500"
-                    (mousedown)="$event.stopPropagation()"
-                    (click)="toggleOccasionPreview(day, occasionBadge, $event)"
-                    (keydown.enter)="onOccasionBadgeKeydown($event, day, occasionBadge)"
-                    (keydown.space)="onOccasionBadgeKeydown($event, day, occasionBadge)"
-                  >
-                    <mat-icon aria-hidden="true">{{
-                      getPublicHolidayIcon(day.publicHolidays[0])
-                    }}</mat-icon>
-                    <span class="calendar-important-day-badge-stack">
-                      <span
-                        class="calendar-important-day-badge-chip holiday-chip"
-                        *ngFor="let holiday of day.publicHolidays.slice(0, 2)"
-                      >
-                        {{ truncatePublicHolidayLabel(holiday) }}
-                      </span>
-                      <span
-                        class="calendar-important-day-badge-chip calendar-important-day-badge-overflow"
-                        *ngIf="day.publicHolidays.length > 2"
-                      >
-                        +{{ day.publicHolidays.length - 2 }}
-                      </span>
-                    </span>
-                  </button>
+                <div class="calendar-grid">
                   <div
-                    class="calendar-day-icons"
-                    *ngIf="day.entries.length > 0 || day.thoughtRecords.length > 0; else emptyDayAction"
+                    class="calendar-day"
+                    *ngFor="let day of calendarDays"
+                    [class.outside-month]="!day.isCurrentMonth"
+                    [class.unavailable]="day.isFuture"
+                    [class.today]="day.isToday"
+                    [class.has-entries]="day.status !== 'none'"
+                    [class.status-daily]="day.status === 'daily'"
+                    [class.status-dream]="day.status === 'dream'"
+                    [class.status-complete]="day.status === 'complete'"
                   >
-                    <button
-                      type="button"
-                      class="calendar-entry-icon daily"
-                      *ngIf="getEntryCountByType(day, 'daily') > 0"
-                      [class.preview-active]="isCalendarPreviewActive(day, 'daily')"
-                      [attr.aria-label]="'Preview daily entries for ' + getCalendarDayDateLabel(day)"
-                      (click)="toggleCalendarPreview(day, 'daily', $event)"
+                    <div
+                      class="calendar-day-inner"
+                      [class.is-flipped]="isCalendarDayFlipped(day)"
                     >
-                      <mat-icon>book</mat-icon>
-                      <span class="calendar-entry-count">{{ getEntryCountByType(day, 'daily') }}</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="calendar-entry-icon dream"
-                      *ngIf="getEntryCountByType(day, 'dream') > 0"
-                      [class.preview-active]="isCalendarPreviewActive(day, 'dream')"
-                      [attr.aria-label]="'Preview dream entries for ' + getCalendarDayDateLabel(day)"
-                      (click)="toggleCalendarPreview(day, 'dream', $event)"
-                    >
-                      <mat-icon>nights_stay</mat-icon>
-                      <span class="calendar-entry-count">{{ getEntryCountByType(day, 'dream') }}</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="calendar-entry-icon thought-record"
-                      *ngIf="day.thoughtRecords.length > 0"
-                      [class.preview-active]="isCbtPreviewActive(day)"
-                      [attr.aria-label]="'Preview ' + day.thoughtRecords.length + ' thought record' + (day.thoughtRecords.length === 1 ? '' : 's') + ' for ' + getCalendarDayDateLabel(day)"
-                      (click)="toggleCbtPreview(day, $event)"
-                      data-testid="calendar-thought-record-marker"
-                    >
-                      <mat-icon>psychology_alt</mat-icon>
-                      <span class="calendar-entry-count">{{ day.thoughtRecords.length }}</span>
-                    </button>
+                      <section
+                        class="calendar-day-face calendar-day-front"
+                        [attr.aria-hidden]="isCalendarDayFlipped(day)"
+                        [attr.inert]="isCalendarDayFlipped(day) ? '' : null"
+                      >
+                        <button
+                          *ngIf="day.isCurrentMonth && !day.isFuture; else unavailableDayNumber"
+                          type="button"
+                          class="calendar-day-action"
+                          [attr.aria-label]="getCalendarDayLabel(day)"
+                          (click)="$event.stopPropagation(); onCalendarDaySelect(day, $event)"
+                        >
+                          {{ day.dayNumber }}
+                        </button>
+                        <ng-template #unavailableDayNumber>
+                          <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
+                        </ng-template>
+                        <button
+                          *ngIf="hasCalendarDayBack(day)"
+                          type="button"
+                          class="calendar-day-flip"
+                          [attr.aria-label]="'Show more items for ' + getCalendarDayDateLabel(day)"
+                          matTooltip="Show more"
+                          (click)="toggleCalendarDayFace(day, $event)"
+                        >
+                          <mat-icon>touch_app</mat-icon>
+                        </button>
+                        <div class="calendar-day-icons">
+                          <button
+                            *ngIf="day.isCurrentMonth && !day.isFuture"
+                            type="button"
+                            class="calendar-entry-icon calendar-add-entry"
+                            [attr.aria-label]="'Add an item for ' + getCalendarDayDateLabel(day)"
+                            matTooltip="Add entry"
+                            data-testid="calendar-add-entry"
+                            (click)="addEntryForCalendarDay(day, $event)"
+                          >
+                            <mat-icon>add</mat-icon>
+                          </button>
+                          <button
+                            *ngFor="let metric of getPrimaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
+                            type="button"
+                            class="calendar-entry-icon"
+                            [ngClass]="metric.cssClass"
+                            [class.preview-active]="isCalendarDayMetricActive(day, metric.type)"
+                            [attr.aria-label]="metric.label"
+                            [attr.data-testid]="metric.testId || null"
+                            [matTooltip]="metric.label"
+                            (click)="activateCalendarDayMetric(day, metric.type, $event)"
+                          >
+                            <mat-icon>{{ metric.icon }}</mat-icon>
+                            <span class="calendar-entry-count">{{ metric.count }}</span>
+                          </button>
+                        </div>
+                      </section>
+
+                      <section
+                        class="calendar-day-face calendar-day-back"
+                        [attr.aria-hidden]="!isCalendarDayFlipped(day)"
+                        [attr.inert]="isCalendarDayFlipped(day) ? null : ''"
+                      >
+                        <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
+                        <button
+                          type="button"
+                          class="calendar-day-flip"
+                          [attr.aria-label]="'Show first items for ' + getCalendarDayDateLabel(day)"
+                          matTooltip="Show first items"
+                          (click)="toggleCalendarDayFace(day, $event)"
+                        >
+                          <mat-icon>touch_app</mat-icon>
+                        </button>
+                        <div class="calendar-day-icons calendar-day-secondary-content">
+                          <button
+                            *ngFor="let metric of getSecondaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
+                            type="button"
+                            class="calendar-entry-icon"
+                            [ngClass]="metric.cssClass"
+                            [class.preview-active]="isCalendarDayMetricActive(day, metric.type)"
+                            [attr.aria-label]="metric.label"
+                            [attr.data-testid]="metric.testId || null"
+                            [matTooltip]="metric.label"
+                            (click)="activateCalendarDayMetric(day, metric.type, $event)"
+                          >
+                            <mat-icon>{{ metric.icon }}</mat-icon>
+                            <span class="calendar-entry-count">{{ metric.count }}</span>
+                          </button>
+                        </div>
+                      </section>
+                    </div>
                   </div>
-                  <ng-template #emptyDayAction>
-                    <span class="calendar-day-plus" aria-hidden="true">
-                      <mat-icon>add</mat-icon>
-                    </span>
-                  </ng-template>
                 </div>
               </div>
+              <section
+                id="on-this-day-preview"
+                class="calendar-preview-deck on-this-day-preview-deck"
+                *ngIf="onThisDayPreview"
+                [class.preview-left-to-right]="onThisDayPreview.direction === 'left-to-right'"
+                [class.preview-right-to-left]="onThisDayPreview.direction === 'right-to-left'"
+                [class.preview-below]="onThisDayPreview.placement === 'below'"
+                [class.preview-above]="onThisDayPreview.placement === 'above'"
+                [class.closing]="onThisDayPreview.phase === 'closing'"
+                [style.top.px]="onThisDayPreview.top"
+                [style.left.px]="onThisDayPreview.left"
+                (click)="$event.stopPropagation()"
+                aria-label="On this day preview deck"
+                data-testid="on-this-day-preview"
+              >
+                <header class="calendar-preview-header">
+                  <div>
+                    <strong>{{ onThisDayPreview.heading }}</strong>
+                    <span>{{ onThisDayPreview.dateLabel }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="calendar-preview-close"
+                    aria-label="Close On this day preview"
+                    (click)="closeOnThisDayPreview($event)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </header>
+                <div class="calendar-preview-cards">
+                  <article
+                    class="calendar-preview-card on-this-day-preview-card"
+                    *ngFor="let entry of onThisDayPreview.entries; let previewIndex = index"
+                    [style.--preview-index]="previewIndex"
+                    [class.has-preview-image]="entry.image_url"
+                    data-testid="on-this-day-card"
+                  >
+                    <div
+                      class="calendar-preview-card-image"
+                      *ngIf="entry.image_url"
+                      [style.background-image]="getOnThisDayImageStyle(entry)"
+                      aria-hidden="true"
+                    ></div>
+                    <button
+                      type="button"
+                      class="on-this-day-card-open"
+                      (click)="openOnThisDayEntry(entry, $event)"
+                      [attr.aria-label]="'View ' + entry.title"
+                    >
+                      <div class="calendar-preview-card-title">
+                        <mat-icon aria-hidden="true">{{ getOnThisDayIcon(entry) }}</mat-icon>
+                        <div>
+                          <span>{{ entry.title }}</span>
+                          <small>{{ getOnThisDayEntryDateLabel(entry) }}</small>
+                        </div>
+                      </div>
+                      <div class="calendar-preview-card-tags" *ngIf="entry.tags.length">
+                        <span
+                          class="calendar-preview-tag"
+                          *ngFor="let tag of entry.tags.slice(0, 3)"
+                        >{{ tag }}</span>
+                      </div>
+                      <div class="calendar-preview-card-copy">
+                        <div class="calendar-preview-copy-block">
+                          <span class="calendar-preview-copy-label">Memory</span>
+                          <p>{{ entry.preview || 'No preview available.' }}</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="on-this-day-hide"
+                      data-testid="on-this-day-hide"
+                      (click)="hideOnThisDayEntry(entry, $event)"
+                      [attr.aria-label]="'Hide ' + entry.title + ' from On this day'"
+                      matTooltip="Hide this memory"
+                    >
+                      <mat-icon>visibility_off</mat-icon>
+                    </button>
+                  </article>
+                </div>
+              </section>
               <section
                 class="calendar-preview-deck"
                 *ngIf="calendarPreview"
@@ -822,6 +1072,7 @@ type OccasionPreviewState = {
                 </div>
               </section>
               <section
+                id="thought-record-preview"
                 class="calendar-preview-deck cbt-preview-deck"
                 *ngIf="cbtPreview"
                 [class.preview-left-to-right]="cbtPreview.direction === 'left-to-right'"
@@ -837,7 +1088,7 @@ type OccasionPreviewState = {
               >
                 <header class="calendar-preview-header">
                   <div>
-                    <strong>Thought records</strong>
+                    <strong>{{ cbtPreview.heading }}</strong>
                     <span>{{ cbtPreview.dateLabel }}</span>
                   </div>
                   <button
@@ -861,7 +1112,7 @@ type OccasionPreviewState = {
                       <mat-icon>psychology_alt</mat-icon>
                       <div>
                         <span>{{ getThoughtRecordTitle(record) }}</span>
-                        <small>{{ record.status === 'completed' ? 'Completed' : 'Draft · Step ' + record.current_step + ' of 7' }}</small>
+                        <small>{{ getThoughtRecordPreviewMeta(record) }}</small>
                       </div>
                     </div>
                     <div class="calendar-preview-card-copy">
@@ -888,8 +1139,12 @@ type OccasionPreviewState = {
                 </div>
               </section>
               <section
+                id="important-day-preview"
                 class="calendar-preview-deck important-day-preview-deck"
                 *ngIf="importantDayPreview"
+                [class.monthly-important-day-preview]="importantDayPreview.scope === 'month'"
+                [class.monthly-preview-single]="importantDayPreview.scope === 'month' && importantDayPreview.importantDays.length === 1"
+                [class.monthly-preview-double]="importantDayPreview.scope === 'month' && importantDayPreview.importantDays.length === 2"
                 [class.preview-left-to-right]="getImportantDayPreviewDirection() === 'left-to-right'"
                 [class.preview-right-to-left]="getImportantDayPreviewDirection() === 'right-to-left'"
                 [class.preview-below]="importantDayPreview.placement === 'below'"
@@ -899,10 +1154,11 @@ type OccasionPreviewState = {
                 [style.left.px]="importantDayPreview.left"
                 (click)="$event.stopPropagation()"
                 aria-label="Important day preview deck"
+                data-testid="calendar-important-day-preview"
               >
                 <header class="calendar-preview-header">
                   <div>
-                    <strong>Important days</strong>
+                    <strong>{{ importantDayPreview.heading }}</strong>
                     <span>{{ importantDayPreview.dateLabel }}</span>
                   </div>
                   <button
@@ -1003,6 +1259,8 @@ export class ListComponent implements OnInit, OnDestroy {
   private cbtService = inject(CbtService);
   private importantDaysService = inject(ImportantDaysService);
   private publicHolidaysService = inject(PublicHolidaysService);
+  private onThisDayService = inject(OnThisDayService);
+  private appDialog = inject(AppDialogService);
   protected readonly searchService = inject(SearchService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -1023,14 +1281,34 @@ export class ListComponent implements OnInit, OnDestroy {
   pageSize = 8; // 2 rows of 4 cards
   currentPage = 0;
   totalEntries = 0;
-  paginatedEntries: any[] = [];
+  paginatedEntries: CardItem[] = [];
   displayMode: "cards" | "calendar" = "cards";
   selectedDay: string | null = null;
   calendarDays: CalendarDay[] = [];
   readonly weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   // Current data
-  currentView: "all" | "daily" | "dreams" = "all";
+  readonly contentFilterOptions: Array<{
+    value: ContentFilter;
+    label: string;
+    icon: string;
+  }> = [
+    { value: "daily", label: "Diary", icon: "book" },
+    { value: "dreams", label: "Dreams", icon: "nights_stay" },
+    {
+      value: "thought-records",
+      label: "Thought records",
+      icon: "psychology_alt",
+    },
+    { value: "important-days", label: "Important days", icon: "event" },
+    { value: "on-this-day", label: "On this day", icon: "history" },
+  ];
+  activeContentFilters = new Set<ContentFilter>([
+    "daily",
+    "dreams",
+    "important-days",
+  ]);
+  private hasExplicitContentFilters = false;
   dailyEntries: EntryItem[] = [];
   dreamEntries: EntryItem[] = [];
   thoughtRecords: CbtWorksheet[] = [];
@@ -1038,8 +1316,10 @@ export class ListComponent implements OnInit, OnDestroy {
   publicHolidays: PublicHoliday[] = [];
   publicHolidayCountryCode = "";
   publicHolidaysEnabled = false;
+  onThisDayFeed: OnThisDayFeed | null = null;
+  onThisDayMonthFeed: OnThisDayFeed | null = null;
   private publicHolidaysByYear = new Map<number, PublicHoliday[]>();
-  filteredEntries: EntryItem[] = [];
+  filteredEntries: CardItem[] = [];
   private hasExplicitMonthSelection = false;
   private pendingMonthSelection: { monthIndex: number; year: number } | null =
     null;
@@ -1047,13 +1327,29 @@ export class ListComponent implements OnInit, OnDestroy {
   cbtPreview: CbtPreviewState | null = null;
   importantDayPreview: ImportantDayPreviewState | null = null;
   occasionPreview: OccasionPreviewState | null = null;
-  showImportantDays = false;
-  showAllImportantDays = false;
+  onThisDayPreview: OnThisDayPreviewState | null = null;
   private loadedHolidayYears = new Set<number>();
   private previewCloseTimerId: number | null = null;
   private cbtPreviewCloseTimerId: number | null = null;
   private importantDayPreviewCloseTimerId: number | null = null;
   private occasionPreviewCloseTimerId: number | null = null;
+  private onThisDayPreviewCloseTimerId: number | null = null;
+  private calendarFlipTimerId: number | null = null;
+  private flippedCalendarDays = new Set<string>();
+  private ignorePreviewScrollUntil = 0;
+  private readonly capturedScrollHandler = (event: Event): void => {
+    if (performance.now() < this.ignorePreviewScrollUntil) {
+      return;
+    }
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(".calendar-preview-deck")
+    ) {
+      return;
+    }
+    this.closeAllCalendarPreviewsImmediately();
+  };
 
   exitSearch(): void {
     this.searchService.clear();
@@ -1064,16 +1360,14 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    document.addEventListener("scroll", this.capturedScrollHandler, true);
+
     // Initialize timeline
     this.initializeTimeline();
 
     this.route.queryParamMap.subscribe((params) => {
       const type = params.get("type");
-      if (type === "daily" || type === "dreams") {
-        this.currentView = type;
-      } else {
-        this.currentView = "all";
-      }
+      this.applyContentFiltersFromQuery(params.get("show"), type);
       this.displayMode =
         params.get("display") === "calendar" ? "calendar" : "cards";
 
@@ -1397,6 +1691,7 @@ export class ListComponent implements OnInit, OnDestroy {
 
     this.hasExplicitMonthSelection = true;
     this.selectedDay = null;
+    this.flippedCalendarDays.clear();
 
     // Update selection state
     this.allMonths.forEach((m) => (m.isSelected = false));
@@ -1439,6 +1734,17 @@ export class ListComponent implements OnInit, OnDestroy {
     let thoughtRecordsLoaded = false;
     let importantDaysLoaded = false;
     let holidaySettingsLoaded = false;
+
+    this.onThisDayService.getFeed().subscribe({
+      next: (feed) => {
+        this.onThisDayFeed = feed;
+        this.syncOnThisDayFilterAvailability(feed.enabled);
+      },
+      error: () => {
+        this.onThisDayFeed = null;
+        this.syncOnThisDayFilterAvailability(false);
+      },
+    });
 
     const checkAndGenerateTimeline = () => {
       if (
@@ -1521,14 +1827,32 @@ export class ListComponent implements OnInit, OnDestroy {
     });
   }
 
-  onViewChange(view: string): void {
+  isContentFilterActive(filter: ContentFilter): boolean {
+    return this.activeContentFilters.has(filter);
+  }
+
+  isContentFilterDisabled(filter: ContentFilter): boolean {
+    return filter === "on-this-day" && !this.isOnThisDayEnabled();
+  }
+
+  setContentFilter(filter: ContentFilter, selected: boolean): void {
+    if (this.isContentFilterDisabled(filter)) return;
+
     this.closeCalendarPreview();
     this.closeCbtPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
-    this.currentView = view as "all" | "daily" | "dreams";
+    this.closeOnThisDayPreview(undefined, true);
+    const next = new Set(this.activeContentFilters);
+    if (selected) {
+      next.add(filter);
+    } else {
+      next.delete(filter);
+    }
+    this.activeContentFilters = next;
+    this.hasExplicitContentFilters = true;
     this.selectedDay = null;
 
-    // Preserve an explicitly selected month when switching filters.
     if (!this.hasExplicitMonthSelection) {
       this.autoSelectLatestMonthForView(true);
     }
@@ -1590,34 +1914,6 @@ export class ListComponent implements OnInit, OnDestroy {
     return `${this.selectedMonth.label} ${this.selectedMonth.year}`;
   }
 
-  hasFocusedTypeFilter(): boolean {
-    return this.currentView === "daily" || this.currentView === "dreams";
-  }
-
-  getFocusedFilterHeading(): string {
-    if (this.currentView === "daily") {
-      return "Filtering diary entries";
-    }
-
-    if (this.currentView === "dreams") {
-      return "Filtering dream entries";
-    }
-
-    return "Showing all entries";
-  }
-
-  getFocusedFilterDescription(): string {
-    if (this.currentView === "daily") {
-      return "Cards and calendar are currently limited to Daily entries only.";
-    }
-
-    if (this.currentView === "dreams") {
-      return "Cards and calendar are currently limited to Dream entries only.";
-    }
-
-    return "All entry types are visible.";
-  }
-
   getCalendarStatusLabel(status: CalendarStatus): string {
     if (status === "daily") {
       return "Daily";
@@ -1668,7 +1964,10 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   getCurrentMonthImportantDays(): ImportantDay[] {
-    if (!this.selectedMonth) {
+    if (
+      !this.selectedMonth ||
+      !this.isContentFilterActive("important-days")
+    ) {
       return [];
     }
 
@@ -1695,21 +1994,16 @@ export class ListComponent implements OnInit, OnDestroy {
       });
   }
 
-  getExpandedCurrentMonthImportantDays(): ImportantDay[] {
-    const importantDays = this.getCurrentMonthImportantDays();
-    return this.showAllImportantDays ? importantDays : importantDays.slice(0, 2);
-  }
-
-  getCollapsedCurrentMonthImportantDays(): ImportantDay[] {
-    return this.getCurrentMonthImportantDays().slice(0, 4);
-  }
-
-  hasCollapsedImportantDayOverflow(): boolean {
-    return this.getCurrentMonthImportantDays().length > 4;
+  getCurrentMonthImportantDaysSummaryLabel(): string {
+    const count = this.getCurrentMonthImportantDays().length;
+    return `${count} important ${count === 1 ? "date" : "dates"}`;
   }
 
   getSelectedDayImportantDays(): ImportantDay[] {
-    if (!this.selectedDay) {
+    if (
+      !this.selectedDay ||
+      !this.isContentFilterActive("important-days")
+    ) {
       return [];
     }
 
@@ -1802,15 +2096,47 @@ export class ListComponent implements OnInit, OnDestroy {
     return `${matchingEntries.length} entr${matchingEntries.length === 1 ? "y" : "ies"} on this date`;
   }
 
-  toggleImportantDaysVisibility(): void {
-    this.showImportantDays = !this.showImportantDays;
-    if (!this.showImportantDays) {
-      this.showAllImportantDays = false;
-    }
-  }
+  toggleMonthlyImportantDaysPreview(event: MouseEvent): void {
+    event.stopPropagation();
+    this.ignorePreviewScrollUntil = performance.now() + 250;
+    const importantDays = this.getCurrentMonthImportantDays();
+    if (!this.selectedMonth || importantDays.length === 0) return;
 
-  toggleImportantDaysExpanded(): void {
-    this.showAllImportantDays = !this.showAllImportantDays;
+    const previewKey = `month:${this.selectedMonth.year}:${(this.selectedMonth as any).monthIndex}`;
+    if (
+      this.importantDayPreview?.dayKey === previewKey &&
+      this.importantDayPreview.phase === "open"
+    ) {
+      this.closeImportantDayPreview();
+      return;
+    }
+
+    this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
+    if (this.importantDayPreviewCloseTimerId) {
+      window.clearTimeout(this.importantDayPreviewCloseTimerId);
+      this.importantDayPreviewCloseTimerId = null;
+    }
+
+    const anchor = event.currentTarget as HTMLElement;
+    const position = this.getCalendarPreviewPosition(
+      anchor,
+      Math.min(importantDays.length, 3),
+    );
+    this.importantDayPreview = {
+      dayKey: previewKey,
+      scope: "month",
+      heading: "Important days this month",
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      importantDays,
+      dateLabel: this.getCalendarHeading(),
+      top: position.top,
+      left: position.left,
+      placement: position.placement,
+    };
   }
 
   getVisibleDayImportantDays(day: CalendarDay): ImportantDay[] {
@@ -1906,6 +2232,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeCalendarPreview(undefined, true);
     this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.importantDays.length === 0) {
       return;
@@ -1932,6 +2259,8 @@ export class ListComponent implements OnInit, OnDestroy {
 
     this.importantDayPreview = {
       dayKey,
+      scope: "day",
+      heading: "Important days",
       phase: "open",
       direction: this.getPreviewDirectionFromClick(event),
       importantDays: day.importantDays,
@@ -2028,6 +2357,18 @@ export class ListComponent implements OnInit, OnDestroy {
     return record.title || record.situation || "Untitled thought record";
   }
 
+  getThoughtRecordPreviewMeta(record: CbtWorksheet): string {
+    const date = new Date(`${record.record_date}T12:00:00`).toLocaleDateString(
+      "en-GB",
+      { day: "numeric", month: "long", year: "numeric" },
+    );
+    const status =
+      record.status === "completed"
+        ? "Completed"
+        : `Draft · Step ${record.current_step} of 7`;
+    return `${date} · ${status}`;
+  }
+
   getCbtPreviewRecords(): CbtWorksheet[] {
     return this.cbtPreview?.records ?? [];
   }
@@ -2050,6 +2391,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeCalendarPreview(undefined, true);
     this.closeImportantDayPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.thoughtRecords.length === 0) return;
 
@@ -2074,6 +2416,7 @@ export class ListComponent implements OnInit, OnDestroy {
     );
     this.cbtPreview = {
       dayKey,
+      heading: "Thought records",
       phase: "open",
       direction: this.getPreviewDirectionFromClick(event),
       records,
@@ -2085,10 +2428,80 @@ export class ListComponent implements OnInit, OnDestroy {
     };
   }
 
+  getCurrentMonthThoughtRecords(): CbtWorksheet[] {
+    if (
+      !this.selectedMonth ||
+      !this.isContentFilterActive("thought-records")
+    ) {
+      return [];
+    }
+    return this.thoughtRecords.filter((record) => {
+      const date = new Date(`${record.record_date}T12:00:00`);
+      return (
+        date.getMonth() === (this.selectedMonth as any).monthIndex &&
+        date.getFullYear() === this.selectedMonth!.year
+      );
+    });
+  }
+
+  getCurrentMonthThoughtRecordsKey(): string {
+    if (!this.selectedMonth) return "thought-records:month";
+    return `thought-records:${this.selectedMonth.year}-${(this.selectedMonth as any).monthIndex + 1}`;
+  }
+
+  getCurrentMonthThoughtRecordsSummaryLabel(): string {
+    const count = this.getCurrentMonthThoughtRecords().length;
+    return `${count} ${count === 1 ? "record" : "records"}`;
+  }
+
+  toggleMonthlyCbtPreview(event: MouseEvent): void {
+    event.stopPropagation();
+    this.ignorePreviewScrollUntil = performance.now() + 250;
+    const records = this.getCurrentMonthThoughtRecords();
+    if (!records.length) return;
+
+    const monthKey = this.getCurrentMonthThoughtRecordsKey();
+    if (this.cbtPreview?.dayKey === monthKey && this.cbtPreview.phase === "open") {
+      this.closeCbtPreview();
+      return;
+    }
+
+    this.closeCalendarPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
+    if (this.cbtPreviewCloseTimerId) {
+      window.clearTimeout(this.cbtPreviewCloseTimerId);
+      this.cbtPreviewCloseTimerId = null;
+    }
+
+    const visibleRecords = records.slice(0, 3);
+    const position = this.getCalendarPreviewPosition(
+      event.currentTarget as HTMLElement,
+      visibleRecords.length,
+    );
+    this.cbtPreview = {
+      dayKey: monthKey,
+      heading: "Thought records this month",
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      records: visibleRecords,
+      totalCount: records.length,
+      dateLabel: this.getCalendarHeading(),
+      top: position.top,
+      left: position.left,
+      placement: position.placement,
+    };
+  }
+
   openThoughtRecord(record: CbtWorksheet, event?: Event): void {
     event?.stopPropagation();
     this.closeCbtPreview(undefined, true);
-    const queryParams: Record<string, string | number> = { returnTo: "calendar" };
+    const queryParams: Record<string, string | number> = {
+      returnTo: this.displayMode === "calendar" ? "calendar" : "entries",
+      display: this.displayMode,
+      show: this.getSerialisedContentFilters(),
+    };
     if (this.selectedMonth) {
       queryParams["month"] = (this.selectedMonth as any).monthIndex + 1;
       queryParams["year"] = this.selectedMonth.year;
@@ -2146,6 +2559,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeCbtPreview(undefined, true);
     this.closeImportantDayPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
     if (!day.isCurrentMonth) {
       return;
     }
@@ -2159,7 +2573,6 @@ export class ListComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.currentView = "all";
     this.selectedDay = this.toDateKey(day.date);
     this.displayMode = "cards";
     this.currentPage = 0;
@@ -2180,6 +2593,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeCalendarPreview(undefined, true);
     this.closeCbtPreview(undefined, true);
     this.closeImportantDayPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
 
     if (!day.isCurrentMonth || !this.hasDayOccasions(day)) {
       return;
@@ -2217,6 +2631,51 @@ export class ListComponent implements OnInit, OnDestroy {
     };
   }
 
+  togglePublicHolidayPreview(day: CalendarDay, event: MouseEvent): void {
+    event.stopPropagation();
+    this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
+
+    if (!day.isCurrentMonth || day.publicHolidays.length === 0) {
+      return;
+    }
+
+    const dayKey = `${this.toDateKey(day.date)}:holiday`;
+    if (
+      this.occasionPreview?.dayKey === dayKey &&
+      this.occasionPreview.phase === "open"
+    ) {
+      this.closeOccasionPreview();
+      return;
+    }
+
+    if (this.occasionPreviewCloseTimerId) {
+      window.clearTimeout(this.occasionPreviewCloseTimerId);
+      this.occasionPreviewCloseTimerId = null;
+    }
+
+    const anchor = event.currentTarget as HTMLElement;
+    const overlayPosition = this.getCalendarPreviewPosition(
+      anchor,
+      Math.min(day.publicHolidays.length, 3),
+    );
+    this.occasionPreview = {
+      dayKey,
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      heading: "Public holidays",
+      occasions: this.getOccasionPreviewItems(day).filter(
+        (occasion) => occasion.kind === "holiday",
+      ),
+      dateLabel: this.getCalendarDayDateLabel(day),
+      top: overlayPosition.top,
+      left: overlayPosition.left,
+      placement: overlayPosition.placement,
+    };
+  }
+
   openCalendarPreviewFullView(event: Event): void {
     event.stopPropagation();
 
@@ -2224,7 +2683,15 @@ export class ListComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.currentView = this.calendarPreview.type === "daily" ? "daily" : "dreams";
+    const selectedType: ContentFilter =
+      this.calendarPreview.type === "daily" ? "daily" : "dreams";
+    const next = new Set(this.activeContentFilters);
+    next.delete("daily");
+    next.delete("dreams");
+    next.delete("thought-records");
+    next.add(selectedType);
+    this.activeContentFilters = next;
+    this.hasExplicitContentFilters = true;
     this.selectedDay = this.calendarPreview.dayKey;
     this.displayMode = "cards";
     this.currentPage = 0;
@@ -2241,7 +2708,9 @@ export class ListComponent implements OnInit, OnDestroy {
   ): void {
     event.stopPropagation();
     this.closeCbtPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
 
     if (!day.isCurrentMonth || day.isFuture) {
       return;
@@ -2327,15 +2796,23 @@ export class ListComponent implements OnInit, OnDestroy {
     const formattedDate = `${day}/${month}/${year}`;
 
     // Navigate to create entry with pre-populated date and type
-    const queryParams: any = { date: formattedDate };
+    const queryParams: any = {
+      date: formattedDate,
+      display: this.displayMode,
+      month: targetDate.getMonth() + 1,
+      year: targetDate.getFullYear(),
+    };
 
-    // Add entry type based on current view
-    if (this.currentView === "dreams") {
+    // Prefer the only selected entry type; otherwise use the Daily default.
+    if (
+      this.isContentFilterActive("dreams") &&
+      !this.isContentFilterActive("daily")
+    ) {
       queryParams.type = "dream";
-    } else if (this.currentView === "daily") {
+    } else {
       queryParams.type = "daily";
     }
-    // For 'all', let the create component use its default (daily)
+    queryParams.show = this.getSerialisedContentFilters();
 
     this.router.navigate(["/entries/create"], {
       queryParams,
@@ -2343,6 +2820,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   resetToCurrentMonth(): void {
+    this.flippedCalendarDays.clear();
     // Clear previous selection
     this.allMonths.forEach((m) => (m.isSelected = false));
 
@@ -2364,12 +2842,19 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   hasEntries(): boolean {
-    return (
-      this.dailyEntries.length +
-        this.dreamEntries.length +
-        this.thoughtRecords.length >
-      0
-    );
+    return this.getFilteredActivityItems().length > 0;
+  }
+
+  getEmptyStateHeading(): string {
+    return this.activeContentFilters.size === 0
+      ? "No content selected"
+      : "No entries found";
+  }
+
+  getEmptyStateMessage(): string {
+    return this.activeContentFilters.size === 0
+      ? "Choose one or more content filters to show entries."
+      : "No matching entries for this time period.";
   }
 
   jumpToFirstEntry(): void {
@@ -2438,21 +2923,12 @@ export class ListComponent implements OnInit, OnDestroy {
 
   filterEntries(): void {
     this.calculateEntryCountsForTimeline();
-    let entries: EntryItem[] = [];
-
-    // First filter by view type
-    if (this.currentView === "daily") {
-      entries = this.dailyEntries;
-    } else if (this.currentView === "dreams") {
-      entries = this.dreamEntries;
-    } else {
-      entries = [...this.dailyEntries, ...this.dreamEntries];
-    }
+    let entries = this.getFilteredActivityItems();
 
     // Then filter by selected month/timeline if one is selected
     if (this.selectedMonth) {
       entries = entries.filter((entry) => {
-        const entryDate = new Date(entry.entry_date);
+        const entryDate = new Date(this.getCardItemDate(entry));
         return (
           entryDate.getMonth() === (this.selectedMonth as any).monthIndex &&
           entryDate.getFullYear() === this.selectedMonth!.year
@@ -2460,17 +2936,20 @@ export class ListComponent implements OnInit, OnDestroy {
       });
     }
 
-    this.buildCalendarDays(entries);
+    this.buildCalendarDays(
+      entries.filter((entry): entry is EntryItem => entry.type !== "thought_record"),
+    );
 
     if (this.selectedDay) {
       entries = entries.filter(
-        (entry) => this.toDateKey(new Date(entry.entry_date)) === this.selectedDay,
+        (entry) =>
+          this.toDateKey(new Date(this.getCardItemDate(entry))) === this.selectedDay,
       );
     }
 
     // Sort by date (newest first)
     this.filteredEntries = entries.sort(
-      (a, b) => this.getEntrySortTimestamp(b) - this.getEntrySortTimestamp(a),
+      (a, b) => this.getCardItemSortTimestamp(b) - this.getCardItemSortTimestamp(a),
     );
 
     this.totalEntries = this.filteredEntries.length;
@@ -2489,12 +2968,10 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   calculateEntryCountsForTimeline(): void {
-    const entriesForCount =
-      this.currentView === "daily"
-        ? this.dailyEntries
-        : this.currentView === "dreams"
-          ? this.dreamEntries
-          : [...this.dailyEntries, ...this.dreamEntries];
+    const entriesForCount: EntryItem[] = [
+      ...(this.isContentFilterActive("daily") ? this.dailyEntries : []),
+      ...(this.isContentFilterActive("dreams") ? this.dreamEntries : []),
+    ];
 
     this.allMonths.forEach((month) => {
       const entryCount = entriesForCount.filter((entry) => {
@@ -2504,16 +2981,15 @@ export class ListComponent implements OnInit, OnDestroy {
           entryDate.getFullYear() === month.year
         );
       }).length;
-      const thoughtRecordCount =
-        this.currentView === "all"
-          ? this.thoughtRecords.filter((record) => {
+      const thoughtRecordCount = this.isContentFilterActive("thought-records")
+        ? this.thoughtRecords.filter((record) => {
               const recordDate = new Date(`${record.record_date}T12:00:00`);
               return (
                 recordDate.getMonth() === (month as any).monthIndex &&
                 recordDate.getFullYear() === month.year
               );
             }).length
-          : 0;
+        : 0;
       const count = entryCount + thoughtRecordCount;
 
       month.entryCount = count > 0 ? count : undefined;
@@ -2524,40 +3000,78 @@ export class ListComponent implements OnInit, OnDestroy {
 
   private getCalendarActivityDates(): Date[] {
     return [
-      ...this.dailyEntries.map((entry) => new Date(entry.entry_date)),
-      ...this.dreamEntries.map((entry) => new Date(entry.entry_date)),
-      ...this.thoughtRecords.map(
-        (record) => new Date(`${record.record_date}T12:00:00`),
-      ),
+      ...(this.isContentFilterActive("daily")
+        ? this.dailyEntries.map((entry) => new Date(entry.entry_date))
+        : []),
+      ...(this.isContentFilterActive("dreams")
+        ? this.dreamEntries.map((entry) => new Date(entry.entry_date))
+        : []),
+      ...(this.isContentFilterActive("thought-records")
+        ? this.thoughtRecords.map(
+            (record) => new Date(`${record.record_date}T12:00:00`),
+          )
+        : []),
     ].filter((activityDate) => !Number.isNaN(activityDate.getTime()));
   }
 
-  getEntryTitle(entry: any): string {
+  private getFilteredActivityItems(): CardItem[] {
+    return [
+      ...(this.isContentFilterActive("daily") ? this.dailyEntries : []),
+      ...(this.isContentFilterActive("dreams") ? this.dreamEntries : []),
+      ...(this.isContentFilterActive("thought-records")
+        ? this.thoughtRecords.map((record) => ({
+            ...record,
+            type: "thought_record" as const,
+          }))
+        : []),
+    ];
+  }
+
+  getEntryTitle(entry: CardItem): string {
+    if (entry.type === "thought_record") {
+      return this.getThoughtRecordTitle(entry);
+    }
     if (entry.type === "dream" && entry.title) {
       return `"${entry.title}"`;
     }
     if (entry.type === "daily") {
+      const dailyEntry = entry as DailyEntry & { type: "daily" };
       // Use the title field from database if available
-      if (entry.title) {
-        return entry.title;
+      if (dailyEntry.title) {
+        return dailyEntry.title;
       }
       // Fallback to old logic for entries without titles
-      const [title] = this.splitDailyMessage(entry.user_message || "");
+      const [title] = this.splitDailyMessage(dailyEntry.user_message || "");
       return title || "Daily Entry";
     }
     return "Dream Entry";
   }
 
-  getEntrySnippet(entry: any): string {
+  getEntrySnippet(entry: CardItem): string {
+    if (entry.type === "thought_record") {
+      return [entry.situation, entry.balanced_thought]
+        .filter(Boolean)
+        .join(" · ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
     const rawText =
       entry.type === "daily"
-        ? this.splitDailyMessage(entry.user_message || "")[1]
-        : entry.plot || entry.user_message || "";
+        ? this.splitDailyMessage(
+            (entry as DailyEntry & { type: "daily" }).user_message || "",
+          )[1]
+        : (entry as DreamEntry & { type: "dream" }).plot || "";
 
     return rawText.replace(/\s+/g, " ").trim();
   }
 
-  hasEntryAttachments(entry: EntryItem): boolean {
+  getCardItemIcon(entry: CardItem): string {
+    if (entry.type === "thought_record") return "psychology_alt";
+    return entry.type === "dream" ? "nights_stay" : "book";
+  }
+
+  hasEntryAttachments(entry: CardItem): boolean {
+    if (entry.type === "thought_record") return false;
     return Array.isArray(entry.attachments) && entry.attachments.length > 0;
   }
 
@@ -2593,7 +3107,15 @@ export class ListComponent implements OnInit, OnDestroy {
     return this.truncatePreviewText(dailyEntry.ai_response || "", 100);
   }
 
-  getEntryDateTimeSubtitle(entry: EntryItem): string {
+  getEntryDateTimeSubtitle(entry: CardItem): string {
+    if (entry.type === "thought_record") {
+      const dateLabel = new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(new Date(`${entry.record_date}T12:00:00`));
+      return `${dateLabel} • ${entry.status === "completed" ? "Completed" : `Draft · Step ${entry.current_step} of 7`}`;
+    }
     const dateLabel = new Intl.DateTimeFormat("en-GB", {
       day: "2-digit",
       month: "2-digit",
@@ -2630,7 +3152,8 @@ export class ListComponent implements OnInit, OnDestroy {
     }).format(new Date(2000, 0, 1, hours, minutes));
   }
 
-  getTags(entry: any): string[] {
+  getTags(entry: CardItem): string[] {
+    if (entry.type === "thought_record") return [];
     return (entry.tags || "")
       .split(",")
       .map((tag: string) => tag.trim())
@@ -2669,7 +3192,7 @@ export class ListComponent implements OnInit, OnDestroy {
       entriesByDate.set(key, dateEntries);
     });
 
-    if (this.currentView === "all") {
+    if (this.isContentFilterActive("thought-records")) {
       this.thoughtRecords.forEach((record) => {
         const records = thoughtRecordsByDate.get(record.record_date) ?? [];
         records.push(record);
@@ -2677,12 +3200,14 @@ export class ListComponent implements OnInit, OnDestroy {
       });
     }
 
-    this.importantDays.forEach((importantDay) => {
-      const key = this.toMonthDayKey(importantDay.month, importantDay.day);
-      const matchingImportantDays = importantDaysByDate.get(key) ?? [];
-      matchingImportantDays.push(importantDay);
-      importantDaysByDate.set(key, matchingImportantDays);
-    });
+    if (this.isContentFilterActive("important-days")) {
+      this.importantDays.forEach((importantDay) => {
+        const key = this.toMonthDayKey(importantDay.month, importantDay.day);
+        const matchingImportantDays = importantDaysByDate.get(key) ?? [];
+        matchingImportantDays.push(importantDay);
+        importantDaysByDate.set(key, matchingImportantDays);
+      });
+    }
 
     const yearHolidays = this.publicHolidaysByYear.get(year) ?? this.publicHolidays;
 
@@ -2758,16 +3283,29 @@ export class ListComponent implements OnInit, OnDestroy {
     return `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
 
-  openEntryDetail(entry: any, event?: Event): void {
+  openEntryDetail(entry: CardItem, event?: Event): void {
     this.closeCalendarPreview();
     this.closeOccasionPreview(undefined, true);
     event?.stopPropagation();
+    if (entry.type === "thought_record") {
+      const queryParams: Record<string, string | number> = {
+        returnTo: "entries",
+        display: this.displayMode,
+        show: this.getSerialisedContentFilters(),
+      };
+      if (this.selectedMonth) {
+        queryParams["month"] = (this.selectedMonth as any).monthIndex + 1;
+        queryParams["year"] = this.selectedMonth.year;
+      }
+      void this.router.navigate(["/cbt", entry.id], { queryParams });
+      return;
+    }
     this.router.navigate(["/entries", entry.id], {
       queryParams: this.getDetailContextParams(entry),
     });
   }
 
-  onCardSpacebar(event: Event, entry: any): void {
+  onCardSpacebar(event: Event, entry: CardItem): void {
     event.preventDefault();
     this.openEntryDetail(entry);
   }
@@ -2780,10 +3318,8 @@ export class ListComponent implements OnInit, OnDestroy {
     if (entry?.type) {
       params["entryType"] = entry.type;
     }
-
-    if (this.currentView !== "all") {
-      params["type"] = this.currentView;
-    }
+    params["show"] = this.getSerialisedContentFilters();
+    params["display"] = this.displayMode;
 
     if (this.selectedMonth) {
       params["month"] = (this.selectedMonth as any).monthIndex + 1;
@@ -2826,6 +3362,81 @@ export class ListComponent implements OnInit, OnDestroy {
     };
   }
 
+  private applyContentFiltersFromQuery(
+    showValue: string | null,
+    legacyType: string | null,
+  ): void {
+    const validFilters = new Set(
+      this.contentFilterOptions.map((option) => option.value),
+    );
+
+    if (showValue !== null) {
+      this.hasExplicitContentFilters = true;
+      this.activeContentFilters = new Set(
+        showValue
+          .split(",")
+          .map((filter) => filter.trim() as ContentFilter)
+          .filter((filter) => validFilters.has(filter)),
+      );
+      if (this.onThisDayFeed && !this.onThisDayFeed.enabled) {
+        this.activeContentFilters.delete("on-this-day");
+      }
+      return;
+    }
+
+    this.hasExplicitContentFilters = false;
+    const defaults = new Set<ContentFilter>([
+      "daily",
+      "dreams",
+      "important-days",
+    ]);
+    if (legacyType === "daily" || legacyType === "dreams") {
+      defaults.delete("daily");
+      defaults.delete("dreams");
+      defaults.add(legacyType);
+    }
+    this.activeContentFilters = defaults;
+  }
+
+  private getSerialisedContentFilters(): string {
+    return this.contentFilterOptions
+      .map((option) => option.value)
+      .filter((filter) => this.activeContentFilters.has(filter))
+      .join(",");
+  }
+
+  private isOnThisDayEnabled(): boolean {
+    return Boolean(
+      this.onThisDayFeed?.enabled || this.onThisDayMonthFeed?.enabled,
+    );
+  }
+
+  private getVisibleOnThisDayEntries(
+    entries: OnThisDayEntry[],
+  ): OnThisDayEntry[] {
+    return entries.filter((entry) => {
+      if (entry.type === "daily") {
+        return this.isContentFilterActive("daily");
+      }
+      if (entry.type === "dream") {
+        return this.isContentFilterActive("dreams");
+      }
+      return this.isContentFilterActive("thought-records");
+    });
+  }
+
+  private syncOnThisDayFilterAvailability(enabled: boolean): void {
+    const next = new Set(this.activeContentFilters);
+    if (!enabled) {
+      next.delete("on-this-day");
+    }
+    this.activeContentFilters = next;
+    if (this.allMonths.length > 0) {
+      this.filterEntries();
+      this.updatePaginatedEntries();
+    }
+  }
+
   private applyInitialMonthSelection(): void {
     if (this.pendingMonthSelection) {
       const monthFromQuery = this.allMonths.find(
@@ -2846,37 +3457,30 @@ export class ListComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (this.currentView === "all") {
-      if (!this.hasExplicitMonthSelection) {
-        this.selectCurrentMonth(false);
-      }
-      return;
-    }
-
     if (!this.hasExplicitMonthSelection) {
-      this.autoSelectLatestMonthForView();
+      this.selectCurrentMonth(false);
     }
   }
 
   private autoSelectLatestMonthForView(animate = false): void {
-    const entriesForView =
-      this.currentView === "daily"
-        ? this.dailyEntries
-        : this.currentView === "dreams"
-          ? this.dreamEntries
-          : [...this.dailyEntries, ...this.dreamEntries];
+    const entriesForView = this.getFilteredActivityItems();
 
     if (entriesForView.length === 0) {
       return;
     }
 
     const latestEntry = entriesForView.reduce((latest, candidate) =>
-      new Date(candidate.entry_date) > new Date(latest.entry_date)
+      new Date(this.getCardItemDate(candidate)) >
+      new Date(this.getCardItemDate(latest))
         ? candidate
         : latest,
     );
 
-    this.selectMonthByDate(new Date(latestEntry.entry_date), false, animate);
+    this.selectMonthByDate(
+      new Date(this.getCardItemDate(latestEntry)),
+      false,
+      animate,
+    );
   }
 
   private selectCurrentMonth(explicit: boolean): void {
@@ -2885,6 +3489,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   private selectMonthByDate(date: Date, explicit: boolean, animate = false): void {
+    this.flippedCalendarDays.clear();
     const monthToSelect = this.allMonths.find(
       (month) =>
         (month as any).monthIndex === date.getMonth() &&
@@ -2939,16 +3544,413 @@ export class ListComponent implements OnInit, OnDestroy {
     return this.getCalendarPreviewImageUrl(entry) !== null;
   }
 
+  shouldShowOnThisDay(): boolean {
+    if (
+      !this.isContentFilterActive("on-this-day") ||
+      !this.onThisDayFeed?.enabled ||
+      this.getVisibleOnThisDayEntries(this.onThisDayFeed.entries).length === 0
+    ) {
+      return false;
+    }
+    const today = new Date();
+    return Boolean(
+      this.selectedMonth?.isCurrent &&
+        this.selectedMonth.year === today.getFullYear(),
+    );
+  }
+
+  shouldShowOnThisDayForDay(day: CalendarDay): boolean {
+    return day.isToday && this.shouldShowOnThisDay();
+  }
+
+  getCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
+    const dateLabel = this.getCalendarDayDateLabel(day);
+    const metrics: CalendarDayMetric[] = [];
+    const dailyCount = this.getEntryCountByType(day, "daily");
+    const dreamCount = this.getEntryCountByType(day, "dream");
+
+    if (dailyCount > 0) {
+      metrics.push({
+        type: "daily",
+        icon: "book",
+        count: dailyCount,
+        label: `Preview ${dailyCount} daily ${dailyCount === 1 ? "entry" : "entries"} for ${dateLabel}`,
+        cssClass: "daily",
+      });
+    }
+    if (dreamCount > 0) {
+      metrics.push({
+        type: "dream",
+        icon: "nights_stay",
+        count: dreamCount,
+        label: `Preview ${dreamCount} dream ${dreamCount === 1 ? "entry" : "entries"} for ${dateLabel}`,
+        cssClass: "dream",
+      });
+    }
+    if (day.thoughtRecords.length > 0) {
+      metrics.push({
+        type: "thought_record",
+        icon: "psychology_alt",
+        count: day.thoughtRecords.length,
+        label: `Preview ${day.thoughtRecords.length} thought ${day.thoughtRecords.length === 1 ? "record" : "records"} for ${dateLabel}`,
+        cssClass: "thought-record",
+        testId: "calendar-thought-record-marker",
+      });
+    }
+    const occasionCount = day.importantDays.length + day.publicHolidays.length;
+    if (occasionCount > 0) {
+      const firstImportantDay = day.importantDays[0];
+      const firstHoliday = day.publicHolidays[0];
+      metrics.push({
+        type: "occasion",
+        icon: firstImportantDay
+          ? this.getImportantDayIcon(firstImportantDay)
+          : this.getPublicHolidayIcon(firstHoliday!),
+        count: occasionCount,
+        label: `Preview ${occasionCount} ${occasionCount === 1 ? "occasion" : "occasions"} for ${dateLabel}`,
+        cssClass: firstImportantDay
+          ? `important-day accent-${firstImportantDay.accent_color}`
+          : "public-holiday",
+        testId: "calendar-occasion-marker",
+      });
+    }
+    if (this.shouldShowOnThisDayForDay(day) && this.onThisDayFeed) {
+      const visibleMemories = this.getVisibleOnThisDayEntries(
+        this.onThisDayFeed.entries,
+      );
+      metrics.push({
+        type: "on_this_day",
+        icon: "history",
+        count: visibleMemories.length,
+        label: `Preview ${visibleMemories.length} On this day ${visibleMemories.length === 1 ? "memory" : "memories"}`,
+        cssClass: "on-this-day",
+        testId: "calendar-on-this-day-marker",
+      });
+    }
+
+    return metrics;
+  }
+
+  getPrimaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
+    return this.getCalendarDayMetrics(day).slice(0, 2);
+  }
+
+  getSecondaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
+    return this.getCalendarDayMetrics(day).slice(2, 5);
+  }
+
+  trackCalendarDayMetric(
+    _index: number,
+    metric: CalendarDayMetric,
+  ): CalendarDayMetricType {
+    return metric.type;
+  }
+
+  hasCalendarDayBack(day: CalendarDay): boolean {
+    return this.getCalendarDayMetrics(day).length > 2;
+  }
+
+  isCalendarDayMetricActive(
+    day: CalendarDay,
+    type: CalendarDayMetricType,
+  ): boolean {
+    const dayKey = this.toDateKey(day.date);
+    switch (type) {
+      case "daily":
+      case "dream":
+        return this.isCalendarPreviewActive(day, type);
+      case "thought_record":
+        return this.isCbtPreviewActive(day);
+      case "occasion":
+        return (
+          this.occasionPreview?.dayKey === dayKey &&
+          this.occasionPreview.phase === "open"
+        );
+      case "on_this_day":
+        return this.onThisDayPreview?.phase === "open";
+    }
+  }
+
+  activateCalendarDayMetric(
+    day: CalendarDay,
+    type: CalendarDayMetricType,
+    event: MouseEvent,
+  ): void {
+    this.ignorePreviewScrollUntil = performance.now() + 250;
+    switch (type) {
+      case "daily":
+      case "dream":
+        this.toggleCalendarPreview(day, type, event);
+        return;
+      case "thought_record":
+        this.toggleCbtPreview(day, event);
+        return;
+      case "occasion":
+        this.toggleOccasionPreview(
+          day,
+          event.currentTarget as HTMLElement,
+          event,
+        );
+        return;
+      case "on_this_day":
+        this.toggleOnThisDayPreview(event);
+        return;
+    }
+  }
+
+  isCalendarDayFlipped(day: CalendarDay): boolean {
+    return this.flippedCalendarDays.has(this.toDateKey(day.date));
+  }
+
+  toggleCalendarDayFace(day: CalendarDay, event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+    this.closeOnThisDayPreview(undefined, true);
+
+    const dayKey = this.toDateKey(day.date);
+    if (this.calendarFlipTimerId) {
+      window.clearTimeout(this.calendarFlipTimerId);
+      this.calendarFlipTimerId = null;
+    }
+    if (this.flippedCalendarDays.has(dayKey)) {
+      this.flippedCalendarDays.delete(dayKey);
+    } else {
+      this.flippedCalendarDays.clear();
+      this.flippedCalendarDays.add(dayKey);
+      this.calendarFlipTimerId = window.setTimeout(() => {
+        this.flippedCalendarDays.delete(dayKey);
+        this.calendarFlipTimerId = null;
+      }, 6000);
+    }
+  }
+
+  addEntryForCalendarDay(day: CalendarDay, event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeAllCalendarPreviewsImmediately();
+    this.navigateToCreateEntryForDate(day.date);
+  }
+
+  getOnThisDaySummaryLabel(): string {
+    const count = this.getVisibleOnThisDayEntries(
+      this.onThisDayFeed?.entries ?? [],
+    ).length;
+    return `${count} ${count === 1 ? "memory" : "memories"} from earlier years`;
+  }
+
+  toggleOnThisDayPreview(event: MouseEvent): void {
+    event.stopPropagation();
+    this.ignorePreviewScrollUntil = performance.now() + 250;
+    if (!this.shouldShowOnThisDay() || !this.onThisDayFeed) return;
+
+    if (
+      this.onThisDayPreview?.scope === "day" &&
+      this.onThisDayPreview.phase === "open"
+    ) {
+      this.closeOnThisDayPreview();
+      return;
+    }
+
+    this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+    if (this.onThisDayPreviewCloseTimerId) {
+      window.clearTimeout(this.onThisDayPreviewCloseTimerId);
+      this.onThisDayPreviewCloseTimerId = null;
+    }
+
+    const entries = this.getVisibleOnThisDayEntries(this.onThisDayFeed.entries);
+    const anchor = event.currentTarget as HTMLElement;
+    const position = this.getCalendarPreviewPosition(
+      anchor,
+      Math.min(entries.length, 3),
+    );
+    const targetDate = new Date(`${this.onThisDayFeed.date}T12:00:00`);
+    this.onThisDayPreview = {
+      scope: "day",
+      heading: "On this day",
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      entries,
+      dateLabel: targetDate.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+      }),
+      top: position.top,
+      left: position.left,
+      placement: position.placement,
+    };
+  }
+
+  getCurrentMonthOnThisDayEntries(): OnThisDayEntry[] {
+    if (
+      !this.isContentFilterActive("on-this-day") ||
+      !this.onThisDayMonthFeed?.enabled
+    ) {
+      return [];
+    }
+    return this.getVisibleOnThisDayEntries(this.onThisDayMonthFeed.entries);
+  }
+
+  getCurrentMonthOnThisDaySummaryLabel(): string {
+    const count = this.getCurrentMonthOnThisDayEntries().length;
+    return `${count} ${count === 1 ? "memory" : "memories"}`;
+  }
+
+  toggleMonthlyOnThisDayPreview(event: MouseEvent): void {
+    event.stopPropagation();
+    this.ignorePreviewScrollUntil = performance.now() + 250;
+    const entries = this.getCurrentMonthOnThisDayEntries();
+    if (!entries.length) return;
+
+    if (
+      this.onThisDayPreview?.scope === "month" &&
+      this.onThisDayPreview.phase === "open"
+    ) {
+      this.closeOnThisDayPreview();
+      return;
+    }
+
+    this.closeCalendarPreview(undefined, true);
+    this.closeCbtPreview(undefined, true);
+    this.closeImportantDayPreview(undefined, true);
+    this.closeOccasionPreview(undefined, true);
+    if (this.onThisDayPreviewCloseTimerId) {
+      window.clearTimeout(this.onThisDayPreviewCloseTimerId);
+      this.onThisDayPreviewCloseTimerId = null;
+    }
+
+    const position = this.getCalendarPreviewPosition(
+      event.currentTarget as HTMLElement,
+      Math.min(entries.length, 3),
+    );
+    this.onThisDayPreview = {
+      scope: "month",
+      heading: "On this day this month",
+      phase: "open",
+      direction: this.getPreviewDirectionFromClick(event),
+      entries,
+      dateLabel: this.getCalendarHeading(),
+      top: position.top,
+      left: position.left,
+      placement: position.placement,
+    };
+  }
+
+  getOnThisDayIcon(entry: OnThisDayEntry): string {
+    if (entry.type === "dream") return "nights_stay";
+    if (entry.type === "thought_record") return "psychology_alt";
+    return "book";
+  }
+
+  getOnThisDayEntryDateLabel(entry: OnThisDayEntry): string {
+    return new Date(`${entry.entry_date}T12:00:00`).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  getOnThisDayImageStyle(entry: OnThisDayEntry): string | null {
+    const imageUrl = String(entry.image_url || "").trim();
+    return imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : null;
+  }
+
+  openOnThisDayEntry(entry: OnThisDayEntry, event: Event): void {
+    event.stopPropagation();
+    this.closeOnThisDayPreview(undefined, true);
+    const date = new Date(`${this.onThisDayFeed?.date || entry.entry_date}T12:00:00`);
+    const returnParams = {
+      display: this.displayMode,
+      show: this.getSerialisedContentFilters(),
+      month: date.getMonth() + 1,
+      year: date.getFullYear(),
+    };
+    if (entry.type === "thought_record") {
+      void this.router.navigate(["/cbt", entry.id], {
+        queryParams: { ...returnParams, returnTo: "calendar" },
+      });
+      return;
+    }
+    void this.router.navigate(["/entries", entry.id], {
+      queryParams: { ...returnParams, entryType: entry.type },
+    });
+  }
+
+  async hideOnThisDayEntry(entry: OnThisDayEntry, event: Event): Promise<void> {
+    event.stopPropagation();
+    const confirmed = await this.appDialog.confirm({
+      title: "Hide this memory?",
+      message: "It will no longer appear in On this day.",
+      confirmText: "Hide memory",
+      cancelText: "Keep showing",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    this.onThisDayService.hideEntry(entry.type, entry.id).subscribe({
+      next: () => {
+        if (this.onThisDayFeed) {
+          this.onThisDayFeed = {
+            ...this.onThisDayFeed,
+            entries: this.onThisDayFeed.entries.filter(
+              (item) => item.id !== entry.id || item.type !== entry.type,
+            ),
+          };
+        }
+        if (this.onThisDayMonthFeed) {
+          this.onThisDayMonthFeed = {
+            ...this.onThisDayMonthFeed,
+            entries: this.onThisDayMonthFeed.entries.filter(
+              (item) => item.id !== entry.id || item.type !== entry.type,
+            ),
+          };
+        }
+        if (this.onThisDayPreview) {
+          const entries =
+            this.onThisDayPreview.scope === "month"
+              ? this.getVisibleOnThisDayEntries(
+                  this.onThisDayMonthFeed?.entries ?? [],
+                )
+              : this.getVisibleOnThisDayEntries(
+                  this.onThisDayFeed?.entries ?? [],
+                );
+          if (entries.length === 0) {
+            this.closeOnThisDayPreview(undefined, true);
+          } else {
+            this.onThisDayPreview = { ...this.onThisDayPreview, entries };
+          }
+        }
+      },
+      error: () => {
+        void this.appDialog.alert({
+          title: "Memory could not be hidden",
+          message: "Try again in a moment.",
+          confirmText: "Close",
+          cancelText: "",
+          variant: "warning",
+        });
+      },
+    });
+  }
+
   getCalendarPreviewImageStyle(entry: EntryItem): string | null {
     const imageUrl = this.getCalendarPreviewImageUrl(entry);
     return imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : null;
   }
 
-  getEntryCardImageUrl(entry: EntryItem): string | null {
+  getEntryCardImageUrl(entry: CardItem): string | null {
+    if (entry.type === "thought_record") return null;
     return this.getCalendarPreviewImageUrl(entry);
   }
 
-  isAiGeneratedEntryImage(entry: EntryItem): boolean {
+  isAiGeneratedEntryImage(entry: CardItem): boolean {
+    if (entry.type === "thought_record") return false;
     return (entry.image_source || "").trim() === "ai";
   }
 
@@ -2958,6 +3960,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   private syncPublicHolidaysForSelectedYear(): void {
+    this.syncOnThisDayForSelectedMonth();
     if (!this.selectedMonth || !this.publicHolidaysEnabled) {
       return;
     }
@@ -2989,12 +3992,47 @@ export class ListComponent implements OnInit, OnDestroy {
     });
   }
 
+  private syncOnThisDayForSelectedMonth(): void {
+    if (!this.selectedMonth) {
+      this.onThisDayMonthFeed = null;
+      return;
+    }
+    this.onThisDayService
+      .getMonthFeed(
+        this.selectedMonth.year,
+        (this.selectedMonth as any).monthIndex + 1,
+      )
+      .subscribe({
+        next: (feed) => {
+          this.onThisDayMonthFeed = feed;
+          this.syncOnThisDayFilterAvailability(feed.enabled);
+        },
+        error: () => {
+          this.onThisDayMonthFeed = null;
+          this.syncOnThisDayFilterAvailability(
+            Boolean(this.onThisDayFeed?.enabled),
+          );
+        },
+      });
+  }
+
   private getEntrySortTimestamp(entry: EntryItem): number {
     const timeValue =
       typeof entry.entry_time === "string" && /^\d{2}:\d{2}$/.test(entry.entry_time.trim())
         ? entry.entry_time.trim()
         : this.getFallbackEntryTime(entry);
     return new Date(`${entry.entry_date}T${timeValue}:00`).getTime();
+  }
+
+  private getCardItemDate(entry: CardItem): string {
+    return entry.type === "thought_record" ? entry.record_date : entry.entry_date;
+  }
+
+  private getCardItemSortTimestamp(entry: CardItem): number {
+    if (entry.type === "thought_record") {
+      return new Date(`${entry.record_date}T12:00:00`).getTime();
+    }
+    return this.getEntrySortTimestamp(entry);
   }
 
   private getFallbackEntryTime(entry: EntryItem): string {
@@ -3123,6 +4161,25 @@ export class ListComponent implements OnInit, OnDestroy {
     }, 180);
   }
 
+  closeOnThisDayPreview(event?: Event, immediate = false): void {
+    event?.stopPropagation();
+    if (!this.onThisDayPreview) return;
+
+    if (this.onThisDayPreviewCloseTimerId) {
+      window.clearTimeout(this.onThisDayPreviewCloseTimerId);
+      this.onThisDayPreviewCloseTimerId = null;
+    }
+    if (immediate) {
+      this.onThisDayPreview = null;
+      return;
+    }
+    this.onThisDayPreview = { ...this.onThisDayPreview, phase: "closing" };
+    this.onThisDayPreviewCloseTimerId = window.setTimeout(() => {
+      this.onThisDayPreview = null;
+      this.onThisDayPreviewCloseTimerId = null;
+    }, 180);
+  }
+
   closeCbtPreview(event?: Event, immediate = false): void {
     event?.stopPropagation();
     if (!this.cbtPreview) return;
@@ -3230,24 +4287,47 @@ export class ListComponent implements OnInit, OnDestroy {
     }
 
     if (this.cbtPreview) {
-      if (target.closest(".cbt-preview-deck, .calendar-entry-icon.thought-record")) {
+      if (
+        target.closest(
+          ".cbt-preview-deck, .calendar-entry-icon.thought-record, .calendar-thought-records-summary-trigger",
+        )
+      ) {
         return;
       }
       this.closeCbtPreview();
     }
 
     if (this.importantDayPreview) {
-      if (target.closest(".important-day-preview-deck, .calendar-important-day-badge")) {
+      if (
+        target.closest(
+          ".important-day-preview-deck, .calendar-important-day-badge, .calendar-important-days-summary-trigger",
+        )
+      ) {
         return;
       }
       this.closeImportantDayPreview();
     }
 
     if (this.occasionPreview) {
-      if (target.closest(".important-day-preview-deck, .calendar-important-day-badge")) {
+      if (
+        target.closest(
+          ".important-day-preview-deck, .calendar-important-day-badge, .calendar-entry-icon.important-day, .calendar-entry-icon.public-holiday",
+        )
+      ) {
         return;
       }
       this.closeOccasionPreview();
+    }
+
+    if (this.onThisDayPreview) {
+      if (
+        target.closest(
+          ".on-this-day-preview-deck, .on-this-day-summary, .calendar-entry-icon.on-this-day",
+        )
+      ) {
+        return;
+      }
+      this.closeOnThisDayPreview();
     }
   }
 
@@ -3275,11 +4355,21 @@ export class ListComponent implements OnInit, OnDestroy {
     if (this.occasionPreview) {
       event.preventDefault();
       this.closeOccasionPreview();
+      return;
+    }
+
+    if (this.onThisDayPreview) {
+      event.preventDefault();
+      this.closeOnThisDayPreview();
     }
   }
 
   @HostListener("window:scroll")
   onWindowScroll(): void {
+    this.closeAllCalendarPreviewsImmediately();
+  }
+
+  private closeAllCalendarPreviewsImmediately(): void {
     if (this.calendarPreview) {
       this.closeCalendarPreview(undefined, true);
     }
@@ -3291,6 +4381,9 @@ export class ListComponent implements OnInit, OnDestroy {
     }
     if (this.occasionPreview) {
       this.closeOccasionPreview(undefined, true);
+    }
+    if (this.onThisDayPreview) {
+      this.closeOnThisDayPreview(undefined, true);
     }
   }
 
@@ -3308,9 +4401,14 @@ export class ListComponent implements OnInit, OnDestroy {
     if (this.occasionPreview) {
       this.closeOccasionPreview(undefined, true);
     }
+    if (this.onThisDayPreview) {
+      this.closeOnThisDayPreview(undefined, true);
+    }
   }
 
   ngOnDestroy(): void {
+    document.removeEventListener("scroll", this.capturedScrollHandler, true);
+
     // Clean up animation frame to prevent memory leaks
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
@@ -3326,6 +4424,12 @@ export class ListComponent implements OnInit, OnDestroy {
     }
     if (this.occasionPreviewCloseTimerId) {
       window.clearTimeout(this.occasionPreviewCloseTimerId);
+    }
+    if (this.onThisDayPreviewCloseTimerId) {
+      window.clearTimeout(this.onThisDayPreviewCloseTimerId);
+    }
+    if (this.calendarFlipTimerId) {
+      window.clearTimeout(this.calendarFlipTimerId);
     }
   }
 }

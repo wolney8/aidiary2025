@@ -237,26 +237,6 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
 
       <div class="compact-actions" *ngIf="isCompact() && !isCompactSearchOpen()">
         <button
-          type="button"
-          class="theme-toggle"
-          [class.is-dark]="isDarkTheme()"
-          (click)="toggleTheme()"
-          role="switch"
-          [attr.aria-checked]="isDarkTheme()"
-          [attr.aria-label]="
-            isDarkTheme() ? 'Switch to light mode' : 'Switch to dark mode'
-          "
-        >
-          <span class="theme-toggle-track" aria-hidden="true">
-            <span class="theme-toggle-slot">
-              <mat-icon>light_mode</mat-icon>
-            </span>
-            <span class="theme-toggle-slot">
-              <mat-icon>dark_mode</mat-icon>
-            </span>
-          </span>
-        </button>
-        <button
           mat-icon-button
           type="button"
           (click)="openCompactSearch()"
@@ -271,29 +251,6 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         <ng-container *ngIf="userName$ | async as name">
           <span class="user-name" *ngIf="showUserName()">{{ name }}</span>
         </ng-container>
-        <button
-          type="button"
-          class="theme-toggle"
-          [class.is-dark]="isDarkTheme()"
-          (click)="toggleTheme()"
-          role="switch"
-          [attr.aria-checked]="isDarkTheme()"
-          [attr.aria-label]="
-            isDarkTheme() ? 'Switch to light mode' : 'Switch to dark mode'
-          "
-        >
-          <span class="theme-toggle-track" aria-hidden="true">
-            <span class="theme-toggle-slot">
-              <mat-icon>light_mode</mat-icon>
-            </span>
-            <span class="theme-toggle-slot">
-              <mat-icon>dark_mode</mat-icon>
-            </span>
-          </span>
-        </button>
-        <span class="version-label" *ngIf="showVersionLabel()">{{
-          versionLabel
-        }}</span>
         <button
           #notificationMenuTrigger="matMenuTrigger"
           mat-icon-button
@@ -310,6 +267,26 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               aria-hidden="true"
             >{{ getUnreadBadgeLabel(notifications) }}</span>
           </ng-container>
+        </button>
+        <button
+          type="button"
+          class="theme-toggle"
+          [class.is-dark]="isDarkTheme()"
+          (click)="toggleTheme()"
+          role="switch"
+          [attr.aria-checked]="isDarkTheme()"
+          [attr.aria-label]="
+            isDarkTheme() ? 'Switch to light mode' : 'Switch to dark mode'
+          "
+        >
+          <span class="theme-toggle-track" aria-hidden="true">
+            <span class="theme-toggle-slot">
+              <mat-icon>light_mode</mat-icon>
+            </span>
+            <span class="theme-toggle-slot">
+              <mat-icon>dark_mode</mat-icon>
+            </span>
+          </span>
         </button>
         <button
           mat-icon-button
@@ -553,12 +530,14 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         flex-shrink: 0;
       }
       .account-menu-trigger {
+        width: 52px;
+        height: 48px;
         overflow: hidden;
       }
       .account-avatar {
         display: block;
-        width: 32px;
-        height: 32px;
+        width: 38px;
+        height: 38px;
         border: 1px solid rgba(255, 255, 255, 0.36);
         border-radius: 50%;
         object-fit: cover;
@@ -569,8 +548,9 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         gap: 0.25rem;
       }
       .theme-toggle {
-        width: 48px;
-        height: 48px;
+        position: relative;
+        width: 40px;
+        height: 40px;
         padding: 0;
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 32px;
@@ -596,39 +576,29 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         display: flex;
         flex-direction: column;
         width: 100%;
-        height: 96px;
+        height: 80px;
         transform: translateY(0);
         transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
       }
       .theme-toggle.is-dark .theme-toggle-track {
-        transform: translateY(-48px);
+        transform: translateY(-40px);
       }
       .theme-toggle-slot {
-        width: 48px;
-        height: 48px;
+        width: 40px;
+        height: 40px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         color: #ffffff;
       }
       .theme-toggle-slot mat-icon {
-        font-size: 24px;
-        width: 24px;
-        height: 24px;
+        font-size: 21px;
+        width: 21px;
+        height: 21px;
       }
       .user-name {
         white-space: nowrap;
       }
-      .version-label {
-        font-size: 12px;
-        padding: 4px 8px;
-        background: rgba(255, 255, 255, 0.12);
-        border-radius: var(--radius-pill);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: #ffffff;
-        white-space: nowrap;
-      }
-
       .notification-panel {
         box-sizing: border-box;
         width: min(17rem, calc(100vw - 1rem));
@@ -939,7 +909,6 @@ export class TopBarComponent implements OnInit, OnDestroy {
   readonly showUserName = computed(
     () => !this.isCompactViewport() && !this.isMediumViewport(),
   );
-  readonly showVersionLabel = computed(() => !this.isCompactViewport());
   @Output() toggleSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
   private searchService = inject(SearchService);

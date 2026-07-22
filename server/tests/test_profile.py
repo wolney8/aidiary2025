@@ -86,6 +86,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["allow_ai_attachment_context"] == 0
     assert data["holiday_country_code"] is None
     assert data["show_public_holidays"] == 0
+    assert data["show_on_this_day"] == 0
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -106,6 +107,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "allow_ai_attachment_context" in columns
     assert "holiday_country_code" in columns
     assert "show_public_holidays" in columns
+    assert "show_on_this_day" in columns
     assert "profile_picture_storage_key" in columns
 
 
@@ -191,6 +193,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
                 "timezone": "Europe/London",
                 "holiday_country_code": "gb",
                 "show_public_holidays": True,
+                "show_on_this_day": True,
                 "ai_tone": "empathetic",
                 "ai_verbosity": "detailed",
                 "ai_focus": "creative-prompts",
@@ -213,6 +216,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     assert data["user"]["timezone"] == "Europe/London"
     assert data["user"]["holiday_country_code"] == "GB"
     assert data["user"]["show_public_holidays"] == 1
+    assert data["user"]["show_on_this_day"] == 1
     assert data["user"]["ai_tone"] == "empathetic"
     assert data["user"]["ai_verbosity"] == "detailed"
     assert data["user"]["ai_focus"] == "creative-prompts"
