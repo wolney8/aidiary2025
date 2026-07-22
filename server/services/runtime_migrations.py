@@ -49,6 +49,7 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'timezone': "TEXT DEFAULT 'UTC'",
     'holiday_country_code': 'TEXT',
     'show_public_holidays': 'INTEGER DEFAULT 0',
+    'show_on_this_day': 'INTEGER DEFAULT 0',
     'ai_tone': "TEXT DEFAULT 'friendly'",
     'ai_verbosity': "TEXT DEFAULT 'balanced'",
     'ai_focus': "TEXT DEFAULT 'reflective'",
@@ -172,6 +173,19 @@ CREATE TABLE IF NOT EXISTS public_holiday_cache (
     payload_json  TEXT NOT NULL,
     fetched_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(country_code, holiday_year)
+)
+"""
+
+_ENTRY_RESURFACING_PREFERENCES_DDL = """
+CREATE TABLE IF NOT EXISTS entry_resurfacing_preferences (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    entry_type TEXT NOT NULL
+               CHECK(entry_type IN ('daily', 'dream', 'thought_record')),
+    entry_id   INTEGER NOT NULL,
+    hidden_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, entry_type, entry_id)
 )
 """
 
@@ -485,6 +499,28 @@ def ensure_public_holiday_cache_table(
     if log:
         log('Runtime migration ensured table exists: %s', 'public_holiday_cache')
 
+    return True
+
+
+def ensure_entry_resurfacing_preferences_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure per-user hidden-memory preferences are stored durably."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_ENTRY_RESURFACING_PREFERENCES_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_entry_resurfacing_user_lookup
+            ON entry_resurfacing_preferences(user_id, entry_type, entry_id)
+            """
+        )
+
+    if log:
+        log(
+            'Runtime migration ensured table exists: %s',
+            'entry_resurfacing_preferences',
+        )
     return True
 
 

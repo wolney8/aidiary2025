@@ -339,13 +339,33 @@ export class CbtWorksheetComponent implements OnInit {
     if (this.route.snapshot.queryParamMap.get("returnTo") === "calendar") {
       const month = Number(this.route.snapshot.queryParamMap.get("month"));
       const year = Number(this.route.snapshot.queryParamMap.get("year"));
+      const show = this.route.snapshot.queryParamMap.get("show");
       void this.router.navigate(["/entries"], {
         queryParams: {
           ...(Number.isInteger(month) && month >= 1 && month <= 12
             ? { month }
             : {}),
           ...(Number.isInteger(year) && year > 0 ? { year } : {}),
+          ...(show !== null ? { show } : {}),
           display: "calendar",
+        },
+      });
+      return;
+    }
+    if (this.route.snapshot.queryParamMap.get("returnTo") === "entries") {
+      const month = Number(this.route.snapshot.queryParamMap.get("month"));
+      const year = Number(this.route.snapshot.queryParamMap.get("year"));
+      const type = this.route.snapshot.queryParamMap.get("type");
+      const show = this.route.snapshot.queryParamMap.get("show");
+      void this.router.navigate(["/entries"], {
+        queryParams: {
+          display: "cards",
+          ...(Number.isInteger(month) && month >= 1 && month <= 12
+            ? { month }
+            : {}),
+          ...(Number.isInteger(year) && year > 0 ? { year } : {}),
+          ...(show !== null ? { show } : {}),
+          ...(type === "daily" || type === "dreams" ? { type } : {}),
         },
       });
       return;
@@ -371,7 +391,7 @@ export class CbtWorksheetComponent implements OnInit {
 
   private goToThoughtRecords(): void {
     this.allowNavigation = true;
-    void this.router.navigate(["/cbt"]);
+    this.goBack();
   }
 
   async canDeactivate(): Promise<boolean> {

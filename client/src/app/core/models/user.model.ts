@@ -16,6 +16,7 @@ export interface User {
   timezone?: string;
   holiday_country_code?: string;
   show_public_holidays?: boolean;
+  show_on_this_day?: boolean;
   ai_tone?: string;
   ai_verbosity?: string;
   ai_focus?: string;

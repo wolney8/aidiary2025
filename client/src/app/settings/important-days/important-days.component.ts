@@ -1,5 +1,6 @@
 import { CommonModule } from "@angular/common";
 import { Component, OnInit, inject } from "@angular/core";
+import { ActivatedRoute } from "@angular/router";
 import { FormsModule } from "@angular/forms";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
@@ -664,6 +665,7 @@ type ImportantDayDraft = {
 export class ImportantDaysComponent implements OnInit {
   private readonly importantDaysService = inject(ImportantDaysService);
   private readonly appDialog = inject(AppDialogService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly iconOptions: Array<{ value: ImportantDayIcon; label: string }> = [
     { value: "cake", label: "Cake" },
@@ -698,6 +700,13 @@ export class ImportantDaysComponent implements OnInit {
   errorMessage = "";
 
   ngOnInit(): void {
+    const requestedDate = this.route.snapshot.queryParamMap.get("date");
+    if (this.route.snapshot.queryParamMap.get("create") === "true" && requestedDate) {
+      const parsedDate = new Date(`${requestedDate}T12:00:00`);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        this.draft.startsOn = parsedDate;
+      }
+    }
     this.loadImportantDays();
   }
 

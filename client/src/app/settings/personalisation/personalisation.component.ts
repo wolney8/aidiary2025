@@ -42,7 +42,7 @@ import { User } from "../../core/models/user.model";
           <mat-card-header>
             <mat-card-title>Calendar And Holidays</mat-card-title>
             <mat-card-subtitle>
-              Control whether public holidays appear in calendar view.
+              Choose which reference dates appear in calendar view.
             </mat-card-subtitle>
           </mat-card-header>
           <mat-card-content class="field-grid">
@@ -57,6 +57,18 @@ import { User } from "../../core/models/user.model";
                   </mat-checkbox>
                   <p class="checkbox-hint">
                     Uses your selected country and keeps holidays separate from diary entries.
+                  </p>
+                </div>
+                <div class="checkbox-row">
+                  <mat-checkbox
+                    [(ngModel)]="settings.show_on_this_day"
+                    name="show_on_this_day"
+                    data-testid="show-on-this-day-toggle"
+                  >
+                    Show On this day memories
+                  </mat-checkbox>
+                  <p class="checkbox-hint">
+                    Resurfaces entries from this date in earlier years.
                   </p>
                 </div>
               </div>
@@ -403,6 +415,10 @@ export class PersonalisationComponent implements OnInit {
             profile.show_public_holidays === undefined
               ? false
               : Boolean(profile.show_public_holidays),
+          show_on_this_day:
+            profile.show_on_this_day === undefined
+              ? false
+              : Boolean(profile.show_on_this_day),
           ai_tone: profile.ai_tone || "friendly",
           ai_verbosity: profile.ai_verbosity || "balanced",
           ai_focus: profile.ai_focus || "reflective",
@@ -515,6 +531,7 @@ export class PersonalisationComponent implements OnInit {
       timezone: String(settings.timezone || "").trim(),
       holiday_country_code: String(settings.holiday_country_code || "").trim(),
       show_public_holidays: Boolean(settings.show_public_holidays),
+      show_on_this_day: Boolean(settings.show_on_this_day),
       ai_tone: String(settings.ai_tone || "").trim(),
       ai_verbosity: String(settings.ai_verbosity || "").trim(),
       ai_focus: String(settings.ai_focus || "").trim(),
@@ -530,6 +547,7 @@ export class PersonalisationComponent implements OnInit {
       timezone: String(settings.timezone || "").trim(),
       holiday_country_code: String(settings.holiday_country_code || "").trim(),
       show_public_holidays: Boolean(settings.show_public_holidays),
+      show_on_this_day: Boolean(settings.show_on_this_day),
       ai_tone: String(settings.ai_tone || "").trim(),
       ai_verbosity: String(settings.ai_verbosity || "").trim(),
       ai_focus: String(settings.ai_focus || "").trim(),

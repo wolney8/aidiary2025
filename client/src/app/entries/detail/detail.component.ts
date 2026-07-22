@@ -84,7 +84,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
             mat-raised-button
             color="primary"
             [routerLink]="['/entries', entry.id, 'edit']"
-            [queryParams]="{ type: entryType }"
+            [queryParams]="getEditQueryParams()"
           >
             Edit Entry
           </button>
@@ -1909,6 +1909,13 @@ export class DetailComponent implements OnInit, OnDestroy {
     this.router.navigate(["/entries"]);
   }
 
+  getEditQueryParams(): Record<string, string | number> {
+    return {
+      ...this.backQueryParams,
+      type: this.entryType,
+    };
+  }
+
   private loadEntryByType(id: number, entryType: "daily" | "dream"): void {
     if (entryType === "dream") {
       this.entriesService.getDreamEntry(id).subscribe({
@@ -3242,7 +3249,7 @@ export class DetailComponent implements OnInit, OnDestroy {
   private captureBackQueryParams(): void {
     const sourceParams = this.route.snapshot.queryParams;
 
-    ["type", "month", "year", "search", "filters"].forEach((key) => {
+    ["type", "show", "display", "month", "year", "search", "filters"].forEach((key) => {
       if (sourceParams[key] !== undefined && sourceParams[key] !== null) {
         this.backQueryParams[key] = sourceParams[key];
       }

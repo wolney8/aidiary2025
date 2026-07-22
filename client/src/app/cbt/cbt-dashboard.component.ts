@@ -1,7 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { Component, DestroyRef, OnInit, inject } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { Router, RouterLink } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import { MatChipsModule } from "@angular/material/chips";
@@ -30,6 +30,7 @@ export class CbtDashboardComponent implements OnInit {
   private readonly cbtService = inject(CbtService);
   private readonly appDialog = inject(AppDialogService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
 
   worksheets: CbtWorksheet[] = [];
@@ -76,6 +77,9 @@ export class CbtDashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadWorksheets();
+    if (this.route.snapshot.queryParamMap.get("create") === "true") {
+      this.startThoughtRecord(this.route.snapshot.queryParamMap.get("date"));
+    }
   }
 
   loadWorksheets(): void {
@@ -96,15 +100,18 @@ export class CbtDashboardComponent implements OnInit {
       });
   }
 
-  startThoughtRecord(): void {
+  startThoughtRecord(requestedDate?: string | null): void {
     if (this.isCreating) return;
     this.isCreating = true;
     const now = new Date();
-    const recordDate = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, "0"),
-      String(now.getDate()).padStart(2, "0"),
-    ].join("-");
+    const recordDate =
+      requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+        ? requestedDate
+        : [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, "0"),
+            String(now.getDate()).padStart(2, "0"),
+          ].join("-");
     this.cbtService
       .createWorksheet({ record_date: recordDate })
       .pipe(takeUntilDestroyed(this.destroyRef))

@@ -8,12 +8,14 @@ import { AuthService } from "../../core/services/auth.service";
 import { EntriesService } from "../../core/services/entries.service";
 import { AnalysisService } from "../../core/services/analysis.service";
 import { CbtService } from "../../core/services/cbt.service";
+import { ImportantDaysService } from "../../core/services/important-days.service";
 import {
   DailyAnalysisResponse,
   DailyEntry,
   DreamAnalysisResponse,
   DreamEntry,
 } from "../../core/models/entry.model";
+import { CbtWorksheet } from "../../core/models/cbt.model";
 
 describe("CreateComponent save reliability", () => {
   let fixture: ComponentFixture<CreateComponent>;
@@ -24,6 +26,7 @@ describe("CreateComponent save reliability", () => {
   let entriesServiceMock: jasmine.SpyObj<EntriesService>;
   let analysisServiceMock: jasmine.SpyObj<AnalysisService>;
   let cbtServiceMock: jasmine.SpyObj<CbtService>;
+  let importantDaysServiceMock: jasmine.SpyObj<ImportantDaysService>;
 
   beforeEach(async () => {
     routerMock = jasmine.createSpyObj<Router>("Router", ["navigate"]);
@@ -61,6 +64,10 @@ describe("CreateComponent save reliability", () => {
       "createWorksheet",
     ]);
     cbtServiceMock.listWorksheets.and.returnValue(of([]));
+    importantDaysServiceMock = jasmine.createSpyObj<ImportantDaysService>(
+      "ImportantDaysService",
+      ["createImportantDay"],
+    );
 
     await TestBed.configureTestingModule({
       imports: [CreateComponent],
@@ -71,6 +78,7 @@ describe("CreateComponent save reliability", () => {
         { provide: EntriesService, useValue: entriesServiceMock },
         { provide: AnalysisService, useValue: analysisServiceMock },
         { provide: CbtService, useValue: cbtServiceMock },
+        { provide: ImportantDaysService, useValue: importantDaysServiceMock },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -381,6 +389,52 @@ describe("CreateComponent save reliability", () => {
       jasmine.objectContaining({
         title: "Switch entry type?",
         confirmText: "Switch type",
+      }),
+    );
+  });
+
+  it("creates an important day inside the new-entry workflow", async () => {
+    component.selectedType = "important-day";
+    component.entryDate = new Date(2026, 6, 3);
+    component.importantDayLabel = "Health check";
+    importantDaysServiceMock.createImportantDay.and.returnValue(
+      of({ id: 7 } as any),
+    );
+
+    await component.saveEmbeddedWorkflow();
+
+    expect(importantDaysServiceMock.createImportantDay).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        label: "Health check",
+        starts_on: "2026-07-03",
+        original_year: 2026,
+      }),
+    );
+    expect(routerMock.navigate).toHaveBeenCalledWith(["/entries"], {
+      queryParams: jasmine.objectContaining({
+        display: "calendar",
+        month: 7,
+        year: 2026,
+      }),
+    });
+  });
+
+  it("creates a thought record inside the new-entry workflow", async () => {
+    component.selectedType = "thought-record";
+    component.entryDate = new Date(2026, 6, 3);
+    component.thoughtRecordTitle = "Appointment worry";
+    component.thoughtRecordSituation = "I felt tense before the appointment.";
+    cbtServiceMock.createWorksheet.and.returnValue(
+      of({ id: 8 } as CbtWorksheet),
+    );
+
+    await component.saveEmbeddedWorkflow();
+
+    expect(cbtServiceMock.createWorksheet).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        title: "Appointment worry",
+        record_date: "2026-07-03",
+        situation: "I felt tense before the appointment.",
       }),
     );
   });
