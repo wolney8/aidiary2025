@@ -84,6 +84,15 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "reflections",
+    title: "Reflection summaries | AI Diary",
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import("./reflections/reflection-summaries.component").then(
+        (m) => m.ReflectionSummariesComponent,
+      ),
+  },
+  {
     path: "profile",
     title: "Profile | AI Diary",
     canActivate: [authGuard],

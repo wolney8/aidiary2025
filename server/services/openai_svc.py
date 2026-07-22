@@ -160,6 +160,28 @@ class OpenAIService:
         },
     }
 
+    REFLECTION_SUMMARY_RESPONSE_FORMAT = {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'reflection_period_summary',
+            'description': 'A weekly or monthly reflection summary over diary history.',
+            'strict': True,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'title': {'type': 'string'},
+                    'summary_text': {'type': 'string'},
+                    'themes': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                    },
+                },
+                'required': ['title', 'summary_text', 'themes'],
+                'additionalProperties': False,
+            },
+        },
+    }
+
     THOUGHT_RECORD_ANALYSIS_RESPONSE_FORMAT = {
         'type': 'json_schema',
         'json_schema': {
@@ -1473,6 +1495,68 @@ Additional requirements for this retry:
             if self._is_rate_limit_like_error(exc):
                 raise AnalysisRateLimitError('AI analysis rate-limited') from exc
             logger.exception('Thought record analysis failed')
+            raise
+
+    def generate_reflection_summary(
+        self,
+        period_type: str,
+        period_label: str,
+        source_context: str,
+        *,
+        analysis_options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Generate a bounded weekly/monthly reflection summary."""
+        normalised_options = self._normalise_analysis_options(analysis_options)
+        system_prompt = (
+            'You generate non-diagnostic diary reflection summaries. '
+            'Use only the provided source context. Do not invent trends when the period is sparse. '
+            'Summarise mood movement, recurring themes, people or places when relevant, linked thought records, '
+            'and notable changes. Prior-entry references must use human-readable dates and short themes, not long quotes. '
+            'Avoid medical diagnosis, certainty, or instructions that sound clinical. '
+            f"Tone: {normalised_options['ai_tone']}. "
+            f"Verbosity: {normalised_options['ai_verbosity']}. "
+            f"Focus: {normalised_options['ai_focus']}."
+        )
+        if normalised_options.get('personal_context'):
+            system_prompt += (
+                '\nUse this lightweight user context only when it helps, without making the summary identity-heavy:\n'
+                f"{normalised_options['personal_context']}"
+            )
+        user_content = (
+            f'Create a {period_type} reflection for {period_label}.\n\n'
+            'Return a concise but useful title, a readable summary, and 3 to 8 short themes.\n\n'
+            f'Source context:\n{source_context}'
+        )
+
+        try:
+            response = self._create_analysis_completion(
+                system_prompt,
+                user_content,
+                response_format=self.REFLECTION_SUMMARY_RESPONSE_FORMAT,
+                analysis_options=analysis_options,
+            )
+            parsed = self._extract_valid_json_payload(
+                response.choices[0].message.content,
+                ('title', 'summary_text', 'themes'),
+            )
+            if not parsed:
+                raise ValueError('Reflection summary returned invalid JSON')
+            themes = parsed.get('themes')
+            if not isinstance(themes, list):
+                themes = []
+            return {
+                'title': self._coerce_json_field_value(parsed.get('title')).strip() or f'{period_label} reflection',
+                'summary_text': self._coerce_json_field_value(parsed.get('summary_text')).strip(),
+                'themes': [
+                    self._coerce_json_field_value(theme).strip()
+                    for theme in themes
+                    if self._coerce_json_field_value(theme).strip()
+                ][:8],
+            }
+        except Exception as exc:
+            if self._is_rate_limit_like_error(exc):
+                raise AnalysisRateLimitError('AI analysis rate-limited') from exc
+            logger.exception('Reflection summary generation failed')
             raise
 
     def analyse_daily_entry(
