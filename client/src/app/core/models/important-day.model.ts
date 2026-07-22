@@ -34,6 +34,8 @@ export interface ImportantDay {
   recurrence: ImportantDayRecurrence;
   icon_name: ImportantDayIcon;
   accent_color: ImportantDayAccentColor;
+  has_image?: boolean;
+  image_url?: string | null;
   note?: string;
   created_at?: string;
   updated_at?: string;

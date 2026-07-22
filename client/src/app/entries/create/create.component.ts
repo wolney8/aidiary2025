@@ -51,7 +51,11 @@ import {
   AIStyleOption,
   DreamFieldOptions,
 } from "../../core/models/entry.model";
-import { CbtWorksheet } from "../../core/models/cbt.model";
+import {
+  CbtFeelingRating,
+  CbtWorksheet,
+  CbtWorksheetPayload,
+} from "../../core/models/cbt.model";
 import {
   ImportantDayAccentColor,
   ImportantDayCategory,
@@ -80,6 +84,7 @@ interface PendingAttachment {
 const MAX_ATTACHMENTS_PER_ENTRY = 3;
 const MAX_IMAGE_OR_PDF_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_IMPORTANT_DAY_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
@@ -123,28 +128,43 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   template: `
     <div class="create-container">
       <mat-card>
-        <mat-card-header>
-          <button
-            mat-stroked-button
-            type="button"
-            class="header-back"
-            (click)="goBack()"
-            [disabled]="isSaving"
-            aria-label="Go back to entries"
-          >
-            <mat-icon>arrow_back</mat-icon>
-            Back
-          </button>
+        <mat-card-header class="create-card-header">
+          <div class="create-header-actions">
+            <button
+              mat-stroked-button
+              type="button"
+              class="header-back"
+              (click)="goBack()"
+              [disabled]="isSaving"
+              aria-label="Go back to entries"
+              data-testid="create-back-button"
+            >
+              <mat-icon>arrow_back</mat-icon>
+              Back
+            </button>
+
+            <ng-container *ngIf="isDiaryWorkflow()">
+              <mat-slide-toggle
+                [(ngModel)]="leaveItToAI"
+                [disabled]="isSaving"
+                data-testid="create-respond-ai-toggle"
+              >
+                Respond with AI
+              </mat-slide-toggle>
+            </ng-container>
+
+            <ng-container *ngIf="selectedType === 'thought-record'">
+              <mat-slide-toggle
+                [(ngModel)]="thoughtRecordRespondWithAI"
+                [disabled]="isSaving"
+                data-testid="thought-record-respond-ai-toggle"
+              >
+                Respond with AI
+              </mat-slide-toggle>
+            </ng-container>
+          </div>
 
           <h1 mat-card-title>{{ getWorkflowHeading() }}</h1>
-
-          <mat-slide-toggle
-            *ngIf="isDiaryWorkflow()"
-            [(ngModel)]="leaveItToAI"
-            [disabled]="isSaving"
-          >
-            Respond with AI
-          </mat-slide-toggle>
         </mat-card-header>
 
         <mat-card-content>
@@ -879,6 +899,40 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               <mat-label>Note</mat-label>
               <textarea matInput [(ngModel)]="importantDayNote" name="importantDayNote" rows="4" maxlength="500"></textarea>
             </mat-form-field>
+            <div class="important-day-image-control">
+              <input
+                #embeddedImportantDayImageInput
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                class="visually-hidden"
+                (change)="onImportantDayImageSelected($event)"
+              />
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="embeddedImportantDayImageInput.click()"
+                [disabled]="isSaving"
+                data-testid="embedded-important-day-add-image"
+              >
+                <mat-icon>add_photo_alternate</mat-icon>
+                {{ importantDayImagePreviewUrl ? "Replace image" : "Add image" }}
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                class="delete-button"
+                *ngIf="importantDayImagePreviewUrl"
+                (click)="clearImportantDayImage()"
+                [disabled]="isSaving"
+                data-testid="embedded-important-day-remove-image"
+              >
+                <mat-icon>delete</mat-icon>
+                Remove image
+              </button>
+              <div class="important-day-image-preview" *ngIf="importantDayImagePreviewUrl">
+                <img [src]="importantDayImagePreviewUrl" alt="" />
+              </div>
+            </div>
           </section>
 
           <section
@@ -907,9 +961,47 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               <mat-label>Situation</mat-label>
               <textarea matInput [(ngModel)]="thoughtRecordSituation" name="thoughtRecordSituation" rows="5" required></textarea>
             </mat-form-field>
+            <div class="embedded-workflow-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Feeling before</mat-label>
+                <input matInput [(ngModel)]="thoughtRecordFeelingBeforeLabel" name="thoughtRecordFeelingBeforeLabel" maxlength="40" />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Before intensity</mat-label>
+                <input matInput type="number" min="0" max="100" [(ngModel)]="thoughtRecordFeelingBeforeIntensity" name="thoughtRecordFeelingBeforeIntensity" />
+                <span matTextSuffix>%</span>
+              </mat-form-field>
+            </div>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Unhelpful thoughts</mat-label>
+              <textarea matInput [(ngModel)]="thoughtRecordUnhelpfulThoughts" name="thoughtRecordUnhelpfulThoughts" rows="5"></textarea>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Evidence that supports the thought</mat-label>
+              <textarea matInput [(ngModel)]="thoughtRecordEvidenceFor" name="thoughtRecordEvidenceFor" rows="4"></textarea>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Evidence against the thought</mat-label>
+              <textarea matInput [(ngModel)]="thoughtRecordEvidenceAgainst" name="thoughtRecordEvidenceAgainst" rows="4"></textarea>
+            </mat-form-field>
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Balanced thought</mat-label>
               <textarea matInput [(ngModel)]="thoughtRecordBalancedThought" name="thoughtRecordBalancedThought" rows="5"></textarea>
+            </mat-form-field>
+            <div class="embedded-workflow-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Feeling after</mat-label>
+                <input matInput [(ngModel)]="thoughtRecordFeelingAfterLabel" name="thoughtRecordFeelingAfterLabel" maxlength="40" />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>After intensity</mat-label>
+                <input matInput type="number" min="0" max="100" [(ngModel)]="thoughtRecordFeelingAfterIntensity" name="thoughtRecordFeelingAfterIntensity" />
+                <span matTextSuffix>%</span>
+              </mat-form-field>
+            </div>
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Helpful next step</mat-label>
+              <textarea matInput [(ngModel)]="thoughtRecordNextStep" name="thoughtRecordNextStep" rows="4"></textarea>
             </mat-form-field>
           </section>
           </fieldset>
@@ -1397,11 +1489,18 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         display: none;
       }
 
-      mat-card-header {
+      .create-card-header {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
         margin-bottom: var(--spacing-md);
+        gap: var(--spacing-sm);
+      }
+
+      .create-header-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: var(--spacing-sm);
       }
 
@@ -1418,6 +1517,35 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         margin-right: var(--spacing-xs);
       }
 
+      .important-day-image-control {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .important-day-image-control button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .important-day-image-preview {
+        width: 5.25rem;
+        height: 3.5rem;
+        overflow: hidden;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .important-day-image-preview img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
       mat-card {
         border-radius: var(--radius-md);
         border: 1px solid var(--colour-border);
@@ -1430,13 +1558,9 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
       }
 
       @media (max-width: 768px) {
-        mat-card-header {
-          flex-direction: column;
+        .create-header-actions {
           align-items: stretch;
-        }
-
-        .header-back {
-          align-self: flex-start;
+          flex-direction: column;
         }
 
         .entry-attachments-header {
@@ -1554,9 +1678,21 @@ export class CreateComponent implements OnInit, OnDestroy {
   importantDayIcon: ImportantDayIcon = "event";
   importantDayAccent: ImportantDayAccentColor = "blue";
   importantDayNote = "";
+  importantDayImageFile: File | null = null;
+  importantDayImagePreviewUrl = "";
+  private importantDayImageObjectUrl = "";
   thoughtRecordTitle = "";
   thoughtRecordSituation = "";
+  thoughtRecordFeelingBeforeLabel = "";
+  thoughtRecordFeelingBeforeIntensity = 50;
+  thoughtRecordUnhelpfulThoughts = "";
+  thoughtRecordEvidenceFor = "";
+  thoughtRecordEvidenceAgainst = "";
   thoughtRecordBalancedThought = "";
+  thoughtRecordFeelingAfterLabel = "";
+  thoughtRecordFeelingAfterIntensity = 30;
+  thoughtRecordNextStep = "";
+  thoughtRecordRespondWithAI = false;
 
   readonly importantDayIconOptions: Array<{
     value: ImportantDayIcon;
@@ -1655,6 +1791,12 @@ export class CreateComponent implements OnInit, OnDestroy {
 
   getEmbeddedSaveLabel(): string {
     if (this.isSaving) return "Saving…";
+    if (
+      this.selectedType === "thought-record" &&
+      this.thoughtRecordRespondWithAI
+    ) {
+      return "Save & Respond";
+    }
     return this.selectedType === "important-day"
       ? "Save Important Day"
       : "Save Thought Record";
@@ -1769,6 +1911,7 @@ export class CreateComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.clearPendingAttachments();
+    this.revokeImportantDayImagePreview();
   }
 
   loadEntryForEditing(id: number): void {
@@ -1875,7 +2018,7 @@ export class CreateComponent implements OnInit, OnDestroy {
           this.errorMessage = "Add a label for this important day.";
           return;
         }
-        await firstValueFrom(
+        const importantDay = await firstValueFrom(
           this.importantDaysService.createImportantDay({
             label: this.importantDayLabel.trim(),
             starts_on: this.serialiseDateAsLocalIso(date),
@@ -1887,6 +2030,14 @@ export class CreateComponent implements OnInit, OnDestroy {
             note: this.importantDayNote.trim(),
           }),
         );
+        if (this.importantDayImageFile) {
+          await firstValueFrom(
+            this.importantDaysService.uploadImportantDayImage(
+              importantDay.id,
+              this.importantDayImageFile,
+            ),
+          );
+        }
       } else {
         if (this.isFutureDate(date)) {
           this.errorMessage = "Thought records cannot be dated in the future.";
@@ -1896,15 +2047,25 @@ export class CreateComponent implements OnInit, OnDestroy {
           this.errorMessage = "Add the situation for this thought record.";
           return;
         }
-        await firstValueFrom(
-          this.cbtService.createWorksheet({
-            title: this.thoughtRecordTitle.trim(),
-            record_date: this.serialiseDateAsLocalIso(date),
-            situation: this.thoughtRecordSituation.trim(),
-            balanced_thought: this.thoughtRecordBalancedThought.trim(),
-            current_step: this.thoughtRecordBalancedThought.trim() ? 6 : 1,
-          }),
+        if (
+          this.thoughtRecordRespondWithAI &&
+          this.getEmbeddedThoughtRecordAnalysisText().length < 20
+        ) {
+          this.errorMessage =
+            "Add more detail to the thought record before requesting a response.";
+          return;
+        }
+        let worksheet = await firstValueFrom(
+          this.cbtService.createWorksheet(this.buildEmbeddedThoughtRecordPayload(date)),
         );
+        if (this.isEmbeddedThoughtRecordComplete()) {
+          worksheet = await firstValueFrom(
+            this.cbtService.completeWorksheet(worksheet.id),
+          );
+        }
+        if (this.thoughtRecordRespondWithAI) {
+          await firstValueFrom(this.cbtService.analyseWorksheet(worksheet.id));
+        }
       }
       this.allowNavigation = true;
       void this.router.navigate(["/entries"], {
@@ -2735,12 +2896,22 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.importantDayIcon = "event";
     this.importantDayAccent = "blue";
     this.importantDayNote = "";
+    this.clearImportantDayImage();
   }
 
   private resetThoughtRecordFields(): void {
     this.thoughtRecordTitle = "";
     this.thoughtRecordSituation = "";
+    this.thoughtRecordFeelingBeforeLabel = "";
+    this.thoughtRecordFeelingBeforeIntensity = 50;
+    this.thoughtRecordUnhelpfulThoughts = "";
+    this.thoughtRecordEvidenceFor = "";
+    this.thoughtRecordEvidenceAgainst = "";
     this.thoughtRecordBalancedThought = "";
+    this.thoughtRecordFeelingAfterLabel = "";
+    this.thoughtRecordFeelingAfterIntensity = 30;
+    this.thoughtRecordNextStep = "";
+    this.thoughtRecordRespondWithAI = false;
   }
 
   canDeactivate(): boolean | Promise<boolean> {
@@ -2809,6 +2980,123 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.clearPendingAttachments();
     this.existingAttachments = [];
     return failedFiles;
+  }
+
+  onImportantDayImageSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = "";
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      this.errorMessage = "Use a JPG, PNG, or WEBP image.";
+      return;
+    }
+    if (file.size > MAX_IMPORTANT_DAY_IMAGE_BYTES) {
+      this.errorMessage = "Image must be 5 MB or smaller.";
+      return;
+    }
+
+    this.importantDayImageFile = file;
+    this.setImportantDayImagePreview(URL.createObjectURL(file));
+    this.errorMessage = "";
+  }
+
+  clearImportantDayImage(): void {
+    this.importantDayImageFile = null;
+    this.revokeImportantDayImagePreview();
+    this.importantDayImagePreviewUrl = "";
+  }
+
+  private setImportantDayImagePreview(url: string): void {
+    this.revokeImportantDayImagePreview();
+    this.importantDayImageObjectUrl = url;
+    this.importantDayImagePreviewUrl = url;
+  }
+
+  private revokeImportantDayImagePreview(): void {
+    if (this.importantDayImageObjectUrl) {
+      URL.revokeObjectURL(this.importantDayImageObjectUrl);
+      this.importantDayImageObjectUrl = "";
+    }
+  }
+
+  private buildEmbeddedThoughtRecordPayload(date: Date): CbtWorksheetPayload {
+    return {
+      title: this.thoughtRecordTitle.trim(),
+      record_date: this.serialiseDateAsLocalIso(date),
+      situation: this.thoughtRecordSituation.trim(),
+      feelings_before: this.buildThoughtRecordFeelings(
+        this.thoughtRecordFeelingBeforeLabel,
+        this.thoughtRecordFeelingBeforeIntensity,
+      ),
+      unhelpful_thoughts: this.thoughtRecordUnhelpfulThoughts.trim(),
+      evidence_for: this.thoughtRecordEvidenceFor.trim(),
+      evidence_against: this.thoughtRecordEvidenceAgainst.trim(),
+      balanced_thought: this.thoughtRecordBalancedThought.trim(),
+      feelings_after: this.buildThoughtRecordFeelings(
+        this.thoughtRecordFeelingAfterLabel,
+        this.thoughtRecordFeelingAfterIntensity,
+      ),
+      next_step: this.thoughtRecordNextStep.trim(),
+      current_step: this.getEmbeddedThoughtRecordCurrentStep(),
+    };
+  }
+
+  private buildThoughtRecordFeelings(
+    label: string,
+    intensity: number,
+  ): CbtFeelingRating[] {
+    const normalisedLabel = label.trim();
+    if (!normalisedLabel) return [];
+    return [
+      {
+        label: normalisedLabel,
+        intensity: this.clampThoughtRecordIntensity(intensity),
+      },
+    ];
+  }
+
+  private clampThoughtRecordIntensity(value: number): number {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return 0;
+    return Math.max(0, Math.min(100, Math.round(numericValue)));
+  }
+
+  private getEmbeddedThoughtRecordCurrentStep(): number {
+    if (!this.thoughtRecordSituation.trim()) return 1;
+    if (!this.thoughtRecordFeelingBeforeLabel.trim()) return 2;
+    if (!this.thoughtRecordUnhelpfulThoughts.trim()) return 3;
+    if (!this.thoughtRecordEvidenceFor.trim()) return 4;
+    if (!this.thoughtRecordEvidenceAgainst.trim()) return 5;
+    if (!this.thoughtRecordBalancedThought.trim()) return 6;
+    return 7;
+  }
+
+  private isEmbeddedThoughtRecordComplete(): boolean {
+    return Boolean(
+      this.thoughtRecordSituation.trim() &&
+        this.thoughtRecordFeelingBeforeLabel.trim() &&
+        this.thoughtRecordUnhelpfulThoughts.trim() &&
+        this.thoughtRecordEvidenceFor.trim() &&
+        this.thoughtRecordEvidenceAgainst.trim() &&
+        this.thoughtRecordBalancedThought.trim() &&
+        this.thoughtRecordFeelingAfterLabel.trim(),
+    );
+  }
+
+  private getEmbeddedThoughtRecordAnalysisText(): string {
+    return [
+      this.thoughtRecordSituation,
+      this.thoughtRecordUnhelpfulThoughts,
+      this.thoughtRecordEvidenceFor,
+      this.thoughtRecordEvidenceAgainst,
+      this.thoughtRecordBalancedThought,
+      this.thoughtRecordNextStep,
+    ]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(" ");
   }
 
   private async deleteMarkedAttachments(
@@ -3035,6 +3323,7 @@ export class CreateComponent implements OnInit, OnDestroy {
           this.importantDayCategory !== "other" ||
           this.importantDayIcon !== "event" ||
           this.importantDayAccent !== "blue" ||
+          this.importantDayImageFile ||
           dateChanged,
       );
     }
@@ -3042,7 +3331,14 @@ export class CreateComponent implements OnInit, OnDestroy {
       return Boolean(
         this.thoughtRecordTitle.trim() ||
           this.thoughtRecordSituation.trim() ||
+          this.thoughtRecordFeelingBeforeLabel.trim() ||
+          this.thoughtRecordUnhelpfulThoughts.trim() ||
+          this.thoughtRecordEvidenceFor.trim() ||
+          this.thoughtRecordEvidenceAgainst.trim() ||
           this.thoughtRecordBalancedThought.trim() ||
+          this.thoughtRecordFeelingAfterLabel.trim() ||
+          this.thoughtRecordNextStep.trim() ||
+          this.thoughtRecordRespondWithAI ||
           dateChanged,
       );
     }
@@ -3153,7 +3449,9 @@ export class CreateComponent implements OnInit, OnDestroy {
       return "Saving important day";
     }
     if (this.selectedType === "thought-record") {
-      return "Saving thought record";
+      return this.thoughtRecordRespondWithAI
+        ? "Saving thought record and running AI response"
+        : "Saving thought record";
     }
     if (this.thoughtRecordAfterSave) {
       return "Saving entry and opening thought record";
@@ -3163,7 +3461,9 @@ export class CreateComponent implements OnInit, OnDestroy {
 
   getSaveProgressDescription(): string {
     if (!this.isDiaryWorkflow()) {
-      return "This should only take a moment.";
+      return this.selectedType === "thought-record" && this.thoughtRecordRespondWithAI
+        ? "This can take a moment while the reflection is saved and the AI response is generated."
+        : "This should only take a moment.";
     }
     if (this.thoughtRecordAfterSave) {
       return "Your entry and attachments will be saved before the reflection opens.";

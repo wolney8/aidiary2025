@@ -27,6 +27,15 @@ export class ImportantDaysService {
     return new HttpHeaders(headers);
   }
 
+  private buildAuthHeaders(): HttpHeaders {
+    const headers: Record<string, string> = {};
+    const token = this.authService.getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return new HttpHeaders(headers);
+  }
+
   getImportantDays(): Observable<ImportantDay[]> {
     if (!this.authService.isAuthenticated()) {
       return throwError(() => new Error("User not authenticated"));
@@ -73,6 +82,36 @@ export class ImportantDaysService {
 
     return this.http.delete<{ message: string; id: number }>(
       `${this.apiUrl}/important-days/${id}`,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  uploadImportantDayImage(
+    id: number,
+    image: File,
+  ): Observable<{ id: number; has_image: boolean; image_url: string | null }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    const formData = new FormData();
+    formData.append("image", image);
+    return this.http.post<{ id: number; has_image: boolean; image_url: string | null }>(
+      `${this.apiUrl}/important-days/${id}/image`,
+      formData,
+      { headers: this.buildAuthHeaders() },
+    );
+  }
+
+  deleteImportantDayImage(
+    id: number,
+  ): Observable<{ id: number; has_image: boolean; image_url: string | null }> {
+    if (!this.authService.isAuthenticated()) {
+      return throwError(() => new Error("User not authenticated"));
+    }
+
+    return this.http.delete<{ id: number; has_image: boolean; image_url: string | null }>(
+      `${this.apiUrl}/important-days/${id}/image`,
       { headers: this.buildHeaders() },
     );
   }

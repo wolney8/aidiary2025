@@ -151,6 +151,8 @@ CREATE TABLE IF NOT EXISTS important_days (
     recurrence    TEXT NOT NULL DEFAULT 'yearly',
     icon_name     TEXT NOT NULL DEFAULT 'event',
     accent_color  TEXT NOT NULL DEFAULT 'amber',
+    image_url     TEXT,
+    image_storage_key TEXT,
     note          TEXT,
     created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -163,6 +165,8 @@ _IMPORTANT_DAY_COLUMNS: dict[str, str] = {
     'recurrence': "TEXT NOT NULL DEFAULT 'yearly'",
     'icon_name': "TEXT NOT NULL DEFAULT 'event'",
     'accent_color': "TEXT NOT NULL DEFAULT 'amber'",
+    'image_url': 'TEXT',
+    'image_storage_key': 'TEXT',
 }
 
 _PUBLIC_HOLIDAY_CACHE_DDL = """

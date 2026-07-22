@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, OnInit, inject } from "@angular/core";
+import { Component, OnDestroy, OnInit, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import { FormsModule } from "@angular/forms";
 import { MatButtonModule } from "@angular/material/button";
@@ -49,20 +49,43 @@ type ImportantDayDraft = {
     MatTooltipModule,
   ],
   template: `
-    <section class="settings-section">
-      <header class="section-header">
-        <h2>Important Days</h2>
-        <p>Add birthdays, anniversaries, and milestones that should appear in your calendar.</p>
-        <p class="supporting-copy">
-          This slice keeps them as personal recurring dates. Public holidays and richer linked-event
-          behavior stay on the follow-on issues.
-        </p>
+    <section class="important-days-dashboard" data-testid="important-days-dashboard">
+      <header class="important-days-dashboard-header">
+        <div>
+          <p class="important-days-eyebrow">Calendar markers</p>
+          <h1>Important days</h1>
+          <p>
+            Add birthdays, anniversaries, milestones, and personal dates that
+            should appear in your calendar.
+          </p>
+        </div>
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          (click)="startCreating()"
+          [disabled]="viewMode === 'form' && !editingId"
+          data-testid="important-days-start-create"
+        >
+          <mat-icon aria-hidden="true">add</mat-icon>
+          New important day
+        </button>
       </header>
 
-      <div class="layout-grid">
-        <mat-card class="group-card">
+      <ng-container *ngIf="viewMode === 'form'; else dashboardView">
+        <mat-card class="group-card important-day-editor-card" data-testid="important-day-editor">
+          <button
+            mat-stroked-button
+            type="button"
+            class="editor-back-button"
+            (click)="returnToDashboard()"
+            [disabled]="saving"
+          >
+            <mat-icon aria-hidden="true">arrow_back</mat-icon>
+            Back to important days
+          </button>
           <mat-card-header>
-            <mat-card-title>{{ editingId ? "Edit important day" : "Add important day" }}</mat-card-title>
+            <mat-card-title>{{ editingId ? "Edit Important Day" : "Create New Important Day" }}</mat-card-title>
             <mat-card-subtitle>
               Use one anchor date, choose recurrence, then set the visual cue you want in calendar.
             </mat-card-subtitle>
@@ -189,13 +212,54 @@ type ImportantDayDraft = {
                 </div>
 
                 <div class="preview-panel" [ngClass]="'accent-' + draft.accent_color">
-                  <div class="preview-icon">
-                    <mat-icon>{{ draft.icon_name }}</mat-icon>
+                  <div class="preview-art-stack">
+                    <div class="preview-icon">
+                      <mat-icon>{{ draft.icon_name }}</mat-icon>
+                    </div>
+                    <button
+                      *ngIf="draftImagePreviewUrl"
+                      type="button"
+                      class="important-day-image-preview"
+                      (click)="openImportantDayImage(draftImagePreviewUrl, draft.label.trim() || 'Preview important day', getDraftSummaryLine())"
+                      aria-label="View important day image preview"
+                    >
+                      <img [src]="draftImagePreviewUrl" alt="" />
+                    </button>
                   </div>
                   <div class="preview-copy">
                     <strong>{{ draft.label.trim() || "Preview important day" }}</strong>
                     <span>{{ getDraftSummaryLine() }}</span>
                   </div>
+                </div>
+
+                <div class="important-day-image-control">
+                  <input
+                    #importantDayImageInput
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    class="visually-hidden"
+                    (change)="onImageSelected($event)"
+                  />
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="importantDayImageInput.click()"
+                    [disabled]="saving"
+                  >
+                    <mat-icon>add_photo_alternate</mat-icon>
+                    {{ draftImagePreviewUrl ? "Replace image" : "Add image" }}
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="delete-button"
+                    *ngIf="draftImagePreviewUrl"
+                    (click)="removeDraftImage()"
+                    [disabled]="saving"
+                  >
+                    <mat-icon>delete</mat-icon>
+                    Remove image
+                  </button>
                 </div>
               </section>
 
@@ -218,8 +282,8 @@ type ImportantDayDraft = {
               </section>
 
               <div class="actions">
-                <button mat-stroked-button type="button" (click)="resetDraft()" [disabled]="saving">
-                  {{ editingId ? "Cancel edit" : "Clear" }}
+                <button mat-stroked-button type="button" (click)="returnToDashboard()" [disabled]="saving">
+                  Cancel
                 </button>
                 <button mat-raised-button color="primary" type="submit" [disabled]="saving">
                   {{ editingId ? "Save changes" : "Add important day" }}
@@ -228,8 +292,10 @@ type ImportantDayDraft = {
             </form>
           </mat-card-content>
         </mat-card>
+      </ng-container>
 
-        <mat-card class="group-card">
+      <ng-template #dashboardView>
+        <mat-card class="group-card important-days-list-card" data-testid="important-days-list">
           <mat-card-header>
             <mat-card-title>Your important days</mat-card-title>
             <mat-card-subtitle>
@@ -251,8 +317,19 @@ type ImportantDayDraft = {
                 *ngFor="let importantDay of importantDays"
                 [ngClass]="'accent-' + importantDay.accent_color"
               >
-                <div class="important-day-icon" aria-hidden="true">
-                  <mat-icon>{{ importantDay.icon_name }}</mat-icon>
+                <div class="important-day-media-stack">
+                  <div class="important-day-icon" aria-hidden="true">
+                    <mat-icon>{{ importantDay.icon_name }}</mat-icon>
+                  </div>
+                  <button
+                    type="button"
+                    class="important-day-thumb"
+                    *ngIf="getImportantDayImageUrl(importantDay) as imageUrl"
+                    (click)="openImportantDayImage(imageUrl, importantDay.label, formatDateLabel(importantDay))"
+                    [attr.aria-label]="'View image for ' + importantDay.label"
+                  >
+                    <img [src]="imageUrl" alt="" />
+                  </button>
                 </div>
                 <div class="important-day-copy">
                   <div class="important-day-heading">
@@ -284,38 +361,107 @@ type ImportantDayDraft = {
             <p class="status error" *ngIf="errorMessage">{{ errorMessage }}</p>
           </mat-card-content>
         </mat-card>
+      </ng-template>
+
+      <div
+        class="important-day-image-modal"
+        *ngIf="imageModal"
+        (click)="closeImportantDayImage()"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="'Image for ' + imageModal.label"
+      >
+        <div class="important-day-image-modal-dialog" (click)="$event.stopPropagation()">
+          <header class="important-day-image-modal-header">
+            <div>
+              <strong>{{ imageModal.label }}</strong>
+              <span>{{ imageModal.dateLabel }}</span>
+            </div>
+            <button
+              mat-icon-button
+              type="button"
+              (click)="closeImportantDayImage()"
+              aria-label="Close important day image"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </header>
+          <div class="important-day-image-modal-body">
+            <img [src]="imageModal.imageUrl" [alt]="imageModal.label" />
+          </div>
+          <div class="important-day-image-modal-actions">
+            <button mat-stroked-button type="button" (click)="closeImportantDayImage()">
+              Close
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   `,
   styles: [
     `
-      .settings-section {
+      .important-days-dashboard {
         display: grid;
         gap: var(--spacing-md);
+        color: var(--colour-text-primary);
       }
 
-      .section-header h2 {
-        margin: 0 0 var(--spacing-xs);
+      .important-days-dashboard-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+        padding: clamp(1.25rem, 3vw, 2.25rem);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background:
+          radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--colour-primary) 18%, transparent), transparent 32%),
+          var(--colour-surface-elevated);
       }
 
-      .section-header p {
+      .important-days-dashboard-header h1,
+      .important-days-dashboard-header p {
         margin: 0;
+      }
+
+      .important-days-dashboard-header h1 {
+        margin-bottom: 0.5rem;
+        font-size: clamp(2rem, 4vw, 3rem);
+        line-height: 1.1;
+      }
+
+      .important-days-dashboard-header > div > p:last-child {
         color: var(--colour-text-secondary);
       }
 
-      .supporting-copy {
-        margin-top: var(--spacing-xs);
+      .important-days-dashboard-header > button {
+        min-height: 2.75rem;
       }
 
-      .layout-grid {
-        display: grid;
-        gap: var(--spacing-md);
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-        align-items: start;
+      .important-days-eyebrow {
+        margin-bottom: var(--spacing-xs);
+        color: var(--colour-primary);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
       }
 
       .group-card {
         border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+      }
+
+      .important-day-editor-card {
+        display: grid;
+        gap: var(--spacing-sm);
+      }
+
+      .editor-back-button {
+        justify-self: start;
+        margin: var(--spacing-sm) var(--spacing-sm) 0;
+        min-height: 2.75rem;
       }
 
       .important-day-form {
@@ -365,7 +511,7 @@ type ImportantDayDraft = {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 0.5rem;
-        align-items: start;
+        align-items: flex-start;
       }
 
       .recurrence-field-row mat-form-field {
@@ -397,6 +543,12 @@ type ImportantDayDraft = {
           var(--colour-surface-elevated) 0%,
           var(--colour-surface) 100%
         );
+      }
+
+      .preview-art-stack {
+        display: grid;
+        gap: 0.55rem;
+        justify-items: center;
       }
 
       .icon-colour-picker {
@@ -501,9 +653,9 @@ type ImportantDayDraft = {
 
       .important-day-item {
         display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: 5.5rem minmax(0, 1fr) auto;
         gap: 0.9rem;
-        align-items: start;
+        align-items: flex-start;
         padding: 0.95rem 1rem;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-md);
@@ -512,6 +664,63 @@ type ImportantDayDraft = {
           var(--colour-surface-elevated) 0%,
           var(--colour-surface) 100%
         );
+      }
+
+      .important-day-media-stack {
+        display: grid;
+        gap: 0.55rem;
+        justify-items: center;
+        width: 5.5rem;
+      }
+
+      .important-day-image-control {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .important-day-image-control button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .important-day-image-preview,
+      .important-day-thumb {
+        overflow: hidden;
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface-muted);
+      }
+
+      .important-day-image-preview {
+        width: 5.25rem;
+        height: 3.5rem;
+        padding: 0;
+        border-radius: var(--radius-md);
+        cursor: zoom-in;
+      }
+
+      .important-day-thumb {
+        width: 4.75rem;
+        height: 3.45rem;
+        padding: 0;
+        border-radius: 0.9rem;
+        cursor: zoom-in;
+      }
+
+      .important-day-image-preview:focus-visible,
+      .important-day-thumb:focus-visible {
+        outline: 3px solid var(--colour-primary);
+        outline-offset: 3px;
+      }
+
+      .important-day-image-preview img,
+      .important-day-thumb img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .important-day-heading {
@@ -532,9 +741,17 @@ type ImportantDayDraft = {
 
       .important-day-actions {
         display: flex;
+        flex-direction: column;
         gap: 0.65rem;
         flex-wrap: wrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
+        align-items: stretch;
+        margin-left: auto;
+        min-width: 7.5rem;
+      }
+
+      .important-day-actions button {
+        width: 100%;
       }
 
       .delete-button {
@@ -544,6 +761,65 @@ type ImportantDayDraft = {
 
       .delete-button:hover {
         background: var(--colour-danger-bg) !important;
+      }
+
+      .important-day-image-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.25rem;
+        background: rgba(15, 23, 42, 0.62);
+      }
+
+      .important-day-image-modal-dialog {
+        width: min(52rem, calc(100vw - 2rem));
+        max-height: calc(100vh - 2rem);
+        display: grid;
+        gap: 0.9rem;
+        padding: 1rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+      }
+
+      .important-day-image-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .important-day-image-modal-header strong,
+      .important-day-image-modal-header span {
+        display: block;
+      }
+
+      .important-day-image-modal-header span {
+        margin-top: 0.2rem;
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+      }
+
+      .important-day-image-modal-body {
+        max-height: min(72vh, 42rem);
+        overflow: auto;
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .important-day-image-modal-body img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .important-day-image-modal-actions {
+        display: flex;
+        justify-content: flex-end;
       }
 
       .empty-state {
@@ -640,8 +916,13 @@ type ImportantDayDraft = {
       }
 
       @media (max-width: 900px) {
-        .layout-grid {
-          grid-template-columns: 1fr;
+        .important-days-dashboard-header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .important-days-dashboard-header > button {
+          width: 100%;
         }
       }
 
@@ -651,18 +932,19 @@ type ImportantDayDraft = {
         }
 
         .important-day-item {
-          grid-template-columns: auto minmax(0, 1fr);
+          grid-template-columns: 1fr;
         }
 
         .important-day-actions {
           grid-column: 1 / -1;
-          justify-content: flex-start;
+          width: 100%;
+          margin-left: 0;
         }
       }
     `,
   ],
 })
-export class ImportantDaysComponent implements OnInit {
+export class ImportantDaysComponent implements OnInit, OnDestroy {
   private readonly importantDaysService = inject(ImportantDaysService);
   private readonly appDialog = inject(AppDialogService);
   private readonly route = inject(ActivatedRoute);
@@ -692,22 +974,35 @@ export class ImportantDaysComponent implements OnInit {
 
   importantDays: ImportantDay[] = [];
   draft: ImportantDayDraft = this.createEmptyDraft();
+  viewMode: "dashboard" | "form" = "dashboard";
   editingId: number | null = null;
   iconPickerOpen = false;
   loading = false;
   saving = false;
   successMessage = "";
   errorMessage = "";
+  pendingImageFile: File | null = null;
+  draftImagePreviewUrl = "";
+  imageModal: { imageUrl: string; label: string; dateLabel: string } | null =
+    null;
+  private objectUrlToRevoke = "";
 
   ngOnInit(): void {
     const requestedDate = this.route.snapshot.queryParamMap.get("date");
-    if (this.route.snapshot.queryParamMap.get("create") === "true" && requestedDate) {
-      const parsedDate = new Date(`${requestedDate}T12:00:00`);
-      if (!Number.isNaN(parsedDate.getTime())) {
-        this.draft.startsOn = parsedDate;
+    if (this.route.snapshot.queryParamMap.get("create") === "true") {
+      this.viewMode = "form";
+      if (requestedDate) {
+        const parsedDate = new Date(`${requestedDate}T12:00:00`);
+        if (!Number.isNaN(parsedDate.getTime())) {
+          this.draft.startsOn = parsedDate;
+        }
       }
     }
     this.loadImportantDays();
+  }
+
+  ngOnDestroy(): void {
+    this.revokeDraftImagePreview();
   }
 
   saveImportantDay(): void {
@@ -726,18 +1021,7 @@ export class ImportantDaysComponent implements OnInit {
 
     request$.subscribe({
       next: (importantDay) => {
-        if (this.editingId) {
-          this.importantDays = this.importantDays.map((item) =>
-            item.id === importantDay.id ? importantDay : item,
-          );
-          this.successMessage = "Important day updated.";
-        } else {
-          this.importantDays = [...this.importantDays, importantDay];
-          this.successMessage = "Important day added.";
-        }
-        this.sortImportantDays();
-        this.resetDraft();
-        this.saving = false;
+        this.persistPendingImageIfNeeded(importantDay);
       },
       error: (error) => {
         this.errorMessage =
@@ -748,6 +1032,7 @@ export class ImportantDaysComponent implements OnInit {
   }
 
   startEditing(importantDay: ImportantDay): void {
+    this.viewMode = "form";
     this.editingId = importantDay.id;
     this.successMessage = "";
     this.errorMessage = "";
@@ -760,6 +1045,8 @@ export class ImportantDaysComponent implements OnInit {
       accent_color: importantDay.accent_color,
       note: importantDay.note || "",
     };
+    this.pendingImageFile = null;
+    this.setDraftImagePreview(importantDay.image_url || "", false);
     this.iconPickerOpen = false;
   }
 
@@ -799,6 +1086,20 @@ export class ImportantDaysComponent implements OnInit {
     this.draft = this.createEmptyDraft();
     this.editingId = null;
     this.iconPickerOpen = false;
+    this.pendingImageFile = null;
+    this.setDraftImagePreview("", false);
+  }
+
+  startCreating(): void {
+    this.resetDraft();
+    this.viewMode = "form";
+    this.successMessage = "";
+    this.errorMessage = "";
+  }
+
+  returnToDashboard(): void {
+    this.resetDraft();
+    this.viewMode = "dashboard";
   }
 
   toggleIconPicker(): void {
@@ -812,6 +1113,104 @@ export class ImportantDaysComponent implements OnInit {
 
   selectAccent(accent: ImportantDayAccentColor): void {
     this.draft.accent_color = accent;
+  }
+
+  onImageSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = "";
+    if (!file) {
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      this.errorMessage = "Use a JPG, PNG, or WEBP image.";
+      this.successMessage = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.errorMessage = "Image must be 5 MB or smaller.";
+      this.successMessage = "";
+      return;
+    }
+
+    this.pendingImageFile = file;
+    this.setDraftImagePreview(URL.createObjectURL(file), true);
+    this.errorMessage = "";
+  }
+
+  async removeDraftImage(): Promise<void> {
+    if (this.pendingImageFile) {
+      this.pendingImageFile = null;
+      this.setDraftImagePreview(this.getEditingImportantDay()?.image_url || "", false);
+      return;
+    }
+
+    const importantDay = this.getEditingImportantDay();
+    if (!importantDay?.image_url) {
+      this.setDraftImagePreview("", false);
+      return;
+    }
+
+    const confirmed = await this.appDialog.confirm({
+      title: "Remove important day image?",
+      message: `Remove the image from "${importantDay.label}"?`,
+      confirmText: "Remove image",
+      cancelText: "Keep",
+      variant: "danger",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    this.saving = true;
+    this.importantDaysService.deleteImportantDayImage(importantDay.id).subscribe({
+      next: () => {
+        this.importantDays = this.importantDays.map((item) =>
+          item.id === importantDay.id
+            ? { ...item, has_image: false, image_url: null }
+            : item,
+        );
+        this.setDraftImagePreview("", false);
+        this.successMessage = "Image removed.";
+        this.errorMessage = "";
+        this.saving = false;
+      },
+      error: (error) => {
+        this.errorMessage =
+          error?.error?.error || "Unable to remove important day image.";
+        this.saving = false;
+      },
+    });
+  }
+
+  getEditingImportantDay(): ImportantDay | null {
+    if (!this.editingId) {
+      return null;
+    }
+    return (
+      this.importantDays.find((importantDay) => importantDay.id === this.editingId) ||
+      null
+    );
+  }
+
+  openImportantDayImage(
+    imageUrl: string | null | undefined,
+    label: string,
+    dateLabel: string,
+  ): void {
+    const trimmedUrl = String(imageUrl || "").trim();
+    if (!trimmedUrl) return;
+    this.imageModal = { imageUrl: trimmedUrl, label, dateLabel };
+  }
+
+  getImportantDayImageUrl(importantDay: ImportantDay): string | null {
+    const imageUrl = String(importantDay.image_url || "").trim();
+    return imageUrl || null;
+  }
+
+  closeImportantDayImage(): void {
+    this.imageModal = null;
   }
 
   getCategoryLabel(category: ImportantDayCategory): string {
@@ -878,6 +1277,72 @@ export class ImportantDaysComponent implements OnInit {
         this.loading = false;
       },
     });
+  }
+
+  private persistPendingImageIfNeeded(importantDay: ImportantDay): void {
+    const wasEditing = Boolean(this.editingId);
+    if (!this.pendingImageFile) {
+      this.applySavedImportantDay(importantDay);
+      this.resetDraft();
+      this.viewMode = "dashboard";
+      this.saving = false;
+      return;
+    }
+
+    const imageFile = this.pendingImageFile;
+    this.importantDaysService.uploadImportantDayImage(importantDay.id, imageFile).subscribe({
+      next: (imageResult) => {
+        this.applySavedImportantDay({
+          ...importantDay,
+          has_image: imageResult.has_image,
+          image_url: imageResult.image_url,
+        });
+        this.resetDraft();
+        this.viewMode = "dashboard";
+        this.successMessage = wasEditing
+          ? "Important day updated."
+          : "Important day added.";
+        this.saving = false;
+      },
+      error: (error) => {
+        this.applySavedImportantDay(importantDay);
+        this.pendingImageFile = null;
+        this.resetDraft();
+        this.viewMode = "dashboard";
+        this.errorMessage =
+          error?.error?.error || "Important day saved, but image upload failed.";
+        this.successMessage = wasEditing
+          ? "Important day updated."
+          : "Important day added.";
+        this.saving = false;
+      },
+    });
+  }
+
+  private applySavedImportantDay(importantDay: ImportantDay): void {
+    if (this.editingId) {
+      this.importantDays = this.importantDays.map((item) =>
+        item.id === importantDay.id ? importantDay : item,
+      );
+      this.successMessage = "Important day updated.";
+    } else {
+      this.importantDays = [...this.importantDays, importantDay];
+      this.successMessage = "Important day added.";
+    }
+    this.sortImportantDays();
+  }
+
+  private setDraftImagePreview(url: string, isObjectUrl: boolean): void {
+    this.revokeDraftImagePreview();
+    this.draftImagePreviewUrl = url;
+    this.objectUrlToRevoke = isObjectUrl ? url : "";
+  }
+
+  private revokeDraftImagePreview(): void {
+    if (this.objectUrlToRevoke) {
+      URL.revokeObjectURL(this.objectUrlToRevoke);
+      this.objectUrlToRevoke = "";
+    }
   }
 
   private buildPayload(): ImportantDayPayload | null {

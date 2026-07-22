@@ -82,6 +82,20 @@ import { AuthService } from "../../services/auth.service";
 
         <a
           mat-list-item
+          routerLink="/important-days"
+          routerLinkActive="is-active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          #importantDaysRla="routerLinkActive"
+          [attr.aria-current]="importantDaysRla.isActive ? 'page' : null"
+          (click)="closeSidenav.emit()"
+          data-testid="nav-important-days"
+        >
+          <mat-icon matListItemIcon>event</mat-icon>
+          <span matListItemTitle>Important Days</span>
+        </a>
+
+        <a
+          mat-list-item
           routerLink="/profile"
           routerLinkActive="is-active"
           [routerLinkActiveOptions]="{ exact: true }"
@@ -97,7 +111,7 @@ import { AuthService } from "../../services/auth.service";
           mat-list-item
           routerLink="/settings"
           routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: false }"
+          [routerLinkActiveOptions]="{ exact: true }"
           #settingsRla="routerLinkActive"
           [attr.aria-current]="settingsRla.isActive ? 'page' : null"
           (click)="closeSidenav.emit()"
