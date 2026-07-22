@@ -193,6 +193,25 @@ CREATE TABLE IF NOT EXISTS entry_resurfacing_preferences (
 )
 """
 
+_REFLECTION_SUMMARIES_DDL = """
+CREATE TABLE IF NOT EXISTS reflection_summaries (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id            INTEGER NOT NULL,
+    period_type        TEXT NOT NULL CHECK(period_type IN ('weekly', 'monthly')),
+    period_start       TEXT NOT NULL,
+    period_end         TEXT NOT NULL,
+    title              TEXT NOT NULL,
+    summary_text       TEXT NOT NULL,
+    themes_json        TEXT NOT NULL DEFAULT '[]',
+    source_refs_json   TEXT NOT NULL DEFAULT '[]',
+    model              TEXT NOT NULL,
+    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, period_type, period_start)
+)
+"""
+
 _CHAT_MESSAGES_DDL = """
 CREATE TABLE IF NOT EXISTS chat_messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -525,6 +544,26 @@ def ensure_entry_resurfacing_preferences_table(
             'Runtime migration ensured table exists: %s',
             'entry_resurfacing_preferences',
         )
+    return True
+
+
+def ensure_reflection_summaries_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure generated weekly/monthly reflection summaries are persisted."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_REFLECTION_SUMMARIES_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_reflection_summaries_user_period
+            ON reflection_summaries(user_id, period_type, period_start DESC)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'reflection_summaries')
+
     return True
 
 

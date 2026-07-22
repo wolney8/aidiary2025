@@ -96,6 +96,20 @@ import { AuthService } from "../../services/auth.service";
 
         <a
           mat-list-item
+          routerLink="/reflections"
+          routerLinkActive="is-active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          #reflectionsRla="routerLinkActive"
+          [attr.aria-current]="reflectionsRla.isActive ? 'page' : null"
+          (click)="closeSidenav.emit()"
+          data-testid="nav-reflection-summaries"
+        >
+          <mat-icon matListItemIcon>summarize</mat-icon>
+          <span matListItemTitle>Reflections</span>
+        </a>
+
+        <a
+          mat-list-item
           routerLink="/profile"
           routerLinkActive="is-active"
           [routerLinkActiveOptions]="{ exact: true }"
