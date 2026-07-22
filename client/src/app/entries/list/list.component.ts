@@ -83,6 +83,8 @@ type CalendarDay = {
   thoughtRecords: CbtWorksheet[];
   importantDays: ImportantDay[];
   publicHolidays: PublicHoliday[];
+  hiddenItemCount: number;
+  hiddenItemLabel: string;
 };
 
 type CalendarPreviewState = {
@@ -153,6 +155,7 @@ type OnThisDayPreviewState = {
   phase: "open" | "closing";
   direction: "left-to-right" | "right-to-left";
   entries: OnThisDayEntry[];
+  totalCount: number;
   dateLabel: string;
   top: number;
   left: number;
@@ -468,6 +471,17 @@ type OnThisDayPreviewState = {
                     <mat-icon>visibility_off</mat-icon>
                   </button>
                 </article>
+                <button
+                  *ngIf="shouldShowOnThisDayMoreCard()"
+                  type="button"
+                  class="calendar-preview-card calendar-preview-card-more"
+                  [style.--preview-index]="onThisDayPreview.entries.length"
+                  (click)="openOnThisDayFullView($event)"
+                  [attr.aria-label]="getOnThisDayMoreLabel()"
+                >
+                  <mat-icon>arrow_forward</mat-icon>
+                  <span>{{ getOnThisDayMoreLabel() }}</span>
+                </button>
               </div>
             </section>
 
@@ -603,16 +617,6 @@ type OnThisDayPreviewState = {
                     <div class="calendar-important-day-card-meta">
                       <span>{{ getImportantDayRecurrenceLabel(importantDay) }}</span>
                       <span>{{ getImportantDayElapsedLabel(importantDay) }}</span>
-                    </div>
-                    <div class="calendar-important-day-card-actions" *ngIf="getImportantDayImageUrl(importantDay)">
-                      <button
-                        type="button"
-                        class="calendar-important-day-image-trigger"
-                        (click)="openImportantDayImage(importantDay, $event)"
-                      >
-                        <mat-icon aria-hidden="true">open_in_full</mat-icon>
-                        View image
-                      </button>
                     </div>
                   </div>
                 </article>
@@ -815,28 +819,6 @@ type OnThisDayPreviewState = {
                   </p>
                 </div>
                 <div class="calendar-legend" aria-label="Calendar legend">
-                  <span class="legend-item">
-                    <span class="legend-swatch none"></span>
-                    No entries
-                  </span>
-                  <span class="legend-item" *ngIf="isContentFilterActive('daily')">
-                    <span class="legend-swatch daily"></span>
-                    Daily only
-                  </span>
-                  <span
-                    class="legend-item"
-                    *ngIf="isContentFilterActive('dreams')"
-                  >
-                    <span class="legend-swatch dream"></span>
-                    Dream only
-                  </span>
-                  <span
-                    class="legend-item"
-                    *ngIf="isContentFilterActive('daily') && isContentFilterActive('dreams')"
-                  >
-                    <span class="legend-swatch complete"></span>
-                    Daily and dream
-                  </span>
                   <span
                     class="legend-item"
                     *ngIf="isContentFilterActive('thought-records')"
@@ -845,6 +827,15 @@ type OnThisDayPreviewState = {
                       psychology_alt
                     </mat-icon>
                     Thought record
+                  </span>
+                  <span
+                    class="legend-item"
+                    *ngIf="isContentFilterActive('important-days')"
+                  >
+                    <mat-icon class="legend-important-day-icon" aria-hidden="true">
+                      event
+                    </mat-icon>
+                    Important day
                   </span>
                   <span class="legend-item" *ngIf="shouldShowOnThisDay()">
                     <mat-icon class="legend-on-this-day-icon" aria-hidden="true">
@@ -867,7 +858,7 @@ type OnThisDayPreviewState = {
                 <div class="calendar-grid">
                   <div
                     class="calendar-day"
-                    *ngFor="let day of calendarDays"
+                    *ngFor="let day of calendarDays; let dayIndex = index"
                     [class.outside-month]="!day.isCurrentMonth"
                     [class.unavailable]="day.isFuture"
                     [class.today]="day.isToday"
@@ -875,6 +866,8 @@ type OnThisDayPreviewState = {
                     [class.status-daily]="day.status === 'daily'"
                     [class.status-dream]="day.status === 'dream'"
                     [class.status-complete]="day.status === 'complete'"
+                    [class.has-hidden-filtered]="day.hiddenItemCount > 0"
+                    [style.grid-column-start]="dayIndex === 0 ? getCalendarGridColumnStart(day) : null"
                   >
                     <div
                       class="calendar-day-inner"
@@ -882,6 +875,8 @@ type OnThisDayPreviewState = {
                     >
                       <section
                         class="calendar-day-face calendar-day-front"
+                        [style.--calendar-face-bg]="getCalendarDayFaceBackground(day, 'front', 'light')"
+                        [style.--calendar-face-bg-dark]="getCalendarDayFaceBackground(day, 'front', 'dark')"
                         [attr.aria-hidden]="isCalendarDayFlipped(day)"
                         [attr.inert]="isCalendarDayFlipped(day) ? '' : null"
                       >
@@ -907,6 +902,15 @@ type OnThisDayPreviewState = {
                         >
                           <mat-icon>touch_app</mat-icon>
                         </button>
+                        <span
+                          *ngIf="day.hiddenItemCount > 0"
+                          class="calendar-filtered-indicator"
+                          [matTooltip]="day.hiddenItemLabel"
+                          aria-hidden="true"
+                        >
+                          <mat-icon>visibility_off</mat-icon>
+                          <span>{{ day.hiddenItemCount }}</span>
+                        </span>
                         <div class="calendar-day-icons">
                           <button
                             *ngIf="day.isCurrentMonth && !day.isFuture"
@@ -938,6 +942,8 @@ type OnThisDayPreviewState = {
 
                       <section
                         class="calendar-day-face calendar-day-back"
+                        [style.--calendar-face-bg]="getCalendarDayFaceBackground(day, 'back', 'light')"
+                        [style.--calendar-face-bg-dark]="getCalendarDayFaceBackground(day, 'back', 'dark')"
                         [attr.aria-hidden]="!isCalendarDayFlipped(day)"
                         [attr.inert]="isCalendarDayFlipped(day) ? null : ''"
                       >
@@ -951,6 +957,15 @@ type OnThisDayPreviewState = {
                         >
                           <mat-icon>touch_app</mat-icon>
                         </button>
+                        <span
+                          *ngIf="day.hiddenItemCount > 0"
+                          class="calendar-filtered-indicator"
+                          [matTooltip]="day.hiddenItemLabel"
+                          aria-hidden="true"
+                        >
+                          <mat-icon>visibility_off</mat-icon>
+                          <span>{{ day.hiddenItemCount }}</span>
+                        </span>
                         <div class="calendar-day-icons calendar-day-secondary-content">
                           <button
                             *ngFor="let metric of getSecondaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
@@ -1053,6 +1068,17 @@ type OnThisDayPreviewState = {
                       <mat-icon>visibility_off</mat-icon>
                     </button>
                   </article>
+                  <button
+                    *ngIf="shouldShowOnThisDayMoreCard()"
+                    type="button"
+                    class="calendar-preview-card calendar-preview-card-more"
+                    [style.--preview-index]="onThisDayPreview.entries.length"
+                    (click)="openOnThisDayFullView($event)"
+                    [attr.aria-label]="getOnThisDayMoreLabel()"
+                  >
+                    <mat-icon>arrow_forward</mat-icon>
+                    <span>{{ getOnThisDayMoreLabel() }}</span>
+                  </button>
                 </div>
               </section>
               <section
@@ -1268,7 +1294,7 @@ type OnThisDayPreviewState = {
                       <div class="calendar-important-day-card-icon" aria-hidden="true">
                         <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
                       </div>
-                    <button
+                      <button
                         type="button"
                         class="calendar-important-day-card-thumb"
                         *ngIf="getImportantDayImageUrl(importantDay) as imageUrl"
@@ -1290,16 +1316,6 @@ type OnThisDayPreviewState = {
                         <span>{{ getImportantDayRecurrenceLabel(importantDay) }}</span>
                         <span>{{ getImportantDayElapsedLabel(importantDay) }}</span>
                         <span>{{ getImportantDayMatchingEntryCountLabel(importantDay) }}</span>
-                      </div>
-                      <div class="calendar-important-day-card-actions" *ngIf="getImportantDayImageUrl(importantDay)">
-                        <button
-                          type="button"
-                          class="calendar-important-day-image-trigger"
-                          (click)="openImportantDayImage(importantDay, $event)"
-                        >
-                          <mat-icon aria-hidden="true">open_in_full</mat-icon>
-                          View image
-                        </button>
                       </div>
                     </div>
                   </article>
@@ -1363,16 +1379,6 @@ type OnThisDayPreviewState = {
                       </p>
                       <div class="calendar-important-day-card-meta">
                         <span *ngFor="let metaItem of occasion.meta">{{ metaItem }}</span>
-                      </div>
-                      <div class="calendar-important-day-card-actions" *ngIf="occasion.imageUrl">
-                        <button
-                          type="button"
-                          class="calendar-important-day-image-trigger"
-                          (click)="openOccasionImage(occasion, $event)"
-                        >
-                          <mat-icon aria-hidden="true">open_in_full</mat-icon>
-                          View image
-                        </button>
                       </div>
                     </div>
                   </article>
@@ -2130,8 +2136,10 @@ export class ListComponent implements OnInit, OnDestroy {
             .map((holiday) => holiday.localName || holiday.name)
             .join(", ")}.`
         : "";
+    const hiddenLabel =
+      day.hiddenItemCount > 0 ? ` ${day.hiddenItemLabel}.` : "";
 
-    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.${thoughtRecordLabel}${importantDayLabel}${publicHolidayLabel}`;
+    return `${dateLabel}. ${statusLabel}. ${entryCountLabel}.${thoughtRecordLabel}${importantDayLabel}${publicHolidayLabel}${hiddenLabel}`;
   }
 
   getCurrentMonthImportantDays(): ImportantDay[] {
@@ -3380,12 +3388,18 @@ export class ListComponent implements OnInit, OnDestroy {
     const year = baseMonth.getFullYear();
     const monthIndex = baseMonth.getMonth();
     const firstDayOfMonth = new Date(year, monthIndex, 1);
-    const startOffset = (firstDayOfMonth.getDay() + 6) % 7;
-    const gridStartDate = new Date(year, monthIndex, 1 - startOffset);
+    const visibleStartDate = new Date(firstDayOfMonth);
+    visibleStartDate.setDate(firstDayOfMonth.getDate() - 2);
+    const lastDayOfMonth = new Date(year, monthIndex + 1, 0);
+    const visibleEndDate = new Date(lastDayOfMonth);
+    visibleEndDate.setDate(lastDayOfMonth.getDate() + 2);
     const todayKey = this.toDateKey(new Date());
     const entriesByDate = new Map<string, EntryItem[]>();
+    const allEntriesByDate = new Map<string, EntryItem[]>();
     const thoughtRecordsByDate = new Map<string, CbtWorksheet[]>();
+    const allThoughtRecordsByDate = new Map<string, CbtWorksheet[]>();
     const importantDaysByDate = new Map<string, ImportantDay[]>();
+    const allImportantDaysByDate = new Map<string, ImportantDay[]>();
     const publicHolidaysByDate = new Map<string, PublicHoliday[]>();
 
     entries.forEach((entry) => {
@@ -3393,6 +3407,26 @@ export class ListComponent implements OnInit, OnDestroy {
       const dateEntries = entriesByDate.get(key) ?? [];
       dateEntries.push(entry);
       entriesByDate.set(key, dateEntries);
+    });
+
+    [...this.dailyEntries, ...this.dreamEntries].forEach((entry) => {
+      const key = this.toDateKey(new Date(entry.entry_date));
+      const dateEntries = allEntriesByDate.get(key) ?? [];
+      dateEntries.push(entry);
+      allEntriesByDate.set(key, dateEntries);
+    });
+
+    this.thoughtRecords.forEach((record) => {
+      const records = allThoughtRecordsByDate.get(record.record_date) ?? [];
+      records.push(record);
+      allThoughtRecordsByDate.set(record.record_date, records);
+    });
+
+    this.importantDays.forEach((importantDay) => {
+      const key = this.toMonthDayKey(importantDay.month, importantDay.day);
+      const matchingImportantDays = allImportantDaysByDate.get(key) ?? [];
+      matchingImportantDays.push(importantDay);
+      allImportantDaysByDate.set(key, matchingImportantDays);
     });
 
     if (this.isContentFilterActive("thought-records")) {
@@ -3425,12 +3459,21 @@ export class ListComponent implements OnInit, OnDestroy {
       publicHolidaysByDate.set(key, matchingHolidays);
     });
 
-    this.calendarDays = Array.from({ length: 42 }, (_, index) => {
-      const date = new Date(gridStartDate);
-      date.setDate(gridStartDate.getDate() + index);
+    const visibleDayCount =
+      Math.round(
+        (visibleEndDate.getTime() - visibleStartDate.getTime()) /
+          (24 * 60 * 60 * 1000),
+      ) + 1;
+
+    this.calendarDays = Array.from({ length: visibleDayCount }, (_, index) => {
+      const date = new Date(visibleStartDate);
+      date.setDate(visibleStartDate.getDate() + index);
       const key = this.toDateKey(date);
+      const isCurrentMonth = date.getMonth() === monthIndex;
       const dateEntries = entriesByDate.get(key) ?? [];
       const dateThoughtRecords = thoughtRecordsByDate.get(key) ?? [];
+      const allDateEntries = allEntriesByDate.get(key) ?? [];
+      const allDateThoughtRecords = allThoughtRecordsByDate.get(key) ?? [];
       const matchingImportantDays = (
         importantDaysByDate.get(this.toMonthDayKey(date.getMonth() + 1, date.getDate())) ?? []
       ).filter((importantDay) => {
@@ -3442,12 +3485,29 @@ export class ListComponent implements OnInit, OnDestroy {
           importantDay.original_year <= date.getFullYear()
         );
       });
+      const allMatchingImportantDays = (
+        allImportantDaysByDate.get(this.toMonthDayKey(date.getMonth() + 1, date.getDate())) ?? []
+      ).filter((importantDay) => {
+        if (importantDay.recurrence === "once") {
+          return importantDay.original_year === date.getFullYear();
+        }
+        return (
+          !importantDay.original_year ||
+          importantDay.original_year <= date.getFullYear()
+        );
+      });
       const matchingPublicHolidays = publicHolidaysByDate.get(key) ?? [];
+      const hiddenState = this.getCalendarHiddenState(
+        date,
+        allDateEntries,
+        allDateThoughtRecords,
+        allMatchingImportantDays,
+      );
 
       return {
         date,
         dayNumber: date.getDate(),
-        isCurrentMonth: date.getMonth() === monthIndex,
+        isCurrentMonth,
         isToday: key === todayKey,
         isFuture: date.getTime() > new Date().setHours(23, 59, 59, 999),
         status: this.getCalendarStatus(dateEntries),
@@ -3455,8 +3515,66 @@ export class ListComponent implements OnInit, OnDestroy {
         thoughtRecords: dateThoughtRecords,
         importantDays: matchingImportantDays,
         publicHolidays: matchingPublicHolidays,
+        hiddenItemCount: hiddenState.count,
+        hiddenItemLabel: hiddenState.label,
       };
     });
+  }
+
+  getCalendarGridColumnStart(day: CalendarDay): number {
+    return ((day.date.getDay() + 6) % 7) + 1;
+  }
+
+  private getCalendarHiddenState(
+    date: Date,
+    allDateEntries: EntryItem[],
+    allDateThoughtRecords: CbtWorksheet[],
+    allMatchingImportantDays: ImportantDay[],
+  ): { count: number; label: string } {
+    const hiddenParts: string[] = [];
+    let hiddenItemCount = 0;
+
+    const hiddenDailyCount = this.isContentFilterActive("daily")
+      ? 0
+      : allDateEntries.filter((entry) => entry.type === "daily").length;
+    const hiddenDreamCount = this.isContentFilterActive("dreams")
+      ? 0
+      : allDateEntries.filter((entry) => entry.type === "dream").length;
+    const hiddenThoughtCount = this.isContentFilterActive("thought-records")
+      ? 0
+      : allDateThoughtRecords.length;
+    const hiddenImportantDayCount = this.isContentFilterActive("important-days")
+      ? 0
+      : allMatchingImportantDays.length;
+    const hiddenOnThisDayCount =
+      this.isContentFilterActive("on-this-day") ||
+      !this.onThisDayFeed?.enabled ||
+      !this.selectedMonth?.isCurrent ||
+      this.toDateKey(date) !== this.toDateKey(new Date())
+        ? 0
+        : this.getVisibleOnThisDayEntries(this.onThisDayFeed.entries).length;
+
+    const addHiddenPart = (count: number, singular: string, plural: string) => {
+      if (count <= 0) {
+        return;
+      }
+      hiddenItemCount += count;
+      hiddenParts.push(`${count} ${count === 1 ? singular : plural}`);
+    };
+
+    addHiddenPart(hiddenDailyCount, "diary entry", "diary entries");
+    addHiddenPart(hiddenDreamCount, "dream entry", "dream entries");
+    addHiddenPart(hiddenThoughtCount, "thought record", "thought records");
+    addHiddenPart(hiddenImportantDayCount, "important day", "important days");
+    addHiddenPart(hiddenOnThisDayCount, "On this day memory", "On this day memories");
+
+    return {
+      count: hiddenItemCount,
+      label:
+        hiddenItemCount > 0
+          ? `Hidden by current filters: ${hiddenParts.join(", ")}`
+          : "",
+    };
   }
 
   private getCalendarStatus(entries: EntryItem[]): CalendarStatus {
@@ -3842,6 +3960,71 @@ export class ListComponent implements OnInit, OnDestroy {
     return this.getCalendarDayMetrics(day).slice(2, 5);
   }
 
+  getCalendarDayFaceBackground(
+    day: CalendarDay,
+    face: "front" | "back",
+    theme: "light" | "dark",
+  ): string {
+    const metrics =
+      face === "front"
+        ? this.getPrimaryCalendarDayMetrics(day)
+        : this.getSecondaryCalendarDayMetrics(day);
+    const colours = metrics
+      .map((metric) => this.getCalendarMetricFaceColour(metric, theme))
+      .filter(
+        (colour, index, list): colour is string =>
+          Boolean(colour) && list.indexOf(colour) === index,
+      )
+      .slice(0, 3);
+
+    if (colours.length === 0) {
+      return "transparent";
+    }
+
+    if (colours.length === 1) {
+      const endColour =
+        theme === "dark" ? "var(--colour-surface)" : "var(--colour-surface-elevated)";
+      return `linear-gradient(180deg, ${colours[0]} 0%, ${endColour} 100%)`;
+    }
+
+    const segmentSize = 100 / colours.length;
+    const stops = colours
+      .map((colour, index) => {
+        const start = Math.round(index * segmentSize);
+        const end = Math.round((index + 1) * segmentSize);
+        return `${colour} ${start}%, ${colour} ${end}%`;
+      })
+      .join(", ");
+
+    return `linear-gradient(45deg, ${stops})`;
+  }
+
+  private getCalendarMetricFaceColour(
+    metric: CalendarDayMetric,
+    theme: "light" | "dark",
+  ): string {
+    const lightColours: Record<CalendarDayMetricType, string> = {
+      daily: "var(--calendar-gradient-daily)",
+      dream: "var(--calendar-gradient-dream)",
+      thought_record: "var(--calendar-gradient-thought)",
+      occasion: metric.cssClass.includes("public-holiday")
+        ? "var(--calendar-gradient-holiday)"
+        : "var(--calendar-gradient-important)",
+      on_this_day: "var(--calendar-gradient-on-this-day)",
+    };
+    const darkColours: Record<CalendarDayMetricType, string> = {
+      daily: "var(--calendar-gradient-daily-dark)",
+      dream: "var(--calendar-gradient-dream-dark)",
+      thought_record: "var(--calendar-gradient-thought-dark)",
+      occasion: metric.cssClass.includes("public-holiday")
+        ? "var(--calendar-gradient-holiday-dark)"
+        : "var(--calendar-gradient-important-dark)",
+      on_this_day: "var(--calendar-gradient-on-this-day-dark)",
+    };
+
+    return theme === "dark" ? darkColours[metric.type] : lightColours[metric.type];
+  }
+
   trackCalendarDayMetric(
     _index: number,
     metric: CalendarDayMetric,
@@ -3968,10 +4151,11 @@ export class ListComponent implements OnInit, OnDestroy {
     }
 
     const entries = this.getVisibleOnThisDayEntries(this.onThisDayFeed.entries);
+    const previewEntries = entries.slice(0, 3);
     const anchor = event.currentTarget as HTMLElement;
     const position = this.getCalendarPreviewPosition(
       anchor,
-      Math.min(entries.length, 3),
+      previewEntries.length,
     );
     const targetDate = new Date(`${this.onThisDayFeed.date}T12:00:00`);
     this.onThisDayPreview = {
@@ -3979,7 +4163,8 @@ export class ListComponent implements OnInit, OnDestroy {
       heading: "On this day",
       phase: "open",
       direction: this.getPreviewDirectionFromClick(event),
-      entries,
+      entries: previewEntries,
+      totalCount: entries.length,
       dateLabel: targetDate.toLocaleDateString("en-GB", {
         day: "numeric",
         month: "long",
@@ -4032,12 +4217,14 @@ export class ListComponent implements OnInit, OnDestroy {
       event.currentTarget as HTMLElement,
       Math.min(entries.length, 3),
     );
+    const previewEntries = entries.slice(0, 3);
     this.onThisDayPreview = {
       scope: "month",
       heading: "On this day this month",
       phase: "open",
       direction: this.getPreviewDirectionFromClick(event),
-      entries,
+      entries: previewEntries,
+      totalCount: entries.length,
       dateLabel: this.getCalendarHeading(),
       top: position.top,
       left: position.left,
@@ -4062,6 +4249,37 @@ export class ListComponent implements OnInit, OnDestroy {
   getOnThisDayImageStyle(entry: OnThisDayEntry): string | null {
     const imageUrl = String(entry.image_url || "").trim();
     return imageUrl ? `url("${imageUrl.replace(/"/g, '\\"')}")` : null;
+  }
+
+  shouldShowOnThisDayMoreCard(): boolean {
+    return Boolean(
+      this.onThisDayPreview &&
+        this.onThisDayPreview.totalCount > this.onThisDayPreview.entries.length,
+    );
+  }
+
+  getOnThisDayMoreLabel(): string {
+    return (this.onThisDayPreview?.totalCount ?? 0) > 3
+      ? "View all memories"
+      : "On this day";
+  }
+
+  openOnThisDayFullView(event: Event): void {
+    event.stopPropagation();
+    if (!this.onThisDayPreview) {
+      return;
+    }
+
+    const entries =
+      this.onThisDayPreview.scope === "month"
+        ? this.getCurrentMonthOnThisDayEntries()
+        : this.getVisibleOnThisDayEntries(this.onThisDayFeed?.entries ?? []);
+
+    this.onThisDayPreview = {
+      ...this.onThisDayPreview,
+      entries,
+      totalCount: entries.length,
+    };
   }
 
   openOnThisDayEntry(entry: OnThisDayEntry, event: Event): void {
