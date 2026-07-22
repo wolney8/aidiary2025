@@ -21,6 +21,7 @@ import { ImportantDaysService } from "../../core/services/important-days.service
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
 import { OnThisDayService } from "../../core/services/on-this-day.service";
 import { AppDialogService } from "../../core/services/app-dialog.service";
+import { ThemeService } from "../../core/services/theme.service";
 import {
   SearchFilters,
   SearchService,
@@ -875,8 +876,7 @@ type OnThisDayPreviewState = {
                     >
                       <section
                         class="calendar-day-face calendar-day-front"
-                        [style.--calendar-face-bg]="getCalendarDayFaceBackground(day, 'front', 'light')"
-                        [style.--calendar-face-bg-dark]="getCalendarDayFaceBackground(day, 'front', 'dark')"
+                        [style.background]="getCalendarDayFaceBackground(day, 'front')"
                         [attr.aria-hidden]="isCalendarDayFlipped(day)"
                         [attr.inert]="isCalendarDayFlipped(day) ? '' : null"
                       >
@@ -942,8 +942,7 @@ type OnThisDayPreviewState = {
 
                       <section
                         class="calendar-day-face calendar-day-back"
-                        [style.--calendar-face-bg]="getCalendarDayFaceBackground(day, 'back', 'light')"
-                        [style.--calendar-face-bg-dark]="getCalendarDayFaceBackground(day, 'back', 'dark')"
+                        [style.background]="getCalendarDayFaceBackground(day, 'back')"
                         [attr.aria-hidden]="!isCalendarDayFlipped(day)"
                         [attr.inert]="isCalendarDayFlipped(day) ? null : ''"
                       >
@@ -1433,6 +1432,7 @@ export class ListComponent implements OnInit, OnDestroy {
   private publicHolidaysService = inject(PublicHolidaysService);
   private onThisDayService = inject(OnThisDayService);
   private appDialog = inject(AppDialogService);
+  private themeService = inject(ThemeService);
   protected readonly searchService = inject(SearchService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -3963,8 +3963,8 @@ export class ListComponent implements OnInit, OnDestroy {
   getCalendarDayFaceBackground(
     day: CalendarDay,
     face: "front" | "back",
-    theme: "light" | "dark",
   ): string {
+    const theme = this.themeService.isDark() ? "dark" : "light";
     const metrics =
       face === "front"
         ? this.getPrimaryCalendarDayMetrics(day)
