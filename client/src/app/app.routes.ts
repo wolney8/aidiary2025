@@ -75,6 +75,15 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "important-days",
+    title: "Important days | AI Diary",
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import("./settings/important-days/important-days.component").then(
+        (m) => m.ImportantDaysComponent,
+      ),
+  },
+  {
     path: "profile",
     title: "Profile | AI Diary",
     canActivate: [authGuard],
@@ -113,11 +122,8 @@ export const routes: Routes = [
       },
       {
         path: "important-days",
-        title: "Important days | AI Diary",
-        loadComponent: () =>
-          import("./settings/important-days/important-days.component").then(
-            (m) => m.ImportantDaysComponent,
-          ),
+        pathMatch: "full",
+        redirectTo: "/important-days",
       },
       {
         path: "import",

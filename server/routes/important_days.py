@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import datetime
+from io import BytesIO
 import sqlite3
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
+from PIL import Image, ImageOps, UnidentifiedImageError
+
+from services.media_storage import delete_image, resolve_image_url, store_uploaded_image
 
 important_days_bp = Blueprint('important_days', __name__)
 
@@ -25,6 +29,9 @@ ALLOWED_ICONS = {
 ALLOWED_ACCENT_COLORS = {'amber', 'rose', 'blue', 'violet', 'emerald', 'slate'}
 MAX_LABEL_LENGTH = 60
 MAX_NOTE_LENGTH = 160
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+IMPORTANT_DAY_IMAGE_TARGET_SIZE = (1600, 1600)
+IMPORTANT_DAY_IMAGE_JPEG_QUALITY = 86
 
 
 def get_db():
@@ -118,6 +125,37 @@ def _coerce_date(value: object) -> tuple[str, int, int, int]:
     return text, parsed.month, parsed.day, parsed.year
 
 
+def _normalise_uploaded_image(file_bytes: bytes) -> bytes:
+    if not file_bytes:
+        raise ValueError('No image data was uploaded.')
+
+    try:
+        image = Image.open(BytesIO(file_bytes))
+        image = ImageOps.exif_transpose(image)
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        raise ValueError('The uploaded file is not a supported image.') from exc
+
+    if image.mode not in ('RGB', 'L'):
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        alpha_source = image.convert('RGBA')
+        background.paste(alpha_source, mask=alpha_source.split()[-1])
+        image = background
+    else:
+        image = image.convert('RGB')
+
+    resized = image.copy()
+    resized.thumbnail(IMPORTANT_DAY_IMAGE_TARGET_SIZE, Image.Resampling.LANCZOS)
+
+    output = BytesIO()
+    resized.save(
+        output,
+        format='JPEG',
+        quality=IMPORTANT_DAY_IMAGE_JPEG_QUALITY,
+        optimize=True,
+    )
+    return output.getvalue()
+
+
 def _validate_calendar_day(month: int, day: int, original_year: int | None) -> None:
     validation_year = original_year or 2024
     max_day = monthrange(validation_year, month)[1]
@@ -131,6 +169,8 @@ def _serialise_important_day(row: sqlite3.Row) -> dict[str, object]:
         fallback_year = row['original_year'] or 2024
         starts_on = f"{fallback_year:04d}-{row['month']:02d}-{row['day']:02d}"
 
+    image_url = resolve_image_url(row['image_storage_key']) if row['image_storage_key'] else row['image_url']
+
     return {
         'id': row['id'],
         'label': row['label'],
@@ -142,6 +182,8 @@ def _serialise_important_day(row: sqlite3.Row) -> dict[str, object]:
         'recurrence': row['recurrence'] or 'yearly',
         'icon_name': row['icon_name'] or 'event',
         'accent_color': row['accent_color'] or 'amber',
+        'has_image': bool(row['image_storage_key'] or row['image_url']),
+        'image_url': image_url,
         'note': row['note'] or '',
         'created_at': row['created_at'],
         'updated_at': row['updated_at'],
@@ -190,7 +232,7 @@ def list_important_days():
     rows = conn.execute(
         '''
         SELECT id, label, starts_on, month, day, original_year, category, recurrence,
-               icon_name, accent_color, note, created_at, updated_at
+               icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
         FROM important_days
         WHERE user_id = ?
         ORDER BY month ASC, day ASC, lower(label) ASC, id ASC
@@ -251,7 +293,7 @@ def create_important_day():
     row = conn.execute(
         '''
         SELECT id, label, starts_on, month, day, original_year, category, recurrence,
-               icon_name, accent_color, note, created_at, updated_at
+               icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
         FROM important_days
         WHERE id = ? AND user_id = ?
         ''',
@@ -318,7 +360,7 @@ def update_important_day(important_day_id: int):
     row = conn.execute(
         '''
         SELECT id, label, starts_on, month, day, original_year, category, recurrence,
-               icon_name, accent_color, note, created_at, updated_at
+               icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
         FROM important_days
         WHERE id = ? AND user_id = ?
         ''',
@@ -335,6 +377,10 @@ def delete_important_day(important_day_id: int):
     user_id = int(get_jwt_identity())
 
     conn = get_db()
+    existing_row = conn.execute(
+        'SELECT image_storage_key FROM important_days WHERE id = ? AND user_id = ?',
+        (important_day_id, user_id),
+    ).fetchone()
     cursor = conn.cursor()
     cursor.execute(
         'DELETE FROM important_days WHERE id = ? AND user_id = ?',
@@ -346,4 +392,98 @@ def delete_important_day(important_day_id: int):
     if cursor.rowcount == 0:
         return jsonify({'error': 'Important day not found'}), 404
 
+    if existing_row:
+        delete_image(existing_row['image_storage_key'])
+
     return jsonify({'message': 'Important day deleted', 'id': important_day_id}), 200
+
+
+@important_days_bp.route('/important-days/<int:important_day_id>/image', methods=['POST'])
+@jwt_required()
+def upload_important_day_image(important_day_id: int):
+    user_id = int(get_jwt_identity())
+    uploaded_file = request.files.get('image')
+    if not uploaded_file:
+        return jsonify({'error': 'Image file is required'}), 400
+
+    file_bytes = uploaded_file.read()
+    if len(file_bytes) > MAX_IMAGE_BYTES:
+        return jsonify({'error': 'Image is too large. Maximum size is 5 MB.'}), 400
+
+    conn = get_db()
+    row = conn.execute(
+        '''
+        SELECT id, image_storage_key
+        FROM important_days
+        WHERE id = ? AND user_id = ?
+        ''',
+        (important_day_id, user_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Important day not found'}), 404
+
+    try:
+        image_bytes = _normalise_uploaded_image(file_bytes)
+        storage_key = store_uploaded_image(
+            image_bytes,
+            user_id=user_id,
+            entry_kind='important-day',
+        )
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:  # pragma: no cover - defensive filesystem guard
+        current_app.logger.error('Important day image upload failed: %s', exc)
+        conn.close()
+        return jsonify({'error': 'Image upload failed'}), 500
+
+    conn.execute(
+        '''
+        UPDATE important_days
+        SET image_storage_key = ?, image_url = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+        ''',
+        (storage_key, important_day_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    delete_image(row['image_storage_key'])
+
+    return jsonify({
+        'id': important_day_id,
+        'has_image': True,
+        'image_url': resolve_image_url(storage_key),
+    }), 200
+
+
+@important_days_bp.route('/important-days/<int:important_day_id>/image', methods=['DELETE'])
+@jwt_required()
+def delete_important_day_image(important_day_id: int):
+    user_id = int(get_jwt_identity())
+    conn = get_db()
+    row = conn.execute(
+        '''
+        SELECT id, image_storage_key, image_url
+        FROM important_days
+        WHERE id = ? AND user_id = ?
+        ''',
+        (important_day_id, user_id),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Important day not found'}), 404
+
+    conn.execute(
+        '''
+        UPDATE important_days
+        SET image_storage_key = NULL, image_url = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+        ''',
+        (important_day_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    delete_image(row['image_storage_key'])
+
+    return jsonify({'id': important_day_id, 'has_image': False, 'image_url': None}), 200

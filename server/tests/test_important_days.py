@@ -1,9 +1,12 @@
 import json
 import os
+import shutil
 import sqlite3
 import tempfile
+from io import BytesIO
 
 import pytest
+from PIL import Image
 
 from app import create_app
 
@@ -11,8 +14,10 @@ from app import create_app
 @pytest.fixture
 def client_with_legacy_user_schema():
     db_fd, db_path = tempfile.mkstemp()
+    media_root = tempfile.mkdtemp(prefix="aidiary-important-days-media-")
     os.environ["DB_PATH"] = db_path
     os.environ["JWT_SECRET"] = "test-secret"
+    os.environ["MEDIA_ROOT"] = media_root
 
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -44,6 +49,14 @@ def client_with_legacy_user_schema():
 
     os.close(db_fd)
     os.unlink(db_path)
+    shutil.rmtree(media_root, ignore_errors=True)
+
+
+def _tiny_image_bytes() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (320, 180), (40, 120, 200)).save(output, format="PNG")
+    output.seek(0)
+    return output.read()
 
 
 def _register_and_get_token(client, username: str) -> str:
@@ -181,6 +194,78 @@ def test_update_and_delete_important_day(client_with_legacy_user_schema):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert json.loads(list_response.data) == []
+
+
+def test_upload_and_delete_important_day_image(client_with_legacy_user_schema):
+    client, db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client, "important-days-image")
+
+    create_response = client.post(
+        "/api/important-days",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps(
+            {
+                "label": "Photo day",
+                "starts_on": "2025-07-20",
+                "category": "milestone",
+            }
+        ),
+        content_type="application/json",
+    )
+    important_day_id = json.loads(create_response.data)["id"]
+
+    upload_response = client.post(
+        f"/api/important-days/{important_day_id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+        data={"image": (BytesIO(_tiny_image_bytes()), "photo.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert upload_response.status_code == 200
+    upload_payload = json.loads(upload_response.data)
+    assert upload_payload["has_image"] is True
+    assert upload_payload["image_url"].startswith("http://localhost/media/")
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT image_storage_key, image_url FROM important_days WHERE id = ?",
+        (important_day_id,),
+    ).fetchone()
+    conn.close()
+    assert row["image_storage_key"]
+    assert row["image_url"] is None
+    stored_image_path = os.path.join(
+        os.environ["MEDIA_ROOT"], *row["image_storage_key"].split("/")
+    )
+    assert os.path.exists(stored_image_path)
+
+    list_response = client.get(
+        "/api/important-days",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    listed_day = json.loads(list_response.data)[0]
+    assert listed_day["has_image"] is True
+    assert listed_day["image_url"].startswith("http://localhost/media/")
+
+    delete_response = client.delete(
+        f"/api/important-days/{important_day_id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert delete_response.status_code == 200
+    delete_payload = json.loads(delete_response.data)
+    assert delete_payload["has_image"] is False
+    assert delete_payload["image_url"] is None
+    assert not os.path.exists(stored_image_path)
+
+    conn = sqlite3.connect(db_path)
+    cleared_row = conn.execute(
+        "SELECT image_storage_key, image_url FROM important_days WHERE id = ?",
+        (important_day_id,),
+    ).fetchone()
+    conn.close()
+    assert cleared_row == (None, None)
 
 
 def test_create_important_day_rejects_invalid_date_and_category(

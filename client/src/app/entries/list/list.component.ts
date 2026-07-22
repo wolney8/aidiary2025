@@ -132,6 +132,7 @@ type OccasionPreviewItem = {
   meta: string[];
   icon: string;
   accentClass: string;
+  imageUrl?: string | null;
 };
 
 type OccasionPreviewState = {
@@ -574,10 +575,22 @@ type OnThisDayPreviewState = {
                 <article
                   class="calendar-important-day-card"
                   *ngFor="let importantDay of importantDayPreview.importantDays"
+                  [class.has-preview-image]="getImportantDayImageUrl(importantDay)"
                   [ngClass]="'accent-' + importantDay.accent_color"
                 >
-                  <div class="calendar-important-day-card-icon" aria-hidden="true">
-                    <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
+                  <div class="calendar-important-day-card-media">
+                    <div class="calendar-important-day-card-icon" aria-hidden="true">
+                      <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
+                    </div>
+                    <button
+                      type="button"
+                      class="calendar-important-day-card-thumb"
+                      *ngIf="getImportantDayImageUrl(importantDay) as imageUrl"
+                      (click)="openImportantDayImage(importantDay, $event)"
+                      [attr.aria-label]="'View image for ' + importantDay.label"
+                    >
+                      <img [src]="imageUrl" alt="" />
+                    </button>
                   </div>
                   <div class="calendar-important-day-card-copy">
                     <div class="calendar-important-day-card-heading">
@@ -590,6 +603,16 @@ type OnThisDayPreviewState = {
                     <div class="calendar-important-day-card-meta">
                       <span>{{ getImportantDayRecurrenceLabel(importantDay) }}</span>
                       <span>{{ getImportantDayElapsedLabel(importantDay) }}</span>
+                    </div>
+                    <div class="calendar-important-day-card-actions" *ngIf="getImportantDayImageUrl(importantDay)">
+                      <button
+                        type="button"
+                        class="calendar-important-day-image-trigger"
+                        (click)="openImportantDayImage(importantDay, $event)"
+                      >
+                        <mat-icon aria-hidden="true">open_in_full</mat-icon>
+                        View image
+                      </button>
                     </div>
                   </div>
                 </article>
@@ -1238,10 +1261,22 @@ type OnThisDayPreviewState = {
                   <article
                     class="calendar-important-day-card"
                     *ngFor="let importantDay of importantDayPreview.importantDays"
+                    [class.has-preview-image]="getImportantDayImageUrl(importantDay)"
                     [ngClass]="'accent-' + importantDay.accent_color"
                   >
-                    <div class="calendar-important-day-card-icon" aria-hidden="true">
-                      <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
+                    <div class="calendar-important-day-card-media">
+                      <div class="calendar-important-day-card-icon" aria-hidden="true">
+                        <mat-icon>{{ getImportantDayIcon(importantDay) }}</mat-icon>
+                      </div>
+                    <button
+                        type="button"
+                        class="calendar-important-day-card-thumb"
+                        *ngIf="getImportantDayImageUrl(importantDay) as imageUrl"
+                        (click)="openImportantDayImage(importantDay, $event)"
+                        [attr.aria-label]="'View image for ' + importantDay.label"
+                      >
+                        <img [src]="imageUrl" alt="" />
+                      </button>
                     </div>
                     <div class="calendar-important-day-card-copy">
                       <div class="calendar-important-day-card-heading">
@@ -1255,6 +1290,16 @@ type OnThisDayPreviewState = {
                         <span>{{ getImportantDayRecurrenceLabel(importantDay) }}</span>
                         <span>{{ getImportantDayElapsedLabel(importantDay) }}</span>
                         <span>{{ getImportantDayMatchingEntryCountLabel(importantDay) }}</span>
+                      </div>
+                      <div class="calendar-important-day-card-actions" *ngIf="getImportantDayImageUrl(importantDay)">
+                        <button
+                          type="button"
+                          class="calendar-important-day-image-trigger"
+                          (click)="openImportantDayImage(importantDay, $event)"
+                        >
+                          <mat-icon aria-hidden="true">open_in_full</mat-icon>
+                          View image
+                        </button>
                       </div>
                     </div>
                   </article>
@@ -1291,10 +1336,22 @@ type OnThisDayPreviewState = {
                   <article
                     class="calendar-important-day-card"
                     *ngFor="let occasion of occasionPreview.occasions"
+                    [class.has-preview-image]="occasion.imageUrl"
                     [ngClass]="occasion.accentClass"
                   >
-                    <div class="calendar-important-day-card-icon" aria-hidden="true">
-                      <mat-icon>{{ occasion.icon }}</mat-icon>
+                    <div class="calendar-important-day-card-media">
+                      <div class="calendar-important-day-card-icon" aria-hidden="true">
+                        <mat-icon>{{ occasion.icon }}</mat-icon>
+                      </div>
+                      <button
+                        type="button"
+                        class="calendar-important-day-card-thumb"
+                        *ngIf="occasion.imageUrl"
+                        (click)="openOccasionImage(occasion, $event)"
+                        [attr.aria-label]="'View image for ' + occasion.label"
+                      >
+                        <img [src]="occasion.imageUrl" alt="" />
+                      </button>
                     </div>
                     <div class="calendar-important-day-card-copy">
                       <div class="calendar-important-day-card-heading">
@@ -1307,6 +1364,16 @@ type OnThisDayPreviewState = {
                       <div class="calendar-important-day-card-meta">
                         <span *ngFor="let metaItem of occasion.meta">{{ metaItem }}</span>
                       </div>
+                      <div class="calendar-important-day-card-actions" *ngIf="occasion.imageUrl">
+                        <button
+                          type="button"
+                          class="calendar-important-day-image-trigger"
+                          (click)="openOccasionImage(occasion, $event)"
+                        >
+                          <mat-icon aria-hidden="true">open_in_full</mat-icon>
+                          View image
+                        </button>
+                      </div>
                     </div>
                   </article>
                 </div>
@@ -1315,6 +1382,41 @@ type OnThisDayPreviewState = {
           </ng-template>
         </ng-container>
       </ng-container>
+
+      <div
+        class="important-day-image-modal"
+        *ngIf="importantDayImageModal"
+        (click)="closeImportantDayImage()"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="'Image for ' + importantDayImageModal.label"
+        data-testid="important-day-image-modal"
+      >
+        <div class="important-day-image-modal-dialog" (click)="$event.stopPropagation()">
+          <header class="important-day-image-modal-header">
+            <div>
+              <strong>{{ importantDayImageModal.label }}</strong>
+              <span>{{ importantDayImageModal.dateLabel }}</span>
+            </div>
+            <button
+              mat-icon-button
+              type="button"
+              (click)="closeImportantDayImage()"
+              aria-label="Close important day image"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </header>
+          <div class="important-day-image-modal-body">
+            <img [src]="importantDayImageModal.imageUrl" [alt]="importantDayImageModal.label" />
+          </div>
+          <div class="important-day-image-modal-actions">
+            <button mat-stroked-button type="button" (click)="closeImportantDayImage()">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `,
 })
@@ -1390,6 +1492,11 @@ export class ListComponent implements OnInit, OnDestroy {
   calendarPreview: CalendarPreviewState | null = null;
   cbtPreview: CbtPreviewState | null = null;
   importantDayPreview: ImportantDayPreviewState | null = null;
+  importantDayImageModal: {
+    imageUrl: string;
+    label: string;
+    dateLabel: string;
+  } | null = null;
   occasionPreview: OccasionPreviewState | null = null;
   onThisDayPreview: OnThisDayPreviewState | null = null;
   private loadedHolidayYears = new Set<number>();
@@ -2160,6 +2267,37 @@ export class ListComponent implements OnInit, OnDestroy {
     return `${matchingEntries.length} entr${matchingEntries.length === 1 ? "y" : "ies"} on this date`;
   }
 
+  openImportantDayImage(importantDay: ImportantDay, event: Event): void {
+    event.stopPropagation();
+    const imageUrl = this.getImportantDayImageUrl(importantDay);
+    if (!imageUrl) return;
+    this.importantDayImageModal = {
+      imageUrl,
+      label: importantDay.label,
+      dateLabel: this.formatImportantDaySummaryLabel(importantDay),
+    };
+  }
+
+  openOccasionImage(occasion: OccasionPreviewItem, event: Event): void {
+    event.stopPropagation();
+    const imageUrl = String(occasion.imageUrl || "").trim();
+    if (!imageUrl) return;
+    this.importantDayImageModal = {
+      imageUrl,
+      label: occasion.label,
+      dateLabel: occasion.subtitle,
+    };
+  }
+
+  closeImportantDayImage(): void {
+    this.importantDayImageModal = null;
+  }
+
+  getImportantDayImageUrl(importantDay: ImportantDay): string | null {
+    const imageUrl = String(importantDay.image_url || "").trim();
+    return imageUrl || null;
+  }
+
   toggleMonthlyImportantDaysPreview(event: MouseEvent): void {
     event.stopPropagation();
     this.ignorePreviewScrollUntil = performance.now() + 250;
@@ -2387,6 +2525,7 @@ export class ListComponent implements OnInit, OnDestroy {
       ],
       icon: this.getImportantDayIcon(importantDay),
       accentClass: `accent-${importantDay.accent_color}`,
+      imageUrl: this.getImportantDayImageUrl(importantDay),
     }));
 
     const holidayItems = day.publicHolidays.map((holiday) => ({

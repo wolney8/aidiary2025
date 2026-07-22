@@ -52,16 +52,6 @@ import {
 
         <a
           mat-stroked-button
-          routerLink="/settings/important-days"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-        >
-          <mat-icon>event</mat-icon>
-          Important days
-        </a>
-
-        <a
-          mat-stroked-button
           routerLink="/settings/import"
           routerLinkActive="is-active"
           [routerLinkActiveOptions]="{ exact: true }"

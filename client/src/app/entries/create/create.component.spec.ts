@@ -62,11 +62,22 @@ describe("CreateComponent save reliability", () => {
     cbtServiceMock = jasmine.createSpyObj<CbtService>("CbtService", [
       "listWorksheets",
       "createWorksheet",
+      "completeWorksheet",
+      "analyseWorksheet",
     ]);
     cbtServiceMock.listWorksheets.and.returnValue(of([]));
+    cbtServiceMock.completeWorksheet.and.callFake((id: number) =>
+      of({ id } as CbtWorksheet),
+    );
+    cbtServiceMock.analyseWorksheet.and.callFake((id: number) =>
+      of({ id } as CbtWorksheet),
+    );
     importantDaysServiceMock = jasmine.createSpyObj<ImportantDaysService>(
       "ImportantDaysService",
-      ["createImportantDay"],
+      ["createImportantDay", "uploadImportantDayImage"],
+    );
+    importantDaysServiceMock.uploadImportantDayImage.and.returnValue(
+      of({ id: 7, image_url: "/media/important-day.jpg" }),
     );
 
     await TestBed.configureTestingModule({
@@ -424,6 +435,7 @@ describe("CreateComponent save reliability", () => {
     component.entryDate = new Date(2026, 6, 3);
     component.thoughtRecordTitle = "Appointment worry";
     component.thoughtRecordSituation = "I felt tense before the appointment.";
+    component.thoughtRecordUnhelpfulThoughts = "Something bad will happen.";
     cbtServiceMock.createWorksheet.and.returnValue(
       of({ id: 8 } as CbtWorksheet),
     );
@@ -435,6 +447,7 @@ describe("CreateComponent save reliability", () => {
         title: "Appointment worry",
         record_date: "2026-07-03",
         situation: "I felt tense before the appointment.",
+        unhelpful_thoughts: "Something bad will happen.",
       }),
     );
   });
