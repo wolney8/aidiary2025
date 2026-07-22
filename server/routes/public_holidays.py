@@ -7,7 +7,11 @@ import httpx
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from services.public_holidays import get_public_holidays, list_available_countries
+from services.public_holidays import (
+    get_public_holidays,
+    list_available_countries,
+    list_fallback_countries,
+)
 
 public_holidays_bp = Blueprint('public_holidays', __name__)
 
@@ -26,8 +30,11 @@ def get_public_holiday_countries():
     try:
         countries = list_available_countries()
     except httpx.HTTPError as exc:
-        current_app.logger.error('Public holiday countries fetch failed: %s', exc)
-        return jsonify({'error': 'Unable to load holiday countries'}), 502
+        current_app.logger.warning(
+            'Public holiday countries fetch failed, using fallback list: %s',
+            exc,
+        )
+        countries = list_fallback_countries()
 
     return jsonify(countries), 200
 
@@ -69,6 +76,7 @@ def get_public_holiday_feed():
             {
                 'countryCode': country_code,
                 'enabled': show_public_holidays,
+                'year': year,
                 'holidays': [],
             }
         ), 200

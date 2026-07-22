@@ -5,6 +5,7 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+import httpx
 
 from app import create_app
 
@@ -77,6 +78,28 @@ def test_public_holiday_countries_endpoint_returns_provider_data(
     assert json.loads(response.data)[0]["countryCode"] == "GB"
 
 
+@patch("routes.public_holidays.list_available_countries")
+def test_public_holiday_countries_endpoint_uses_fallback_when_provider_fails(
+    mock_list_available_countries,
+    client_with_legacy_user_schema,
+):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+    mock_list_available_countries.side_effect = httpx.ConnectError(
+        "provider unavailable"
+    )
+
+    response = client.get(
+        "/api/public-holidays/countries",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert {"countryCode": "GB", "name": "United Kingdom"} in payload
+    assert {"countryCode": "US", "name": "United States"} in payload
+
+
 @patch("services.public_holidays.httpx.Client")
 def test_public_holidays_endpoint_fetches_and_caches_holidays(
     mock_httpx_client,
@@ -120,6 +143,7 @@ def test_public_holidays_endpoint_fetches_and_caches_holidays(
 
     assert response.status_code == 200
     payload = json.loads(response.data)
+    assert payload["year"] == 2026
     assert payload["countryCode"] == "GB"
     assert payload["enabled"] is True
     assert payload["holidays"][0]["name"] == "Christmas Day"
@@ -153,5 +177,6 @@ def test_public_holidays_endpoint_returns_empty_when_disabled(
 
     assert response.status_code == 200
     payload = json.loads(response.data)
+    assert payload["year"] == 2026
     assert payload["enabled"] is False
     assert payload["holidays"] == []
