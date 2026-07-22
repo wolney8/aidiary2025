@@ -11,6 +11,17 @@ AVAILABLE_COUNTRIES_URL = "https://date.nager.at/api/v3/AvailableCountries"
 PUBLIC_HOLIDAYS_URL_TEMPLATE = "https://date.nager.at/api/v3/PublicHolidays/{year}/{country_code}"
 REQUEST_TIMEOUT_SECONDS = 10.0
 
+FALLBACK_COUNTRIES: tuple[dict[str, str], ...] = (
+    {"countryCode": "AU", "name": "Australia"},
+    {"countryCode": "CA", "name": "Canada"},
+    {"countryCode": "FR", "name": "France"},
+    {"countryCode": "DE", "name": "Germany"},
+    {"countryCode": "IE", "name": "Ireland"},
+    {"countryCode": "NZ", "name": "New Zealand"},
+    {"countryCode": "GB", "name": "United Kingdom"},
+    {"countryCode": "US", "name": "United States"},
+)
+
 
 def _serialise_holiday(item: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -42,6 +53,14 @@ def list_available_countries() -> list[dict[str, str]]:
 
     countries.sort(key=lambda item: item["name"])
     return countries
+
+
+def list_fallback_countries() -> list[dict[str, str]]:
+    """Small stable fallback so Customisation remains usable if the provider is unavailable."""
+    return sorted(
+        (dict(country) for country in FALLBACK_COUNTRIES),
+        key=lambda item: item["name"],
+    )
 
 
 def get_public_holidays(

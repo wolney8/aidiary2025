@@ -334,7 +334,7 @@ type OnThisDayPreviewState = {
 
           <div
             class="monthly-context-shelves"
-            *ngIf="getCurrentMonthImportantDays().length > 0 || getCurrentMonthOnThisDayEntries().length > 0"
+            *ngIf="getCurrentMonthImportantDays().length > 0 || getCurrentMonthOnThisDayEntries().length > 0 || getCurrentMonthThoughtRecords().length > 0"
             data-testid="entries-monthly-context-shelves"
           >
             <button
@@ -352,6 +352,24 @@ type OnThisDayPreviewState = {
               <span class="on-this-day-summary-copy">
                 <strong>Important days this month</strong>
                 <small>{{ getCurrentMonthImportantDaysSummaryLabel() }}</small>
+              </span>
+              <mat-icon aria-hidden="true">chevron_right</mat-icon>
+            </button>
+            <button
+              *ngIf="getCurrentMonthThoughtRecords().length > 0"
+              type="button"
+              class="on-this-day-summary calendar-thought-records-summary-trigger"
+              data-testid="calendar-thought-records-summary-trigger"
+              [attr.aria-expanded]="cbtPreview?.dayKey === getCurrentMonthThoughtRecordsKey() && cbtPreview?.phase === 'open'"
+              [attr.aria-controls]="displayMode === 'cards' ? 'cards-thought-record-preview' : 'thought-record-preview'"
+              (click)="toggleMonthlyCbtPreview($event)"
+            >
+              <span class="on-this-day-summary-icon thought-records" aria-hidden="true">
+                <mat-icon>psychology_alt</mat-icon>
+              </span>
+              <span class="on-this-day-summary-copy">
+                <strong>Thought records this month</strong>
+                <small>{{ getCurrentMonthThoughtRecordsSummaryLabel() }}</small>
               </span>
               <mat-icon aria-hidden="true">chevron_right</mat-icon>
             </button>
@@ -449,6 +467,74 @@ type OnThisDayPreviewState = {
                     <mat-icon>visibility_off</mat-icon>
                   </button>
                 </article>
+              </div>
+            </section>
+
+            <section
+              id="cards-thought-record-preview"
+              class="calendar-preview-deck cbt-preview-deck"
+              *ngIf="cbtPreview"
+              [class.preview-left-to-right]="cbtPreview.direction === 'left-to-right'"
+              [class.preview-right-to-left]="cbtPreview.direction === 'right-to-left'"
+              [class.preview-below]="cbtPreview.placement === 'below'"
+              [class.preview-above]="cbtPreview.placement === 'above'"
+              [class.closing]="cbtPreview.phase === 'closing'"
+              [style.top.px]="cbtPreview.top"
+              [style.left.px]="cbtPreview.left"
+              (click)="$event.stopPropagation()"
+              aria-label="Thought record preview deck"
+              data-testid="cards-thought-record-preview"
+            >
+              <header class="calendar-preview-header">
+                <div>
+                  <strong>{{ cbtPreview.heading }}</strong>
+                  <span>{{ cbtPreview.dateLabel }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="calendar-preview-close"
+                  aria-label="Close thought record preview"
+                  (click)="closeCbtPreview($event)"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+              </header>
+              <div class="calendar-preview-cards">
+                <button
+                  type="button"
+                  class="calendar-preview-card cbt-calendar-preview-card"
+                  *ngFor="let record of getCbtPreviewRecords(); let previewIndex = index"
+                  [style.--preview-index]="previewIndex"
+                  (click)="openThoughtRecord(record, $event)"
+                >
+                  <div class="calendar-preview-card-title">
+                    <mat-icon>psychology_alt</mat-icon>
+                    <div>
+                      <span>{{ getThoughtRecordTitle(record) }}</span>
+                      <small>{{ getThoughtRecordPreviewMeta(record) }}</small>
+                    </div>
+                  </div>
+                  <div class="calendar-preview-card-copy">
+                    <div class="calendar-preview-copy-block">
+                      <span class="calendar-preview-copy-label">Situation</span>
+                      <p>{{ record.situation || 'No situation added yet.' }}</p>
+                    </div>
+                    <div class="calendar-preview-copy-block" *ngIf="record.balanced_thought">
+                      <span class="calendar-preview-copy-label">Balanced thought</span>
+                      <p>{{ record.balanced_thought }}</p>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  class="calendar-preview-card calendar-preview-card-more"
+                  [style.--preview-index]="getCbtPreviewRecords().length"
+                  (click)="openThoughtRecordsDashboard($event)"
+                  aria-label="View all thought records"
+                >
+                  <mat-icon>arrow_forward</mat-icon>
+                  <span>{{ getCbtPreviewMoreLabel() }}</span>
+                </button>
               </div>
             </section>
 
@@ -704,28 +790,6 @@ type OnThisDayPreviewState = {
                     Select a day to review entries or create one when a day is
                     empty.
                   </p>
-                  <div
-                    class="calendar-important-days-summary"
-                    *ngIf="getCurrentMonthThoughtRecords().length > 0"
-                  >
-                    <button
-                      type="button"
-                      class="on-this-day-summary calendar-thought-records-summary-trigger"
-                      data-testid="calendar-thought-records-summary-trigger"
-                      [attr.aria-expanded]="cbtPreview?.dayKey === getCurrentMonthThoughtRecordsKey() && cbtPreview?.phase === 'open'"
-                      aria-controls="thought-record-preview"
-                      (click)="toggleMonthlyCbtPreview($event)"
-                    >
-                      <span class="on-this-day-summary-icon thought-records" aria-hidden="true">
-                        <mat-icon>psychology_alt</mat-icon>
-                      </span>
-                      <span class="on-this-day-summary-copy">
-                        <strong>Thought records this month</strong>
-                        <small>{{ getCurrentMonthThoughtRecordsSummaryLabel() }}</small>
-                      </span>
-                      <mat-icon aria-hidden="true">chevron_right</mat-icon>
-                    </button>
-                  </div>
                 </div>
                 <div class="calendar-legend" aria-label="Calendar legend">
                   <span class="legend-item">
