@@ -21,8 +21,10 @@ DEFAULT_DB_PATH = SERVER_ROOT / "db" / "app.db"
 
 TABLE_ORDER = [
     "users",
+    "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",
+    "import_history",
     "entry_assets",
     "import_sessions",
     "import_jobs",
