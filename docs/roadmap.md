@@ -37,6 +37,8 @@ Cloud work must proceed in dependency order rather than as parallel schema chang
    - Initial SQLite audit/export and Postgres rehearsal loader tooling now exists under
      `server/scripts/`; a real Neon branch rehearsal still needs provider credentials.
 3. `#30` Prove SQLite/cloud behavioral parity and define the cutover checklist.
+   - Cutover gates and readiness validation are documented in
+     [cloud-cutover-checklist.md](./operations/cloud-cutover-checklist.md).
 4. `#73` Complete cutover and rollback rehearsal with owners and timings.
 5. `#72` Run post-cutover integrity, performance, and operational verification.
 6. Close umbrella issues `#8` and `#62` only after the dependent work is complete.
