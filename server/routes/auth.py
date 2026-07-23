@@ -63,13 +63,25 @@ def get_db():
     return conn
 
 
-def _profile_picture_select(cursor: sqlite3.Cursor) -> str:
+def _optional_user_selects(cursor: sqlite3.Cursor) -> str:
     columns = {
         row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()
     }
-    if 'profile_picture_storage_key' in columns:
-        return 'profile_picture_storage_key'
-    return 'NULL AS profile_picture_storage_key'
+    optional_columns = {
+        'profile_picture_storage_key': 'NULL',
+        'writing_reminders_enabled': '0',
+        'writing_reminder_days': "''",
+        'writing_reminder_time': "'19:00'",
+        'writing_reminder_silence_days': '3',
+        'writing_reminder_entry_types': "'daily,dream'",
+    }
+    selects = []
+    for column_name, fallback in optional_columns.items():
+        if column_name in columns:
+            selects.append(column_name)
+        else:
+            selects.append(f'{fallback} AS {column_name}')
+    return ', '.join(selects)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
@@ -119,6 +131,11 @@ def register():
                 'first_name': first_name,
                 'last_name': last_name,
                 'profile_picture_url': None,
+                'writing_reminders_enabled': False,
+                'writing_reminder_days': '',
+                'writing_reminder_time': '19:00',
+                'writing_reminder_silence_days': 3,
+                'writing_reminder_entry_types': 'daily,dream',
             }
         }), 201
         
@@ -140,9 +157,9 @@ def login():
     conn = get_db()
     cursor = conn.cursor()
     
-    profile_picture_select = _profile_picture_select(cursor)
+    optional_user_selects = _optional_user_selects(cursor)
     user = cursor.execute(
-        f'''SELECT id, username, password, first_name, {profile_picture_select}
+        f'''SELECT id, username, password, first_name, {optional_user_selects}
             FROM users WHERE username = ?''',
         (username,)
     ).fetchone()
@@ -181,6 +198,13 @@ def login():
             'first_name': user['first_name'],
             'profile_picture_url': resolve_image_url(
                 user['profile_picture_storage_key']
+            ),
+            'writing_reminders_enabled': bool(user['writing_reminders_enabled']),
+            'writing_reminder_days': user['writing_reminder_days'] or '',
+            'writing_reminder_time': user['writing_reminder_time'] or '19:00',
+            'writing_reminder_silence_days': user['writing_reminder_silence_days'] or 3,
+            'writing_reminder_entry_types': (
+                user['writing_reminder_entry_types'] or 'daily,dream'
             ),
         }
     }), 200

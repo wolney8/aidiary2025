@@ -5,10 +5,11 @@ import { ImportJobStatus, ImportService } from "./import.service";
 
 const ACTIVE_IMPORT_JOB_KEY = "ai_diary_active_import_job";
 const NOTIFICATIONS_KEY = "ai_diary_notifications";
+const DISMISSED_NOTIFICATIONS_KEY = "ai_diary_dismissed_notifications";
 
 export interface AppNotification {
   id: string;
-  kind: "import";
+  kind: "import" | "writing_reminder";
   status: ImportJobStatus["status"];
   title: string;
   message: string;
@@ -19,6 +20,7 @@ export interface AppNotification {
   isDelayed: boolean;
   createdAt: string;
   destination: string;
+  actionLabel?: string;
 }
 
 @Injectable({ providedIn: "root" })
@@ -76,6 +78,9 @@ export class ImportJobService {
       (item) => item.id === notificationId,
     );
     if (notification?.status === "queued" || notification?.status === "running") return;
+    if (notification?.kind === "writing_reminder") {
+      this.rememberDismissedNotification(notificationId);
+    }
 
     this.updateNotifications((notifications) =>
       notifications.filter((item) => item.id !== notificationId),
@@ -86,6 +91,9 @@ export class ImportJobService {
   }
 
   clearCompleted(): void {
+    this.notificationsSubject.value
+      .filter((notification) => notification.kind === "writing_reminder")
+      .forEach((notification) => this.rememberDismissedNotification(notification.id));
     this.updateNotifications((notifications) =>
       notifications.filter(
         (notification) =>
@@ -96,6 +104,40 @@ export class ImportJobService {
     if (current && (current.status === "completed" || current.status === "failed")) {
       this.clearCurrentJob();
     }
+  }
+
+  publishWritingReminder(options: {
+    id: string;
+    title: string;
+    message: string;
+    destination?: string;
+  }): void {
+    const existingNotification = this.notificationsSubject.value.find(
+      (notification) => notification.id === options.id,
+    );
+    if (existingNotification || this.isDismissedNotification(options.id)) {
+      return;
+    }
+    const now = new Date().toISOString();
+    const notification: AppNotification = {
+      id: options.id,
+      kind: "writing_reminder",
+      status: "completed",
+      title: options.title,
+      message: options.message,
+      processed: 0,
+      total: 0,
+      percent: 0,
+      unread: true,
+      isDelayed: false,
+      createdAt: now,
+      destination: options.destination || "/entries/create",
+      actionLabel: "Start entry",
+    };
+    this.updateNotifications((notifications) => [
+      notification,
+      ...notifications,
+    ]);
   }
 
   private startPolling(jobId: string): void {
@@ -180,6 +222,7 @@ export class ImportJobService {
       isDelayed: job.is_delayed === true,
       createdAt: previousNotification?.createdAt ?? job.created_at,
       destination: "/settings/import",
+      actionLabel: "Go to import",
     };
     this.updateNotifications((notifications) => [
       notification,
@@ -198,10 +241,48 @@ export class ImportJobService {
   private restoreNotifications(): AppNotification[] {
     try {
       const saved = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) ?? "[]");
-      return Array.isArray(saved) ? saved : [];
+      if (!Array.isArray(saved)) {
+        return [];
+      }
+      return saved.filter(
+        (notification): notification is AppNotification =>
+          typeof notification?.id === "string" &&
+          typeof notification?.title === "string" &&
+          typeof notification?.message === "string",
+      );
     } catch {
       localStorage.removeItem(NOTIFICATIONS_KEY);
       return [];
+    }
+  }
+
+  private isDismissedNotification(notificationId: string): boolean {
+    try {
+      const dismissed = JSON.parse(
+        localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ?? "[]",
+      );
+      return Array.isArray(dismissed) && dismissed.includes(notificationId);
+    } catch {
+      localStorage.removeItem(DISMISSED_NOTIFICATIONS_KEY);
+      return false;
+    }
+  }
+
+  private rememberDismissedNotification(notificationId: string): void {
+    try {
+      const dismissed = JSON.parse(
+        localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ?? "[]",
+      );
+      const dismissedIds = Array.isArray(dismissed) ? dismissed : [];
+      localStorage.setItem(
+        DISMISSED_NOTIFICATIONS_KEY,
+        JSON.stringify([...new Set([notificationId, ...dismissedIds])].slice(0, 100)),
+      );
+    } catch {
+      localStorage.setItem(
+        DISMISSED_NOTIFICATIONS_KEY,
+        JSON.stringify([notificationId]),
+      );
     }
   }
 

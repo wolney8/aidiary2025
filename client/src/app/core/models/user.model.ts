@@ -23,6 +23,11 @@ export interface User {
   ai_model?: string;
   allow_ai_history?: boolean;
   allow_ai_attachment_context?: boolean;
+  writing_reminders_enabled?: boolean;
+  writing_reminder_days?: string;
+  writing_reminder_time?: string;
+  writing_reminder_silence_days?: number;
+  writing_reminder_entry_types?: string;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;

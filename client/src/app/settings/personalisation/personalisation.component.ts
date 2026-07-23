@@ -106,6 +106,91 @@ import { User } from "../../core/models/user.model";
 
         <mat-card class="group-card">
           <mat-card-header>
+            <mat-card-title>Writing Rhythm</mat-card-title>
+            <mat-card-subtitle>
+              Gentle in-app prompts after quiet gaps.
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content class="field-grid rhythm-grid">
+            <div class="ai-behaviour-group checkbox-row-wide">
+              <div class="checkbox-row">
+                <mat-checkbox
+                  [(ngModel)]="settings.writing_reminders_enabled"
+                  name="writing_reminders_enabled"
+                >
+                  Enable writing reminders
+                </mat-checkbox>
+                <p class="checkbox-hint">
+                  Adds a notification bell prompt when your chosen rhythm is due.
+                </p>
+              </div>
+            </div>
+
+            <fieldset
+              class="reminder-days"
+              [disabled]="!settings.writing_reminders_enabled"
+            >
+              <legend>Reminder days</legend>
+              <div class="reminder-day-grid">
+                <mat-checkbox
+                  *ngFor="let day of reminderDayOptions"
+                  [ngModel]="isReminderDaySelected(day.value)"
+                  (ngModelChange)="toggleReminderDay(day.value, $event)"
+                  [name]="'writing_reminder_day_' + day.value"
+                  [disabled]="!settings.writing_reminders_enabled"
+                >
+                  {{ day.label }}
+                </mat-checkbox>
+              </div>
+            </fieldset>
+
+            <fieldset
+              class="reminder-days"
+              [disabled]="!settings.writing_reminders_enabled"
+            >
+              <legend>What counts as writing</legend>
+              <div class="reminder-day-grid">
+                <mat-checkbox
+                  *ngFor="let type of reminderEntryTypeOptions"
+                  [ngModel]="isReminderEntryTypeSelected(type.value)"
+                  (ngModelChange)="toggleReminderEntryType(type.value, $event)"
+                  [name]="'writing_reminder_entry_type_' + type.value"
+                  [disabled]="!settings.writing_reminders_enabled"
+                >
+                  {{ type.label }}
+                </mat-checkbox>
+              </div>
+            </fieldset>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Reminder time</mat-label>
+              <input
+                matInput
+                type="time"
+                [(ngModel)]="settings.writing_reminder_time"
+                name="writing_reminder_time"
+                [disabled]="!settings.writing_reminders_enabled"
+              />
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Quiet gap</mat-label>
+              <input
+                matInput
+                type="number"
+                min="1"
+                max="30"
+                [(ngModel)]="settings.writing_reminder_silence_days"
+                name="writing_reminder_silence_days"
+                [disabled]="!settings.writing_reminders_enabled"
+              />
+              <mat-hint>Days without an entry before prompting.</mat-hint>
+            </mat-form-field>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="group-card">
+          <mat-card-header>
             <mat-card-title>AI Behaviour</mat-card-title>
             <mat-card-subtitle>
               Control tone, depth, and how much context the AI may use.
@@ -354,6 +439,36 @@ import { User } from "../../core/models/user.model";
         align-items: center;
       }
 
+      .rhythm-grid {
+        align-items: start;
+      }
+
+      .reminder-days {
+        display: grid;
+        gap: var(--spacing-sm);
+        margin: 0;
+        padding: 0.9rem 1rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .reminder-days:disabled {
+        opacity: 0.72;
+      }
+
+      .reminder-days legend {
+        padding: 0 var(--spacing-xs);
+        color: var(--colour-text-primary);
+        font-weight: 700;
+      }
+
+      .reminder-day-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs) var(--spacing-md);
+      }
+
       @media (max-width: 720px) {
         .ai-behaviour-note,
         .ai-behaviour-group {
@@ -387,6 +502,20 @@ export class PersonalisationComponent implements OnInit {
   private readonly publicHolidaysService = inject(PublicHolidaysService);
 
   readonly aiModelOptions = AI_MODEL_OPTIONS;
+  readonly reminderDayOptions = [
+    { value: "monday", label: "Mon" },
+    { value: "tuesday", label: "Tue" },
+    { value: "wednesday", label: "Wed" },
+    { value: "thursday", label: "Thu" },
+    { value: "friday", label: "Fri" },
+    { value: "saturday", label: "Sat" },
+    { value: "sunday", label: "Sun" },
+  ] as const;
+  readonly reminderEntryTypeOptions = [
+    { value: "daily", label: "Diary" },
+    { value: "dream", label: "Dreams" },
+    { value: "thought_record", label: "Thought records" },
+  ] as const;
   settings: User | null = null;
   holidayCountries: PublicHolidayCountry[] = [];
   saving = false;
@@ -431,6 +560,20 @@ export class PersonalisationComponent implements OnInit {
             profile.allow_ai_attachment_context === undefined
               ? false
               : Boolean(profile.allow_ai_attachment_context),
+          writing_reminders_enabled:
+            profile.writing_reminders_enabled === undefined
+              ? false
+              : Boolean(profile.writing_reminders_enabled),
+          writing_reminder_days:
+            profile.writing_reminder_days || "monday,tuesday,wednesday,thursday,friday",
+          writing_reminder_time: profile.writing_reminder_time || "19:00",
+          writing_reminder_silence_days:
+            profile.writing_reminder_silence_days === undefined ||
+            profile.writing_reminder_silence_days === null
+              ? 3
+              : Number(profile.writing_reminder_silence_days),
+          writing_reminder_entry_types:
+            profile.writing_reminder_entry_types || "daily,dream",
         };
         this.initialSettingsSnapshot = this.serialiseSettings(this.settings);
       },
@@ -491,6 +634,23 @@ export class PersonalisationComponent implements OnInit {
       return "Goals and custom AI guidance must use plain text and basic punctuation only.";
     }
 
+    if (settings.writing_reminders_enabled) {
+      const reminderTime = String(settings.writing_reminder_time || "").trim();
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) {
+        return "Reminder time must use HH:MM format.";
+      }
+      const silenceDays = Number(settings.writing_reminder_silence_days || 0);
+      if (!Number.isInteger(silenceDays) || silenceDays < 1 || silenceDays > 30) {
+        return "Quiet gap must be between 1 and 30 days.";
+      }
+      if (this.getSelectedReminderDays().length === 0) {
+        return "Choose at least one reminder day.";
+      }
+      if (this.getSelectedReminderEntryTypes().length === 0) {
+        return "Choose at least one record type to count as writing.";
+      }
+    }
+
     return null;
   }
 
@@ -538,6 +698,15 @@ export class PersonalisationComponent implements OnInit {
       ai_model: String(settings.ai_model || "").trim(),
       allow_ai_history: Boolean(settings.allow_ai_history),
       allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
+      writing_reminders_enabled: Boolean(settings.writing_reminders_enabled),
+      writing_reminder_days: this.normaliseReminderDays(settings.writing_reminder_days),
+      writing_reminder_time: String(settings.writing_reminder_time || "19:00").trim(),
+      writing_reminder_silence_days: Number(
+        settings.writing_reminder_silence_days || 3,
+      ),
+      writing_reminder_entry_types: this.normaliseReminderEntryTypes(
+        settings.writing_reminder_entry_types,
+      ),
     });
   }
 
@@ -554,7 +723,94 @@ export class PersonalisationComponent implements OnInit {
       ai_model: String(settings.ai_model || "").trim(),
       allow_ai_history: Boolean(settings.allow_ai_history),
       allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
+      writing_reminders_enabled: Boolean(settings.writing_reminders_enabled),
+      writing_reminder_days: this.normaliseReminderDays(settings.writing_reminder_days),
+      writing_reminder_time: String(settings.writing_reminder_time || "19:00").trim(),
+      writing_reminder_silence_days: Number(
+        settings.writing_reminder_silence_days || 3,
+      ),
+      writing_reminder_entry_types: this.normaliseReminderEntryTypes(
+        settings.writing_reminder_entry_types,
+      ),
     };
+  }
+
+  isReminderDaySelected(day: string): boolean {
+    return this.getSelectedReminderDays().includes(day);
+  }
+
+  toggleReminderDay(day: string, checked: boolean): void {
+    if (!this.settings) {
+      return;
+    }
+    const selectedDays = new Set(this.getSelectedReminderDays());
+    if (checked) {
+      selectedDays.add(day);
+    } else {
+      selectedDays.delete(day);
+    }
+    this.settings.writing_reminder_days = this.reminderDayOptions
+      .map((option) => option.value)
+      .filter((value) => selectedDays.has(value))
+      .join(",");
+  }
+
+  private getSelectedReminderDays(): string[] {
+    return this.normaliseReminderDays(
+      this.settings?.writing_reminder_days || "",
+    ).split(",").filter(Boolean);
+  }
+
+  private normaliseReminderDays(value: string | undefined): string {
+    const selected = new Set(
+      String(value || "")
+        .split(",")
+        .map((day) => day.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    return this.reminderDayOptions
+      .map((option) => option.value)
+      .filter((day) => selected.has(day))
+      .join(",");
+  }
+
+  isReminderEntryTypeSelected(entryType: string): boolean {
+    return this.getSelectedReminderEntryTypes().includes(entryType);
+  }
+
+  toggleReminderEntryType(entryType: string, checked: boolean): void {
+    if (!this.settings) {
+      return;
+    }
+    const selectedTypes = new Set(this.getSelectedReminderEntryTypes());
+    if (checked) {
+      selectedTypes.add(entryType);
+    } else {
+      selectedTypes.delete(entryType);
+    }
+    this.settings.writing_reminder_entry_types = this.reminderEntryTypeOptions
+      .map((option) => option.value)
+      .filter((value) => selectedTypes.has(value))
+      .join(",");
+  }
+
+  private getSelectedReminderEntryTypes(): string[] {
+    return this.normaliseReminderEntryTypes(
+      this.settings?.writing_reminder_entry_types || "",
+    ).split(",").filter(Boolean);
+  }
+
+  private normaliseReminderEntryTypes(value: string | undefined): string {
+    const selected = new Set(
+      String(value || "")
+        .split(",")
+        .map((entryType) => entryType.trim().toLowerCase().replace("-", "_"))
+        .filter(Boolean),
+    );
+    return this.reminderEntryTypeOptions
+      .map((option) => option.value)
+      .filter((entryType) => selected.has(entryType))
+      .join(",");
   }
 
   getCustomGuidanceLength(): number {

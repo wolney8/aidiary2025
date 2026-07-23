@@ -56,6 +56,11 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'ai_model': "TEXT DEFAULT 'gpt-4.1-mini'",
     'allow_ai_history': 'INTEGER DEFAULT 1',
     'allow_ai_attachment_context': 'INTEGER DEFAULT 0',
+    'writing_reminders_enabled': 'INTEGER DEFAULT 0',
+    'writing_reminder_days': 'TEXT',
+    'writing_reminder_time': "TEXT DEFAULT '19:00'",
+    'writing_reminder_silence_days': 'INTEGER DEFAULT 3',
+    'writing_reminder_entry_types': "TEXT DEFAULT 'daily,dream'",
 }
 
 _EXPORT_HISTORY_DDL = """

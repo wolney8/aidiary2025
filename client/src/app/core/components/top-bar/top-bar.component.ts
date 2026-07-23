@@ -39,6 +39,7 @@ import { Location } from "@angular/common";
 import { ThemeService } from "../../services/theme.service";
 import { ImportJobService } from "../../services/import-job.service";
 import { type AppNotification } from "../../services/import-job.service";
+import { WritingReminderService } from "../../services/writing-reminder.service";
 
 type SearchFilterKey = "keywords" | "tags" | "people" | "date";
 
@@ -348,7 +349,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               ></span>
               <div class="notification-item__title">
                 <mat-icon aria-hidden="true">
-                  {{ notification.status === "completed" ? "task_alt" : notification.status === "failed" ? "error" : "sync" }}
+                  {{ getNotificationIcon(notification) }}
                 </mat-icon>
                 <strong>{{ notification.title }}</strong>
               </div>
@@ -378,9 +379,9 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
                 <button
                   mat-stroked-button
                   type="button"
-                  (click)="$event.stopPropagation(); openImportPage(notification)"
+                  (click)="$event.stopPropagation(); openNotificationDestination(notification)"
                 >
-                  Go to import
+                  {{ notification.actionLabel || "Open" }}
                 </button>
                 <button
                   *ngIf="notification.status === 'completed' || notification.status === 'failed'"
@@ -918,6 +919,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   private sanitizer = inject(DomSanitizer);
   private readonly themeService = inject(ThemeService);
   private readonly importJobService = inject(ImportJobService);
+  private readonly writingReminderService = inject(WritingReminderService);
   private destroy$ = new Subject<void>();
 
   // Search History Properties
@@ -949,6 +951,8 @@ export class TopBarComponent implements OnInit, OnDestroy {
   });
 
   constructor() {
+    this.writingReminderService.start();
+
     // Clear search when navigating away from entries
     this.router.events
       .pipe(
@@ -978,10 +982,10 @@ export class TopBarComponent implements OnInit, OnDestroy {
     this.themeService.toggleTheme();
   }
 
-  openImportPage(notification: AppNotification): void {
+  openNotificationDestination(notification: AppNotification): void {
     this.importJobService.markRead(notification.id);
     this.notificationMenuTrigger.closeMenu();
-    void this.router.navigate(["/settings/import"]);
+    void this.router.navigateByUrl(notification.destination || "/entries");
   }
 
   dismissImportNotification(notificationId: string): void {
@@ -1010,6 +1014,19 @@ export class TopBarComponent implements OnInit, OnDestroy {
       (notification) =>
         notification.status === "queued" || notification.status === "running",
     );
+  }
+
+  getNotificationIcon(notification: AppNotification): string {
+    if (notification.kind === "writing_reminder") {
+      return "edit_note";
+    }
+    if (notification.status === "completed") {
+      return "task_alt";
+    }
+    if (notification.status === "failed") {
+      return "error";
+    }
+    return "sync";
   }
 
   getVisibleNotifications(
