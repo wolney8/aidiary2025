@@ -116,7 +116,7 @@ export class AppComponent {
 
   title = "AI Diary";
   isAuthenticated = this.authService.isAuthenticated();
-  showChatCompanion = !this.isCbtRoute(this.router.url);
+  showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
   constructor() {
     this.themeService.mode();
@@ -127,13 +127,16 @@ export class AppComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((event) => {
-        this.showChatCompanion = !this.isCbtRoute(event.urlAfterRedirects);
+        this.showChatCompanion = this.shouldShowChatCompanion(
+          event.urlAfterRedirects,
+        );
       });
 
     this.authService.currentUser$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((user) => {
         this.isAuthenticated = !!user && this.authService.isAuthenticated();
+        this.showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
         if (user && this.inactivityConfig.enabled) {
           this.inactivityService.startTracking(
@@ -219,5 +222,9 @@ export class AppComponent {
 
   private isCbtRoute(url: string): boolean {
     return /^\/cbt(?:\/|\?|#|$)/.test(url);
+  }
+
+  private shouldShowChatCompanion(url: string): boolean {
+    return this.isAuthenticated && !this.isCbtRoute(url);
   }
 }
