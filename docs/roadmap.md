@@ -40,6 +40,8 @@ Cloud work must proceed in dependency order rather than as parallel schema chang
    - Cutover gates and readiness validation are documented in
      [cloud-cutover-checklist.md](./operations/cloud-cutover-checklist.md).
 4. `#73` Complete cutover and rollback rehearsal with owners and timings.
+   - Operational sequence is defined in
+     [cloud-cutover-runbook.md](./operations/cloud-cutover-runbook.md).
 5. `#72` Run post-cutover integrity, performance, and operational verification.
 6. Close umbrella issues `#8` and `#62` only after the dependent work is complete.
 
