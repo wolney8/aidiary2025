@@ -1,6 +1,13 @@
 import json
 import sqlite3
 
+import pytest
+
+from scripts.load_cloud_migration import (
+    _quote_identifier,
+    _split_sql_statements,
+    build_load_plan,
+)
 from scripts.rehearse_cloud_migration import build_report, export_jsonl
 
 
@@ -96,3 +103,36 @@ def test_export_jsonl_writes_existing_tables_only(tmp_path):
         for line in (export_dir / "users.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert user_rows == [{"id": 1, "username": "migration-user"}]
+
+
+def test_load_plan_reports_exported_table_counts(tmp_path):
+    db_path = tmp_path / "source.db"
+    export_dir = tmp_path / "exports"
+    _seed_source_db(db_path)
+    export_jsonl(db_path, export_dir)
+
+    plan = build_load_plan(export_dir)
+
+    assert plan["total_rows"] == 4
+    users_plan = next(table for table in plan["tables"] if table["table"] == "users")
+    assert users_plan["exists"] is True
+    assert users_plan["row_count"] == 1
+    assert users_plan["columns"] == ["id", "username"]
+    missing = set(plan["missing_files"])
+    assert "dreamdiary_entries" in missing
+    assert "configurations" in missing
+    assert "import_history" in missing
+
+
+def test_postgres_loader_sql_helpers_are_safe():
+    assert _quote_identifier("dailydiary_entries") == '"dailydiary_entries"'
+    with pytest.raises(ValueError):
+        _quote_identifier("users; DROP TABLE users")
+
+    statements = _split_sql_statements(
+        "CREATE TABLE one (name TEXT DEFAULT 'a;b'); CREATE TABLE two (id BIGINT);"
+    )
+    assert statements == [
+        "CREATE TABLE one (name TEXT DEFAULT 'a;b')",
+        "CREATE TABLE two (id BIGINT)",
+    ]

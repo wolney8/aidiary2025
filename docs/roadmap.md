@@ -34,6 +34,8 @@ Cloud work must proceed in dependency order rather than as parallel schema chang
      [ADR 0004](./adr/0004-cloud-database-architecture.md): managed PostgreSQL,
      Neon first for rehearsal, provider-portable via `DATABASE_URL`.
 2. `#28` Build repeatable migration tooling and run a non-production rehearsal.
+   - Initial SQLite audit/export and Postgres rehearsal loader tooling now exists under
+     `server/scripts/`; a real Neon branch rehearsal still needs provider credentials.
 3. `#30` Prove SQLite/cloud behavioral parity and define the cutover checklist.
 4. `#73` Complete cutover and rollback rehearsal with owners and timings.
 5. `#72` Run post-cutover integrity, performance, and operational verification.
