@@ -72,7 +72,8 @@ type CalendarDayMetricType =
   | "daily"
   | "dream"
   | "thought_record"
-  | "occasion"
+  | "important_day"
+  | "public_holiday"
   | "on_this_day";
 
 type CalendarDayMetric = {
@@ -210,20 +211,11 @@ type OnThisDayPreviewState = {
             <div class="list-controls">
               <div
                 class="display-mode-toggle"
-                [class.calendar-active]="displayMode === 'calendar'"
+                [class.cards-active]="displayMode === 'cards'"
                 role="group"
                 aria-label="Entries display mode"
                 data-testid="entries-display-mode-toggle"
               >
-                <button
-                  type="button"
-                  [class.active]="displayMode === 'cards'"
-                  [attr.aria-pressed]="displayMode === 'cards'"
-                  (click)="setDisplayMode('cards')"
-                  data-testid="entries-display-cards"
-                >
-                  Cards
-                </button>
                 <button
                   type="button"
                   [class.active]="displayMode === 'calendar'"
@@ -232,6 +224,15 @@ type OnThisDayPreviewState = {
                   data-testid="entries-display-calendar"
                 >
                   Calendar
+                </button>
+                <button
+                  type="button"
+                  [class.active]="displayMode === 'cards'"
+                  [attr.aria-pressed]="displayMode === 'cards'"
+                  (click)="setDisplayMode('cards')"
+                  data-testid="entries-display-cards"
+                >
+                  Cards
                 </button>
               </div>
               <div class="content-filter-row">
@@ -925,15 +926,20 @@ type OnThisDayPreviewState = {
                         [style.background]="getCalendarDayFaceBackground(day, 'front')"
                         [attr.aria-hidden]="isCalendarDayFlipped(day)"
                         [attr.inert]="isCalendarDayFlipped(day) ? '' : null"
+                        (click)="addEntryFromCalendarFace(day, $event)"
                       >
                         <button
                           *ngIf="day.isCurrentMonth && !day.isFuture; else unavailableDayNumber"
                           type="button"
                           class="calendar-day-action"
-                          [attr.aria-label]="getCalendarDayLabel(day)"
-                          (click)="$event.stopPropagation(); onCalendarDaySelect(day, $event)"
+                          [attr.aria-label]="'Add an item for ' + getCalendarDayDateLabel(day)"
+                          matTooltip="Add entry"
+                          (click)="addEntryForCalendarDay(day, $event)"
                         >
-                          {{ day.dayNumber }}
+                          <span class="calendar-day-action-number">{{ day.dayNumber }}</span>
+                          <span class="calendar-day-action-add" aria-hidden="true">
+                            <mat-icon>add</mat-icon>
+                          </span>
                         </button>
                         <ng-template #unavailableDayNumber>
                           <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
@@ -957,32 +963,45 @@ type OnThisDayPreviewState = {
                           <mat-icon>visibility_off</mat-icon>
                           <span>{{ day.hiddenItemCount }}</span>
                         </span>
-                        <div class="calendar-day-icons">
-                          <button
-                            *ngIf="day.isCurrentMonth && !day.isFuture"
-                            type="button"
-                            class="calendar-entry-icon calendar-add-entry"
-                            [attr.aria-label]="'Add an item for ' + getCalendarDayDateLabel(day)"
-                            matTooltip="Add entry"
-                            data-testid="calendar-add-entry"
-                            (click)="addEntryForCalendarDay(day, $event)"
+                        <div class="calendar-day-icons calendar-day-icons--front">
+                          <div
+                            class="calendar-day-icon-row calendar-day-icon-row--primary"
+                            *ngIf="getFrontPrimaryCalendarDayMetrics(day).length > 0"
                           >
-                            <mat-icon>add</mat-icon>
-                          </button>
-                          <button
-                            *ngFor="let metric of getPrimaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
-                            type="button"
-                            class="calendar-entry-icon"
-                            [ngClass]="metric.cssClass"
-                            [class.preview-active]="isCalendarDayMetricActive(day, metric.type)"
-                            [attr.aria-label]="metric.label"
-                            [attr.data-testid]="metric.testId || null"
-                            [matTooltip]="metric.label"
-                            (click)="activateCalendarDayMetric(day, metric.type, $event)"
+                            <button
+                              *ngFor="let metric of getFrontPrimaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
+                              type="button"
+                              class="calendar-entry-icon"
+                              [ngClass]="metric.cssClass"
+                              [class.preview-active]="isCalendarDayMetricActive(day, metric.type)"
+                              [attr.aria-label]="metric.label"
+                              [attr.data-testid]="metric.testId || null"
+                              [matTooltip]="metric.label"
+                              (click)="activateCalendarDayMetric(day, metric.type, $event)"
+                            >
+                              <mat-icon>{{ metric.icon }}</mat-icon>
+                              <span class="calendar-entry-count">{{ metric.count }}</span>
+                            </button>
+                          </div>
+                          <div
+                            class="calendar-day-icon-row calendar-day-icon-row--secondary"
+                            *ngIf="getFrontSecondaryCalendarDayMetrics(day).length > 0"
                           >
-                            <mat-icon>{{ metric.icon }}</mat-icon>
-                            <span class="calendar-entry-count">{{ metric.count }}</span>
-                          </button>
+                            <button
+                              *ngFor="let metric of getFrontSecondaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
+                              type="button"
+                              class="calendar-entry-icon"
+                              [ngClass]="metric.cssClass"
+                              [class.preview-active]="isCalendarDayMetricActive(day, metric.type)"
+                              [attr.aria-label]="metric.label"
+                              [attr.data-testid]="metric.testId || null"
+                              [matTooltip]="metric.label"
+                              (click)="activateCalendarDayMetric(day, metric.type, $event)"
+                            >
+                              <mat-icon>{{ metric.icon }}</mat-icon>
+                              <span class="calendar-entry-count">{{ metric.count }}</span>
+                            </button>
+                          </div>
                         </div>
                       </section>
 
@@ -991,8 +1010,24 @@ type OnThisDayPreviewState = {
                         [style.background]="getCalendarDayFaceBackground(day, 'back')"
                         [attr.aria-hidden]="!isCalendarDayFlipped(day)"
                         [attr.inert]="isCalendarDayFlipped(day) ? null : ''"
+                        (click)="addEntryFromCalendarFace(day, $event)"
                       >
-                        <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
+                        <button
+                          *ngIf="day.isCurrentMonth && !day.isFuture; else unavailableBackDayNumber"
+                          type="button"
+                          class="calendar-day-action"
+                          [attr.aria-label]="'Add an item for ' + getCalendarDayDateLabel(day)"
+                          matTooltip="Add entry"
+                          (click)="addEntryForCalendarDay(day, $event)"
+                        >
+                          <span class="calendar-day-action-number">{{ day.dayNumber }}</span>
+                          <span class="calendar-day-action-add" aria-hidden="true">
+                            <mat-icon>add</mat-icon>
+                          </span>
+                        </button>
+                        <ng-template #unavailableBackDayNumber>
+                          <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
+                        </ng-template>
                         <button
                           type="button"
                           class="calendar-day-flip"
@@ -1501,10 +1536,11 @@ export class ListComponent implements OnInit, OnDestroy {
   currentPage = 0;
   totalEntries = 0;
   paginatedEntries: CardItem[] = [];
-  displayMode: "cards" | "calendar" = "cards";
+  displayMode: "cards" | "calendar" = "calendar";
   selectedDay: string | null = null;
   calendarDays: CalendarDay[] = [];
   readonly weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  private readonly displayModeStorageKey = "aidiary.entries.displayMode";
 
   // Current data
   readonly contentFilterOptions: Array<{
@@ -1592,8 +1628,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.route.queryParamMap.subscribe((params) => {
       const type = params.get("type");
       this.applyContentFiltersFromQuery(params.get("show"), type);
-      this.displayMode =
-        params.get("display") === "calendar" ? "calendar" : "cards";
+      this.displayMode = this.resolveDisplayMode(params.get("display"));
 
       const monthParam = Number(params.get("month"));
       const yearParam = Number(params.get("year"));
@@ -2096,6 +2131,7 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeCbtPreview(undefined, true);
     this.closeOccasionPreview(undefined, true);
     this.displayMode = mode;
+    this.persistDisplayMode(mode);
     if (mode === "calendar") {
       this.selectedDay = null;
       this.filterEntries();
@@ -2111,9 +2147,40 @@ export class ListComponent implements OnInit, OnDestroy {
     this.closeOccasionPreview(undefined, true);
     this.selectedDay = null;
     this.displayMode = "calendar";
+    this.persistDisplayMode("calendar");
     this.filterEntries();
     this.currentPage = 0;
     this.updatePaginatedEntries();
+  }
+
+  private resolveDisplayMode(
+    displayParam: string | null,
+  ): "cards" | "calendar" {
+    if (displayParam === "cards" || displayParam === "calendar") {
+      this.persistDisplayMode(displayParam);
+      return displayParam;
+    }
+
+    return this.getPersistedDisplayMode();
+  }
+
+  private getPersistedDisplayMode(): "cards" | "calendar" {
+    try {
+      const savedMode = window.localStorage.getItem(this.displayModeStorageKey);
+      return savedMode === "cards" || savedMode === "calendar"
+        ? savedMode
+        : "calendar";
+    } catch {
+      return "calendar";
+    }
+  }
+
+  private persistDisplayMode(mode: "cards" | "calendar"): void {
+    try {
+      window.localStorage.setItem(this.displayModeStorageKey, mode);
+    } catch {
+      // Storage can be unavailable in private browsing or locked-down contexts.
+    }
   }
 
   getSelectedDayLabel(): string {
@@ -4087,21 +4154,25 @@ export class ListComponent implements OnInit, OnDestroy {
         testId: "calendar-thought-record-marker",
       });
     }
-    const occasionCount = day.importantDays.length + day.publicHolidays.length;
-    if (occasionCount > 0) {
+    if (day.importantDays.length > 0) {
       const firstImportantDay = day.importantDays[0];
-      const firstHoliday = day.publicHolidays[0];
       metrics.push({
-        type: "occasion",
-        icon: firstImportantDay
-          ? this.getImportantDayIcon(firstImportantDay)
-          : this.getPublicHolidayIcon(firstHoliday!),
-        count: occasionCount,
-        label: `Preview ${occasionCount} ${occasionCount === 1 ? "occasion" : "occasions"} for ${dateLabel}`,
-        cssClass: firstImportantDay
-          ? `important-day accent-${firstImportantDay.accent_color}`
-          : "public-holiday",
+        type: "important_day",
+        icon: this.getImportantDayIcon(firstImportantDay),
+        count: day.importantDays.length,
+        label: `Preview ${day.importantDays.length} important ${day.importantDays.length === 1 ? "day" : "days"} for ${dateLabel}`,
+        cssClass: `important-day accent-${firstImportantDay.accent_color}`,
         testId: "calendar-occasion-marker",
+      });
+    }
+    if (day.publicHolidays.length > 0) {
+      metrics.push({
+        type: "public_holiday",
+        icon: this.getPublicHolidayIcon(day.publicHolidays[0]),
+        count: day.publicHolidays.length,
+        label: `Preview ${day.publicHolidays.length} public ${day.publicHolidays.length === 1 ? "holiday" : "holidays"} for ${dateLabel}`,
+        cssClass: "public-holiday",
+        testId: "calendar-public-holiday-marker",
       });
     }
     if (this.shouldShowOnThisDayForDay(day) && this.onThisDayFeed) {
@@ -4122,11 +4193,32 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   getPrimaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
-    return this.getCalendarDayMetrics(day).slice(0, 2);
+    return this.getCalendarDayMetrics(day)
+      .filter((metric) => metric.type !== "public_holiday")
+      .slice(0, 5);
+  }
+
+  getFrontPrimaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
+    return this.getPrimaryCalendarDayMetrics(day).filter((metric) =>
+      ["daily", "dream"].includes(metric.type),
+    );
+  }
+
+  getFrontSecondaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
+    return this.getPrimaryCalendarDayMetrics(day).filter(
+      (metric) => !["daily", "dream"].includes(metric.type),
+    );
   }
 
   getSecondaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
-    return this.getCalendarDayMetrics(day).slice(2, 5);
+    const metrics = this.getCalendarDayMetrics(day);
+    const overflowMetrics = metrics
+      .filter((metric) => metric.type !== "public_holiday")
+      .slice(5);
+    const holidayMetrics = metrics.filter(
+      (metric) => metric.type === "public_holiday",
+    );
+    return [...overflowMetrics, ...holidayMetrics].slice(0, 5);
   }
 
   getCalendarDayFaceBackground(
@@ -4156,12 +4248,13 @@ export class ListComponent implements OnInit, OnDestroy {
       return `linear-gradient(180deg, ${colours[0]} 0%, ${endColour} 100%)`;
     }
 
-    const segmentSize = 100 / colours.length;
     const stops = colours
       .map((colour, index) => {
-        const start = Math.round(index * segmentSize);
-        const end = Math.round((index + 1) * segmentSize);
-        return `${colour} ${start}%, ${colour} ${end}%`;
+        const position =
+          colours.length === 1
+            ? 0
+            : Math.round((index / (colours.length - 1)) * 100);
+        return `${colour} ${position}%`;
       })
       .join(", ");
 
@@ -4176,18 +4269,16 @@ export class ListComponent implements OnInit, OnDestroy {
       daily: "var(--calendar-gradient-daily)",
       dream: "var(--calendar-gradient-dream)",
       thought_record: "var(--calendar-gradient-thought)",
-      occasion: metric.cssClass.includes("public-holiday")
-        ? "var(--calendar-gradient-holiday)"
-        : "var(--calendar-gradient-important)",
+      important_day: "var(--calendar-gradient-important)",
+      public_holiday: "var(--calendar-gradient-holiday)",
       on_this_day: "var(--calendar-gradient-on-this-day)",
     };
     const darkColours: Record<CalendarDayMetricType, string> = {
       daily: "var(--calendar-gradient-daily-dark)",
       dream: "var(--calendar-gradient-dream-dark)",
       thought_record: "var(--calendar-gradient-thought-dark)",
-      occasion: metric.cssClass.includes("public-holiday")
-        ? "var(--calendar-gradient-holiday-dark)"
-        : "var(--calendar-gradient-important-dark)",
+      important_day: "var(--calendar-gradient-important-dark)",
+      public_holiday: "var(--calendar-gradient-holiday-dark)",
       on_this_day: "var(--calendar-gradient-on-this-day-dark)",
     };
 
@@ -4202,7 +4293,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   hasCalendarDayBack(day: CalendarDay): boolean {
-    return this.getCalendarDayMetrics(day).length > 2;
+    return this.getSecondaryCalendarDayMetrics(day).length > 0;
   }
 
   isCalendarDayMetricActive(
@@ -4216,9 +4307,14 @@ export class ListComponent implements OnInit, OnDestroy {
         return this.isCalendarPreviewActive(day, type);
       case "thought_record":
         return this.isCbtPreviewActive(day);
-      case "occasion":
+      case "important_day":
         return (
-          this.occasionPreview?.dayKey === dayKey &&
+          this.importantDayPreview?.dayKey === dayKey &&
+          this.importantDayPreview.phase === "open"
+        );
+      case "public_holiday":
+        return (
+          this.occasionPreview?.dayKey === `${dayKey}:holiday` &&
           this.occasionPreview.phase === "open"
         );
       case "on_this_day":
@@ -4240,12 +4336,11 @@ export class ListComponent implements OnInit, OnDestroy {
       case "thought_record":
         this.toggleCbtPreview(day, event);
         return;
-      case "occasion":
-        this.toggleOccasionPreview(
-          day,
-          event.currentTarget as HTMLElement,
-          event,
-        );
+      case "important_day":
+        this.toggleImportantDayPreview(day, event);
+        return;
+      case "public_holiday":
+        this.togglePublicHolidayPreview(day, event);
         return;
       case "on_this_day":
         this.toggleOnThisDayPreview(event);
@@ -4288,6 +4383,20 @@ export class ListComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     this.closeAllCalendarPreviewsImmediately();
     this.navigateToCreateEntryForDate(day.date);
+  }
+
+  addEntryFromCalendarFace(day: CalendarDay, event: MouseEvent): void {
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        'button, a, input, textarea, select, [role="button"], [role="link"]',
+      )
+    ) {
+      return;
+    }
+
+    this.addEntryForCalendarDay(day, event);
   }
 
   getOnThisDaySummaryLabel(): string {
