@@ -92,6 +92,8 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["writing_reminder_time"] == "19:00"
     assert data["writing_reminder_silence_days"] == 3
     assert data["writing_reminder_entry_types"] == "daily,dream"
+    assert data["writing_rhythm_progress_enabled"] == 0
+    assert data["writing_rhythm_weekly_goal"] == 4
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -119,6 +121,8 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "writing_reminder_time" in columns
     assert "writing_reminder_silence_days" in columns
     assert "writing_reminder_entry_types" in columns
+    assert "writing_rhythm_progress_enabled" in columns
+    assert "writing_rhythm_weekly_goal" in columns
 
 
 def test_profile_picture_upload_normalises_replaces_and_deletes(
@@ -215,6 +219,8 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
                 "writing_reminder_time": "18:30",
                 "writing_reminder_silence_days": 5,
                 "writing_reminder_entry_types": ["daily", "dream", "thought_record"],
+                "writing_rhythm_progress_enabled": True,
+                "writing_rhythm_weekly_goal": 6,
                 "chatgpt_daily_diary_coachname": "Sage",
             }
         ),
@@ -245,6 +251,8 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     assert data["user"]["writing_reminder_entry_types"] == (
         "daily,dream,thought_record"
     )
+    assert data["user"]["writing_rhythm_progress_enabled"] == 1
+    assert data["user"]["writing_rhythm_weekly_goal"] == 6
     assert data["user"]["chatgpt_daily_diary_coachname"] == "Sage"
 
 
@@ -296,6 +304,18 @@ def test_profile_update_rejects_invalid_writing_reminder_values(
     assert response.status_code == 400
     assert json.loads(response.data)["error"] == (
         "Reminder entry types must be valid record types"
+    )
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"writing_rhythm_weekly_goal": 30}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == (
+        "Weekly writing goal must be between 1 and 21"
     )
 
 

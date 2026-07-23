@@ -74,6 +74,8 @@ def _optional_user_selects(cursor: sqlite3.Cursor) -> str:
         'writing_reminder_time': "'19:00'",
         'writing_reminder_silence_days': '3',
         'writing_reminder_entry_types': "'daily,dream'",
+        'writing_rhythm_progress_enabled': '0',
+        'writing_rhythm_weekly_goal': '4',
     }
     selects = []
     for column_name, fallback in optional_columns.items():
@@ -136,6 +138,8 @@ def register():
                 'writing_reminder_time': '19:00',
                 'writing_reminder_silence_days': 3,
                 'writing_reminder_entry_types': 'daily,dream',
+                'writing_rhythm_progress_enabled': False,
+                'writing_rhythm_weekly_goal': 4,
             }
         }), 201
         
@@ -206,5 +210,9 @@ def login():
             'writing_reminder_entry_types': (
                 user['writing_reminder_entry_types'] or 'daily,dream'
             ),
+            'writing_rhythm_progress_enabled': bool(
+                user['writing_rhythm_progress_enabled']
+            ),
+            'writing_rhythm_weekly_goal': user['writing_rhythm_weekly_goal'] or 4,
         }
     }), 200

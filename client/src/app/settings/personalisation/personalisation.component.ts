@@ -186,6 +186,34 @@ import { User } from "../../core/models/user.model";
               />
               <mat-hint>Days without an entry before prompting.</mat-hint>
             </mat-form-field>
+
+            <div class="ai-behaviour-group checkbox-row-wide">
+              <div class="checkbox-row">
+                <mat-checkbox
+                  [(ngModel)]="settings.writing_rhythm_progress_enabled"
+                  name="writing_rhythm_progress_enabled"
+                >
+                  Show rhythm progress
+                </mat-checkbox>
+                <p class="checkbox-hint">
+                  Adds a small progress panel on Entries.
+                </p>
+              </div>
+            </div>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Weekly goal</mat-label>
+              <input
+                matInput
+                type="number"
+                min="1"
+                max="21"
+                [(ngModel)]="settings.writing_rhythm_weekly_goal"
+                name="writing_rhythm_weekly_goal"
+                [disabled]="!settings.writing_rhythm_progress_enabled"
+              />
+              <mat-hint>Counted records per week.</mat-hint>
+            </mat-form-field>
           </mat-card-content>
         </mat-card>
 
@@ -574,6 +602,15 @@ export class PersonalisationComponent implements OnInit {
               : Number(profile.writing_reminder_silence_days),
           writing_reminder_entry_types:
             profile.writing_reminder_entry_types || "daily,dream",
+          writing_rhythm_progress_enabled:
+            profile.writing_rhythm_progress_enabled === undefined
+              ? false
+              : Boolean(profile.writing_rhythm_progress_enabled),
+          writing_rhythm_weekly_goal:
+            profile.writing_rhythm_weekly_goal === undefined ||
+            profile.writing_rhythm_weekly_goal === null
+              ? 4
+              : Number(profile.writing_rhythm_weekly_goal),
         };
         this.initialSettingsSnapshot = this.serialiseSettings(this.settings);
       },
@@ -651,6 +688,13 @@ export class PersonalisationComponent implements OnInit {
       }
     }
 
+    if (settings.writing_rhythm_progress_enabled) {
+      const weeklyGoal = Number(settings.writing_rhythm_weekly_goal || 0);
+      if (!Number.isInteger(weeklyGoal) || weeklyGoal < 1 || weeklyGoal > 21) {
+        return "Weekly writing goal must be between 1 and 21.";
+      }
+    }
+
     return null;
   }
 
@@ -707,6 +751,10 @@ export class PersonalisationComponent implements OnInit {
       writing_reminder_entry_types: this.normaliseReminderEntryTypes(
         settings.writing_reminder_entry_types,
       ),
+      writing_rhythm_progress_enabled: Boolean(
+        settings.writing_rhythm_progress_enabled,
+      ),
+      writing_rhythm_weekly_goal: Number(settings.writing_rhythm_weekly_goal || 4),
     });
   }
 
@@ -732,6 +780,10 @@ export class PersonalisationComponent implements OnInit {
       writing_reminder_entry_types: this.normaliseReminderEntryTypes(
         settings.writing_reminder_entry_types,
       ),
+      writing_rhythm_progress_enabled: Boolean(
+        settings.writing_rhythm_progress_enabled,
+      ),
+      writing_rhythm_weekly_goal: Number(settings.writing_rhythm_weekly_goal || 4),
     };
   }
 
