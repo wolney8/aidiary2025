@@ -136,6 +136,25 @@ describe("AppComponent inactivity integration", () => {
     expect(fixture.componentInstance.isAuthenticated).toBeFalse();
   });
 
+  it("does not show the chat companion while unauthenticated", () => {
+    authServiceMock.isAuthenticated.and.returnValue(false);
+
+    currentUserSubject.next(null);
+    routerEvents.next(new NavigationEnd(1, "/entries", "/entries"));
+
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+  });
+
+  it("shows the chat companion on supported authenticated routes", () => {
+    const user: User = { id: 1, username: "tester" };
+    authServiceMock.isAuthenticated.and.returnValue(true);
+
+    currentUserSubject.next(user);
+    routerEvents.next(new NavigationEnd(1, "/entries", "/entries"));
+
+    expect(fixture.componentInstance.showChatCompanion).toBeTrue();
+  });
+
   it("stay action resets timer", () => {
     const closeResult$ = new Subject<InactivityWarningResult | undefined>();
     const dialogRef = {
@@ -185,6 +204,10 @@ describe("AppComponent inactivity integration", () => {
   });
 
   it("hides the chat companion throughout the CBT workflow", () => {
+    const user: User = { id: 1, username: "tester" };
+    authServiceMock.isAuthenticated.and.returnValue(true);
+    currentUserSubject.next(user);
+
     routerEvents.next(new NavigationEnd(1, "/cbt/12", "/cbt/12"));
 
     expect(fixture.componentInstance.showChatCompanion).toBeFalse();
