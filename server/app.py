@@ -2,13 +2,14 @@
 import os
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, get_jwt_identity
 from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
 from services.runtime_migrations import (
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
+    ensure_chat_observability_events_table,
     ensure_entry_ai_metadata_table,
     ensure_entry_assets_table,
     ensure_entry_resurfacing_preferences_table,
@@ -159,6 +160,14 @@ def create_app():
         app.logger.warning('Runtime chat messages migration skipped due to error: %s', migration_exc)
 
     try:
+        ensure_chat_observability_events_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning(
+            'Runtime chat observability migration skipped due to error: %s',
+            migration_exc,
+        )
+
+    try:
         ensure_cbt_worksheet_tables(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime CBT worksheet migration skipped due to error: %s', migration_exc)
@@ -191,6 +200,23 @@ def create_app():
 
     @app.errorhandler(RateLimitExceeded)
     def _handle_chat_rate_limit(_err):
+        if request.path.startswith('/api/chat/'):
+            try:
+                from services.chat_observability import ChatObservabilityService
+
+                identity = get_jwt_identity()
+                ChatObservabilityService(
+                    app.config['DATABASE_PATH'],
+                    log=app.logger,
+                ).record_event(
+                    event_type='rate_limited',
+                    user_id=int(identity) if identity is not None else None,
+                    error_code='rate_limit_exceeded',
+                    model=os.getenv('CHAT_MODEL', 'gpt-4o-mini'),
+                    metadata={'path': request.path},
+                )
+            except Exception:
+                app.logger.exception('Chat rate-limit event could not be recorded')
         return {'error': 'Rate limit exceeded. Try again in 60 minutes.'}, 429
 
     @app.before_request

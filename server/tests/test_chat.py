@@ -184,6 +184,20 @@ def test_chat_send_history_clear_flow(client, mocked_chat_services):
     cleared_data = json.loads(history_after_clear.data)
     assert cleared_data['messages'] == []
 
+    report_response = client.get(
+        '/api/chat/observability/report?days=7',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert report_response.status_code == 200
+    report = json.loads(report_response.data)
+    assert report['event_counts']['request_started'] == 1
+    assert report['event_counts']['completed'] == 1
+    assert report['completed_events'] == 1
+    assert report['failed_events'] == 0
+    assert report['success_completion_rate'] == 1
+    assert report['token_usage']['input_tokens'] > 0
+    assert report['token_usage']['output_tokens'] > 0
+
 
 def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_chat_services):
     token = _register_and_get_token(client, 'chat_retry_user')
@@ -247,6 +261,15 @@ def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_cha
         headers={'Authorization': f'Bearer {token}'},
     )
     assert len(json.loads(replayed_history.data)['messages']) == 2
+
+    report_response = client.get(
+        '/api/chat/observability/report',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    report = json.loads(report_response.data)
+    assert report['event_counts']['failed'] == 1
+    assert report['event_counts']['completed'] == 2
+    assert report['error_counts']['provider_unavailable'] == 1
 
 
 def test_chat_user_isolation_by_token(client):
@@ -338,6 +361,14 @@ def test_chat_daily_budget_rejects_before_openai(client, mocked_chat_services):
     _, openai_service = mocked_chat_services
     openai_service.assert_not_called()
 
+    report_response = client.get(
+        '/api/chat/observability/report',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    report = json.loads(report_response.data)
+    assert report['event_counts']['token_budget_exceeded'] == 1
+    assert report['error_counts']['daily_token_budget_exceeded'] == 1
+
 
 def test_chat_history_returns_only_last_50_messages(client):
     token = _register_and_get_token(client, 'chat_history_limit_user')
@@ -389,4 +420,24 @@ def test_chat_rate_limit_is_applied_per_user(client):
     assert json.loads(responses[-1].data) == {
         'error': 'Rate limit exceeded. Try again in 60 minutes.',
     }
+
+    report_response = client.get(
+        '/api/chat/observability/report',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    report = json.loads(report_response.data)
+    assert report['event_counts']['rate_limited'] == 1
+    assert report['error_counts']['rate_limit_exceeded'] == 1
     client.application.config['RATELIMIT_ENABLED'] = False
+
+
+def test_chat_observability_report_validation(client):
+    token = _register_and_get_token(client, 'chat_report_validation_user')
+
+    response = client.get(
+        '/api/chat/observability/report?days=not-a-number',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data) == {'error': 'days must be a number'}
