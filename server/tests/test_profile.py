@@ -87,6 +87,11 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["holiday_country_code"] is None
     assert data["show_public_holidays"] == 0
     assert data["show_on_this_day"] == 0
+    assert data["writing_reminders_enabled"] == 0
+    assert data["writing_reminder_days"] is None
+    assert data["writing_reminder_time"] == "19:00"
+    assert data["writing_reminder_silence_days"] == 3
+    assert data["writing_reminder_entry_types"] == "daily,dream"
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -109,6 +114,11 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "show_public_holidays" in columns
     assert "show_on_this_day" in columns
     assert "profile_picture_storage_key" in columns
+    assert "writing_reminders_enabled" in columns
+    assert "writing_reminder_days" in columns
+    assert "writing_reminder_time" in columns
+    assert "writing_reminder_silence_days" in columns
+    assert "writing_reminder_entry_types" in columns
 
 
 def test_profile_picture_upload_normalises_replaces_and_deletes(
@@ -200,6 +210,11 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
                 "ai_model": "gpt-4.1",
                 "allow_ai_history": False,
                 "allow_ai_attachment_context": False,
+                "writing_reminders_enabled": True,
+                "writing_reminder_days": ["monday", "wednesday", "friday"],
+                "writing_reminder_time": "18:30",
+                "writing_reminder_silence_days": 5,
+                "writing_reminder_entry_types": ["daily", "dream", "thought_record"],
                 "chatgpt_daily_diary_coachname": "Sage",
             }
         ),
@@ -223,7 +238,65 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     assert data["user"]["ai_model"] == "gpt-4.1"
     assert data["user"]["allow_ai_history"] == 0
     assert data["user"]["allow_ai_attachment_context"] == 0
+    assert data["user"]["writing_reminders_enabled"] == 1
+    assert data["user"]["writing_reminder_days"] == "monday,wednesday,friday"
+    assert data["user"]["writing_reminder_time"] == "18:30"
+    assert data["user"]["writing_reminder_silence_days"] == 5
+    assert data["user"]["writing_reminder_entry_types"] == (
+        "daily,dream,thought_record"
+    )
     assert data["user"]["chatgpt_daily_diary_coachname"] == "Sage"
+
+
+def test_profile_update_rejects_invalid_writing_reminder_values(
+    client_with_legacy_user_schema,
+):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"writing_reminder_days": ["monday", "funday"]}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == "Reminder days must be valid weekdays"
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"writing_reminder_time": "7pm"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == "Reminder time must use HH:MM format"
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"writing_reminder_silence_days": 60}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == (
+        "Reminder silence days must be between 1 and 30"
+    )
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"writing_reminder_entry_types": ["daily", "gratitude"]}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == (
+        "Reminder entry types must be valid record types"
+    )
 
 
 def test_profile_update_rejects_invalid_ai_tone(client_with_legacy_user_schema):

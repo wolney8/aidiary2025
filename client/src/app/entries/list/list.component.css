@@ -1335,7 +1335,7 @@
   gap: 0.35rem;
   padding: 0.55rem;
   border-radius: inherit;
-  background: var(--calendar-face-bg, transparent);
+  background: transparent;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
@@ -3038,10 +3038,6 @@ html[data-theme="dark"] .calendar-filtered-indicator {
   background: color-mix(in srgb, var(--colour-surface-muted) 68%, transparent) !important;
   border-color: rgba(209, 219, 235, 0.2) !important;
   color: var(--colour-text-primary) !important;
-}
-
-html[data-theme="dark"] .calendar-day-face {
-  background: var(--calendar-face-bg-dark, transparent) !important;
 }
 
 html[data-theme="dark"] .calendar-important-day-badge,

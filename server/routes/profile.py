@@ -26,8 +26,23 @@ PROFILE_IMAGE_SIZE = (400, 400)
 PROFILE_IMAGE_JPEG_QUALITY = 88
 MAX_PROFILE_IMAGE_PIXELS = 40_000_000
 HOLIDAY_COUNTRY_CODE_PATTERN = re.compile(r"^[A-Z]{2}$")
+TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DISPLAY_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z '\-]{0,7}$")
 CUSTOM_GUIDANCE_PATTERN = re.compile(r"^[A-Za-z0-9 ,.?!'\"()&/\-:]{1,100}$")
+ALLOWED_REMINDER_DAYS = {
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+}
+ALLOWED_REMINDER_ENTRY_TYPES = {
+    'daily',
+    'dream',
+    'thought_record',
+}
 ALLOWED_PRONOUNS = {
     'he/him',
     'she/her',
@@ -130,6 +145,75 @@ def _normalise_timezone(value):
     return timezone_name
 
 
+def _normalise_reminder_days(value):
+    if value is None:
+        return None
+
+    if isinstance(value, list):
+        raw_days = value
+    else:
+        raw_days = str(value).split(',')
+
+    normalised_days = []
+    for raw_day in raw_days:
+        day = str(raw_day).strip().lower()
+        if not day:
+            continue
+        if day not in ALLOWED_REMINDER_DAYS:
+            raise ValueError('Reminder days must be valid weekdays')
+        if day not in normalised_days:
+            normalised_days.append(day)
+
+    return ','.join(normalised_days)
+
+
+def _normalise_reminder_entry_types(value):
+    if value is None:
+        return None
+
+    if isinstance(value, list):
+        raw_types = value
+    else:
+        raw_types = str(value).split(',')
+
+    normalised_types = []
+    for raw_type in raw_types:
+        entry_type = str(raw_type).strip().lower().replace('-', '_')
+        if not entry_type:
+            continue
+        if entry_type not in ALLOWED_REMINDER_ENTRY_TYPES:
+            raise ValueError('Reminder entry types must be valid record types')
+        if entry_type not in normalised_types:
+            normalised_types.append(entry_type)
+
+    return ','.join(normalised_types)
+
+
+def _normalise_reminder_time(value):
+    if value is None:
+        return None
+
+    normalised = str(value).strip()
+    if not normalised:
+        return ''
+    if not TIME_PATTERN.fullmatch(normalised):
+        raise ValueError('Reminder time must use HH:MM format')
+    return normalised
+
+
+def _normalise_reminder_silence_days(value):
+    if value is None:
+        return None
+
+    try:
+        silence_days = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Reminder silence days must be a number') from exc
+    if silence_days < 1 or silence_days > 30:
+        raise ValueError('Reminder silence days must be between 1 and 30')
+    return silence_days
+
+
 def _normalise_profile_update(field: str, value):
     if field in {'first_name', 'last_name',
                  'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname'}:
@@ -171,6 +255,16 @@ def _normalise_profile_update(field: str, value):
         return 1 if bool(value) else 0
     if field == 'allow_ai_attachment_context':
         return 1 if bool(value) else 0
+    if field == 'writing_reminders_enabled':
+        return 1 if bool(value) else 0
+    if field == 'writing_reminder_days':
+        return _normalise_reminder_days(value)
+    if field == 'writing_reminder_time':
+        return _normalise_reminder_time(value)
+    if field == 'writing_reminder_silence_days':
+        return _normalise_reminder_silence_days(value)
+    if field == 'writing_reminder_entry_types':
+        return _normalise_reminder_entry_types(value)
 
     return value
 
@@ -227,6 +321,8 @@ def _select_profile(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row | Non
                holiday_country_code, show_public_holidays, show_on_this_day,
                ai_tone, ai_verbosity,
                ai_focus, ai_model, allow_ai_history, allow_ai_attachment_context,
+               writing_reminders_enabled, writing_reminder_days, writing_reminder_time,
+               writing_reminder_silence_days, writing_reminder_entry_types,
                profile_picture_storage_key
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
@@ -264,7 +360,9 @@ def update_profile():
         'display_name', 'pronouns', 'gender', 'custom_guidance',
         'timezone', 'holiday_country_code', 'show_public_holidays', 'show_on_this_day',
         'ai_tone', 'ai_verbosity',
-        'ai_focus', 'ai_model', 'allow_ai_history', 'allow_ai_attachment_context'
+        'ai_focus', 'ai_model', 'allow_ai_history', 'allow_ai_attachment_context',
+        'writing_reminders_enabled', 'writing_reminder_days', 'writing_reminder_time',
+        'writing_reminder_silence_days', 'writing_reminder_entry_types'
     ]
     
     updates = []
