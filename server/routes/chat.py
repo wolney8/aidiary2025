@@ -308,6 +308,12 @@ def send_message():
     @stream_with_context
     def generate_events() -> Iterator[str]:
         assistant_chunks: list[str] = []
+        yield _sse_event({
+            'chunk': '',
+            'done': False,
+            'event': 'started',
+            'retry_after_ms': 1000,
+        })
         try:
             for chunk in model_stream:
                 if not chunk:
@@ -367,6 +373,8 @@ def send_message():
                 'token_count': _token_count(''.join(assistant_chunks)),
                 'error': 'The chat service is temporarily unavailable. Please try again.',
                 'error_code': 'provider_unavailable',
+                'retryable': True,
+                'retry_after_ms': 1000,
             })
         except Exception:
             current_app.logger.exception('Unexpected chat response stream failure')
@@ -387,6 +395,7 @@ def send_message():
                 'token_count': _token_count(''.join(assistant_chunks)),
                 'error': 'The chat response could not be completed.',
                 'error_code': 'stream_failed',
+                'retryable': False,
             })
 
     return Response(

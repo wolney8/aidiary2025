@@ -168,7 +168,7 @@ export class ChatService {
               throw new ChatRequestError(
                 event.error,
                 event.error_code || "stream_failed",
-                event.error_code === "provider_unavailable",
+                Boolean(event.retryable ?? event.error_code === "provider_unavailable"),
               );
             }
             if (event.chunk) {

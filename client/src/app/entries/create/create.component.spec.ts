@@ -77,7 +77,7 @@ describe("CreateComponent save reliability", () => {
       ["createImportantDay", "uploadImportantDayImage"],
     );
     importantDaysServiceMock.uploadImportantDayImage.and.returnValue(
-      of({ id: 7, image_url: "/media/important-day.jpg" }),
+      of({ id: 7, has_image: true, image_url: "/media/important-day.jpg" }),
     );
 
     await TestBed.configureTestingModule({
