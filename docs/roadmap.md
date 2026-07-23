@@ -43,6 +43,8 @@ Cloud work must proceed in dependency order rather than as parallel schema chang
    - Operational sequence is defined in
      [cloud-cutover-runbook.md](./operations/cloud-cutover-runbook.md).
 5. `#72` Run post-cutover integrity, performance, and operational verification.
+   - Baseline capture and verification steps are documented in
+     [post-cutover-verification.md](./operations/post-cutover-verification.md).
 6. Close umbrella issues `#8` and `#62` only after the dependent work is complete.
 
 Runtime migrations remain acceptable for local development, but no new cloud cutover
