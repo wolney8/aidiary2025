@@ -30,6 +30,9 @@ records their intended sequence rather than duplicating issue bodies.
 Cloud work must proceed in dependency order rather than as parallel schema changes:
 
 1. `#27` Select the target architecture/provider and document constraints.
+   - Working decision captured in
+     [ADR 0004](./adr/0004-cloud-database-architecture.md): managed PostgreSQL,
+     Neon first for rehearsal, provider-portable via `DATABASE_URL`.
 2. `#28` Build repeatable migration tooling and run a non-production rehearsal.
 3. `#30` Prove SQLite/cloud behavioral parity and define the cutover checklist.
 4. `#73` Complete cutover and rollback rehearsal with owners and timings.
