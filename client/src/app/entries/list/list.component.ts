@@ -22,6 +22,7 @@ import { PublicHolidaysService } from "../../core/services/public-holidays.servi
 import { OnThisDayService } from "../../core/services/on-this-day.service";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import { ThemeService } from "../../core/services/theme.service";
+import { AuthService } from "../../core/services/auth.service";
 import {
   SearchFilters,
   SearchService,
@@ -48,12 +49,22 @@ type TimelineMonth = {
 type EntryItem = (DailyEntry | DreamEntry) & { type: "daily" | "dream" };
 type ThoughtRecordItem = CbtWorksheet & { type: "thought_record" };
 type CardItem = EntryItem | ThoughtRecordItem;
+type WritingRhythmRecordType = "daily" | "dream" | "thought_record";
 type ContentFilter =
   | "daily"
   | "dreams"
   | "thought-records"
   | "important-days"
   | "on-this-day";
+type WritingRhythmStats = {
+  currentRunDays: number;
+  weekCount: number;
+  monthCount: number;
+  weeklyGoal: number;
+  weeklyProgress: number;
+  includedLabel: string;
+  message: string;
+};
 
 type CalendarStatus = "none" | "daily" | "dream" | "complete";
 type CalendarPreviewType = "daily" | "dream";
@@ -271,6 +282,41 @@ type OnThisDayPreviewState = {
               New Entry
             </button>
           </div>
+
+          <section
+            *ngIf="getWritingRhythmStats() as rhythm"
+            class="writing-rhythm-panel"
+            aria-labelledby="writing-rhythm-heading"
+            data-testid="writing-rhythm-panel"
+          >
+            <div class="writing-rhythm-lead">
+              <span class="writing-rhythm-icon" aria-hidden="true">
+                <mat-icon>local_fire_department</mat-icon>
+              </span>
+              <div>
+                <h2 id="writing-rhythm-heading">Writing rhythm</h2>
+                <p>{{ rhythm.message }}</p>
+              </div>
+            </div>
+            <div class="writing-rhythm-metrics" aria-label="Writing rhythm metrics">
+              <div class="writing-rhythm-pill">
+                <strong>{{ rhythm.currentRunDays }}</strong>
+                <span>day run</span>
+              </div>
+              <div class="writing-rhythm-pill">
+                <strong>{{ rhythm.weekCount }}/{{ rhythm.weeklyGoal }}</strong>
+                <span>this week</span>
+              </div>
+              <div class="writing-rhythm-pill">
+                <strong>{{ rhythm.monthCount }}</strong>
+                <span>this month</span>
+              </div>
+            </div>
+            <div class="writing-rhythm-progress" aria-hidden="true">
+              <span [style.width.%]="rhythm.weeklyProgress"></span>
+            </div>
+            <small>{{ rhythm.includedLabel }}</small>
+          </section>
 
           <!-- Timeline scroller -->
           <div class="timeline-scroller">
@@ -1433,6 +1479,7 @@ export class ListComponent implements OnInit, OnDestroy {
   private onThisDayService = inject(OnThisDayService);
   private appDialog = inject(AppDialogService);
   private themeService = inject(ThemeService);
+  private authService = inject(AuthService);
   protected readonly searchService = inject(SearchService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -3236,6 +3283,128 @@ export class ListComponent implements OnInit, OnDestroy {
           }))
         : []),
     ];
+  }
+
+  getWritingRhythmStats(): WritingRhythmStats | null {
+    const user = this.authService.getCurrentUser();
+    if (!user?.writing_rhythm_progress_enabled) {
+      return null;
+    }
+
+    const recordDates = this.getWritingRhythmRecordDates();
+    const uniqueDates = [...new Set(recordDates)].sort();
+    const weekStartKey = this.getStartOfWeekKey();
+    const monthStartKey = this.getStartOfMonthKey();
+    const weeklyGoal = Math.min(
+      Math.max(Number(user.writing_rhythm_weekly_goal || 4), 1),
+      21,
+    );
+    const weekCount = recordDates.filter((dateKey) => dateKey >= weekStartKey).length;
+    const monthCount = recordDates.filter(
+      (dateKey) => dateKey >= monthStartKey,
+    ).length;
+    const currentRunDays = this.getCurrentWritingRunDays(uniqueDates);
+    const weeklyProgress = Math.min(Math.round((weekCount / weeklyGoal) * 100), 100);
+
+    return {
+      currentRunDays,
+      weekCount,
+      monthCount,
+      weeklyGoal,
+      weeklyProgress,
+      includedLabel: `Counting ${this.getWritingRhythmIncludedLabel()}.`,
+      message: this.getWritingRhythmMessage(currentRunDays, weekCount, weeklyGoal),
+    };
+  }
+
+  private getWritingRhythmRecordDates(): string[] {
+    const selectedTypes = this.getWritingRhythmRecordTypes();
+    return [
+      ...(selectedTypes.includes("daily")
+        ? this.dailyEntries.map((entry) => this.toRecordDate(entry.entry_date))
+        : []),
+      ...(selectedTypes.includes("dream")
+        ? this.dreamEntries.map((entry) => this.toRecordDate(entry.entry_date))
+        : []),
+      ...(selectedTypes.includes("thought_record")
+        ? this.thoughtRecords.map((record) => this.toRecordDate(record.record_date))
+        : []),
+    ].filter((dateKey): dateKey is string => Boolean(dateKey));
+  }
+
+  private getWritingRhythmRecordTypes(): WritingRhythmRecordType[] {
+    const user = this.authService.getCurrentUser();
+    const selectedTypes = String(user?.writing_reminder_entry_types || "daily,dream")
+      .split(",")
+      .map((entryType) => entryType.trim().toLowerCase().replace("-", "_"))
+      .filter((entryType): entryType is WritingRhythmRecordType =>
+        ["daily", "dream", "thought_record"].includes(entryType),
+      );
+    return selectedTypes.length > 0 ? selectedTypes : ["daily", "dream"];
+  }
+
+  private getCurrentWritingRunDays(uniqueDateKeys: string[]): number {
+    const activeDates = new Set(uniqueDateKeys);
+    const today = new Date();
+    const todayKey = this.toDateKey(today);
+    const startDate = new Date(today);
+    if (!activeDates.has(todayKey)) {
+      startDate.setDate(startDate.getDate() - 1);
+    }
+
+    let runDays = 0;
+    const cursor = new Date(startDate);
+    while (activeDates.has(this.toDateKey(cursor))) {
+      runDays += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return runDays;
+  }
+
+  private getWritingRhythmIncludedLabel(): string {
+    const labels: Record<WritingRhythmRecordType, string> = {
+      daily: "Diary",
+      dream: "Dreams",
+      thought_record: "Thought records",
+    };
+    return this.getWritingRhythmRecordTypes()
+      .map((type) => labels[type])
+      .join(", ");
+  }
+
+  private getWritingRhythmMessage(
+    currentRunDays: number,
+    weekCount: number,
+    weeklyGoal: number,
+  ): string {
+    if (weekCount >= weeklyGoal) {
+      return "Weekly rhythm goal reached.";
+    }
+    if (currentRunDays > 1) {
+      return "A steady rhythm is building.";
+    }
+    if (currentRunDays === 1) {
+      return "You have written recently.";
+    }
+    return "No pressure. Start with one useful note.";
+  }
+
+  private toRecordDate(value: string | undefined | null): string | null {
+    const dateKey = String(value || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : null;
+  }
+
+  private getStartOfWeekKey(): string {
+    const date = new Date();
+    const offset = (date.getDay() + 6) % 7;
+    date.setDate(date.getDate() - offset);
+    return this.toDateKey(date);
+  }
+
+  private getStartOfMonthKey(): string {
+    const date = new Date();
+    date.setDate(1);
+    return this.toDateKey(date);
   }
 
   getEntryTitle(entry: CardItem): string {

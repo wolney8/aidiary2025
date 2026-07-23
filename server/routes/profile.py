@@ -214,6 +214,19 @@ def _normalise_reminder_silence_days(value):
     return silence_days
 
 
+def _normalise_weekly_goal(value):
+    if value is None:
+        return None
+
+    try:
+        weekly_goal = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Weekly writing goal must be a number') from exc
+    if weekly_goal < 1 or weekly_goal > 21:
+        raise ValueError('Weekly writing goal must be between 1 and 21')
+    return weekly_goal
+
+
 def _normalise_profile_update(field: str, value):
     if field in {'first_name', 'last_name',
                  'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname'}:
@@ -265,6 +278,10 @@ def _normalise_profile_update(field: str, value):
         return _normalise_reminder_silence_days(value)
     if field == 'writing_reminder_entry_types':
         return _normalise_reminder_entry_types(value)
+    if field == 'writing_rhythm_progress_enabled':
+        return 1 if bool(value) else 0
+    if field == 'writing_rhythm_weekly_goal':
+        return _normalise_weekly_goal(value)
 
     return value
 
@@ -323,6 +340,7 @@ def _select_profile(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row | Non
                ai_focus, ai_model, allow_ai_history, allow_ai_attachment_context,
                writing_reminders_enabled, writing_reminder_days, writing_reminder_time,
                writing_reminder_silence_days, writing_reminder_entry_types,
+               writing_rhythm_progress_enabled, writing_rhythm_weekly_goal,
                profile_picture_storage_key
         FROM users WHERE id = ?
     ''', (user_id,)).fetchone()
@@ -362,7 +380,8 @@ def update_profile():
         'ai_tone', 'ai_verbosity',
         'ai_focus', 'ai_model', 'allow_ai_history', 'allow_ai_attachment_context',
         'writing_reminders_enabled', 'writing_reminder_days', 'writing_reminder_time',
-        'writing_reminder_silence_days', 'writing_reminder_entry_types'
+        'writing_reminder_silence_days', 'writing_reminder_entry_types',
+        'writing_rhythm_progress_enabled', 'writing_rhythm_weekly_goal'
     ]
     
     updates = []

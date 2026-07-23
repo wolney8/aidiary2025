@@ -28,6 +28,8 @@ export interface User {
   writing_reminder_time?: string;
   writing_reminder_silence_days?: number;
   writing_reminder_entry_types?: string;
+  writing_rhythm_progress_enabled?: boolean;
+  writing_rhythm_weekly_goal?: number;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;
