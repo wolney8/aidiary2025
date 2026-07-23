@@ -233,6 +233,24 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 )
 """
 
+_CHAT_OBSERVABILITY_EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS chat_observability_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER,
+    conversation_id TEXT,
+    request_id      TEXT,
+    event_type      TEXT NOT NULL,
+    error_code      TEXT,
+    latency_ms      INTEGER,
+    input_tokens    INTEGER NOT NULL DEFAULT 0,
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    model           TEXT,
+    metadata_json   TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+"""
+
 _CBT_WORKSHEETS_DDL = """
 CREATE TABLE IF NOT EXISTS cbt_worksheets (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -608,6 +626,32 @@ def ensure_chat_messages_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'chat_messages')
+
+    return True
+
+
+def ensure_chat_observability_events_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure measurable chat lifecycle events can be reviewed after requests."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_CHAT_OBSERVABILITY_EVENTS_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_chat_observability_user_created
+            ON chat_observability_events(user_id, created_at DESC, id DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_chat_observability_event_created
+            ON chat_observability_events(event_type, created_at DESC)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'chat_observability_events')
 
     return True
 
