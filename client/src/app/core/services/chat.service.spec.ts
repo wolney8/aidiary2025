@@ -88,6 +88,11 @@ describe("ChatService", () => {
     const responseBody = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
+          encoder.encode(
+            'data: {"chunk":"","done":false,"event":"started","retry_after_ms":1000}\n\n',
+          ),
+        );
+        controller.enqueue(
           encoder.encode('data: {"chunk":"Hello ","done":false}\n\n'),
         );
         controller.enqueue(
@@ -129,7 +134,8 @@ describe("ChatService", () => {
       start(controller) {
         controller.enqueue(
           encoder.encode(
-            'data: {"chunk":"Recovered","done":false}\n\ndata: {"chunk":"","done":true}\n\n',
+            'data: {"chunk":"","done":false,"event":"started","retry_after_ms":1000}\n\n' +
+              'data: {"chunk":"Recovered","done":false}\n\ndata: {"chunk":"","done":true}\n\n',
           ),
         );
         controller.close();
@@ -168,8 +174,9 @@ describe("ChatService", () => {
       start(controller) {
         controller.enqueue(
           encoder.encode(
-            'data: {"chunk":"Partial reply","done":false}\n\n' +
-              'data: {"chunk":"","done":true,"error":"Stream failed","error_code":"provider_unavailable"}\n\n',
+            'data: {"chunk":"","done":false,"event":"started","retry_after_ms":1000}\n\n' +
+              'data: {"chunk":"Partial reply","done":false}\n\n' +
+              'data: {"chunk":"","done":true,"error":"Stream failed","error_code":"provider_unavailable","retryable":true,"retry_after_ms":1000}\n\n',
           ),
         );
         controller.close();

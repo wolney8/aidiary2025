@@ -141,6 +141,7 @@ def test_chat_send_history_clear_flow(client, mocked_chat_services):
     assert send_response.mimetype == 'text/event-stream'
     events = _sse_events(send_response)
     assert events == [
+        {'chunk': '', 'done': False, 'event': 'started', 'retry_after_ms': 1000},
         {'chunk': 'Helpful ', 'done': False},
         {'chunk': 'reply', 'done': False},
         {'chunk': '', 'done': True, 'token_count': 4},
@@ -225,6 +226,8 @@ def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_cha
     )
     failed_events = _sse_events(failed_response)
     assert failed_events[-1]['error_code'] == 'provider_unavailable'
+    assert failed_events[-1]['retryable'] is True
+    assert failed_events[-1]['retry_after_ms'] == 1000
 
     openai_service.return_value.chat_companion.return_value = iter(['Recovered reply'])
     retry_response = client.post(
@@ -254,7 +257,8 @@ def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_cha
         buffered=True,
     )
     replay_events = _sse_events(replay_response)
-    assert replay_events[0]['chunk'] == 'Recovered reply'
+    replay_chunks = [event['chunk'] for event in replay_events if event.get('chunk')]
+    assert replay_chunks == ['Recovered reply']
 
     replayed_history = client.get(
         f'/api/chat/history?conversation_id={conversation_id}',

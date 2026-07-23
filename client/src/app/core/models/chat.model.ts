@@ -22,7 +22,10 @@ export interface ChatHistoryResponse {
 export interface ChatStreamEvent {
   chunk: string;
   done: boolean;
+  event?: "started" | string;
   token_count?: number;
   error?: string;
   error_code?: string;
+  retryable?: boolean;
+  retry_after_ms?: number;
 }
