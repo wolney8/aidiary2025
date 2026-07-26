@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from services.database import connect_sqlite_path
+from services.database_adapter import DatabaseAdapter
+from services.sql_compat import adapt_placeholders
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +103,15 @@ def _percentile(values: list[int], percentile: float) -> int | None:
 class ChatObservabilityService:
     """Record and report chat lifecycle signals without affecting user flows."""
 
-    def __init__(self, database_path: str, *, log: logging.Logger | None = None) -> None:
+    def __init__(
+        self,
+        database_path: str,
+        *,
+        adapter: DatabaseAdapter | None = None,
+        log: logging.Logger | None = None,
+    ) -> None:
         self.database_path = database_path
+        self.adapter = adapter or DatabaseAdapter(provider='sqlite', sqlite_path=database_path)
         self.log = log or logger
 
     def record_event(
@@ -135,14 +142,17 @@ class ChatObservabilityService:
         }
         self.log.info('chat_observability_event %s', _safe_json(event))
         try:
-            with connect_sqlite_path(self.database_path, timeout=10) as conn:
+            with self.adapter.connect(timeout=10) as conn:
                 conn.execute(
-                    """
+                    adapt_placeholders(
+                        """
                     INSERT INTO chat_observability_events (
                         user_id, conversation_id, request_id, event_type, error_code,
                         latency_ms, input_tokens, output_tokens, model, metadata_json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
+                        self.adapter.provider,
+                    ),
                     (
                         user_id,
                         conversation_id,
@@ -156,15 +166,16 @@ class ChatObservabilityService:
                         _safe_json(metadata),
                     ),
                 )
-        except sqlite3.Error:
+        except Exception:
             self.log.exception('Chat observability event could not be persisted')
 
     def build_report(self, *, user_id: int, days: int = 7) -> dict[str, Any]:
         bounded_days = min(max(int(days or 7), 1), 90)
         since = datetime.now(timezone.utc) - timedelta(days=bounded_days)
-        with connect_sqlite_path(self.database_path, timeout=10) as conn:
+        with self.adapter.connect(timeout=10) as conn:
             rows = conn.execute(
-                """
+                adapt_placeholders(
+                    """
                 SELECT event_type, error_code, latency_ms, input_tokens, output_tokens,
                        model, created_at
                 FROM chat_observability_events
@@ -172,6 +183,8 @@ class ChatObservabilityService:
                   AND created_at >= ?
                 ORDER BY created_at DESC, id DESC
                 """,
+                    self.adapter.provider,
+                ),
                 (user_id, since.strftime('%Y-%m-%d %H:%M:%S')),
             ).fetchall()
 

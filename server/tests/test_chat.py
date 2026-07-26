@@ -8,6 +8,7 @@ import pytest
 
 from app import create_app
 from extensions import limiter
+from services.chat_observability import ChatObservabilityService
 from services.openai_svc import ChatStreamError
 
 
@@ -82,6 +83,37 @@ def _register_and_get_token(client, username: str) -> str:
     return data['token']
 
 
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return self
+
+    def fetchall(self):
+        return []
+
+
+class _FakeAdapter:
+    provider = 'postgres'
+
+    def __init__(self):
+        self.connection = _FakePostgresConnection()
+
+    def connect(self, **_kwargs):
+        adapter = self
+
+        class _Context:
+            def __enter__(self):
+                return adapter.connection
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        return _Context()
+
+
 def test_chat_endpoints_require_auth(client):
     conversation_id = str(uuid4())
 
@@ -96,6 +128,21 @@ def test_chat_endpoints_require_auth(client):
     assert post_response.status_code == 401
     assert get_response.status_code == 401
     assert delete_response.status_code == 401
+
+
+def test_chat_observability_uses_adapter_placeholders_for_postgres():
+    adapter = _FakeAdapter()
+    service = ChatObservabilityService('/unused/sqlite.db', adapter=adapter)
+
+    service.record_event(event_type='completed', user_id=1, input_tokens=2)
+    service.build_report(user_id=1)
+
+    insert_sql = adapter.connection.calls[0][0]
+    report_sql = adapter.connection.calls[1][0]
+    assert '$1' in insert_sql
+    assert '$10' in insert_sql
+    assert '$1' in report_sql
+    assert '$2' in report_sql
 
 
 def test_chat_validation_errors(client):
