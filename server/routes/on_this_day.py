@@ -9,6 +9,7 @@ import sqlite3
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
+from services.database import connect_sqlite
 from services.media_storage import resolve_image_url
 
 
@@ -20,9 +21,7 @@ _WHITESPACE_PATTERN = re.compile(r'\s+')
 
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(current_app.config['DATABASE_PATH'])
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(current_app, log_label='On this day')
 
 
 def _normalise_target_date(value: str | None) -> date:

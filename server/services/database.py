@@ -77,11 +77,22 @@ def configure_app_database(app) -> DatabaseSettings:
     return settings
 
 
-def connect_sqlite(app, *, log_label: str = "Database") -> sqlite3.Connection:
+def connect_sqlite(
+    app,
+    *,
+    log_label: str = "Database",
+    timeout: int = 30,
+    foreign_keys: bool = False,
+    journal_mode_wal: bool = False,
+) -> sqlite3.Connection:
     if app.config.get("DATABASE_PROVIDER", "sqlite") != "sqlite":
         raise RuntimeError("SQLite connection requested while DATABASE_PROVIDER is not sqlite")
     db_path = app.config["DATABASE_PATH"]
     app.logger.debug("%s get_db connecting to %s", log_label, db_path)
-    conn = sqlite3.connect(db_path, timeout=30)
+    conn = sqlite3.connect(db_path, timeout=timeout)
     conn.row_factory = sqlite3.Row
+    if foreign_keys:
+        conn.execute("PRAGMA foreign_keys = ON")
+    if journal_mode_wal:
+        conn.execute("PRAGMA journal_mode=WAL")
     return conn

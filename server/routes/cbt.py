@@ -8,6 +8,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
+from services.database import connect_sqlite
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
 
 cbt_bp = Blueprint('cbt', __name__)
@@ -35,10 +36,12 @@ DATA_FIELDS = (
 
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(current_app.config['DATABASE_PATH'], timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON')
-    return conn
+    return connect_sqlite(
+        current_app,
+        log_label='CBT',
+        timeout=10,
+        foreign_keys=True,
+    )
 
 
 def _coerce_text(value: object, field_name: str, *, max_length: int) -> str:

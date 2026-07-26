@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+from services.database import connect_sqlite
 from services.import_service import (
     DAILY_IMPORT_HEADERS,
     DREAM_IMPORT_HEADERS,
@@ -142,11 +143,12 @@ def cancel_import_session(session_id: str):
 
 def get_db():
     """Get database connection."""
-    db_path = current_app.config['DATABASE_PATH']
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')
-    return conn
+    return connect_sqlite(
+        current_app,
+        log_label='Import',
+        timeout=30,
+        journal_mode_wal=True,
+    )
 
 
 def _build_entry_asset_ref(entry_type: str, row: sqlite3.Row) -> str:

@@ -11,6 +11,7 @@ from services.attachment_text import (
     looks_like_low_quality_ocr_text,
 )
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
+from services.database import connect_sqlite
 from services.media_storage import read_media_bytes
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 from services.nltk_enrichment import (
@@ -203,11 +204,12 @@ DEFAULT_ANALYSIS_SETTINGS = {
 
 def get_db():
     """Get database connection."""
-    db_path = current_app.config['DATABASE_PATH']
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')
-    return conn
+    return connect_sqlite(
+        current_app,
+        log_label='Analyse',
+        timeout=30,
+        journal_mode_wal=True,
+    )
 
 
 def _truncate_text(value: str, max_chars: int) -> str:
