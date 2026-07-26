@@ -1583,13 +1583,16 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
 
     if 'imported_at' not in columns:
         conn.execute("ALTER TABLE import_history ADD COLUMN imported_at TEXT")
+        imported_at_fallback = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         if 'import_date' in columns:
             conn.execute(
-                "UPDATE import_history SET imported_at = COALESCE(import_date, datetime('now'))"
+                "UPDATE import_history SET imported_at = COALESCE(import_date, ?)",
+                (imported_at_fallback,),
             )
         else:
             conn.execute(
-                "UPDATE import_history SET imported_at = datetime('now')"
+                "UPDATE import_history SET imported_at = ?",
+                (imported_at_fallback,),
             )
 
     # Drop the legacy 'import_date' column now that 'imported_at' exists
