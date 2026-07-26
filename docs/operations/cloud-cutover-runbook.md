@@ -121,6 +121,7 @@ PYTHONPATH=. python scripts/create_cutover_evidence_packet.py \
   --export-dir /tmp/aidiary-cloud-export \
   --migration-report /tmp/aidiary-cloud-migration-report.json \
   --readiness-report /tmp/aidiary-cloud-readiness.json \
+  --preflight-report /tmp/aidiary-production-preflight.json \
   --post-cutover-baseline /tmp/aidiary-post-cutover-baseline.json \
   --postgres-target "neon/rehearsal-branch-or-production-db" \
   --backend-tests-passed \
