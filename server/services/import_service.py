@@ -19,7 +19,7 @@ from services.nltk_enrichment import (
     derive_daily_nltk_fields as _runtime_derive_daily_nltk_fields,
     derive_dream_nltk_fields as _runtime_derive_dream_nltk_fields,
 )
-from services.database import table_columns
+from services.database import table_columns, table_info
 from services.media_storage import store_entry_asset, store_imported_image
 from services.import_adapters import get_import_adapter
 from services.sql_compat import inserted_id
@@ -1557,7 +1557,7 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
     """Create or repair import_history table for older local databases."""
     conn.execute(IMPORT_HISTORY_DDL)
 
-    table_info_rows = conn.execute('PRAGMA table_info(import_history)').fetchall()
+    table_info_rows = table_info(conn, 'import_history')
     EXPECTED_COLUMNS = {
         'id',
         'user_id',
@@ -1579,9 +1579,7 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
         if row[3] == 1 and row[4] is None:
             conn.execute(f'ALTER TABLE import_history DROP COLUMN {col_name}')
 
-    columns = {
-        row[1]: row for row in conn.execute('PRAGMA table_info(import_history)').fetchall()
-    }
+    columns = {row[1]: row for row in table_info(conn, 'import_history')}
 
     if 'imported_at' not in columns:
         conn.execute("ALTER TABLE import_history ADD COLUMN imported_at TEXT")
@@ -1638,9 +1636,7 @@ def ensure_export_history_table(conn: sqlite3.Connection) -> None:
     """Create or repair export_history table for guarded bulk-delete flow."""
     conn.execute(EXPORT_HISTORY_DDL)
 
-    columns = {
-        row[1]: row for row in conn.execute('PRAGMA table_info(export_history)').fetchall()
-    }
+    columns = {row[1]: row for row in table_info(conn, 'export_history')}
 
     required_columns = {
         'exported_at': "TEXT NOT NULL DEFAULT ''",
@@ -1668,9 +1664,7 @@ def ensure_import_sessions_table(conn: sqlite3.Connection) -> None:
     """Create or repair import_sessions table used for staged duplicate review."""
     conn.execute(IMPORT_SESSIONS_DDL)
 
-    columns = {
-        row[1]: row for row in conn.execute('PRAGMA table_info(import_sessions)').fetchall()
-    }
+    columns = {row[1]: row for row in table_info(conn, 'import_sessions')}
     required_columns = {
         'created_at': "TEXT NOT NULL DEFAULT ''",
         'filename': "TEXT NOT NULL DEFAULT ''",
