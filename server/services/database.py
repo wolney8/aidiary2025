@@ -1,8 +1,4 @@
-"""Database provider configuration helpers.
-
-This module is the first runtime boundary for the SQLite-to-Postgres migration.
-SQLite remains the only active app provider until route SQL has been adapted.
-"""
+"""Database provider configuration helpers."""
 
 from __future__ import annotations
 
@@ -65,13 +61,6 @@ def resolve_database_settings(
 
 def configure_app_database(app) -> DatabaseSettings:
     settings = resolve_database_settings(app.root_path)
-    if settings.provider == POSTGRES_PROVIDER:
-        raise RuntimeError(
-            "DATABASE_PROVIDER=postgres is recognised but the runtime SQL adapter is not "
-            "implemented yet. Use the migration rehearsal tools for Postgres loads until "
-            "the provider adapter lands."
-        )
-
     app.config["DATABASE_PROVIDER"] = settings.provider
     app.config["DATABASE_PATH"] = settings.sqlite_path
     app.config["DATABASE_URL"] = settings.database_url

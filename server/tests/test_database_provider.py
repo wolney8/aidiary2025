@@ -1,6 +1,7 @@
 import pytest
 
 import app as app_module
+import routes.import_routes as import_routes_module
 from app import create_app
 from services.database import DatabaseSettings
 from services.database import connect_sqlite_path, resolve_database_settings, table_columns, table_info
@@ -49,16 +50,21 @@ def test_database_settings_require_url_for_postgres(tmp_path):
         )
 
 
-def test_app_fails_fast_for_postgres_runtime_provider(monkeypatch, tmp_path):
+def test_app_accepts_postgres_runtime_provider_after_adapter_lands(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("DATABASE_PROVIDER", "postgres")
     monkeypatch.setenv("DATABASE_URL", "postgresql://example/rehearsal")
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
 
-    with pytest.raises(RuntimeError, match="runtime SQL adapter is not implemented"):
-        create_app()
+    app = create_app()
+
+    assert app.config["DATABASE_PROVIDER"] == "postgres"
+    assert app.config["DATABASE_URL"] == "postgresql://example/rehearsal"
+    assert app.config["DATABASE_RUNTIME_MIGRATIONS_ENABLED"] is False
+    assert app.config["DATABASE_ADAPTER"].provider == "postgres"
 
 
 def test_app_records_sqlite_database_provider(monkeypatch, tmp_path):

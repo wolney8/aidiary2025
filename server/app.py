@@ -277,16 +277,18 @@ def create_app():
     def serve_media(storage_key: str):
         return send_from_directory(app.config['MEDIA_ROOT'], storage_key, conditional=True)
 
-    # Download NLTK data and backfill any entries that were imported before data was available
+    # Download NLTK data and backfill any entries that were imported before data was available.
+    # This legacy backfill is SQLite-only; managed/cloud databases should be migrated explicitly.
     _ensure_nltk_data()
-    try:
-        import sqlite3 as _sqlite3
-        from services.import_service import backfill_nltk_enrichment
-        with _sqlite3.connect(app.config['DATABASE_PATH'], timeout=10) as _bfconn:
-            _bfconn.execute('PRAGMA journal_mode=WAL')
-            backfill_nltk_enrichment(_bfconn, app.logger)
-    except Exception as _bf_exc:
-        app.logger.warning('Startup NLTK backfill skipped: %s', _bf_exc)
+    if app.config['DATABASE_RUNTIME_MIGRATIONS_ENABLED']:
+        try:
+            import sqlite3 as _sqlite3
+            from services.import_service import backfill_nltk_enrichment
+            with _sqlite3.connect(app.config['DATABASE_PATH'], timeout=10) as _bfconn:
+                _bfconn.execute('PRAGMA journal_mode=WAL')
+                backfill_nltk_enrichment(_bfconn, app.logger)
+        except Exception as _bf_exc:
+            app.logger.warning('Startup NLTK backfill skipped: %s', _bf_exc)
     
     return app
 
