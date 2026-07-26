@@ -35,7 +35,9 @@ def _write_export(export_dir):
     (export_dir / "dailydiary_entries.jsonl").write_text('{"id": 10}\n', encoding="utf-8")
     for table_name in [
         "dreamdiary_entries",
+        "entry_ai_metadata",
         "import_history",
+        "export_history",
         "entry_assets",
         "import_sessions",
         "import_jobs",
