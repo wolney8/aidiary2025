@@ -8,6 +8,24 @@ import pytest
 import httpx
 
 from app import create_app
+from services.public_holidays import get_public_holidays
+
+
+class _FakeRows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return _FakeRows([{"payload_json": "[{\"name\":\"Cached\"}]"}])
 
 
 @pytest.fixture
@@ -180,3 +198,20 @@ def test_public_holidays_endpoint_returns_empty_when_disabled(
     assert payload["year"] == 2026
     assert payload["enabled"] is False
     assert payload["holidays"] == []
+
+
+def test_public_holiday_cache_uses_postgres_placeholders():
+    conn = _FakePostgresConnection()
+
+    holidays = get_public_holidays(
+        conn,
+        country_code="gb",
+        year=2026,
+        provider="postgres",
+    )
+
+    assert holidays == [{"name": "Cached"}]
+    sql, params = conn.calls[0]
+    assert "$1" in sql
+    assert "$2" in sql
+    assert params == ("GB", 2026)
