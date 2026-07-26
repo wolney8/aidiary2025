@@ -7,6 +7,7 @@ SQLite remains the only active app provider until route SQL has been adapted.
 from __future__ import annotations
 
 import os
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -74,3 +75,13 @@ def configure_app_database(app) -> DatabaseSettings:
     app.config["DATABASE_URL"] = settings.database_url
     app.config["DATABASE_RUNTIME_MIGRATIONS_ENABLED"] = settings.runtime_migrations_enabled
     return settings
+
+
+def connect_sqlite(app, *, log_label: str = "Database") -> sqlite3.Connection:
+    if app.config.get("DATABASE_PROVIDER", "sqlite") != "sqlite":
+        raise RuntimeError("SQLite connection requested while DATABASE_PROVIDER is not sqlite")
+    db_path = app.config["DATABASE_PATH"]
+    app.logger.debug("%s get_db connecting to %s", log_label, db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn

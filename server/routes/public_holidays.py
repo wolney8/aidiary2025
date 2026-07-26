@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime
 
 import httpx
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
+from services.database import connect_sqlite
 from services.public_holidays import (
     get_public_holidays,
     list_available_countries,
@@ -17,11 +17,7 @@ public_holidays_bp = Blueprint('public_holidays', __name__)
 
 
 def get_db():
-    db_path = current_app.config['DATABASE_PATH']
-    current_app.logger.debug('Public holidays get_db connecting to %s', db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(current_app, log_label='Public holidays')
 
 
 @public_holidays_bp.route('/public-holidays/countries', methods=['GET'])

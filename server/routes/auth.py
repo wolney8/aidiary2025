@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token
 import bcrypt
 import sqlite3
 import re
+from services.database import connect_sqlite
 from services.media_storage import resolve_image_url
 
 auth_bp = Blueprint('auth', __name__)
@@ -56,11 +57,7 @@ def _validate_registration_payload(
 
 def get_db():
     """Get database connection."""
-    db_path = current_app.config['DATABASE_PATH']
-    current_app.logger.debug('Auth get_db connecting to %s', db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(current_app, log_label='Auth')
 
 
 def _optional_user_selects(cursor: sqlite3.Cursor) -> str:
