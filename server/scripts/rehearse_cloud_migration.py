@@ -24,7 +24,9 @@ TABLE_ORDER = [
     "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",
+    "entry_ai_metadata",
     "import_history",
+    "export_history",
     "entry_assets",
     "import_sessions",
     "import_jobs",
@@ -41,6 +43,8 @@ TABLE_ORDER = [
 FOREIGN_KEY_CHECKS = [
     ("dailydiary_entries", "user_id", "users", "id"),
     ("dreamdiary_entries", "user_id", "users", "id"),
+    ("entry_ai_metadata", "user_id", "users", "id"),
+    ("export_history", "user_id", "users", "id"),
     ("entry_assets", "user_id", "users", "id"),
     ("important_days", "user_id", "users", "id"),
     ("entry_resurfacing_preferences", "user_id", "users", "id"),
