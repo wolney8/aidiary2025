@@ -8,9 +8,10 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
-from services.database import connect_sqlite, table_columns
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
-from services.sql_compat import date_expr
+from services.sql_compat import adapt_placeholders, date_expr
 
 reflection_summaries_bp = Blueprint('reflection_summaries', __name__)
 
@@ -18,17 +19,27 @@ PERIOD_TYPES = {'weekly', 'monthly'}
 MAX_SOURCE_CHARS = 18000
 
 
-def get_db() -> sqlite3.Connection:
-    return connect_sqlite(
-        current_app,
-        log_label='Reflection summaries',
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
+def get_db():
+    return _database_adapter().connect(
         timeout=10,
         foreign_keys=True,
     )
 
 
-def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-    return table_columns(conn, table_name)
+def _table_columns(conn, table_name: str) -> set[str]:
+    return _database_adapter().table_columns(conn, table_name)
 
 
 def _expr(columns: set[str], column: str, alias: str | None = None) -> str:
@@ -66,7 +77,7 @@ def _period_label(period_type: str, period_start: date, period_end: date) -> str
     return period_start.strftime('%B %Y')
 
 
-def _serialise_summary(row: sqlite3.Row) -> dict[str, Any]:
+def _serialise_summary(row) -> dict[str, Any]:
     return {
         'id': row['id'],
         'period_type': row['period_type'],
@@ -94,7 +105,7 @@ def _human_date(value: str) -> str:
         return value
 
 
-def _load_user_analysis_options(conn: sqlite3.Connection, user_id: int) -> dict[str, object]:
+def _load_user_analysis_options(conn, user_id: int) -> dict[str, object]:
     options: dict[str, object] = {
         'ai_style': 'reflective',
         'ai_tone': 'friendly',
@@ -105,12 +116,14 @@ def _load_user_analysis_options(conn: sqlite3.Connection, user_id: int) -> dict[
     }
     try:
         row = conn.execute(
-            '''
+            _sql(
+                '''
             SELECT ai_tone, ai_verbosity, ai_focus, ai_model,
                    display_name, pronouns, gender, custom_guidance, sex, goals
             FROM users
             WHERE id = ?
-            ''',
+            '''
+            ),
             (user_id,),
         ).fetchone()
     except sqlite3.OperationalError:
@@ -138,7 +151,7 @@ def _load_user_analysis_options(conn: sqlite3.Connection, user_id: int) -> dict[
 
 
 def _load_period_sources(
-    conn: sqlite3.Connection,
+    conn,
     user_id: int,
     period_start: date,
     period_end: date,
@@ -160,7 +173,7 @@ def _load_period_sources(
         else:
             body_expr = "'' AS body"
         rows = conn.execute(
-            f'''
+            _sql(f'''
             SELECT id, entry_date, {_expr(daily_columns, 'title')}, {body_expr},
                    {_expr(daily_columns, 'mood')}, {_expr(daily_columns, 'tags')},
                    {_expr(daily_columns, 'daily_people_names', 'people_names')},
@@ -169,7 +182,7 @@ def _load_period_sources(
             FROM dailydiary_entries
             WHERE user_id = ? AND {entry_date_sql} BETWEEN ? AND ?
             ORDER BY {entry_date_sql}, id
-            ''',
+            '''),
             (user_id, start_iso, end_iso),
         ).fetchall()
         for row in rows:
@@ -194,7 +207,7 @@ def _load_period_sources(
         else:
             body_expr = "'' AS body"
         rows = conn.execute(
-            f'''
+            _sql(f'''
             SELECT id, entry_date, {_expr(dream_columns, 'title')}, {body_expr},
                    {_expr(dream_columns, 'mood')}, {_expr(dream_columns, 'tags')},
                    {_expr(dream_columns, 'dream_people_names', 'people_names')},
@@ -203,7 +216,7 @@ def _load_period_sources(
             FROM dreamdiary_entries
             WHERE user_id = ? AND {entry_date_sql} BETWEEN ? AND ?
             ORDER BY {entry_date_sql}, id
-            ''',
+            '''),
             (user_id, start_iso, end_iso),
         ).fetchall()
         for row in rows:
@@ -221,14 +234,14 @@ def _load_period_sources(
 
     try:
         rows = conn.execute(
-            f'''
+            _sql(f'''
             SELECT w.id, w.title, w.record_date, d.situation, d.balanced_thought,
                    d.next_step, d.ai_response
             FROM cbt_worksheets w
             JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
             WHERE w.user_id = ? AND {worksheet_record_date_sql} BETWEEN ? AND ?
             ORDER BY {worksheet_record_date_sql}, w.id
-            ''',
+            '''),
             (user_id, start_iso, end_iso),
         ).fetchall()
     except sqlite3.OperationalError:
@@ -262,19 +275,18 @@ def list_reflection_summaries():
         where.append('period_type = ?')
         params.append(period_type)
 
-    conn = get_db()
-    rows = conn.execute(
-        f'''
-        SELECT id, period_type, period_start, period_end, title, summary_text,
-               themes_json, source_refs_json, model, created_at, updated_at
-        FROM reflection_summaries
-        WHERE {' AND '.join(where)}
-        ORDER BY period_start DESC, updated_at DESC
-        LIMIT 36
-        ''',
-        params,
-    ).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(
+            _sql(f'''
+            SELECT id, period_type, period_start, period_end, title, summary_text,
+                   themes_json, source_refs_json, model, created_at, updated_at
+            FROM reflection_summaries
+            WHERE {' AND '.join(where)}
+            ORDER BY period_start DESC, updated_at DESC
+            LIMIT 36
+            '''),
+            params,
+        ).fetchall()
     return jsonify([_serialise_summary(row) for row in rows]), 200
 
 
@@ -291,73 +303,73 @@ def generate_reflection_summary():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    conn = get_db()
     try:
-        source_context, source_refs = _load_period_sources(conn, user_id, period_start, period_end)
-        analysis_options = _load_user_analysis_options(conn, user_id)
-        period_label = _period_label(period_type, period_start, period_end)
+        with get_db() as conn:
+            source_context, source_refs = _load_period_sources(conn, user_id, period_start, period_end)
+            analysis_options = _load_user_analysis_options(conn, user_id)
+            period_label = _period_label(period_type, period_start, period_end)
 
-        if not source_refs:
-            generated = {
-                'title': f'No entries for {period_label}',
-                'summary_text': 'There are no diary entries, dreams, or thought records in this period yet, so there is nothing reliable to summarise.',
-                'themes': [],
-            }
-        else:
-            generated = OpenAIService().generate_reflection_summary(
-                period_type,
-                period_label,
-                source_context,
-                analysis_options=analysis_options,
+            if not source_refs:
+                generated = {
+                    'title': f'No entries for {period_label}',
+                    'summary_text': 'There are no diary entries, dreams, or thought records in this period yet, so there is nothing reliable to summarise.',
+                    'themes': [],
+                }
+            else:
+                generated = OpenAIService().generate_reflection_summary(
+                    period_type,
+                    period_label,
+                    source_context,
+                    analysis_options=analysis_options,
+                )
+
+            model = str(analysis_options.get('ai_model') or DEFAULT_ANALYSIS_MODEL)
+            conn.execute(
+                _sql(
+                    '''
+                INSERT INTO reflection_summaries (
+                    user_id, period_type, period_start, period_end, title, summary_text,
+                    themes_json, source_refs_json, model
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, period_type, period_start)
+                DO UPDATE SET
+                    period_end = excluded.period_end,
+                    title = excluded.title,
+                    summary_text = excluded.summary_text,
+                    themes_json = excluded.themes_json,
+                    source_refs_json = excluded.source_refs_json,
+                    model = excluded.model,
+                    updated_at = CURRENT_TIMESTAMP
+                '''
+                ),
+                (
+                    user_id,
+                    period_type,
+                    period_start.isoformat(),
+                    period_end.isoformat(),
+                    str(generated['title']).strip(),
+                    str(generated['summary_text']).strip(),
+                    json.dumps(generated.get('themes') or []),
+                    json.dumps(source_refs),
+                    model,
+                ),
             )
-
-        model = str(analysis_options.get('ai_model') or DEFAULT_ANALYSIS_MODEL)
-        conn.execute(
-            '''
-            INSERT INTO reflection_summaries (
-                user_id, period_type, period_start, period_end, title, summary_text,
-                themes_json, source_refs_json, model
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, period_type, period_start)
-            DO UPDATE SET
-                period_end = excluded.period_end,
-                title = excluded.title,
-                summary_text = excluded.summary_text,
-                themes_json = excluded.themes_json,
-                source_refs_json = excluded.source_refs_json,
-                model = excluded.model,
-                updated_at = CURRENT_TIMESTAMP
-            ''',
-            (
-                user_id,
-                period_type,
-                period_start.isoformat(),
-                period_end.isoformat(),
-                str(generated['title']).strip(),
-                str(generated['summary_text']).strip(),
-                json.dumps(generated.get('themes') or []),
-                json.dumps(source_refs),
-                model,
-            ),
-        )
-        conn.commit()
-        row = conn.execute(
-            '''
-            SELECT id, period_type, period_start, period_end, title, summary_text,
-                   themes_json, source_refs_json, model, created_at, updated_at
-            FROM reflection_summaries
-            WHERE user_id = ? AND period_type = ? AND period_start = ?
-            ''',
-            (user_id, period_type, period_start.isoformat()),
-        ).fetchone()
+            row = conn.execute(
+                _sql(
+                    '''
+                SELECT id, period_type, period_start, period_end, title, summary_text,
+                       themes_json, source_refs_json, model, created_at, updated_at
+                FROM reflection_summaries
+                WHERE user_id = ? AND period_type = ? AND period_start = ?
+                '''
+                ),
+                (user_id, period_type, period_start.isoformat()),
+            ).fetchone()
     except AnalysisRateLimitError:
-        conn.close()
         return jsonify({'error': 'AI summary generation is temporarily rate-limited. Please try again later.'}), 429
     except Exception:
         current_app.logger.exception('Reflection summary generation failed')
-        conn.close()
         return jsonify({'error': 'Reflection summary could not be generated.'}), 502
-    conn.close()
     return jsonify(_serialise_summary(row)), 200
 
 
@@ -365,13 +377,11 @@ def generate_reflection_summary():
 @jwt_required()
 def delete_reflection_summary(summary_id: int):
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    cursor = conn.execute(
-        'DELETE FROM reflection_summaries WHERE id = ? AND user_id = ?',
-        (summary_id, user_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.execute(
+            _sql('DELETE FROM reflection_summaries WHERE id = ? AND user_id = ?'),
+            (summary_id, user_id),
+        )
     if cursor.rowcount == 0:
         return jsonify({'error': 'Reflection summary not found'}), 404
     return jsonify({'message': 'Reflection summary deleted'}), 200

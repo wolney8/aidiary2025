@@ -2,11 +2,55 @@ import json
 import os
 import sqlite3
 import tempfile
+from datetime import date
 from unittest.mock import patch
 
 import pytest
+from flask import Flask
 
 from app import create_app
+from routes import reflection_summaries
+
+
+class _FakePostgresRows:
+    def fetchall(self):
+        return []
+
+
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return _FakePostgresRows()
+
+
+class _FakeReflectionAdapter:
+    def table_columns(self, _conn, table_name):
+        if table_name == 'dailydiary_entries':
+            return {
+                'id',
+                'entry_date',
+                'title',
+                'user_message',
+                'mood',
+                'tags',
+                'daily_people_names',
+                'daily_places',
+                'ai_response',
+            }
+        if table_name == 'dreamdiary_entries':
+            return {
+                'id',
+                'entry_date',
+                'title',
+                'plot',
+                'tags',
+                'summary',
+                'interpretation',
+            }
+        return set()
 
 
 @pytest.fixture
@@ -101,6 +145,31 @@ def test_runtime_migration_creates_reflection_summaries_table(summaries_client):
     conn.close()
 
     assert {'period_type', 'period_start', 'summary_text', 'source_refs_json'} <= columns
+
+
+def test_reflection_summary_source_queries_use_postgres_placeholders():
+    app = Flask(__name__)
+    app.config['DATABASE_PROVIDER'] = 'postgres'
+    app.config['DATABASE_ADAPTER'] = _FakeReflectionAdapter()
+    conn = _FakePostgresConnection()
+
+    with app.app_context():
+        reflection_summaries._load_period_sources(
+            conn,
+            user_id=7,
+            period_start=date(2026, 7, 1),
+            period_end=date(2026, 7, 31),
+        )
+
+    daily_sql, daily_params = conn.calls[0]
+    dream_sql, dream_params = conn.calls[1]
+    thought_sql, thought_params = conn.calls[2]
+    assert 'WHERE user_id = $1 AND (entry_date)::date BETWEEN $2 AND $3' in daily_sql
+    assert 'WHERE user_id = $1 AND (entry_date)::date BETWEEN $2 AND $3' in dream_sql
+    assert 'WHERE w.user_id = $1 AND (w.record_date)::date BETWEEN $2 AND $3' in thought_sql
+    assert daily_params == (7, '2026-07-01', '2026-07-31')
+    assert dream_params == daily_params
+    assert thought_params == daily_params
 
 
 @patch('routes.reflection_summaries.OpenAIService')
