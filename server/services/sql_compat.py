@@ -85,3 +85,19 @@ def bind_values(*groups: Iterable[object]) -> tuple[object, ...]:
     for group in groups:
         values.extend(group)
     return tuple(values)
+
+
+def inserted_id(cursor, provider: str) -> int:
+    if provider == SQLITE_PROVIDER:
+        return int(cursor.lastrowid)
+    if provider == POSTGRES_PROVIDER:
+        row = cursor.fetchone()
+        if not row:
+            raise RuntimeError("Postgres INSERT ... RETURNING id did not return a row")
+        if isinstance(row, dict):
+            return int(row["id"])
+        try:
+            return int(row["id"])
+        except (TypeError, KeyError, IndexError):
+            return int(row[0])
+    raise ValueError(f"Unsupported database provider: {provider}")

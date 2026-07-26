@@ -6,6 +6,7 @@ import sqlite3
 import re
 from services.database import connect_sqlite
 from services.media_storage import resolve_image_url
+from services.sql_compat import inserted_id
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -117,7 +118,7 @@ def register():
         ''', (username, password_hash.decode('utf-8'), first_name, last_name))
         
         conn.commit()
-        user_id = cursor.lastrowid
+        user_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
         
         # Create JWT token
         access_token = create_access_token(identity=str(user_id))

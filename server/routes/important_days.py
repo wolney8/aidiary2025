@@ -11,6 +11,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from services.database import connect_sqlite
 from services.media_storage import delete_image, resolve_image_url, store_uploaded_image
+from services.sql_compat import inserted_id
 
 important_days_bp = Blueprint('important_days', __name__)
 
@@ -294,7 +295,7 @@ def create_important_day():
         FROM important_days
         WHERE id = ? AND user_id = ?
         ''',
-        (cursor.lastrowid, user_id),
+        (inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite')), user_id),
     ).fetchone()
     conn.close()
 

@@ -5,9 +5,19 @@ from services.sql_compat import (
     append_returning_id,
     bind_values,
     in_placeholders,
+    inserted_id,
     placeholder,
     placeholders,
 )
+
+
+class _Cursor:
+    def __init__(self, *, lastrowid=None, row=None):
+        self.lastrowid = lastrowid
+        self._row = row
+
+    def fetchone(self):
+        return self._row
 
 
 def test_placeholder_uses_sqlite_question_marks():
@@ -81,3 +91,20 @@ def test_append_returning_id_is_idempotent():
 
 def test_bind_values_flattens_parameter_groups():
     assert bind_values([1, 2], ("three",), []) == (1, 2, "three")
+
+
+def test_inserted_id_uses_sqlite_lastrowid():
+    assert inserted_id(_Cursor(lastrowid=42), "sqlite") == 42
+
+
+def test_inserted_id_uses_postgres_returning_tuple():
+    assert inserted_id(_Cursor(row=(43,)), "postgres") == 43
+
+
+def test_inserted_id_uses_postgres_returning_mapping():
+    assert inserted_id(_Cursor(row={"id": 44}), "postgres") == 44
+
+
+def test_inserted_id_requires_postgres_returned_row():
+    with pytest.raises(RuntimeError, match="did not return a row"):
+        inserted_id(_Cursor(row=None), "postgres")
