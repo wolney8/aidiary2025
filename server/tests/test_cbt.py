@@ -6,8 +6,30 @@ from datetime import date
 from unittest.mock import patch
 
 import pytest
+from flask import Flask
 
 from app import create_app
+from routes import cbt
+
+
+class _FakePostgresRows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return _FakePostgresRows([{'entry_date': '2026-07-21'}])
 
 
 @pytest.fixture
@@ -83,6 +105,42 @@ def _register(client, username: str) -> tuple[str, int]:
 
 def _headers(token: str) -> dict[str, str]:
     return {'Authorization': f'Bearer {token}'}
+
+
+def test_cbt_helpers_support_postgres_placeholders_and_returning_id():
+    app = Flask(__name__)
+    app.config['DATABASE_PROVIDER'] = 'postgres'
+    conn = _FakePostgresConnection()
+
+    with app.app_context():
+        linked_type, linked_id, linked_entry_date = cbt._validate_link(
+            conn,
+            user_id=3,
+            entry_type='daily',
+            entry_id=12,
+        )
+        worksheet_sql = cbt._sql(cbt._worksheet_query('w.id = ? AND w.user_id = ?'))
+        insert_sql = cbt._sql(
+            cbt.append_returning_id(
+                '''
+                INSERT INTO cbt_worksheets (
+                    user_id, worksheet_type, title, status, current_step,
+                    record_date, linked_entry_type, linked_entry_id
+                ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?)
+                ''',
+                cbt._database_provider(),
+            )
+        )
+
+    link_sql, link_params = conn.calls[0]
+    assert linked_type == 'daily'
+    assert linked_id == 12
+    assert linked_entry_date == '2026-07-21'
+    assert 'FROM dailydiary_entries WHERE id = $1 AND user_id = $2' in link_sql
+    assert link_params == (12, 3)
+    assert 'WHERE w.id = $1 AND w.user_id = $2' in worksheet_sql
+    assert "VALUES ($1, $2, $3, 'draft', $4, $5, $6, $7)" in insert_sql
+    assert 'RETURNING id' in insert_sql
 
 
 def _complete_payload() -> dict[str, object]:

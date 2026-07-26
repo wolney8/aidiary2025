@@ -8,9 +8,10 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
-from services.database import connect_sqlite
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
-from services.sql_compat import inserted_id
+from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
 
 cbt_bp = Blueprint('cbt', __name__)
 
@@ -36,10 +37,20 @@ DATA_FIELDS = (
 )
 
 
-def get_db() -> sqlite3.Connection:
-    return connect_sqlite(
-        current_app,
-        log_label='CBT',
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
+def get_db():
+    return _database_adapter().connect(
         timeout=10,
         foreign_keys=True,
     )
@@ -111,7 +122,7 @@ def _decode_feelings(value: object) -> list[dict[str, object]]:
 
 
 def _validate_link(
-    conn: sqlite3.Connection,
+    conn,
     user_id: int,
     entry_type: object,
     entry_id: object,
@@ -132,7 +143,7 @@ def _validate_link(
     table_name = ENTRY_TABLES[normalised_type]
     try:
         owned_entry = conn.execute(
-            f'SELECT entry_date FROM {table_name} WHERE id = ? AND user_id = ?',
+            _sql(f'SELECT entry_date FROM {table_name} WHERE id = ? AND user_id = ?'),
             (normalised_id, user_id),
         ).fetchone()
     except sqlite3.OperationalError:
@@ -157,7 +168,7 @@ def _worksheet_query(where_clause: str) -> str:
     '''
 
 
-def _serialise_worksheet(row: sqlite3.Row) -> dict[str, Any]:
+def _serialise_worksheet(row) -> dict[str, Any]:
     feelings_before = _decode_feelings(row['feelings_before_json'])
     feelings_after = _decode_feelings(row['feelings_after_json'])
     before_peak = max(
@@ -202,17 +213,17 @@ def _serialise_worksheet(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _get_owned_worksheet(
-    conn: sqlite3.Connection,
+    conn,
     worksheet_id: int,
     user_id: int,
-) -> sqlite3.Row | None:
+) -> Any | None:
     return conn.execute(
-        _worksheet_query('w.id = ? AND w.user_id = ?'),
+        _sql(_worksheet_query('w.id = ? AND w.user_id = ?')),
         (worksheet_id, user_id),
     ).fetchone()
 
 
-def _parse_data_payload(payload: dict[str, Any], existing: sqlite3.Row | None = None) -> dict[str, Any]:
+def _parse_data_payload(payload: dict[str, Any], existing: Any | None = None) -> dict[str, Any]:
     data: dict[str, Any] = {}
     for field_name in DATA_FIELDS:
         source_value = payload.get(field_name)
@@ -251,7 +262,7 @@ def _completion_error(data: dict[str, Any]) -> str | None:
 
 
 def _persist_worksheet_fields(
-    conn: sqlite3.Connection,
+    conn,
     *,
     worksheet_id: int,
     user_id: int,
@@ -262,16 +273,19 @@ def _persist_worksheet_fields(
     mark_ai_response_outdated: bool,
 ) -> None:
     conn.execute(
-        '''
+        _sql(
+            '''
         UPDATE cbt_worksheets
         SET title = ?, current_step = ?, record_date = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ?
-        ''',
+        '''
+        ),
         (title, current_step, record_date, worksheet_id, user_id),
     )
     conn.execute(
-        '''
+        _sql(
+            '''
         UPDATE cbt_thought_record_data
         SET situation = ?, feelings_before_json = ?, unhelpful_thoughts = ?,
             evidence_for = ?, evidence_against = ?, balanced_thought = ?,
@@ -281,7 +295,8 @@ def _persist_worksheet_fields(
                 ELSE ai_response_outdated
             END
         WHERE worksheet_id = ?
-        ''',
+        '''
+        ),
         (
             data['situation'],
             json.dumps(data['feelings_before']),
@@ -298,7 +313,7 @@ def _persist_worksheet_fields(
 
 
 def _analysis_input_changed(
-    existing: sqlite3.Row,
+    existing,
     *,
     title: str,
     record_date: str,
@@ -317,17 +332,19 @@ def _analysis_input_changed(
 
 
 def _load_thought_record_analysis_options(
-    conn: sqlite3.Connection,
+    conn,
     user_id: int,
 ) -> dict[str, object]:
     try:
         row = conn.execute(
-            '''
+            _sql(
+                '''
             SELECT ai_tone, ai_verbosity, ai_focus, ai_model,
                    display_name, pronouns, gender, custom_guidance, sex, goals
             FROM users
             WHERE id = ?
-            ''',
+            '''
+            ),
             (user_id,),
         ).fetchone()
     except sqlite3.OperationalError:
@@ -364,7 +381,7 @@ def _load_thought_record_analysis_options(
     return options
 
 
-def _format_thought_record_for_analysis(row: sqlite3.Row) -> str:
+def _format_thought_record_for_analysis(row) -> str:
     def bounded_text(value: object, limit: int = 1200) -> str:
         text = str(value or '').strip()
         return text if len(text) <= limit else text[:limit].rstrip() + '...'
@@ -416,13 +433,14 @@ def list_worksheets():
         clauses.extend(['w.linked_entry_type = ?', 'w.linked_entry_id = ?'])
         params.extend([linked_type, linked_entry_id])
 
-    conn = get_db()
-    rows = conn.execute(
-        _worksheet_query(' AND '.join(clauses)) +
-        ' ORDER BY w.updated_at DESC, w.id DESC',
-        params,
-    ).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(
+            _sql(
+                _worksheet_query(' AND '.join(clauses)) +
+                ' ORDER BY w.updated_at DESC, w.id DESC'
+            ),
+            params,
+        ).fetchall()
     return jsonify([_serialise_worksheet(row) for row in rows]), 200
 
 
@@ -431,65 +449,67 @@ def list_worksheets():
 def create_worksheet():
     user_id = int(get_jwt_identity())
     payload = request.get_json(silent=True) or {}
-    conn = get_db()
     try:
-        title = _coerce_text(payload.get('title'), 'Title', max_length=MAX_TITLE_LENGTH)
-        current_step = _coerce_step(payload.get('current_step'))
-        linked_type, linked_id, linked_entry_date = _validate_link(
-            conn,
-            user_id,
-            payload.get('linked_entry_type'),
-            payload.get('linked_entry_id'),
-        )
-        record_date = _coerce_record_date(
-            payload.get('record_date') or linked_entry_date or date.today().isoformat()
-        )
-        data = _parse_data_payload(payload)
-    except ValueError as exc:
-        conn.close()
-        return jsonify({'error': str(exc)}), 400
+        with get_db() as conn:
+            title = _coerce_text(payload.get('title'), 'Title', max_length=MAX_TITLE_LENGTH)
+            current_step = _coerce_step(payload.get('current_step'))
+            linked_type, linked_id, linked_entry_date = _validate_link(
+                conn,
+                user_id,
+                payload.get('linked_entry_type'),
+                payload.get('linked_entry_id'),
+            )
+            record_date = _coerce_record_date(
+                payload.get('record_date') or linked_entry_date or date.today().isoformat()
+            )
+            data = _parse_data_payload(payload)
 
-    cursor = conn.execute(
-        '''
-        INSERT INTO cbt_worksheets (
-            user_id, worksheet_type, title, status, current_step,
-            record_date, linked_entry_type, linked_entry_id
-        ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?)
-        ''',
-        (
-            user_id,
-            WORKSHEET_TYPE,
-            title,
-            current_step,
-            record_date,
-            linked_type,
-            linked_id,
-        ),
-    )
-    worksheet_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
-    conn.execute(
-        '''
-        INSERT INTO cbt_thought_record_data (
-            worksheet_id, situation, feelings_before_json, unhelpful_thoughts,
-            evidence_for, evidence_against, balanced_thought,
-            feelings_after_json, next_step
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''',
-        (
-            worksheet_id,
-            data['situation'],
-            json.dumps(data['feelings_before']),
-            data['unhelpful_thoughts'],
-            data['evidence_for'],
-            data['evidence_against'],
-            data['balanced_thought'],
-            json.dumps(data['feelings_after']),
-            data['next_step'],
-        ),
-    )
-    conn.commit()
-    row = _get_owned_worksheet(conn, worksheet_id, user_id)
-    conn.close()
+            cursor = conn.execute(
+                _sql(append_returning_id(
+                    '''
+                    INSERT INTO cbt_worksheets (
+                        user_id, worksheet_type, title, status, current_step,
+                        record_date, linked_entry_type, linked_entry_id
+                    ) VALUES (?, ?, ?, 'draft', ?, ?, ?, ?)
+                    ''',
+                    _database_provider(),
+                )),
+                (
+                    user_id,
+                    WORKSHEET_TYPE,
+                    title,
+                    current_step,
+                    record_date,
+                    linked_type,
+                    linked_id,
+                ),
+            )
+            worksheet_id = inserted_id(cursor, _database_provider())
+            conn.execute(
+                _sql(
+                    '''
+                    INSERT INTO cbt_thought_record_data (
+                        worksheet_id, situation, feelings_before_json, unhelpful_thoughts,
+                        evidence_for, evidence_against, balanced_thought,
+                        feelings_after_json, next_step
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    '''
+                ),
+                (
+                    worksheet_id,
+                    data['situation'],
+                    json.dumps(data['feelings_before']),
+                    data['unhelpful_thoughts'],
+                    data['evidence_for'],
+                    data['evidence_against'],
+                    data['balanced_thought'],
+                    json.dumps(data['feelings_after']),
+                    data['next_step'],
+                ),
+            )
+            row = _get_owned_worksheet(conn, worksheet_id, user_id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
     return jsonify(_serialise_worksheet(row)), 201
 
 
@@ -497,9 +517,8 @@ def create_worksheet():
 @jwt_required()
 def get_worksheet(worksheet_id: int):
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    row = _get_owned_worksheet(conn, worksheet_id, user_id)
-    conn.close()
+    with get_db() as conn:
+        row = _get_owned_worksheet(conn, worksheet_id, user_id)
     if not row:
         return jsonify({'error': 'Worksheet not found'}), 404
     return jsonify(_serialise_worksheet(row)), 200
@@ -510,13 +529,11 @@ def get_worksheet(worksheet_id: int):
 def update_worksheet(worksheet_id: int):
     user_id = int(get_jwt_identity())
     payload = request.get_json(silent=True) or {}
-    conn = get_db()
-    existing = _get_owned_worksheet(conn, worksheet_id, user_id)
+    with get_db() as conn:
+        existing = _get_owned_worksheet(conn, worksheet_id, user_id)
     if not existing:
-        conn.close()
         return jsonify({'error': 'Worksheet not found'}), 404
     if existing['status'] == 'completed':
-        conn.close()
         return jsonify({'error': 'Completed worksheets are read-only'}), 409
 
     try:
@@ -531,27 +548,25 @@ def update_worksheet(worksheet_id: int):
         )
         data = _parse_data_payload(payload, existing)
     except ValueError as exc:
-        conn.close()
         return jsonify({'error': str(exc)}), 400
 
-    _persist_worksheet_fields(
-        conn,
-        worksheet_id=worksheet_id,
-        user_id=user_id,
-        title=title,
-        current_step=current_step,
-        record_date=record_date,
-        data=data,
-        mark_ai_response_outdated=_analysis_input_changed(
-            existing,
+    with get_db() as conn:
+        _persist_worksheet_fields(
+            conn,
+            worksheet_id=worksheet_id,
+            user_id=user_id,
             title=title,
+            current_step=current_step,
             record_date=record_date,
             data=data,
-        ),
-    )
-    conn.commit()
-    row = _get_owned_worksheet(conn, worksheet_id, user_id)
-    conn.close()
+            mark_ai_response_outdated=_analysis_input_changed(
+                existing,
+                title=title,
+                record_date=record_date,
+                data=data,
+            ),
+        )
+        row = _get_owned_worksheet(conn, worksheet_id, user_id)
     return jsonify(_serialise_worksheet(row)), 200
 
 
@@ -560,13 +575,11 @@ def update_worksheet(worksheet_id: int):
 def revise_completed_worksheet(worksheet_id: int):
     user_id = int(get_jwt_identity())
     payload = request.get_json(silent=True) or {}
-    conn = get_db()
-    existing = _get_owned_worksheet(conn, worksheet_id, user_id)
+    with get_db() as conn:
+        existing = _get_owned_worksheet(conn, worksheet_id, user_id)
     if not existing:
-        conn.close()
         return jsonify({'error': 'Worksheet not found'}), 404
     if existing['status'] != 'completed':
-        conn.close()
         return jsonify({'error': 'Only completed worksheets can be revised'}), 409
 
     try:
@@ -583,27 +596,25 @@ def revise_completed_worksheet(worksheet_id: int):
         if completion_error:
             raise ValueError(completion_error)
     except ValueError as exc:
-        conn.close()
         return jsonify({'error': str(exc)}), 400
 
-    _persist_worksheet_fields(
-        conn,
-        worksheet_id=worksheet_id,
-        user_id=user_id,
-        title=title,
-        current_step=7,
-        record_date=record_date,
-        data=data,
-        mark_ai_response_outdated=_analysis_input_changed(
-            existing,
+    with get_db() as conn:
+        _persist_worksheet_fields(
+            conn,
+            worksheet_id=worksheet_id,
+            user_id=user_id,
             title=title,
+            current_step=7,
             record_date=record_date,
             data=data,
-        ),
-    )
-    conn.commit()
-    row = _get_owned_worksheet(conn, worksheet_id, user_id)
-    conn.close()
+            mark_ai_response_outdated=_analysis_input_changed(
+                existing,
+                title=title,
+                record_date=record_date,
+                data=data,
+            ),
+        )
+        row = _get_owned_worksheet(conn, worksheet_id, user_id)
     return jsonify(_serialise_worksheet(row)), 200
 
 
@@ -611,30 +622,29 @@ def revise_completed_worksheet(worksheet_id: int):
 @jwt_required()
 def complete_worksheet(worksheet_id: int):
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    existing = _get_owned_worksheet(conn, worksheet_id, user_id)
+    with get_db() as conn:
+        existing = _get_owned_worksheet(conn, worksheet_id, user_id)
     if not existing:
-        conn.close()
         return jsonify({'error': 'Worksheet not found'}), 404
 
     data = _parse_data_payload({}, existing)
     completion_error = _completion_error(data)
     if completion_error:
-        conn.close()
         return jsonify({'error': completion_error}), 400
 
-    conn.execute(
-        '''
-        UPDATE cbt_worksheets
-        SET status = 'completed', current_step = 7,
-            completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-        ''',
-        (worksheet_id, user_id),
-    )
-    conn.commit()
-    row = _get_owned_worksheet(conn, worksheet_id, user_id)
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            _sql(
+                '''
+                UPDATE cbt_worksheets
+                SET status = 'completed', current_step = 7,
+                    completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?
+                '''
+            ),
+            (worksheet_id, user_id),
+        )
+        row = _get_owned_worksheet(conn, worksheet_id, user_id)
     return jsonify(_serialise_worksheet(row)), 200
 
 
@@ -642,24 +652,22 @@ def complete_worksheet(worksheet_id: int):
 @jwt_required()
 def analyse_worksheet(worksheet_id: int):
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    existing = _get_owned_worksheet(conn, worksheet_id, user_id)
+    with get_db() as conn:
+        existing = _get_owned_worksheet(conn, worksheet_id, user_id)
+        if existing:
+            analysis_options = _load_thought_record_analysis_options(conn, user_id)
     if not existing:
-        conn.close()
         return jsonify({'error': 'Worksheet not found'}), 404
     analysis_source = ' '.join(
         str(existing[field_name] or '').strip()
         for field_name in DATA_FIELDS
     ).strip()
     if len(analysis_source) < 20:
-        conn.close()
         return jsonify({
             'error': 'Add more detail to the thought record before requesting a response'
         }), 400
 
-    analysis_options = _load_thought_record_analysis_options(conn, user_id)
     analysis_text = _format_thought_record_for_analysis(existing)
-    conn.close()
 
     try:
         ai_response = OpenAIService().analyse_thought_record(
@@ -676,31 +684,32 @@ def analyse_worksheet(worksheet_id: int):
         )
         return jsonify({'error': 'The AI response could not be generated'}), 502
 
-    conn = get_db()
-    current = _get_owned_worksheet(conn, worksheet_id, user_id)
-    if not current:
-        conn.close()
-        return jsonify({'error': 'Worksheet is no longer available for analysis'}), 409
-    conn.execute(
-        '''
-        UPDATE cbt_thought_record_data
-        SET ai_response = ?, ai_responded_at = CURRENT_TIMESTAMP,
-            ai_response_outdated = 0
-        WHERE worksheet_id = ?
-        ''',
-        (ai_response, worksheet_id),
-    )
-    conn.execute(
-        '''
-        UPDATE cbt_worksheets
-        SET updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-        ''',
-        (worksheet_id, user_id),
-    )
-    conn.commit()
-    row = _get_owned_worksheet(conn, worksheet_id, user_id)
-    conn.close()
+    with get_db() as conn:
+        current = _get_owned_worksheet(conn, worksheet_id, user_id)
+        if not current:
+            return jsonify({'error': 'Worksheet is no longer available for analysis'}), 409
+        conn.execute(
+            _sql(
+                '''
+                UPDATE cbt_thought_record_data
+                SET ai_response = ?, ai_responded_at = CURRENT_TIMESTAMP,
+                    ai_response_outdated = 0
+                WHERE worksheet_id = ?
+                '''
+            ),
+            (ai_response, worksheet_id),
+        )
+        conn.execute(
+            _sql(
+                '''
+                UPDATE cbt_worksheets
+                SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?
+                '''
+            ),
+            (worksheet_id, user_id),
+        )
+        row = _get_owned_worksheet(conn, worksheet_id, user_id)
     return jsonify(_serialise_worksheet(row)), 200
 
 
@@ -708,13 +717,11 @@ def analyse_worksheet(worksheet_id: int):
 @jwt_required()
 def delete_worksheet(worksheet_id: int):
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    cursor = conn.execute(
-        'DELETE FROM cbt_worksheets WHERE id = ? AND user_id = ?',
-        (worksheet_id, user_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        cursor = conn.execute(
+            _sql('DELETE FROM cbt_worksheets WHERE id = ? AND user_id = ?'),
+            (worksheet_id, user_id),
+        )
     if cursor.rowcount == 0:
         return jsonify({'error': 'Worksheet not found'}), 404
     return jsonify({'message': 'Worksheet deleted'}), 200
