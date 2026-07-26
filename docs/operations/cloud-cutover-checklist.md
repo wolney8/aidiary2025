@@ -26,9 +26,10 @@ not cut over until every required gate is complete and the readiness validator r
 3. Export JSONL rows from the same SQLite file used for the audit.
 4. Dry-run the Postgres load plan and confirm row counts match the audit report.
 5. Apply the export to a disposable Postgres rehearsal database or Neon branch.
-6. Run backend regression tests against the current local app baseline.
-7. Run frontend lint and production build.
-8. Run manual smoke against the rehearsal database before production cutover.
+6. Run cloud schema/export parity checks.
+7. Run backend regression tests against the current local app baseline.
+8. Run frontend lint and production build.
+9. Run manual smoke against the rehearsal database before production cutover.
 
 ## Commands
 
@@ -46,6 +47,14 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/load_cloud_migration.py \
   --export-dir /tmp/aidiary-cloud-export
+```
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. pytest tests/test_cloud_schema_parity.py \
+  tests/test_cloud_migration_rehearsal.py \
+  tests/test_cloud_cutover_readiness.py
 ```
 
 ```bash
