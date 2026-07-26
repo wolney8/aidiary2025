@@ -1,7 +1,7 @@
 import pytest
 
 from app import create_app
-from services.database import connect_sqlite_path, resolve_database_settings
+from services.database import connect_sqlite_path, resolve_database_settings, table_columns
 
 
 def test_database_settings_default_to_sqlite(tmp_path):
@@ -84,3 +84,22 @@ def test_connect_sqlite_path_returns_row_mapping(tmp_path):
     conn.close()
 
     assert row["name"] == "test"
+
+
+def test_table_columns_returns_column_names(tmp_path):
+    db_path = tmp_path / "app.db"
+    conn = connect_sqlite_path(str(db_path))
+    conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT)")
+
+    assert table_columns(conn, "sample") == {"id", "name"}
+
+    conn.close()
+
+
+def test_table_columns_returns_empty_set_for_missing_table(tmp_path):
+    db_path = tmp_path / "app.db"
+    conn = connect_sqlite_path(str(db_path))
+
+    assert table_columns(conn, "missing") == set()
+
+    conn.close()

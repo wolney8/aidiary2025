@@ -4,7 +4,7 @@ from flask_jwt_extended import create_access_token
 import bcrypt
 import sqlite3
 import re
-from services.database import connect_sqlite
+from services.database import connect_sqlite, table_columns
 from services.media_storage import resolve_image_url
 from services.sql_compat import inserted_id
 
@@ -62,9 +62,7 @@ def get_db():
 
 
 def _optional_user_selects(cursor: sqlite3.Cursor) -> str:
-    columns = {
-        row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()
-    }
+    columns = table_columns(cursor.connection, 'users')
     optional_columns = {
         'profile_picture_storage_key': 'NULL',
         'writing_reminders_enabled': '0',

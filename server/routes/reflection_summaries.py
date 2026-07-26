@@ -8,7 +8,7 @@ from typing import Any
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
-from services.database import connect_sqlite
+from services.database import connect_sqlite, table_columns
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
 
 reflection_summaries_bp = Blueprint('reflection_summaries', __name__)
@@ -27,10 +27,7 @@ def get_db() -> sqlite3.Connection:
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-    try:
-        return {row[1] for row in conn.execute(f'PRAGMA table_info({table_name})')}
-    except sqlite3.OperationalError:
-        return set()
+    return table_columns(conn, table_name)
 
 
 def _expr(columns: set[str], column: str, alias: str | None = None) -> str:
