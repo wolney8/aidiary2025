@@ -48,7 +48,18 @@ PYTHONPATH=. python scripts/load_cloud_migration.py \
 This checks which exported files will be loaded and how many rows are present. It does not
 connect to Postgres.
 
-## 4. Apply To A Rehearsal Postgres Database
+## 4. Plan Explicit Postgres Migrations
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/run_postgres_migrations.py
+```
+
+This lists the ordered Postgres migration files that will be applied. In dry-run mode it
+does not connect to Postgres.
+
+## 5. Apply To A Rehearsal Postgres Database
 
 Install Psycopg only when a real rehearsal database is ready:
 
@@ -56,6 +67,8 @@ Install Psycopg only when a real rehearsal database is ready:
 cd server
 source venv/bin/activate
 pip install "psycopg[binary]"
+DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/run_postgres_migrations.py \
+  --apply
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
   --export-dir /tmp/aidiary-cloud-export \
   --apply \
