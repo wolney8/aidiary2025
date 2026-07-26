@@ -101,3 +101,19 @@ def inserted_id(cursor, provider: str) -> int:
         except (TypeError, KeyError, IndexError):
             return int(row[0])
     raise ValueError(f"Unsupported database provider: {provider}")
+
+
+def date_expr(value: str, provider: str) -> str:
+    if provider == SQLITE_PROVIDER:
+        return f"date({value})"
+    if provider == POSTGRES_PROVIDER:
+        return f"({value})::date"
+    raise ValueError(f"Unsupported database provider: {provider}")
+
+
+def current_date_expr(provider: str) -> str:
+    if provider == SQLITE_PROVIDER:
+        return "date('now')"
+    if provider == POSTGRES_PROVIDER:
+        return "CURRENT_DATE"
+    raise ValueError(f"Unsupported database provider: {provider}")
