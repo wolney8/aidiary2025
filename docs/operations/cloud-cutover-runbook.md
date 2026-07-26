@@ -108,7 +108,28 @@ DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration
 8. Switch backend database configuration.
 9. Restart backend.
 10. Run health check and manual parity smoke.
-11. Accept cutover only if no rollback trigger is hit.
+11. Create the cutover evidence packet.
+12. Accept cutover only if no rollback trigger is hit.
+
+Evidence packet command:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/create_cutover_evidence_packet.py \
+  --sqlite-backup /tmp/aidiary-sqlite-backup.db \
+  --export-dir /tmp/aidiary-cloud-export \
+  --migration-report /tmp/aidiary-cloud-migration-report.json \
+  --readiness-report /tmp/aidiary-cloud-readiness.json \
+  --post-cutover-baseline /tmp/aidiary-post-cutover-baseline.json \
+  --postgres-target "neon/rehearsal-branch-or-production-db" \
+  --backend-tests-passed \
+  --frontend-lint-passed \
+  --frontend-build-passed \
+  --manual-smoke-passed \
+  --rollback-rehearsed \
+  --output-json /tmp/aidiary-cutover-evidence-packet.json
+```
 
 ## Rollback Rehearsal Scenarios
 
