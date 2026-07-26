@@ -153,6 +153,57 @@ def test_generate_list_and_delete_monthly_summary(mock_service_cls, summaries_cl
 
 
 @patch('routes.reflection_summaries.OpenAIService')
+def test_generate_summary_includes_thought_record_sources(mock_service_cls, summaries_client):
+    client, db_path = summaries_client
+    token, user_id = _register(client, 'thought-summary-user')
+    mock_service_cls.return_value.generate_reflection_summary.return_value = {
+        'title': 'A balanced month',
+        'summary_text': 'You used thought records to reframe a difficult situation.',
+        'themes': ['thought records'],
+    }
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        '''
+        INSERT INTO cbt_worksheets (
+            id, user_id, worksheet_type, title, status, current_step, record_date
+        ) VALUES (10, ?, 'thought_record', 'Work worry', 'completed', 7, '2026-07-12')
+        ''',
+        (user_id,),
+    )
+    conn.execute(
+        '''
+        INSERT INTO cbt_thought_record_data (
+            worksheet_id, situation, balanced_thought, next_step, ai_response
+        ) VALUES (
+            10,
+            'A work message felt sharp.',
+            'There may be another explanation and I can check calmly.',
+            'Reply after lunch.',
+            'This is a useful reframe.'
+        )
+        '''
+    )
+    conn.commit()
+    conn.close()
+
+    response = client.post(
+        '/api/reflection-summaries/generate',
+        headers=_headers(token),
+        json={'period_type': 'monthly', 'period_start': '2026-07-01'},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['source_refs'] == [
+        {'type': 'thought_record', 'id': 10, 'date': '2026-07-12', 'theme': 'Work worry'}
+    ]
+    source_context = mock_service_cls.return_value.generate_reflection_summary.call_args.args[2]
+    assert 'Thought record on Sunday, 12 July 2026: Work worry' in source_context
+    assert 'There may be another explanation' in source_context
+
+
+@patch('routes.reflection_summaries.OpenAIService')
 def test_empty_period_returns_clear_summary_without_ai_call(mock_service_cls, summaries_client):
     client, _db_path = summaries_client
     token, _user_id = _register(client, 'empty-summary-user')
