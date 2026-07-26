@@ -6,9 +6,11 @@ import tempfile
 from io import BytesIO
 
 import pytest
+from flask import Flask
 from PIL import Image
 
 from app import create_app
+from routes import important_days
 
 
 @pytest.fixture
@@ -66,6 +68,35 @@ def _register_and_get_token(client, username: str) -> str:
         content_type="application/json",
     )
     return json.loads(response.data)["token"]
+
+
+def test_important_day_sql_helpers_support_postgres_placeholders_and_returning_id():
+    app = Flask(__name__)
+    app.config["DATABASE_PROVIDER"] = "postgres"
+
+    with app.app_context():
+        list_sql = important_days._sql(
+            f"""
+            {important_days.IMPORTANT_DAY_SELECT}
+            WHERE user_id = ?
+            ORDER BY month ASC
+            """
+        )
+        insert_sql = important_days._sql(
+            important_days.append_returning_id(
+                """
+                INSERT INTO important_days (
+                    user_id, label, starts_on, month, day, original_year,
+                    category, recurrence, icon_name, accent_color, note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                important_days._database_provider(),
+            )
+        )
+
+    assert "WHERE user_id = $1" in list_sql
+    assert "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)" in insert_sql
+    assert "RETURNING id" in insert_sql
 
 
 def test_runtime_migration_creates_important_days_table(client_with_legacy_user_schema):

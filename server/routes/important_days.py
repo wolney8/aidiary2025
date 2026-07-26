@@ -3,15 +3,15 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import datetime
 from io import BytesIO
-import sqlite3
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from services.database import connect_sqlite
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.media_storage import delete_image, resolve_image_url, store_uploaded_image
-from services.sql_compat import inserted_id
+from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
 
 important_days_bp = Blueprint('important_days', __name__)
 
@@ -36,8 +36,20 @@ IMPORTANT_DAY_IMAGE_TARGET_SIZE = (1600, 1600)
 IMPORTANT_DAY_IMAGE_JPEG_QUALITY = 86
 
 
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
 def get_db():
-    return connect_sqlite(current_app, log_label='Important days')
+    return _database_adapter().connect(timeout=10)
 
 
 def _coerce_required_text(value: object, field_name: str, *, max_length: int) -> str:
@@ -161,7 +173,7 @@ def _validate_calendar_day(month: int, day: int, original_year: int | None) -> N
         raise ValueError('Day is invalid for the selected month')
 
 
-def _serialise_important_day(row: sqlite3.Row) -> dict[str, object]:
+def _serialise_important_day(row) -> dict[str, object]:
     starts_on = row['starts_on']
     if not starts_on:
         fallback_year = row['original_year'] or 2024
@@ -222,22 +234,26 @@ def _parse_payload(
     )
 
 
+IMPORTANT_DAY_SELECT = '''
+    SELECT id, label, starts_on, month, day, original_year, category, recurrence,
+           icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
+    FROM important_days
+'''
+
+
 @important_days_bp.route('/important-days', methods=['GET'])
 @jwt_required()
 def list_important_days():
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    rows = conn.execute(
-        '''
-        SELECT id, label, starts_on, month, day, original_year, category, recurrence,
-               icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
-        FROM important_days
-        WHERE user_id = ?
-        ORDER BY month ASC, day ASC, lower(label) ASC, id ASC
-        ''',
-        (user_id,),
-    ).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(
+            _sql(f'''
+            {IMPORTANT_DAY_SELECT}
+            WHERE user_id = ?
+            ORDER BY month ASC, day ASC, lower(label) ASC, id ASC
+            '''),
+            (user_id,),
+        ).fetchall()
 
     return jsonify([_serialise_important_day(row) for row in rows]), 200
 
@@ -264,40 +280,39 @@ def create_important_day():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        '''
+    with get_db() as conn:
+        cursor = conn.execute(
+            _sql(append_returning_id(
+                '''
         INSERT INTO important_days (
             user_id, label, starts_on, month, day, original_year, category,
             recurrence, icon_name, accent_color, note
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
-        (
-            user_id,
-            label,
-            starts_on,
-            month,
-            day,
-            original_year,
-            category,
-            recurrence,
-            icon_name,
-            accent_color,
-            note,
-        ),
-    )
-    conn.commit()
-    row = conn.execute(
-        '''
-        SELECT id, label, starts_on, month, day, original_year, category, recurrence,
-               icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
-        FROM important_days
-        WHERE id = ? AND user_id = ?
-        ''',
-        (inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite')), user_id),
-    ).fetchone()
-    conn.close()
+                _database_provider(),
+            )),
+            (
+                user_id,
+                label,
+                starts_on,
+                month,
+                day,
+                original_year,
+                category,
+                recurrence,
+                icon_name,
+                accent_color,
+                note,
+            ),
+        )
+        new_id = inserted_id(cursor, _database_provider())
+        row = conn.execute(
+            _sql(f'''
+            {IMPORTANT_DAY_SELECT}
+            WHERE id = ? AND user_id = ?
+            '''),
+            (new_id, user_id),
+        ).fetchone()
 
     return jsonify(_serialise_important_day(row)), 201
 
@@ -324,47 +339,43 @@ def update_important_day(important_day_id: int):
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        '''
-        UPDATE important_days
-        SET label = ?, starts_on = ?, month = ?, day = ?, original_year = ?, category = ?,
-            recurrence = ?, icon_name = ?, accent_color = ?, note = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-        ''',
-        (
-            label,
-            starts_on,
-            month,
-            day,
-            original_year,
-            category,
-            recurrence,
-            icon_name,
-            accent_color,
-            note,
-            important_day_id,
-            user_id,
-        ),
-    )
-    conn.commit()
+    with get_db() as conn:
+        cursor = conn.execute(
+            _sql(
+                '''
+            UPDATE important_days
+            SET label = ?, starts_on = ?, month = ?, day = ?, original_year = ?, category = ?,
+                recurrence = ?, icon_name = ?, accent_color = ?, note = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+            '''
+            ),
+            (
+                label,
+                starts_on,
+                month,
+                day,
+                original_year,
+                category,
+                recurrence,
+                icon_name,
+                accent_color,
+                note,
+                important_day_id,
+                user_id,
+            ),
+        )
 
-    if cursor.rowcount == 0:
-        conn.close()
-        return jsonify({'error': 'Important day not found'}), 404
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Important day not found'}), 404
 
-    row = conn.execute(
-        '''
-        SELECT id, label, starts_on, month, day, original_year, category, recurrence,
-               icon_name, accent_color, image_url, image_storage_key, note, created_at, updated_at
-        FROM important_days
-        WHERE id = ? AND user_id = ?
-        ''',
-        (important_day_id, user_id),
-    ).fetchone()
-    conn.close()
+        row = conn.execute(
+            _sql(f'''
+            {IMPORTANT_DAY_SELECT}
+            WHERE id = ? AND user_id = ?
+            '''),
+            (important_day_id, user_id),
+        ).fetchone()
 
     return jsonify(_serialise_important_day(row)), 200
 
@@ -374,18 +385,15 @@ def update_important_day(important_day_id: int):
 def delete_important_day(important_day_id: int):
     user_id = int(get_jwt_identity())
 
-    conn = get_db()
-    existing_row = conn.execute(
-        'SELECT image_storage_key FROM important_days WHERE id = ? AND user_id = ?',
-        (important_day_id, user_id),
-    ).fetchone()
-    cursor = conn.cursor()
-    cursor.execute(
-        'DELETE FROM important_days WHERE id = ? AND user_id = ?',
-        (important_day_id, user_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        existing_row = conn.execute(
+            _sql('SELECT image_storage_key FROM important_days WHERE id = ? AND user_id = ?'),
+            (important_day_id, user_id),
+        ).fetchone()
+        cursor = conn.execute(
+            _sql('DELETE FROM important_days WHERE id = ? AND user_id = ?'),
+            (important_day_id, user_id),
+        )
 
     if cursor.rowcount == 0:
         return jsonify({'error': 'Important day not found'}), 404
@@ -408,17 +416,18 @@ def upload_important_day_image(important_day_id: int):
     if len(file_bytes) > MAX_IMAGE_BYTES:
         return jsonify({'error': 'Image is too large. Maximum size is 5 MB.'}), 400
 
-    conn = get_db()
-    row = conn.execute(
-        '''
-        SELECT id, image_storage_key
-        FROM important_days
-        WHERE id = ? AND user_id = ?
-        ''',
-        (important_day_id, user_id),
-    ).fetchone()
+    with get_db() as conn:
+        row = conn.execute(
+            _sql(
+                '''
+            SELECT id, image_storage_key
+            FROM important_days
+            WHERE id = ? AND user_id = ?
+            '''
+            ),
+            (important_day_id, user_id),
+        ).fetchone()
     if not row:
-        conn.close()
         return jsonify({'error': 'Important day not found'}), 404
 
     try:
@@ -429,23 +438,22 @@ def upload_important_day_image(important_day_id: int):
             entry_kind='important-day',
         )
     except ValueError as exc:
-        conn.close()
         return jsonify({'error': str(exc)}), 400
     except Exception as exc:  # pragma: no cover - defensive filesystem guard
         current_app.logger.error('Important day image upload failed: %s', exc)
-        conn.close()
         return jsonify({'error': 'Image upload failed'}), 500
 
-    conn.execute(
-        '''
-        UPDATE important_days
-        SET image_storage_key = ?, image_url = NULL, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-        ''',
-        (storage_key, important_day_id, user_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            _sql(
+                '''
+            UPDATE important_days
+            SET image_storage_key = ?, image_url = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+            '''
+            ),
+            (storage_key, important_day_id, user_id),
+        )
     delete_image(row['image_storage_key'])
 
     return jsonify({
@@ -459,29 +467,31 @@ def upload_important_day_image(important_day_id: int):
 @jwt_required()
 def delete_important_day_image(important_day_id: int):
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    row = conn.execute(
-        '''
-        SELECT id, image_storage_key, image_url
-        FROM important_days
-        WHERE id = ? AND user_id = ?
-        ''',
-        (important_day_id, user_id),
-    ).fetchone()
+    with get_db() as conn:
+        row = conn.execute(
+            _sql(
+                '''
+            SELECT id, image_storage_key, image_url
+            FROM important_days
+            WHERE id = ? AND user_id = ?
+            '''
+            ),
+            (important_day_id, user_id),
+        ).fetchone()
     if not row:
-        conn.close()
         return jsonify({'error': 'Important day not found'}), 404
 
-    conn.execute(
-        '''
-        UPDATE important_days
-        SET image_storage_key = NULL, image_url = NULL, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-        ''',
-        (important_day_id, user_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            _sql(
+                '''
+            UPDATE important_days
+            SET image_storage_key = NULL, image_url = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+            '''
+            ),
+            (important_day_id, user_id),
+        )
     delete_image(row['image_storage_key'])
 
     return jsonify({'id': important_day_id, 'has_image': False, 'image_url': None}), 200
