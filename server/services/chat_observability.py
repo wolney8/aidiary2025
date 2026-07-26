@@ -57,6 +57,35 @@ def _evaluate_slo(
     }
 
 
+def _build_slo_alerts(slo_status: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    labels = {
+        'success_completion_rate': 'Chat success completion rate',
+        'error_rate': 'Chat error rate',
+        'p95_latency_ms': 'Chat p95 latency',
+        'rate_limit_events': 'Chat rate-limit events',
+    }
+    severities = {
+        'success_completion_rate': 'critical',
+        'error_rate': 'critical',
+        'p95_latency_ms': 'warning',
+        'rate_limit_events': 'warning',
+    }
+    alerts: list[dict[str, Any]] = []
+    for metric, status in slo_status.items():
+        if status['status'] != 'breached':
+            continue
+        label = labels.get(metric, metric)
+        alerts.append({
+            'code': 'chat_slo_breached',
+            'metric': metric,
+            'severity': severities.get(metric, 'warning'),
+            'message': f'{label} breached its configured target.',
+            'actual': status['actual'],
+            'target': status['target'],
+        })
+    return alerts
+
+
 def _safe_json(value: dict[str, Any] | None) -> str:
     if not value:
         return '{}'
@@ -215,6 +244,7 @@ class ChatObservabilityService:
                 'breached': breached_slos,
                 'no_data': missing_slos,
             },
+            'slo_alerts': _build_slo_alerts(slo_status),
             'event_counts': dict(event_counts),
             'error_counts': dict(error_counts),
             'terminal_events': terminal_count,
