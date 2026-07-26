@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 
 import httpx
+
+from services.database import SQLITE_PROVIDER
+from services.sql_compat import adapt_placeholders
 
 AVAILABLE_COUNTRIES_URL = "https://date.nager.at/api/v3/AvailableCountries"
 PUBLIC_HOLIDAYS_URL_TEMPLATE = "https://date.nager.at/api/v3/PublicHolidays/{year}/{country_code}"
@@ -63,23 +65,33 @@ def list_fallback_countries() -> list[dict[str, str]]:
     )
 
 
+def _row_value(row: object, key: str, index: int) -> object:
+    if isinstance(row, Mapping):
+        return row[key]
+    return row[index]
+
+
 def get_public_holidays(
-    conn: sqlite3.Connection,
+    conn,
     *,
     country_code: str,
     year: int,
+    provider: str = SQLITE_PROVIDER,
 ) -> list[dict[str, Any]]:
     normalised_country_code = country_code.strip().upper()
     cached_row = conn.execute(
-        """
+        adapt_placeholders(
+            """
         SELECT payload_json
         FROM public_holiday_cache
         WHERE country_code = ? AND holiday_year = ?
         """,
+            provider,
+        ),
         (normalised_country_code, year),
     ).fetchone()
     if cached_row:
-        return json.loads(cached_row[0])
+        return json.loads(str(_row_value(cached_row, "payload_json", 0)))
 
     with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.get(
@@ -94,13 +106,16 @@ def get_public_holidays(
     serialised_payload = [_serialise_holiday(item) for item in payload]
     fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn.execute(
-        """
+        adapt_placeholders(
+            """
         INSERT INTO public_holiday_cache (
             country_code, holiday_year, payload_json, fetched_at
         ) VALUES (?, ?, ?, ?)
         ON CONFLICT(country_code, holiday_year)
         DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at
         """,
+            provider,
+        ),
         (
             normalised_country_code,
             year,
@@ -108,5 +123,4 @@ def get_public_holidays(
             fetched_at,
         ),
     )
-    conn.commit()
     return serialised_payload
