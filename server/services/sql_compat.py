@@ -111,6 +111,30 @@ def date_expr(value: str, provider: str) -> str:
     raise ValueError(f"Unsupported database provider: {provider}")
 
 
+def date_month_expr(value: str, provider: str) -> str:
+    if provider == SQLITE_PROVIDER:
+        return f"substr({value}, 6, 2)"
+    if provider == POSTGRES_PROVIDER:
+        return f"to_char(({value})::date, 'MM')"
+    raise ValueError(f"Unsupported database provider: {provider}")
+
+
+def date_month_day_expr(value: str, provider: str) -> str:
+    if provider == SQLITE_PROVIDER:
+        return f"substr({value}, 6, 5)"
+    if provider == POSTGRES_PROVIDER:
+        return f"to_char(({value})::date, 'MM-DD')"
+    raise ValueError(f"Unsupported database provider: {provider}")
+
+
+def date_year_expr(value: str, provider: str) -> str:
+    if provider == SQLITE_PROVIDER:
+        return f"CAST(substr({value}, 1, 4) AS INTEGER)"
+    if provider == POSTGRES_PROVIDER:
+        return f"EXTRACT(YEAR FROM ({value})::date)::integer"
+    raise ValueError(f"Unsupported database provider: {provider}")
+
+
 def current_date_expr(provider: str) -> str:
     if provider == SQLITE_PROVIDER:
         return "date('now')"
