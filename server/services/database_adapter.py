@@ -23,6 +23,50 @@ from services.sql_compat import adapt_placeholders
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+class _SqlCompatCursor:
+    def __init__(self, cursor, provider: str):
+        self._cursor = cursor
+        self._provider = provider
+
+    def execute(self, sql: str, params=None):
+        self._cursor.execute(adapt_placeholders(sql, self._provider), params or ())
+        return self
+
+    def executemany(self, sql: str, params_seq):
+        self._cursor.executemany(adapt_placeholders(sql, self._provider), params_seq)
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def __getattr__(self, name: str):
+        return getattr(self._cursor, name)
+
+
+class _SqlCompatConnection:
+    def __init__(self, conn, provider: str):
+        self._conn = conn
+        self._provider = provider
+
+    def execute(self, sql: str, params=None):
+        return self._conn.execute(adapt_placeholders(sql, self._provider), params or ())
+
+    def executemany(self, sql: str, params_seq):
+        return self._conn.executemany(adapt_placeholders(sql, self._provider), params_seq)
+
+    def cursor(self):
+        return _SqlCompatCursor(self._conn.cursor(), self._provider)
+
+    def __getattr__(self, name: str):
+        return getattr(self._conn, name)
+
+
 def _validate_identifier(identifier: str) -> str:
     if not IDENTIFIER_RE.match(identifier):
         raise ValueError(f"Unsafe SQL identifier: {identifier}")
@@ -59,22 +103,34 @@ class DatabaseAdapter:
         foreign_keys: bool = False,
         journal_mode_wal: bool = False,
     ) -> Iterator[object]:
+        conn = self.open(
+            timeout=timeout,
+            foreign_keys=foreign_keys,
+            journal_mode_wal=journal_mode_wal,
+        )
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def open(
+        self,
+        *,
+        timeout: int = 30,
+        foreign_keys: bool = False,
+        journal_mode_wal: bool = False,
+    ) -> object:
         if self.provider == SQLITE_PROVIDER:
-            conn = connect_sqlite_path(
+            return connect_sqlite_path(
                 self.sqlite_path,
                 timeout=timeout,
                 foreign_keys=foreign_keys,
                 journal_mode_wal=journal_mode_wal,
             )
-            try:
-                yield conn
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
-            return
 
         if self.provider == POSTGRES_PROVIDER:
             if not self.database_url:
@@ -88,13 +144,12 @@ class DatabaseAdapter:
                     'Install with: pip install "psycopg[binary]"'
                 ) from exc
 
-            with psycopg.connect(
+            conn = psycopg.connect(
                 self.database_url,
                 connect_timeout=timeout,
                 row_factory=dict_row,
-            ) as conn:
-                yield conn
-            return
+            )
+            return _SqlCompatConnection(conn, self.provider)
 
         raise ValueError(f"Unsupported database provider: {self.provider}")
 

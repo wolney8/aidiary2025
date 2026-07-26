@@ -22,8 +22,9 @@ from services.attachment_text import (
     extract_pdf_attachment_content,
     looks_like_low_quality_ocr_text,
 )
-from services.database import connect_sqlite
-from services.sql_compat import inserted_id
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
+from services.sql_compat import append_returning_id, inserted_id
 from services.openai_svc import (
     DAILY_IMAGE_STYLE_PREFIX,
     DREAM_IMAGE_STYLE_PREFIX,
@@ -76,12 +77,18 @@ ENTRY_IMAGE_JPEG_QUALITY = 85
 
 def get_db():
     """Get database connection."""
-    return connect_sqlite(
-        current_app,
-        log_label='Entries',
+    return _database_adapter().open(
         timeout=30,
         journal_mode_wal=True,
     )
+
+
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
 
 
 def _parse_entry_date(value):
@@ -625,12 +632,15 @@ def _upload_entry_attachment(
             )
 
     cursor.execute(
-        '''
+        append_returning_id(
+            '''
         INSERT INTO entry_assets
         (user_id, entry_type, entry_id, asset_role, storage_key, original_filename, mime_type, file_size_bytes,
          derived_text, derived_text_source, derived_text_updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
+            _database_provider(),
+        ),
         (
             user_id,
             entry_type,
@@ -645,7 +655,7 @@ def _upload_entry_attachment(
             derived_text_updated_at,
         ),
     )
-    asset_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
+    asset_id = inserted_id(cursor, _database_provider())
     conn.commit()
     attachment = _serialise_entry_assets(
         conn,
@@ -1165,11 +1175,11 @@ def create_daily_entry():
     
     entry_number = (max_entry['max_num'] or 0) + 1
     
-    cursor.execute('''
+    cursor.execute(append_returning_id('''
         INSERT INTO dailydiary_entries 
         (user_id, entry_date, entry_time, entry_number, title, user_message, tags, mood, ai_style, daily_people_names, daily_places)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
+    ''', _database_provider()), (
         user_id,
         entry_date,
         entry_time,
@@ -1183,8 +1193,8 @@ def create_daily_entry():
         enrichment['daily_places'],
     ))
     
+    entry_id = inserted_id(cursor, _database_provider())
     conn.commit()
-    entry_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
     conn.close()
     
     return jsonify({
@@ -1724,13 +1734,13 @@ def create_dream_entry():
     )
     
     # Insert with all dream-specific fields
-    cursor.execute('''
+    cursor.execute(append_returning_id('''
         INSERT INTO dreamdiary_entries 
         (user_id, entry_date, entry_time, entry_number, title, cast, location, 
          period, emotion, plot, symbols_and_imagery, insight, action, other, tags,
          mood, ai_style, dream_people_names, dream_places)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
+    ''', _database_provider()), (
         user_id, entry_date, entry_time, entry_number,
         data.get('title', ''),
         data.get('cast', ''),
@@ -1749,8 +1759,8 @@ def create_dream_entry():
         enrichment['dream_places'],
     ))
     
+    entry_id = inserted_id(cursor, _database_provider())
     conn.commit()
-    entry_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
     conn.close()
     
     return jsonify({

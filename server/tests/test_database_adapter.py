@@ -4,7 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from services.database import DatabaseSettings
-from services.database_adapter import DatabaseAdapter, get_database_adapter
+from services.database_adapter import (
+    DatabaseAdapter,
+    _SqlCompatConnection,
+    get_database_adapter,
+)
 
 
 def test_database_adapter_builds_from_settings():
@@ -56,6 +60,23 @@ def test_database_adapter_opens_sqlite_connections(tmp_path):
     assert persisted["name"] == "adapter"
 
 
+def test_database_adapter_open_returns_manual_close_sqlite_connection(tmp_path):
+    db_path = tmp_path / "app.db"
+    adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
+
+    conn = adapter.open()
+    try:
+        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO sample (name) VALUES (?)", ("manual",))
+        conn.commit()
+    finally:
+        conn.close()
+
+    with adapter.connect() as conn:
+        row = conn.execute("SELECT name FROM sample").fetchone()
+    assert row["name"] == "manual"
+
+
 def test_database_adapter_introspects_sqlite_tables_and_columns(tmp_path):
     db_path = tmp_path / "app.db"
     adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
@@ -76,6 +97,67 @@ def test_database_adapter_rejects_unsafe_table_names(tmp_path):
             adapter.table_exists(conn, "users; DROP TABLE users")
         with pytest.raises(ValueError, match="Unsafe SQL identifier"):
             adapter.table_columns(conn, "users; DROP TABLE users")
+
+
+class _FakeCursor:
+    def __init__(self):
+        self.calls = []
+        self.rowcount = 0
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return self
+
+    def executemany(self, sql, params_seq):
+        self.calls.append((sql, params_seq))
+        return self
+
+    def fetchone(self):
+        return {"id": 123}
+
+    def fetchall(self):
+        return []
+
+
+class _FakeConnection:
+    def __init__(self):
+        self.calls = []
+        self.cursor_obj = _FakeCursor()
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return self.cursor_obj
+
+    def executemany(self, sql, params_seq):
+        self.calls.append((sql, params_seq))
+        return self.cursor_obj
+
+    def cursor(self):
+        return self.cursor_obj
+
+
+def test_sql_compat_connection_adapts_direct_execute_placeholders():
+    raw_conn = _FakeConnection()
+    conn = _SqlCompatConnection(raw_conn, "postgres")
+
+    conn.execute("SELECT * FROM users WHERE id = ? AND note = '?'", (7,))
+
+    assert raw_conn.calls == [
+        ("SELECT * FROM users WHERE id = $1 AND note = '?'", (7,))
+    ]
+
+
+def test_sql_compat_cursor_adapts_execute_placeholders_and_preserves_cursor_api():
+    raw_conn = _FakeConnection()
+    cursor = _SqlCompatConnection(raw_conn, "postgres").cursor()
+
+    returned = cursor.execute("UPDATE users SET name = ? WHERE id = ?", ("Will", 7))
+
+    assert returned is cursor
+    assert raw_conn.cursor_obj.calls == [
+        ("UPDATE users SET name = $1 WHERE id = $2", ("Will", 7))
+    ]
+    assert cursor.fetchone() == {"id": 123}
 
 
 def test_database_adapter_requires_postgres_url():
