@@ -33,6 +33,7 @@ def build_evidence_packet(
     export_dir: str,
     migration_report: str,
     readiness_report: str,
+    preflight_report: str | None = None,
     post_cutover_baseline: str | None = None,
     postgres_target: str = "",
     backend_tests_passed: bool = False,
@@ -43,6 +44,7 @@ def build_evidence_packet(
 ) -> dict[str, Any]:
     migration_data = _load_json(migration_report)
     readiness_data = _load_json(readiness_report)
+    preflight_data = _load_json(preflight_report) if preflight_report else None
     baseline_data = _load_json(post_cutover_baseline) if post_cutover_baseline else None
 
     evidence = {
@@ -57,6 +59,10 @@ def build_evidence_packet(
     ]
     if readiness_data.get("ready_for_cutover") is not True:
         blockers.append("readiness_report_ready_for_cutover")
+    if not preflight_data:
+        blockers.append("preflight_report_missing")
+    elif preflight_data.get("ready_for_production") is not True:
+        blockers.append("preflight_report_ready_for_production")
     if baseline_data and int((baseline_data.get("summary") or {}).get("error_count") or 0) > 0:
         blockers.append("post_cutover_baseline_errors")
 
@@ -68,6 +74,11 @@ def build_evidence_packet(
             "export_dir": _resolve_existing_path(export_dir, must_be_dir=True),
             "migration_report": _resolve_existing_path(migration_report),
             "readiness_report": _resolve_existing_path(readiness_report),
+            "preflight_report": (
+                _resolve_existing_path(preflight_report)
+                if preflight_report
+                else None
+            ),
             "post_cutover_baseline": (
                 _resolve_existing_path(post_cutover_baseline)
                 if post_cutover_baseline
@@ -79,6 +90,15 @@ def build_evidence_packet(
             "ready_for_cutover": bool(readiness_data.get("ready_for_cutover")),
             "blockers": readiness_data.get("blockers") or [],
         },
+        "preflight_summary": (
+            {
+                "ready_for_production": bool(preflight_data.get("ready_for_production")),
+                "blockers": preflight_data.get("blockers") or [],
+                "warnings": preflight_data.get("warnings") or [],
+            }
+            if preflight_data
+            else None
+        ),
         "baseline_summary": (
             baseline_data.get("summary") if baseline_data else None
         ),
@@ -96,6 +116,7 @@ def main() -> int:
     parser.add_argument("--export-dir", required=True)
     parser.add_argument("--migration-report", required=True)
     parser.add_argument("--readiness-report", required=True)
+    parser.add_argument("--preflight-report")
     parser.add_argument("--post-cutover-baseline")
     parser.add_argument("--postgres-target", default="")
     parser.add_argument("--backend-tests-passed", action="store_true")
@@ -111,6 +132,7 @@ def main() -> int:
         export_dir=args.export_dir,
         migration_report=args.migration_report,
         readiness_report=args.readiness_report,
+        preflight_report=args.preflight_report,
         post_cutover_baseline=args.post_cutover_baseline,
         postgres_target=args.postgres_target,
         backend_tests_passed=args.backend_tests_passed,
@@ -121,7 +143,10 @@ def main() -> int:
     )
     output_path = Path(args.output_json).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    output_path.write_text(
+        json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(packet, ensure_ascii=False, indent=2))
     return 0 if packet["packet_complete"] else 1
 
