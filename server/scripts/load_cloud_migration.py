@@ -36,6 +36,14 @@ IDENTITY_ID_TABLES = {
     "cbt_worksheets",
     "entry_ai_metadata",
 }
+TABLE_CONSTRAINT_PREFIXES = (
+    "CHECK",
+    "CONSTRAINT",
+    "EXCLUDE",
+    "FOREIGN",
+    "PRIMARY",
+    "UNIQUE",
+)
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -75,10 +83,38 @@ def _split_sql_statements(sql: str) -> list[str]:
     return statements
 
 
+def _postgres_schema_columns(schema_sql: str | None = None) -> dict[str, set[str]]:
+    sql = SCHEMA_PATH.read_text(encoding="utf-8") if schema_sql is None else schema_sql
+    columns_by_table: dict[str, set[str]] = {}
+    for table_name in TABLE_ORDER:
+        table_match = re.search(
+            rf"CREATE TABLE IF NOT EXISTS {table_name} \((?P<body>.*?)\n\);",
+            sql,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not table_match:
+            continue
+        columns = set()
+        for raw_line in table_match.group("body").splitlines():
+            line = raw_line.strip().rstrip(",")
+            if not line:
+                continue
+            keyword = line.split(maxsplit=1)[0].upper()
+            if keyword in TABLE_CONSTRAINT_PREFIXES:
+                continue
+            column_name = line.split(maxsplit=1)[0]
+            if IDENTIFIER_RE.match(column_name):
+                columns.add(column_name)
+        columns_by_table[table_name] = columns
+    return columns_by_table
+
+
 def build_load_plan(export_dir: Path) -> dict[str, Any]:
     export_dir = export_dir.resolve()
     tables = []
     total_rows = 0
+    schema_columns_by_table = _postgres_schema_columns()
+    schema_column_mismatches = []
     for table_name in TABLE_ORDER:
         path = export_dir / f"{table_name}.jsonl"
         if not path.exists():
@@ -88,11 +124,20 @@ def build_load_plan(export_dir: Path) -> dict[str, Any]:
                     "exists": False,
                     "row_count": 0,
                     "columns": [],
+                    "unknown_columns": [],
                 }
             )
             continue
         rows = list(_iter_jsonl(path))
         columns = sorted({column for row in rows for column in row.keys()})
+        unknown_columns = sorted(set(columns) - schema_columns_by_table.get(table_name, set()))
+        if unknown_columns:
+            schema_column_mismatches.append(
+                {
+                    "table": table_name,
+                    "unknown_columns": unknown_columns,
+                }
+            )
         total_rows += len(rows)
         tables.append(
             {
@@ -100,6 +145,7 @@ def build_load_plan(export_dir: Path) -> dict[str, Any]:
                 "exists": True,
                 "row_count": len(rows),
                 "columns": columns,
+                "unknown_columns": unknown_columns,
             }
         )
     return {
@@ -108,6 +154,7 @@ def build_load_plan(export_dir: Path) -> dict[str, Any]:
         "tables": tables,
         "total_rows": total_rows,
         "missing_files": [table["table"] for table in tables if not table["exists"]],
+        "schema_column_mismatches": schema_column_mismatches,
     }
 
 
@@ -157,6 +204,11 @@ def apply_export_to_postgres(
         ) from exc
 
     plan = build_load_plan(export_dir)
+    if plan["schema_column_mismatches"]:
+        raise ValueError(
+            "Export contains columns not present in the Postgres schema: "
+            f"{plan['schema_column_mismatches']}"
+        )
     loaded: dict[str, int] = {}
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
     with psycopg.connect(database_url) as conn:

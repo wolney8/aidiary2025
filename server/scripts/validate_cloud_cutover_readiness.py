@@ -98,6 +98,14 @@ def build_cutover_readiness(
                     },
                 }
             )
+        if load_plan["schema_column_mismatches"]:
+            blockers.append(
+                {
+                    "gate": "postgres_schema_columns",
+                    "message": "Export contains columns missing from the Postgres schema.",
+                    "details": load_plan["schema_column_mismatches"],
+                }
+            )
 
     evidence = test_evidence or {}
     missing_evidence = [

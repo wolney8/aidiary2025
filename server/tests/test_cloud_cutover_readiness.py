@@ -98,3 +98,32 @@ def test_cutover_readiness_passes_with_clean_evidence(tmp_path):
         "total_rows": 2,
         "missing_files": [],
     }
+
+
+def test_cutover_readiness_blocks_export_columns_missing_from_postgres_schema(tmp_path):
+    report_path = tmp_path / "report.json"
+    export_dir = tmp_path / "export"
+    _write_report(report_path, total_rows=1)
+    _write_export(export_dir)
+    (export_dir / "users.jsonl").write_text(
+        '{"id": 1, "unexpected": "bad"}\n',
+        encoding="utf-8",
+    )
+
+    readiness = build_cutover_readiness(
+        migration_report_path=report_path,
+        export_dir=export_dir,
+        test_evidence={
+            "backend_tests_passed": True,
+            "frontend_lint_passed": True,
+            "frontend_build_passed": True,
+        },
+        postgres_rehearsal_loaded=True,
+    )
+
+    assert readiness["ready_for_cutover"] is False
+    assert {
+        "gate": "postgres_schema_columns",
+        "message": "Export contains columns missing from the Postgres schema.",
+        "details": [{"table": "users", "unknown_columns": ["unexpected"]}],
+    } in readiness["blockers"]
