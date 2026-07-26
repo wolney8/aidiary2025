@@ -94,7 +94,7 @@ def _probe_endpoint(
         for sample in samples_out
         if sample["error"] is not None
         or sample["status_code"] is None
-        or int(sample["status_code"]) >= 500
+        or int(sample["status_code"]) >= 400
     ]
     return {
         "name": probe.name,
