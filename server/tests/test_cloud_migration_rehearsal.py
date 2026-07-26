@@ -5,6 +5,7 @@ import pytest
 
 from scripts.load_cloud_migration import (
     _quote_identifier,
+    _postgres_schema_columns,
     _split_sql_statements,
     build_load_plan,
 )
@@ -151,10 +152,12 @@ def test_load_plan_reports_exported_table_counts(tmp_path):
     plan = build_load_plan(export_dir)
 
     assert plan["total_rows"] == 6
+    assert plan["schema_column_mismatches"] == []
     users_plan = next(table for table in plan["tables"] if table["table"] == "users")
     assert users_plan["exists"] is True
     assert users_plan["row_count"] == 1
     assert users_plan["columns"] == ["id", "username"]
+    assert users_plan["unknown_columns"] == []
     metadata_plan = next(
         table for table in plan["tables"] if table["table"] == "entry_ai_metadata"
     )
@@ -167,6 +170,32 @@ def test_load_plan_reports_exported_table_counts(tmp_path):
     assert "dreamdiary_entries" in missing
     assert "configurations" in missing
     assert "import_history" in missing
+
+
+def test_load_plan_flags_columns_missing_from_postgres_schema(tmp_path):
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    (export_dir / "users.jsonl").write_text(
+        '{"id": 1, "username": "migration-user", "unexpected": "bad"}\n',
+        encoding="utf-8",
+    )
+
+    plan = build_load_plan(export_dir)
+
+    assert plan["schema_column_mismatches"] == [
+        {"table": "users", "unknown_columns": ["unexpected"]}
+    ]
+    users_plan = next(table for table in plan["tables"] if table["table"] == "users")
+    assert users_plan["unknown_columns"] == ["unexpected"]
+
+
+def test_postgres_schema_column_parser_covers_managed_tables():
+    schema_columns = _postgres_schema_columns()
+
+    assert "image_storage_key" in schema_columns["dailydiary_entries"]
+    assert "analysis_attachment_refs" in schema_columns["dreamdiary_entries"]
+    assert "derived_text_source" in schema_columns["entry_assets"]
+    assert "ai_response_outdated" in schema_columns["cbt_thought_record_data"]
 
 
 def test_postgres_loader_sql_helpers_are_safe():
