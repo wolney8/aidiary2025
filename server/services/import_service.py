@@ -22,7 +22,7 @@ from services.nltk_enrichment import (
 from services.database import table_columns, table_info
 from services.media_storage import store_entry_asset, store_imported_image
 from services.import_adapters import get_import_adapter
-from services.sql_compat import inserted_id
+from services.sql_compat import append_returning_id, inserted_id
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1160,10 +1160,13 @@ def _insert_daily_import_row(
     )
 
     cursor.execute(
-        '''INSERT INTO dailydiary_entries
+        append_returning_id(
+            '''INSERT INTO dailydiary_entries
            (user_id, import_id, entry_date, entry_time, entry_number, title, user_message,
             ai_response, daily_people_names, daily_places, tags, mood)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            _cursor_provider(cursor),
+        ),
         (
             user_id,
             import_id,
@@ -1213,11 +1216,14 @@ def _insert_dream_import_row(
     tags = _merge_tags(row.get('tags', '') or '', _DUPLICATE_TAG if mark_duplicate else '')
 
     cursor.execute(
-        '''INSERT INTO dreamdiary_entries
+        append_returning_id(
+            '''INSERT INTO dreamdiary_entries
            (user_id, import_id, entry_date, entry_time, entry_number, title, "cast", location,
             period, emotion, plot, symbols_and_imagery, insight, action, other,
             tags, dream_people_names, dream_places)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            _cursor_provider(cursor),
+        ),
         (
             user_id,
             import_id,
@@ -1805,11 +1811,14 @@ def record_import_history(
 
     cursor = conn.cursor()
     cursor.execute(
-        '''INSERT INTO import_history
+        append_returning_id(
+            '''INSERT INTO import_history
            (user_id, imported_at, filename, file_size_bytes,
             inserted_daily, skipped_daily, inserted_dreams, skipped_dreams,
             warnings, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            _connection_provider(conn),
+        ),
         (
             user_id,
             datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -1823,8 +1832,9 @@ def record_import_history(
             status,
         ),
     )
+    new_id = inserted_id(cursor, _connection_provider(conn))
     conn.commit()
-    return inserted_id(cursor, _connection_provider(conn))
+    return new_id
 
 
 def create_pending_import_history(
@@ -1931,11 +1941,14 @@ def record_export_history(
 
     cursor = conn.cursor()
     cursor.execute(
-        '''INSERT INTO export_history
+        append_returning_id(
+            '''INSERT INTO export_history
            (user_id, exported_at, filename, from_date, to_date, include_daily,
             include_dreams, daily_count, dream_count, is_full_range, guard_token,
             used_for_bulk_delete)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)''',
+            _connection_provider(conn),
+        ),
         (
             user_id,
             exported_at,
@@ -1950,9 +1963,10 @@ def record_export_history(
             guard_token,
         ),
     )
+    export_id = inserted_id(cursor, _connection_provider(conn))
     conn.commit()
     return {
-        'export_id': inserted_id(cursor, _connection_provider(conn)),
+        'export_id': export_id,
         'guard_token': guard_token,
         'is_full_range': is_full_range,
     }

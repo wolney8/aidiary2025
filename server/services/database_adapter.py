@@ -27,6 +27,8 @@ class _SqlCompatCursor:
     def __init__(self, cursor, provider: str):
         self._cursor = cursor
         self._provider = provider
+        self.database_provider = provider
+        self.connection = self
 
     def execute(self, sql: str, params=None):
         self._cursor.execute(adapt_placeholders(sql, self._provider), params or ())
@@ -53,6 +55,7 @@ class _SqlCompatConnection:
     def __init__(self, conn, provider: str):
         self._conn = conn
         self._provider = provider
+        self.database_provider = provider
 
     def execute(self, sql: str, params=None):
         return self._conn.execute(adapt_placeholders(sql, self._provider), params or ())

@@ -154,6 +154,7 @@ def test_sql_compat_cursor_adapts_execute_placeholders_and_preserves_cursor_api(
     returned = cursor.execute("UPDATE users SET name = ? WHERE id = ?", ("Will", 7))
 
     assert returned is cursor
+    assert cursor.connection.database_provider == "postgres"
     assert raw_conn.cursor_obj.calls == [
         ("UPDATE users SET name = $1 WHERE id = $2", ("Will", 7))
     ]

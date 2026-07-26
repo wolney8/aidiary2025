@@ -12,7 +12,8 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from services.database import connect_sqlite
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.import_service import (
     DAILY_IMPORT_HEADERS,
     DREAM_IMPORT_HEADERS,
@@ -144,12 +145,18 @@ def cancel_import_session(session_id: str):
 
 def get_db():
     """Get database connection."""
-    return connect_sqlite(
-        current_app,
-        log_label='Import',
+    return _database_adapter().open(
         timeout=30,
         journal_mode_wal=True,
     )
+
+
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
 
 
 def _build_entry_asset_ref(entry_type: str, row: sqlite3.Row) -> str:
@@ -183,8 +190,7 @@ def _load_attachment_export_rows(
     if not entry_ids:
         return {}
 
-    provider = current_app.config.get('DATABASE_PROVIDER', 'sqlite')
-    placeholders = in_placeholders(entry_ids, provider, start=3)
+    placeholders = in_placeholders(entry_ids, _database_provider(), start=3)
     rows = conn.execute(
         f'''
         SELECT entry_id, asset_role, storage_key, original_filename, mime_type,
