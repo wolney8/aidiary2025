@@ -21,6 +21,7 @@ from services.nltk_enrichment import (
 )
 from services.media_storage import store_entry_asset, store_imported_image
 from services.import_adapters import get_import_adapter
+from services.sql_compat import inserted_id
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -34,6 +35,17 @@ ALLOWED_MIME_TYPES = {
     'application/zip',
     'application/x-zip-compressed',
 }
+
+
+def _connection_provider(conn: sqlite3.Connection) -> str:
+    return str(getattr(conn, 'database_provider', 'sqlite') or 'sqlite')
+
+
+def _cursor_provider(cursor: sqlite3.Cursor) -> str:
+    connection = getattr(cursor, 'connection', None)
+    if connection is None:
+        return 'sqlite'
+    return _connection_provider(connection)
 
 DAILY_REQUIRED_HEADERS = ('date', 'title', 'user_entry', 'ai_response')
 DAILY_OPTIONAL_HEADERS = ('entry_time', 'entry_asset_ref')
@@ -1166,7 +1178,7 @@ def _insert_daily_import_row(
             row.get('mood', ''),
         ),
     )
-    entry_id = int(cursor.lastrowid)
+    entry_id = inserted_id(cursor, _cursor_provider(cursor))
     _attach_imported_media_to_entry(
         cursor,
         table_name='dailydiary_entries',
@@ -1226,7 +1238,7 @@ def _insert_dream_import_row(
             row.get('dream_places', ''),
         ),
     )
-    entry_id = int(cursor.lastrowid)
+    entry_id = inserted_id(cursor, _cursor_provider(cursor))
     _attach_imported_media_to_entry(
         cursor,
         table_name='dreamdiary_entries',
@@ -1816,7 +1828,7 @@ def record_import_history(
         ),
     )
     conn.commit()
-    return cursor.lastrowid
+    return inserted_id(cursor, _connection_provider(conn))
 
 
 def create_pending_import_history(
@@ -1944,7 +1956,7 @@ def record_export_history(
     )
     conn.commit()
     return {
-        'export_id': cursor.lastrowid,
+        'export_id': inserted_id(cursor, _connection_provider(conn)),
         'guard_token': guard_token,
         'is_full_range': is_full_range,
     }
