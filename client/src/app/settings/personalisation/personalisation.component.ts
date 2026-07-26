@@ -31,14 +31,18 @@ import { User } from "../../core/models/user.model";
     MatSelectModule,
   ],
   template: `
-    <section class="settings-section" *ngIf="settings">
+    <section
+      class="settings-section"
+      *ngIf="settings"
+      data-testid="customisation-settings"
+    >
       <header class="section-header">
         <h2>Customisation</h2>
         <p>Choose how the app responds, analyses, and handles calendar data.</p>
       </header>
 
       <form (ngSubmit)="saveSettings()" class="settings-form">
-        <mat-card class="group-card">
+        <mat-card class="group-card" data-testid="customisation-calendar-card">
           <mat-card-header>
             <mat-card-title>Calendar And Holidays</mat-card-title>
             <mat-card-subtitle>
@@ -104,7 +108,7 @@ import { User } from "../../core/models/user.model";
           </mat-card-content>
         </mat-card>
 
-        <mat-card class="group-card">
+        <mat-card class="group-card" data-testid="customisation-writing-card">
           <mat-card-header>
             <mat-card-title>Writing Rhythm</mat-card-title>
             <mat-card-subtitle>
@@ -217,7 +221,7 @@ import { User } from "../../core/models/user.model";
           </mat-card-content>
         </mat-card>
 
-        <mat-card class="group-card">
+        <mat-card class="group-card" data-testid="customisation-ai-card">
           <mat-card-header>
             <mat-card-title>AI Behaviour</mat-card-title>
             <mat-card-subtitle>
@@ -346,13 +350,28 @@ import { User } from "../../core/models/user.model";
             color="primary"
             type="submit"
             [disabled]="saving || !hasPendingChanges()"
+            data-testid="customisation-save-button"
           >
             {{ saving ? "Saving..." : "Save Customisation" }}
           </button>
         </div>
 
-        <p class="status success" *ngIf="successMessage">{{ successMessage }}</p>
-        <p class="status error" *ngIf="errorMessage">{{ errorMessage }}</p>
+        <p
+          class="status success"
+          *ngIf="successMessage"
+          aria-live="polite"
+          data-testid="customisation-success"
+        >
+          {{ successMessage }}
+        </p>
+        <p
+          class="status error"
+          *ngIf="errorMessage"
+          role="alert"
+          data-testid="customisation-error"
+        >
+          {{ errorMessage }}
+        </p>
       </form>
     </section>
   `,
@@ -379,6 +398,26 @@ import { User } from "../../core/models/user.model";
 
       .group-card {
         border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface);
+        box-shadow: 0 12px 30px var(--colour-shadow-soft);
+      }
+
+      .group-card mat-card-header {
+        padding-bottom: var(--spacing-xs);
+      }
+
+      .group-card mat-card-title {
+        color: var(--colour-text-primary);
+        font-weight: 800;
+      }
+
+      .group-card mat-card-subtitle {
+        color: var(--colour-text-secondary);
+      }
+
+      .group-card mat-card-content {
+        padding-top: var(--spacing-sm);
       }
 
       .field-grid {
@@ -413,7 +452,7 @@ import { User } from "../../core/models/user.model";
         grid-column: 1 / -1;
         padding: 0.9rem 1rem;
         border: 1px solid var(--colour-border);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
       }
 
@@ -477,7 +516,7 @@ import { User } from "../../core/models/user.model";
         margin: 0;
         padding: 0.9rem 1rem;
         border: 1px solid var(--colour-border);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
       }
 
@@ -511,15 +550,28 @@ import { User } from "../../core/models/user.model";
 
       .status {
         margin: 0;
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid transparent;
+        border-radius: var(--radius-lg);
+        font-weight: 700;
       }
 
       .success {
-        color: #2e7d32;
-        font-weight: 600;
+        border-color: var(--colour-emerald-border);
+        background: var(--colour-success-bg);
+        color: var(--colour-success-text);
       }
 
       .error {
-        color: #c62828;
+        border-color: var(--colour-rose-border);
+        background: var(--colour-danger-bg);
+        color: var(--colour-danger-text);
+      }
+
+      @media (max-width: 720px) {
+        .group-card mat-card-content {
+          padding-inline: var(--spacing-sm);
+        }
       }
     `,
   ],

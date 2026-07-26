@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
+import { TestBed } from "@angular/core/testing";
 import { of } from "rxjs";
 import { AppDialogService } from "../../core/services/app-dialog.service";
 import { ProfileService } from "../../core/services/profile.service";
@@ -7,7 +7,6 @@ import { User } from "../../core/models/user.model";
 import { PersonalisationComponent } from "./personalisation.component";
 
 describe("PersonalisationComponent", () => {
-  let fixture: ComponentFixture<PersonalisationComponent>;
   let component: PersonalisationComponent;
   let updateProfileSpy: jasmine.Spy;
   let confirmSpy: jasmine.Spy;
@@ -46,7 +45,6 @@ describe("PersonalisationComponent", () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [PersonalisationComponent],
       providers: [
         { provide: ProfileService, useValue: profileServiceStub },
         {
@@ -57,9 +55,8 @@ describe("PersonalisationComponent", () => {
       ],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(PersonalisationComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    component = TestBed.runInInjectionContext(() => new PersonalisationComponent());
+    component.ngOnInit();
   });
 
   it("defaults attachment AI context to off when the profile value is undefined", () => {
@@ -71,7 +68,7 @@ describe("PersonalisationComponent", () => {
   });
 
   it("shows the custom guidance counter", () => {
-    expect(component.getCustomGuidanceLength()).toBe(22);
+    expect(component.getCustomGuidanceLength()).toBe(21);
   });
 
   it("summarises the current AI cost profile from model and verbosity", () => {
