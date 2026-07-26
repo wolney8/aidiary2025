@@ -1628,6 +1628,75 @@ def test_chat_companion_error_raises_stream_error(mock_openai):
 
 
 @patch('services.openai_svc.OpenAI')
+def test_reflection_summary_detailed_prompt_requests_comprehensive_output(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'title': 'A fuller month',
+        'summary_text': 'A source-grounded reflection.',
+        'themes': ['work', 'support'],
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.generate_reflection_summary(
+        'monthly',
+        'July 2026',
+        'Daily entry on Wednesday, 1 July 2026: Work felt heavy.',
+        analysis_options={
+            'ai_style': 'reflective',
+            'ai_verbosity': 'detailed',
+            'ai_focus': 'emotional-support',
+        },
+    )
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    system_prompt = call_kwargs['messages'][0]['content']
+    user_prompt = call_kwargs['messages'][1]['content']
+    assert 'genuinely comprehensive' in system_prompt
+    assert '4 to 6 short paragraphs' in system_prompt
+    assert 'emotional-support' in system_prompt
+    assert 'Scale the depth to the requested verbosity' in user_prompt
+    assert call_kwargs['max_tokens'] > DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+
+
+@patch('services.openai_svc.OpenAI')
+def test_reflection_summary_brief_style_caps_output_even_with_detailed_verbosity(mock_openai):
+    os.environ['OPENAI_API_KEY'] = 'test-key'
+
+    mock_client = MagicMock()
+    mock_openai.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = json.dumps({
+        'title': 'Brief week',
+        'summary_text': 'A short source-grounded reflection.',
+        'themes': ['focus'],
+    })
+    mock_client.chat.completions.create.return_value = mock_response
+
+    service = OpenAIService()
+    service.generate_reflection_summary(
+        'weekly',
+        'week of 1 July 2026',
+        'Thought record on Wednesday, 1 July 2026: Focus.',
+        analysis_options={
+            'ai_style': 'brief',
+            'ai_verbosity': 'detailed',
+        },
+    )
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    system_prompt = call_kwargs['messages'][0]['content']
+    assert '1 to 2 short paragraphs' in system_prompt
+    assert call_kwargs['max_tokens'] < DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
+
+
+@patch('services.openai_svc.OpenAI')
 def test_generate_image_applies_hidden_dream_style_prefix(mock_openai):
     os.environ['OPENAI_API_KEY'] = 'test-key'
 

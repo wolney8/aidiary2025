@@ -810,6 +810,53 @@ Additional requirements for this retry:
         )
 
     @staticmethod
+    def _build_reflection_summary_length_guidance(options: dict[str, Any]) -> str:
+        verbosity = options['ai_verbosity']
+        style = options['ai_style']
+
+        if style == 'brief' or verbosity == 'concise':
+            return (
+                'Keep "summary_text" compact: usually 1 to 2 short paragraphs that name the main pattern, one useful observation, and no padded detail.'
+            )
+
+        if verbosity == 'detailed':
+            if style == 'clinical':
+                return (
+                    'Make "summary_text" genuinely comprehensive but restrained: usually 3 to 5 short structured paragraphs covering mood movement, repeated evidence, notable triggers, and practical next steps.'
+                )
+            if style == 'creative':
+                return (
+                    'Make "summary_text" genuinely comprehensive: usually 4 to 6 short paragraphs or clear sections that cover repeated themes, emotional movement, symbolic patterns, source-backed callbacks, and creative reflection prompts.'
+                )
+            if style == 'reflective':
+                return (
+                    'Make "summary_text" genuinely comprehensive: usually 4 to 6 short paragraphs or clear sections that cover emotional movement, repeated themes, source-backed callbacks, contrasts over time, and grounded takeaways.'
+                )
+            return (
+                'Make "summary_text" materially fuller than a brief summary: usually 3 to 5 short paragraphs covering repeated themes, emotional movement, important source-backed moments, and useful next steps.'
+            )
+
+        return (
+            'Aim for a balanced "summary_text": usually 2 to 3 short paragraphs that identify the main period pattern, meaningful source-backed moments, and one grounded takeaway.'
+        )
+
+    @staticmethod
+    def _build_reflection_summary_structure_guidance(options: dict[str, Any]) -> str:
+        verbosity = options['ai_verbosity']
+        focus = options['ai_focus']
+
+        if verbosity == 'detailed':
+            return (
+                'Use readable paragraph breaks or compact labelled sections when helpful. '
+                f'Let the emphasis follow the user focus "{focus}" while keeping the summary non-diagnostic and source-grounded.'
+            )
+
+        if verbosity == 'concise':
+            return 'Avoid headings unless they materially improve clarity.'
+
+        return 'Use paragraph breaks when helpful; avoid dense walls of text.'
+
+    @staticmethod
     def _build_analysis_user_content(
         text: str,
         recent_context: str | None,
@@ -1507,6 +1554,8 @@ Additional requirements for this retry:
     ) -> dict[str, Any]:
         """Generate a bounded weekly/monthly reflection summary."""
         normalised_options = self._normalise_analysis_options(analysis_options)
+        length_guidance = self._build_reflection_summary_length_guidance(normalised_options)
+        structure_guidance = self._build_reflection_summary_structure_guidance(normalised_options)
         system_prompt = (
             'You generate non-diagnostic diary reflection summaries. '
             'Use only the provided source context. Do not invent trends when the period is sparse. '
@@ -1515,7 +1564,9 @@ Additional requirements for this retry:
             'Avoid medical diagnosis, certainty, or instructions that sound clinical. '
             f"Tone: {normalised_options['ai_tone']}. "
             f"Verbosity: {normalised_options['ai_verbosity']}. "
-            f"Focus: {normalised_options['ai_focus']}."
+            f"Focus: {normalised_options['ai_focus']}. "
+            f"{length_guidance} "
+            f"{structure_guidance}"
         )
         if normalised_options.get('personal_context'):
             system_prompt += (
@@ -1524,7 +1575,8 @@ Additional requirements for this retry:
             )
         user_content = (
             f'Create a {period_type} reflection for {period_label}.\n\n'
-            'Return a concise but useful title, a readable summary, and 3 to 8 short themes.\n\n'
+            'Return a useful title, a readable source-grounded summary, and 3 to 8 short themes. '
+            'Scale the depth to the requested verbosity rather than always being concise.\n\n'
             f'Source context:\n{source_context}'
         )
 
