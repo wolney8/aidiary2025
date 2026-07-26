@@ -15,6 +15,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from extensions import limiter
 from services.chat_context_svc import ChatContextService, estimate_tokens
 from services.chat_observability import ChatObservabilityService
+from services.database import connect_sqlite
 from services.openai_svc import ChatStreamError, OpenAIService
 
 
@@ -29,9 +30,7 @@ DEFAULT_CHAT_MODEL = 'gpt-4o-mini'
 
 def get_db() -> sqlite3.Connection:
     """Get a user-data connection for chat storage."""
-    conn = sqlite3.connect(current_app.config['DATABASE_PATH'], timeout=30)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(current_app, log_label='Chat')
 
 
 def _parse_conversation_id(raw_value: str | None) -> str | None:

@@ -22,6 +22,7 @@ from services.attachment_text import (
     extract_pdf_attachment_content,
     looks_like_low_quality_ocr_text,
 )
+from services.database import connect_sqlite
 from services.openai_svc import (
     DAILY_IMAGE_STYLE_PREFIX,
     DREAM_IMAGE_STYLE_PREFIX,
@@ -74,12 +75,12 @@ ENTRY_IMAGE_JPEG_QUALITY = 85
 
 def get_db():
     """Get database connection."""
-    db_path = current_app.config['DATABASE_PATH']
-    current_app.logger.debug('Entries get_db connecting to %s', db_path)
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')
-    return conn
+    return connect_sqlite(
+        current_app,
+        log_label='Entries',
+        timeout=30,
+        journal_mode_wal=True,
+    )
 
 
 def _parse_entry_date(value):

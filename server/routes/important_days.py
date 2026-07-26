@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from services.database import connect_sqlite
 from services.media_storage import delete_image, resolve_image_url, store_uploaded_image
 
 important_days_bp = Blueprint('important_days', __name__)
@@ -35,11 +36,7 @@ IMPORTANT_DAY_IMAGE_JPEG_QUALITY = 86
 
 
 def get_db():
-    db_path = current_app.config['DATABASE_PATH']
-    current_app.logger.debug('Important days get_db connecting to %s', db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(current_app, log_label='Important days')
 
 
 def _coerce_required_text(value: object, field_name: str, *, max_length: int) -> str:
