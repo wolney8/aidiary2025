@@ -6,6 +6,9 @@ from services.sql_compat import (
     bind_values,
     current_date_expr,
     date_expr,
+    date_month_day_expr,
+    date_month_expr,
+    date_year_expr,
     in_placeholders,
     inserted_id,
     placeholder,
@@ -115,6 +118,15 @@ def test_inserted_id_requires_postgres_returned_row():
 def test_date_expr_uses_provider_specific_casts():
     assert date_expr("created_at", "sqlite") == "date(created_at)"
     assert date_expr("created_at", "postgres") == "(created_at)::date"
+
+
+def test_date_part_exprs_use_provider_specific_extraction():
+    assert date_month_expr("entry_date", "sqlite") == "substr(entry_date, 6, 2)"
+    assert date_month_expr("entry_date", "postgres") == "to_char((entry_date)::date, 'MM')"
+    assert date_month_day_expr("entry_date", "sqlite") == "substr(entry_date, 6, 5)"
+    assert date_month_day_expr("entry_date", "postgres") == "to_char((entry_date)::date, 'MM-DD')"
+    assert date_year_expr("entry_date", "sqlite") == "CAST(substr(entry_date, 1, 4) AS INTEGER)"
+    assert date_year_expr("entry_date", "postgres") == "EXTRACT(YEAR FROM (entry_date)::date)::integer"
 
 
 def test_current_date_expr_uses_provider_specific_current_date():

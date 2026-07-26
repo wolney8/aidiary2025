@@ -11,6 +11,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from services.database import connect_sqlite
 from services.media_storage import resolve_image_url
+from services.sql_compat import date_month_day_expr, date_month_expr, date_year_expr
 
 
 on_this_day_bp = Blueprint('on_this_day', __name__)
@@ -71,10 +72,15 @@ def _fetch_entry_rows(
 ) -> list[dict]:
     month_day = target.strftime('%m-%d')
     target_year = target.year
+    provider = current_app.config.get('DATABASE_PROVIDER', 'sqlite')
+    entry_month_day_expr = date_month_day_expr('entry.entry_date', provider)
+    entry_year_expr = date_year_expr('entry.entry_date', provider)
+    worksheet_month_day_expr = date_month_day_expr('worksheet.record_date', provider)
+    worksheet_year_expr = date_year_expr('worksheet.record_date', provider)
     entries: list[dict] = []
 
     daily_rows = conn.execute(
-        """
+        f"""
         SELECT entry.id, entry.entry_date, entry.title, entry.user_message AS preview,
                entry.tags, entry.image_url, entry.image_storage_key, entry.image_source,
                (SELECT COUNT(*) FROM entry_assets asset
@@ -82,8 +88,8 @@ def _fetch_entry_rows(
                   AND asset.entry_type = 'daily' AND asset.entry_id = entry.id) AS attachment_count
         FROM dailydiary_entries entry
         WHERE entry.user_id = ?
-          AND substr(entry.entry_date, 6, 5) = ?
-          AND CAST(substr(entry.entry_date, 1, 4) AS INTEGER) < ?
+          AND {entry_month_day_expr} = ?
+          AND {entry_year_expr} < ?
           AND NOT EXISTS (
               SELECT 1 FROM entry_resurfacing_preferences hidden
               WHERE hidden.user_id = entry.user_id
@@ -108,7 +114,7 @@ def _fetch_entry_rows(
         })
 
     dream_rows = conn.execute(
-        """
+        f"""
         SELECT entry.id, entry.entry_date, entry.title, entry.plot AS preview,
                entry.tags, entry.image_url, entry.image_storage_key, entry.image_source,
                (SELECT COUNT(*) FROM entry_assets asset
@@ -116,8 +122,8 @@ def _fetch_entry_rows(
                   AND asset.entry_type = 'dream' AND asset.entry_id = entry.id) AS attachment_count
         FROM dreamdiary_entries entry
         WHERE entry.user_id = ?
-          AND substr(entry.entry_date, 6, 5) = ?
-          AND CAST(substr(entry.entry_date, 1, 4) AS INTEGER) < ?
+          AND {entry_month_day_expr} = ?
+          AND {entry_year_expr} < ?
           AND NOT EXISTS (
               SELECT 1 FROM entry_resurfacing_preferences hidden
               WHERE hidden.user_id = entry.user_id
@@ -142,14 +148,14 @@ def _fetch_entry_rows(
         })
 
     thought_rows = conn.execute(
-        """
+        f"""
         SELECT worksheet.id, worksheet.record_date AS entry_date, worksheet.title,
                data.situation, data.balanced_thought
         FROM cbt_worksheets worksheet
         JOIN cbt_thought_record_data data ON data.worksheet_id = worksheet.id
         WHERE worksheet.user_id = ? AND worksheet.status = 'completed'
-          AND substr(worksheet.record_date, 6, 5) = ?
-          AND CAST(substr(worksheet.record_date, 1, 4) AS INTEGER) < ?
+          AND {worksheet_month_day_expr} = ?
+          AND {worksheet_year_expr} < ?
           AND NOT EXISTS (
               SELECT 1 FROM entry_resurfacing_preferences hidden
               WHERE hidden.user_id = worksheet.user_id
@@ -187,12 +193,17 @@ def _fetch_month_entry_rows(
 ) -> list[dict]:
     month = target.strftime('%m')
     target_year = target.year
+    provider = current_app.config.get('DATABASE_PROVIDER', 'sqlite')
+    entry_month_expr = date_month_expr('entry.entry_date', provider)
+    entry_year_expr = date_year_expr('entry.entry_date', provider)
+    worksheet_month_expr = date_month_expr('worksheet.record_date', provider)
+    worksheet_year_expr = date_year_expr('worksheet.record_date', provider)
     entries: list[dict] = []
 
     queries = (
         (
             'daily',
-            """
+            f"""
             SELECT entry.id, entry.entry_date, entry.title,
                    entry.user_message AS preview, entry.tags,
                    entry.image_url, entry.image_storage_key, entry.image_source,
@@ -200,8 +211,8 @@ def _fetch_month_entry_rows(
                     WHERE asset.user_id = entry.user_id
                       AND asset.entry_type = 'daily' AND asset.entry_id = entry.id) AS attachment_count
             FROM dailydiary_entries entry
-            WHERE entry.user_id = ? AND substr(entry.entry_date, 6, 2) = ?
-              AND CAST(substr(entry.entry_date, 1, 4) AS INTEGER) < ?
+            WHERE entry.user_id = ? AND {entry_month_expr} = ?
+              AND {entry_year_expr} < ?
               AND NOT EXISTS (
                   SELECT 1 FROM entry_resurfacing_preferences hidden
                   WHERE hidden.user_id = entry.user_id
@@ -214,7 +225,7 @@ def _fetch_month_entry_rows(
         ),
         (
             'dream',
-            """
+            f"""
             SELECT entry.id, entry.entry_date, entry.title,
                    entry.plot AS preview, entry.tags,
                    entry.image_url, entry.image_storage_key, entry.image_source,
@@ -222,8 +233,8 @@ def _fetch_month_entry_rows(
                     WHERE asset.user_id = entry.user_id
                       AND asset.entry_type = 'dream' AND asset.entry_id = entry.id) AS attachment_count
             FROM dreamdiary_entries entry
-            WHERE entry.user_id = ? AND substr(entry.entry_date, 6, 2) = ?
-              AND CAST(substr(entry.entry_date, 1, 4) AS INTEGER) < ?
+            WHERE entry.user_id = ? AND {entry_month_expr} = ?
+              AND {entry_year_expr} < ?
               AND NOT EXISTS (
                   SELECT 1 FROM entry_resurfacing_preferences hidden
                   WHERE hidden.user_id = entry.user_id
@@ -254,14 +265,14 @@ def _fetch_month_entry_rows(
             })
 
     thought_rows = conn.execute(
-        """
+        f"""
         SELECT worksheet.id, worksheet.record_date AS entry_date, worksheet.title,
                data.situation, data.balanced_thought
         FROM cbt_worksheets worksheet
         JOIN cbt_thought_record_data data ON data.worksheet_id = worksheet.id
         WHERE worksheet.user_id = ? AND worksheet.status = 'completed'
-          AND substr(worksheet.record_date, 6, 2) = ?
-          AND CAST(substr(worksheet.record_date, 1, 4) AS INTEGER) < ?
+          AND {worksheet_month_expr} = ?
+          AND {worksheet_year_expr} < ?
           AND NOT EXISTS (
               SELECT 1 FROM entry_resurfacing_preferences hidden
               WHERE hidden.user_id = worksheet.user_id
