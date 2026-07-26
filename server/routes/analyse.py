@@ -11,7 +11,8 @@ from services.attachment_text import (
     looks_like_low_quality_ocr_text,
 )
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
-from services.database import connect_sqlite
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.media_storage import read_media_bytes
 from services.openai_svc import OpenAIService, AnalysisRateLimitError
 from services.nltk_enrichment import (
@@ -19,6 +20,7 @@ from services.nltk_enrichment import (
     derive_dream_nltk_fields,
     merge_csv_values,
 )
+from services.sql_compat import adapt_placeholders
 
 
 def _normalise_people_names(raw: str) -> str:
@@ -204,12 +206,22 @@ DEFAULT_ANALYSIS_SETTINGS = {
 
 def get_db():
     """Get database connection."""
-    return connect_sqlite(
-        current_app,
-        log_label='Analyse',
+    return _database_adapter().connect(
         timeout=30,
         journal_mode_wal=True,
     )
+
+
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
 
 
 def _truncate_text(value: str, max_chars: int) -> str:
@@ -332,16 +344,18 @@ def _build_metadata_summary_header(mode: str, text: str, result: dict) -> str:
     return _truncate_text(f"{base} | {hint_text}", 280)
 
 
-def _load_user_analysis_settings(conn: sqlite3.Connection, user_id: int) -> dict[str, object]:
+def _load_user_analysis_settings(conn, user_id: int) -> dict[str, object]:
     settings = dict(DEFAULT_ANALYSIS_SETTINGS)
     try:
         row = conn.execute(
-            '''
+            _sql(
+                '''
             SELECT ai_tone, ai_verbosity, ai_focus, ai_model, allow_ai_history,
                    display_name, pronouns, gender, custom_guidance, sex, goals
             FROM users
             WHERE id = ?
-            ''',
+            '''
+            ),
             (user_id,),
         ).fetchone()
     except sqlite3.OperationalError:
@@ -375,7 +389,7 @@ def _load_user_analysis_settings(conn: sqlite3.Connection, user_id: int) -> dict
 
 
 def _load_current_entry_memory_details(
-    conn: sqlite3.Connection,
+    conn,
     user_id: int,
     mode: str,
     entry_id: int | None,
@@ -396,7 +410,7 @@ def _load_current_entry_memory_details(
             WHERE user_id = ? AND id = ?
         '''
 
-    row = conn.execute(query, (user_id, entry_id)).fetchone()
+    row = conn.execute(_sql(query), (user_id, entry_id)).fetchone()
     return dict(row) if row else None
 
 
@@ -497,25 +511,24 @@ def _persist_analysis_metadata(
     people_names: str,
     places: str,
 ) -> None:
-    conn = get_db()
     try:
-        conn.execute(
-            """
-            INSERT INTO entry_ai_metadata (
-                user_id, mode, reference_date, summary_header, tags, people_names, places
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, mode, reference_date, summary_header, tags, people_names, places),
-        )
-        conn.commit()
+        with get_db() as conn:
+            conn.execute(
+                _sql(
+                    """
+                    INSERT INTO entry_ai_metadata (
+                        user_id, mode, reference_date, summary_header, tags, people_names, places
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                ),
+                (user_id, mode, reference_date, summary_header, tags, people_names, places),
+            )
     except Exception:
         current_app.logger.exception('Failed to persist analysis metadata; continuing')
-    finally:
-        conn.close()
 
 
 def _build_related_history_context(
-    conn: sqlite3.Connection,
+    conn,
     *,
     user_id: int,
     mode: str,
@@ -532,66 +545,72 @@ def _build_related_history_context(
 
     if mode == 'daily':
         rows = conn.execute(
-            '''
-            SELECT id, entry_date, entry_number, title, user_message AS body,
-                   'daily' AS source_type,
-                   tags, daily_people_names AS people_names, daily_places AS places
-            FROM dailydiary_entries
-            WHERE user_id = ?
-              AND (? IS NULL OR entry_date <= ?)
-              AND (? IS NULL OR id != ?)
-            ORDER BY entry_date DESC, entry_number DESC, id DESC
-            LIMIT ?
-            ''',
+            _sql(
+                '''
+                SELECT id, entry_date, entry_number, title, user_message AS body,
+                       'daily' AS source_type,
+                       tags, daily_people_names AS people_names, daily_places AS places
+                FROM dailydiary_entries
+                WHERE user_id = ?
+                  AND (? IS NULL OR entry_date <= ?)
+                  AND (? IS NULL OR id != ?)
+                ORDER BY entry_date DESC, entry_number DESC, id DESC
+                LIMIT ?
+                '''
+            ),
             (user_id, reference_date, reference_date, current_entry_id, current_entry_id, RELATED_CONTEXT_SCAN_LIMIT),
         ).fetchall()
     else:
         rows = conn.execute(
-            '''
-            SELECT id, entry_date, entry_number, title,
-                   COALESCE(plot, summary, interpretation, '') AS body,
-                   'dream' AS source_type,
-                   tags, dream_people_names AS people_names, dream_places AS places
-            FROM dreamdiary_entries
-            WHERE user_id = ?
-              AND (? IS NULL OR entry_date <= ?)
-              AND (? IS NULL OR id != ?)
-            ORDER BY entry_date DESC, entry_number DESC, id DESC
-            LIMIT ?
-            ''',
+            _sql(
+                '''
+                SELECT id, entry_date, entry_number, title,
+                       COALESCE(plot, summary, interpretation, '') AS body,
+                       'dream' AS source_type,
+                       tags, dream_people_names AS people_names, dream_places AS places
+                FROM dreamdiary_entries
+                WHERE user_id = ?
+                  AND (? IS NULL OR entry_date <= ?)
+                  AND (? IS NULL OR id != ?)
+                ORDER BY entry_date DESC, entry_number DESC, id DESC
+                LIMIT ?
+                '''
+            ),
             (user_id, reference_date, reference_date, current_entry_id, current_entry_id, RELATED_CONTEXT_SCAN_LIMIT),
         ).fetchall()
 
     rows = list(rows)
     try:
         thought_record_rows = conn.execute(
-            '''
-            SELECT w.id, w.record_date AS entry_date, 0 AS entry_number,
-                   COALESCE(NULLIF(w.title, ''), 'Thought record') AS title,
-                   TRIM(
-                       SUBSTR(d.situation, 1, 1000) || ' ' ||
-                       SUBSTR(d.unhelpful_thoughts, 1, 1000) || ' ' ||
-                       SUBSTR(d.evidence_for, 1, 700) || ' ' ||
-                       SUBSTR(d.evidence_against, 1, 700) || ' ' ||
-                       SUBSTR(d.balanced_thought, 1, 1000) || ' ' ||
-                       SUBSTR(d.next_step, 1, 500)
-                   ) AS body,
-                   'thought_record' AS source_type,
-                   '' AS tags, '' AS people_names, '' AS places
-            FROM cbt_worksheets w
-            JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
-            WHERE w.user_id = ? AND w.status = 'completed'
-              AND (? IS NULL OR w.record_date <= ?)
-            ORDER BY w.record_date DESC, w.id DESC
-            LIMIT ?
-            ''',
+            _sql(
+                '''
+                SELECT w.id, w.record_date AS entry_date, 0 AS entry_number,
+                       COALESCE(NULLIF(w.title, ''), 'Thought record') AS title,
+                       TRIM(
+                           SUBSTR(d.situation, 1, 1000) || ' ' ||
+                           SUBSTR(d.unhelpful_thoughts, 1, 1000) || ' ' ||
+                           SUBSTR(d.evidence_for, 1, 700) || ' ' ||
+                           SUBSTR(d.evidence_against, 1, 700) || ' ' ||
+                           SUBSTR(d.balanced_thought, 1, 1000) || ' ' ||
+                           SUBSTR(d.next_step, 1, 500)
+                       ) AS body,
+                       'thought_record' AS source_type,
+                       '' AS tags, '' AS people_names, '' AS places
+                FROM cbt_worksheets w
+                JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
+                WHERE w.user_id = ? AND w.status = 'completed'
+                  AND (? IS NULL OR w.record_date <= ?)
+                ORDER BY w.record_date DESC, w.id DESC
+                LIMIT ?
+                '''
+            ),
             (user_id, reference_date, reference_date, RELATED_CONTEXT_SCAN_LIMIT),
         ).fetchall()
         rows.extend(thought_record_rows)
     except sqlite3.OperationalError:
         pass
 
-    ranked: list[tuple[float, sqlite3.Row, dict[str, list[str] | float]]] = []
+    ranked: list[tuple[float, object, dict[str, list[str] | float]]] = []
     for row in rows:
         row_tags = _parse_csv_tokens(row['tags'])
         row_people = _parse_csv_tokens(row['people_names'])
@@ -690,16 +709,17 @@ def _build_attachment_ref_label(
 
 def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> tuple[str | None, list[str]]:
     entry_type = 'daily' if mode == 'daily' else 'dream'
-    conn = get_db()
-    try:
+    with get_db() as conn:
         rows = conn.execute(
-            '''
+            _sql(
+                '''
             SELECT id, storage_key, original_filename, mime_type, derived_text, derived_text_source
             FROM entry_assets
             WHERE user_id = ? AND entry_type = ? AND entry_id = ?
             ORDER BY sort_order ASC, id ASC
             LIMIT 3
-            ''',
+            '''
+            ),
             (user_id, entry_type, entry_id),
         ).fetchall()
 
@@ -709,7 +729,6 @@ def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> tuple[s
         lines: list[str] = []
         refs: list[str] = []
         current_chars = 0
-        did_update = False
         for row in rows:
             mime_type = str(row['mime_type'] or '').strip().lower()
             if mime_type.startswith('audio/'):
@@ -755,11 +774,13 @@ def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> tuple[s
                     derived_text_raw = extracted_text
                     derived_text_source = extracted_text_source or 'pdf-text-extraction'
                     conn.execute(
-                        '''
+                        _sql(
+                            '''
                         UPDATE entry_assets
                         SET derived_text = ?, derived_text_source = ?, derived_text_updated_at = ?
                         WHERE id = ? AND user_id = ?
-                        ''',
+                        '''
+                        ),
                         (
                             extracted_text,
                             derived_text_source,
@@ -768,7 +789,6 @@ def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> tuple[s
                             user_id,
                         ),
                     )
-                    did_update = True
             else:
                 derived_text_source = ''
 
@@ -790,15 +810,10 @@ def _build_attachment_context(user_id: int, mode: str, entry_id: int) -> tuple[s
             lines.append(line)
             current_chars = projected
 
-        if did_update:
-            conn.commit()
-
         if not lines:
             return None, refs
 
         return "Attachment context:\n" + "\n".join(lines), refs
-    finally:
-        conn.close()
 
 
 def _merge_analysis_context(
@@ -869,8 +884,7 @@ def analyse_text():
     analysis_settings = dict(DEFAULT_ANALYSIS_SETTINGS)
     try:
         user_id = int(get_jwt_identity())
-        conn = get_db()
-        try:
+        with get_db() as conn:
             analysis_settings = _load_user_analysis_settings(conn, user_id)
             if bool(analysis_settings.get('allow_ai_history')):
                 related_context = _build_related_history_context(
@@ -881,8 +895,6 @@ def analyse_text():
                     current_entry_id=entry_id,
                     reference_date=reference_date,
                 )
-        finally:
-            conn.close()
         if include_attachment_context and entry_id is not None:
             attachment_context, attachment_context_refs = _build_attachment_context(user_id, mode, entry_id)
         recent_context = _merge_analysis_context(related_context, attachment_context)
