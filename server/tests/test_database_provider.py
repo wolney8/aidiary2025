@@ -1,7 +1,7 @@
 import pytest
 
 from app import create_app
-from services.database import connect_sqlite_path, resolve_database_settings, table_columns
+from services.database import connect_sqlite_path, resolve_database_settings, table_columns, table_info
 
 
 def test_database_settings_default_to_sqlite(tmp_path):
@@ -92,6 +92,19 @@ def test_table_columns_returns_column_names(tmp_path):
     conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT)")
 
     assert table_columns(conn, "sample") == {"id", "name"}
+
+    conn.close()
+
+
+def test_table_info_returns_column_metadata(tmp_path):
+    db_path = tmp_path / "app.db"
+    conn = connect_sqlite_path(str(db_path))
+    conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+
+    info = table_info(conn, "sample")
+
+    assert [row[1] for row in info] == ["id", "name"]
+    assert info[1][3] == 1
 
     conn.close()
 

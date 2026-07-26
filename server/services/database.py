@@ -113,8 +113,12 @@ def connect_sqlite_path(
     return conn
 
 
-def table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+def table_info(conn: sqlite3.Connection, table_name: str) -> list[sqlite3.Row]:
     try:
-        return {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+        return list(conn.execute(f"PRAGMA table_info({table_name})"))
     except sqlite3.OperationalError:
-        return set()
+        return []
+
+
+def table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    return {row[1] for row in table_info(conn, table_name)}
