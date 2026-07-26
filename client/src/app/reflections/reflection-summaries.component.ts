@@ -12,8 +12,10 @@ import { MatInputModule } from "@angular/material/input";
 import { MatNativeDateModule } from "@angular/material/core";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { MatSelectModule } from "@angular/material/select";
+import { RouterLink } from "@angular/router";
 import {
   ReflectionSummary,
+  ReflectionSummarySourceRef,
   ReflectionSummaryPeriodType,
 } from "../core/models/reflection-summary.model";
 import { AppDialogService } from "../core/services/app-dialog.service";
@@ -35,6 +37,7 @@ import { ReflectionSummaryService } from "../core/services/reflection-summary.se
     MatNativeDateModule,
     MatProgressSpinnerModule,
     MatSelectModule,
+    RouterLink,
   ],
   template: `
     <section class="reflection-dashboard" data-testid="reflection-summaries">
@@ -131,7 +134,15 @@ import { ReflectionSummaryService } from "../core/services/reflection-summary.se
                 <summary>{{ summary.source_refs.length }} source reference{{ summary.source_refs.length === 1 ? "" : "s" }}</summary>
                 <ul>
                   <li *ngFor="let ref of summary.source_refs">
-                    {{ getSourceTypeLabel(ref.type) }} · {{ ref.date | date: "d MMM y" }} · {{ ref.theme }}
+                    <a
+                      class="source-reference-link"
+                      [routerLink]="getSourceLink(ref)"
+                      [attr.aria-label]="getSourceAriaLabel(ref)"
+                    >
+                      <span>{{ getSourceTypeLabel(ref.type) }}</span>
+                      <span>{{ ref.date | date: "d MMM y" }}</span>
+                      <strong>{{ ref.theme }}</strong>
+                    </a>
                   </li>
                 </ul>
               </details>
@@ -275,8 +286,44 @@ import { ReflectionSummaryService } from "../core/services/reflection-summary.se
       }
 
       .source-details ul {
+        display: grid;
+        gap: 0.45rem;
         margin: 0.5rem 0 0;
-        padding-left: 1.2rem;
+        padding: 0;
+        list-style: none;
+      }
+
+      .source-reference-link {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        max-width: 100%;
+        padding: 0.4rem 0.65rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        color: var(--colour-text-primary);
+        text-decoration: none;
+      }
+
+      .source-reference-link:hover,
+      .source-reference-link:focus-visible {
+        border-color: var(--colour-primary);
+        background: color-mix(in srgb, var(--colour-primary) 12%, var(--colour-surface));
+      }
+
+      .source-reference-link:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--colour-primary) 45%, transparent);
+        outline-offset: 2px;
+      }
+
+      .source-reference-link span {
+        color: var(--colour-text-secondary);
+      }
+
+      .source-reference-link strong {
+        font-weight: 800;
       }
 
       .delete-button {
@@ -422,6 +469,20 @@ export class ReflectionSummariesComponent implements OnInit {
     if (type === "daily") return "Diary";
     if (type === "dream") return "Dream";
     return "Thought record";
+  }
+
+  getSourceLink(ref: ReflectionSummarySourceRef): unknown[] {
+    if (ref.type === "thought_record") return ["/cbt", ref.id];
+    return ["/entries", ref.id];
+  }
+
+  getSourceAriaLabel(ref: ReflectionSummarySourceRef): string {
+    const dateLabel = new Date(`${ref.date}T12:00:00`).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    return `Open ${this.getSourceTypeLabel(ref.type)} source from ${dateLabel}: ${ref.theme}`;
   }
 
   private upsertSummary(summary: ReflectionSummary): void {
