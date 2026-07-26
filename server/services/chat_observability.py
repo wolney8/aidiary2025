@@ -9,6 +9,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from services.database import connect_sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class ChatObservabilityService:
         }
         self.log.info('chat_observability_event %s', _safe_json(event))
         try:
-            with sqlite3.connect(self.database_path, timeout=10) as conn:
+            with connect_sqlite_path(self.database_path, timeout=10) as conn:
                 conn.execute(
                     """
                     INSERT INTO chat_observability_events (
@@ -105,8 +106,7 @@ class ChatObservabilityService:
     def build_report(self, *, user_id: int, days: int = 7) -> dict[str, Any]:
         bounded_days = min(max(int(days or 7), 1), 90)
         since = datetime.now(timezone.utc) - timedelta(days=bounded_days)
-        with sqlite3.connect(self.database_path, timeout=10) as conn:
-            conn.row_factory = sqlite3.Row
+        with connect_sqlite_path(self.database_path, timeout=10) as conn:
             rows = conn.execute(
                 """
                 SELECT event_type, error_code, latency_ms, input_tokens, output_tokens,

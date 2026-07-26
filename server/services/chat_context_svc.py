@@ -9,6 +9,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
+from services.database import connect_sqlite_path
+
 
 DEFAULT_CONTEXT_TOKEN_BUDGET = 3000
 DEFAULT_RECENT_ENTRY_LIMIT = 20
@@ -65,8 +67,7 @@ class ChatContextService:
 
     def build_context(self, user_id: int) -> str:
         """Build profile, theme, and recent-entry context for one user."""
-        with sqlite3.connect(self.database_path, timeout=10) as conn:
-            conn.row_factory = sqlite3.Row
+        with connect_sqlite_path(self.database_path, timeout=10) as conn:
             identity = self._load_identity(conn, user_id)
             entries = self._load_recent_entries(conn, user_id)
 
