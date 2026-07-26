@@ -14,6 +14,8 @@ from typing import Mapping
 
 
 SUPPORTED_DATABASE_PROVIDERS = {"sqlite", "postgres"}
+SQLITE_PROVIDER = "sqlite"
+POSTGRES_PROVIDER = "postgres"
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ def resolve_database_settings(
     environ: Mapping[str, str] | None = None,
 ) -> DatabaseSettings:
     env = os.environ if environ is None else environ
-    provider = (env.get("DATABASE_PROVIDER") or "sqlite").strip().lower()
+    provider = (env.get("DATABASE_PROVIDER") or SQLITE_PROVIDER).strip().lower()
     if provider not in SUPPORTED_DATABASE_PROVIDERS:
         supported = ", ".join(sorted(SUPPORTED_DATABASE_PROVIDERS))
         raise RuntimeError(f"Unsupported DATABASE_PROVIDER '{provider}'. Use one of: {supported}")
@@ -57,13 +59,13 @@ def resolve_database_settings(
         provider=provider,
         sqlite_path=sqlite_path,
         database_url=database_url,
-        runtime_migrations_enabled=provider == "sqlite",
+        runtime_migrations_enabled=provider == SQLITE_PROVIDER,
     )
 
 
 def configure_app_database(app) -> DatabaseSettings:
     settings = resolve_database_settings(app.root_path)
-    if settings.provider == "postgres":
+    if settings.provider == POSTGRES_PROVIDER:
         raise RuntimeError(
             "DATABASE_PROVIDER=postgres is recognised but the runtime SQL adapter is not "
             "implemented yet. Use the migration rehearsal tools for Postgres loads until "
@@ -85,7 +87,7 @@ def connect_sqlite(
     foreign_keys: bool = False,
     journal_mode_wal: bool = False,
 ) -> sqlite3.Connection:
-    if app.config.get("DATABASE_PROVIDER", "sqlite") != "sqlite":
+    if app.config.get("DATABASE_PROVIDER", SQLITE_PROVIDER) != SQLITE_PROVIDER:
         raise RuntimeError("SQLite connection requested while DATABASE_PROVIDER is not sqlite")
     db_path = app.config["DATABASE_PATH"]
     app.logger.debug("%s get_db connecting to %s", log_label, db_path)

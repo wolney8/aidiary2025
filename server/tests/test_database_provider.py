@@ -75,6 +75,8 @@ def test_app_records_sqlite_database_provider(monkeypatch, tmp_path):
     assert app.config["DATABASE_PATH"] == str(db_path)
     assert app.config["DATABASE_URL"] == "postgresql://example/rehearsal"
     assert app.config["DATABASE_RUNTIME_MIGRATIONS_ENABLED"] is True
+    assert app.config["DATABASE_ADAPTER"].provider == "sqlite"
+    assert app.config["DATABASE_ADAPTER"].sqlite_path == str(db_path)
 
 
 def test_app_runs_runtime_migration_hook_for_sqlite(monkeypatch, tmp_path):
