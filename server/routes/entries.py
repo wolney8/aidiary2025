@@ -23,6 +23,7 @@ from services.attachment_text import (
     looks_like_low_quality_ocr_text,
 )
 from services.database import connect_sqlite
+from services.sql_compat import inserted_id
 from services.openai_svc import (
     DAILY_IMAGE_STYLE_PREFIX,
     DREAM_IMAGE_STYLE_PREFIX,
@@ -644,7 +645,7 @@ def _upload_entry_attachment(
             derived_text_updated_at,
         ),
     )
-    asset_id = int(cursor.lastrowid)
+    asset_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
     conn.commit()
     attachment = _serialise_entry_assets(
         conn,
@@ -1183,7 +1184,7 @@ def create_daily_entry():
     ))
     
     conn.commit()
-    entry_id = cursor.lastrowid
+    entry_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
     conn.close()
     
     return jsonify({
@@ -1749,7 +1750,7 @@ def create_dream_entry():
     ))
     
     conn.commit()
-    entry_id = cursor.lastrowid
+    entry_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
     conn.close()
     
     return jsonify({
