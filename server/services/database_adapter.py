@@ -6,6 +6,7 @@ SQLite now and Postgres later.
 
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
@@ -16,6 +17,16 @@ from services.database import (
     DatabaseSettings,
     connect_sqlite_path,
 )
+from services.sql_compat import adapt_placeholders
+
+
+IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(identifier: str) -> str:
+    if not IDENTIFIER_RE.match(identifier):
+        raise ValueError(f"Unsafe SQL identifier: {identifier}")
+    return identifier
 
 
 @dataclass(frozen=True)
@@ -84,6 +95,54 @@ class DatabaseAdapter:
             ) as conn:
                 yield conn
             return
+
+        raise ValueError(f"Unsupported database provider: {self.provider}")
+
+    def table_exists(self, conn, table_name: str) -> bool:
+        table_name = _validate_identifier(table_name)
+        if self.provider == SQLITE_PROVIDER:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table_name,),
+            ).fetchone()
+            return row is not None
+
+        if self.provider == POSTGRES_PROVIDER:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = $1
+                """,
+                (table_name,),
+            ).fetchone()
+            return row is not None
+
+        raise ValueError(f"Unsupported database provider: {self.provider}")
+
+    def table_columns(self, conn, table_name: str) -> set[str]:
+        table_name = _validate_identifier(table_name)
+        if self.provider == SQLITE_PROVIDER:
+            return {
+                row[1]
+                for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            }
+
+        if self.provider == POSTGRES_PROVIDER:
+            rows = conn.execute(
+                adapt_placeholders(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = ?
+                    """,
+                    self.provider,
+                ),
+                (table_name,),
+            ).fetchall()
+            return {str(row["column_name"]) for row in rows}
 
         raise ValueError(f"Unsupported database provider: {self.provider}")
 

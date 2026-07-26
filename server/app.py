@@ -208,6 +208,7 @@ def create_app():
                 identity = get_jwt_identity()
                 ChatObservabilityService(
                     app.config['DATABASE_PATH'],
+                    adapter=app.config.get('DATABASE_ADAPTER'),
                     log=app.logger,
                 ).record_event(
                     event_type='rate_limited',

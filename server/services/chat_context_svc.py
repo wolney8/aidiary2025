@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 import re
-import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
-from services.database import connect_sqlite_path, table_columns
+from services.database_adapter import DatabaseAdapter
+from services.sql_compat import adapt_placeholders
 
 
 DEFAULT_CONTEXT_TOKEN_BUDGET = 3000
@@ -54,6 +54,7 @@ class ChatContextService:
         self,
         database_path: str,
         *,
+        adapter: DatabaseAdapter | None = None,
         token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
         recent_entry_limit: int = DEFAULT_RECENT_ENTRY_LIMIT,
     ) -> None:
@@ -62,12 +63,13 @@ class ChatContextService:
         if recent_entry_limit < 1:
             raise ValueError('recent_entry_limit must be positive')
         self.database_path = database_path
+        self.adapter = adapter or DatabaseAdapter(provider='sqlite', sqlite_path=database_path)
         self.token_budget = token_budget
         self.recent_entry_limit = recent_entry_limit
 
     def build_context(self, user_id: int) -> str:
         """Build profile, theme, and recent-entry context for one user."""
-        with connect_sqlite_path(self.database_path, timeout=10) as conn:
+        with self.adapter.connect(timeout=10) as conn:
             identity = self._load_identity(conn, user_id)
             entries = self._load_recent_entries(conn, user_id)
 
@@ -113,7 +115,7 @@ class ChatContextService:
         )
         return self._fit_to_budget(prompt)
 
-    def _load_identity(self, conn: sqlite3.Connection, user_id: int) -> str:
+    def _load_identity(self, conn, user_id: int) -> str:
         if not self._table_exists(conn, 'users'):
             return ''
         columns = self._table_columns(conn, 'users')
@@ -131,7 +133,10 @@ class ChatContextService:
             return ''
 
         row = conn.execute(
-            f"SELECT {', '.join(permitted)} FROM users WHERE id = ?",
+            adapt_placeholders(
+                f"SELECT {', '.join(permitted)} FROM users WHERE id = ?",
+                self.adapter.provider,
+            ),
             (user_id,),
         ).fetchone()
         if not row:
@@ -157,13 +162,14 @@ class ChatContextService:
 
     def _load_recent_entries(
         self,
-        conn: sqlite3.Connection,
+        conn,
         user_id: int,
     ) -> list[_ContextEntry]:
         entries: list[_ContextEntry] = []
         if self._table_exists(conn, 'dailydiary_entries'):
             rows = conn.execute(
-                """
+                adapt_placeholders(
+                    """
                 SELECT entry_date, COALESCE(entry_number, 0) AS entry_number,
                        COALESCE(title, '') AS title,
                        COALESCE(user_message, '') AS body,
@@ -174,13 +180,16 @@ class ChatContextService:
                 ORDER BY entry_date DESC, entry_number DESC, id DESC
                 LIMIT ?
                 """,
+                    self.adapter.provider,
+                ),
                 (user_id, self.recent_entry_limit),
             ).fetchall()
             entries.extend(self._rows_to_entries('Daily', rows))
 
         if self._table_exists(conn, 'dreamdiary_entries'):
             rows = conn.execute(
-                """
+                adapt_placeholders(
+                    """
                 SELECT entry_date, COALESCE(entry_number, 0) AS entry_number,
                        COALESCE(title, '') AS title,
                        COALESCE(NULLIF(summary, ''), plot, '') AS body,
@@ -191,6 +200,8 @@ class ChatContextService:
                 ORDER BY entry_date DESC, entry_number DESC, id DESC
                 LIMIT ?
                 """,
+                    self.adapter.provider,
+                ),
                 (user_id, self.recent_entry_limit),
             ).fetchall()
             entries.extend(self._rows_to_entries('Dream', rows))
@@ -199,7 +210,7 @@ class ChatContextService:
         return entries[:self.recent_entry_limit]
 
     @staticmethod
-    def _rows_to_entries(mode: str, rows: Iterable[sqlite3.Row]) -> list[_ContextEntry]:
+    def _rows_to_entries(mode: str, rows: Iterable[object]) -> list[_ContextEntry]:
         return [
             _ContextEntry(
                 mode=mode,
@@ -237,13 +248,8 @@ class ChatContextService:
             return text
         return text[:max_chars].rstrip()
 
-    @staticmethod
-    def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-        return conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            (table_name,),
-        ).fetchone() is not None
+    def _table_exists(self, conn, table_name: str) -> bool:
+        return self.adapter.table_exists(conn, table_name)
 
-    @staticmethod
-    def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-        return table_columns(conn, table_name)
+    def _table_columns(self, conn, table_name: str) -> set[str]:
+        return self.adapter.table_columns(conn, table_name)
