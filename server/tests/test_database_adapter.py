@@ -51,6 +51,9 @@ def test_database_adapter_opens_sqlite_connections(tmp_path):
         row = conn.execute("SELECT name FROM sample").fetchone()
 
     assert row["name"] == "adapter"
+    with adapter.connect() as conn:
+        persisted = conn.execute("SELECT name FROM sample").fetchone()
+    assert persisted["name"] == "adapter"
 
 
 def test_database_adapter_requires_postgres_url():
