@@ -82,6 +82,7 @@ def _chat_model() -> str:
 def _chat_observer() -> ChatObservabilityService:
     return ChatObservabilityService(
         current_app.config['DATABASE_PATH'],
+        adapter=current_app.config.get('DATABASE_ADAPTER'),
         log=current_app.logger,
     )
 
@@ -300,7 +301,10 @@ def send_message():
 
     completed_reply = existing_request.get('assistant')
     if completed_reply is None:
-        system_prompt = ChatContextService(database_path).build_system_prompt(user_id)
+        system_prompt = ChatContextService(
+            database_path,
+            adapter=current_app.config.get('DATABASE_ADAPTER'),
+        ).build_system_prompt(user_id)
         model_stream = OpenAIService().chat_companion(
             messages=model_history,
             system_prompt=system_prompt,

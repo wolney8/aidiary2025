@@ -56,6 +56,28 @@ def test_database_adapter_opens_sqlite_connections(tmp_path):
     assert persisted["name"] == "adapter"
 
 
+def test_database_adapter_introspects_sqlite_tables_and_columns(tmp_path):
+    db_path = tmp_path / "app.db"
+    adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
+
+    with adapter.connect() as conn:
+        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT)")
+        assert adapter.table_exists(conn, "sample") is True
+        assert adapter.table_exists(conn, "missing") is False
+        assert adapter.table_columns(conn, "sample") == {"id", "name"}
+
+
+def test_database_adapter_rejects_unsafe_table_names(tmp_path):
+    db_path = tmp_path / "app.db"
+    adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
+
+    with adapter.connect() as conn:
+        with pytest.raises(ValueError, match="Unsafe SQL identifier"):
+            adapter.table_exists(conn, "users; DROP TABLE users")
+        with pytest.raises(ValueError, match="Unsafe SQL identifier"):
+            adapter.table_columns(conn, "users; DROP TABLE users")
+
+
 def test_database_adapter_requires_postgres_url():
     adapter = DatabaseAdapter(provider="postgres", sqlite_path="/tmp/fallback.db")
 

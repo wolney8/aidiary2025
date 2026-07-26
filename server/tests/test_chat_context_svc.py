@@ -183,6 +183,140 @@ def test_chat_system_prompt_stays_within_context_budget(tmp_path):
     assert prompt.startswith('You are a supportive AI diary companion.')
 
 
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        if 'FROM information_schema.tables' in sql:
+            return _FakeRows([{'exists': 1}])
+        if 'FROM information_schema.columns' in sql:
+            table_name = params[0]
+            columns = {
+                'users': [
+                    'display_name',
+                    'first_name',
+                    'pronouns',
+                    'gender',
+                    'custom_guidance',
+                ],
+                'dailydiary_entries': [
+                    'entry_date',
+                    'entry_number',
+                    'title',
+                    'user_message',
+                    'tags',
+                    'daily_people_names',
+                ],
+                'dreamdiary_entries': [
+                    'entry_date',
+                    'entry_number',
+                    'title',
+                    'plot',
+                    'summary',
+                    'tags',
+                    'dream_people_names',
+                ],
+            }.get(table_name, [])
+            return _FakeRows([{'column_name': column} for column in columns])
+        if 'FROM users' in sql:
+            return _FakeRows([
+                {
+                    'display_name': 'Alex',
+                    'first_name': '',
+                    'pronouns': 'they/them',
+                    'gender': '',
+                    'custom_guidance': 'Be practical',
+                }
+            ])
+        if 'FROM dailydiary_entries' in sql:
+            return _FakeRows([
+                {
+                    'entry_date': '2026-07-20',
+                    'entry_number': 1,
+                    'title': 'Postgres daily',
+                    'body': 'A portable context row.',
+                    'tags': 'health',
+                    'people': 'Jamie',
+                }
+            ])
+        if 'FROM dreamdiary_entries' in sql:
+            return _FakeRows([])
+        return _FakeRows([])
+
+
+class _FakeRows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakePostgresAdapter:
+    provider = 'postgres'
+
+    def __init__(self):
+        self.connection = _FakePostgresConnection()
+
+    def connect(self, **_kwargs):
+        adapter = self
+
+        class _Context:
+            def __enter__(self):
+                return adapter.connection
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        return _Context()
+
+    def table_exists(self, conn, table_name):
+        return conn.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = $1
+            """,
+            (table_name,),
+        ).fetchone() is not None
+
+    def table_columns(self, conn, table_name):
+        return {
+            row['column_name']
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = $1
+                """,
+                (table_name,),
+            ).fetchall()
+        }
+
+
+def test_chat_context_uses_adapter_and_postgres_placeholders():
+    adapter = _FakePostgresAdapter()
+
+    context = ChatContextService('/unused/sqlite.db', adapter=adapter).build_context(1)
+
+    assert 'Name: Alex' in context
+    assert 'Postgres daily' in context
+    user_query = next(sql for sql, _params in adapter.connection.calls if 'FROM users' in sql)
+    daily_query = next(
+        sql for sql, _params in adapter.connection.calls if 'FROM dailydiary_entries' in sql
+    )
+    assert '$1' in user_query
+    assert '$1' in daily_query
+    assert '$2' in daily_query
+
+
 def test_chat_messages_runtime_migration_is_idempotent(tmp_path):
     database_path = str(tmp_path / 'chat.db')
     with sqlite3.connect(database_path) as conn:
