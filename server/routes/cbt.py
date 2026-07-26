@@ -10,6 +10,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
 from services.database import connect_sqlite
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
+from services.sql_compat import inserted_id
 
 cbt_bp = Blueprint('cbt', __name__)
 
@@ -465,7 +466,7 @@ def create_worksheet():
             linked_id,
         ),
     )
-    worksheet_id = int(cursor.lastrowid)
+    worksheet_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
     conn.execute(
         '''
         INSERT INTO cbt_thought_record_data (
