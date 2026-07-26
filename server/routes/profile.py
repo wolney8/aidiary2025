@@ -9,6 +9,7 @@ import re
 from PIL import Image, ImageOps, UnidentifiedImageError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from services.ai_config import ALLOWED_ANALYSIS_MODELS
+from services.database import connect_sqlite
 from services.media_storage import (
     delete_image,
     resolve_image_url,
@@ -70,11 +71,7 @@ ALLOWED_AI_MODELS = set(ALLOWED_ANALYSIS_MODELS)
 
 def get_db():
     """Get database connection."""
-    db_path = current_app.config['DATABASE_PATH']
-    current_app.logger.debug('Profile get_db connecting to %s', db_path)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return connect_sqlite(current_app, log_label='Profile')
 
 
 def _normalise_optional_text(value, *, max_length: int):
