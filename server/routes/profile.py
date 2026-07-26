@@ -4,17 +4,18 @@ from io import BytesIO
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-import sqlite3
 import re
 from PIL import Image, ImageOps, UnidentifiedImageError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from services.ai_config import ALLOWED_ANALYSIS_MODELS
-from services.database import connect_sqlite
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.media_storage import (
     delete_image,
     resolve_image_url,
     store_profile_image,
 )
+from services.sql_compat import adapt_placeholders
 
 profile_bp = Blueprint('profile', __name__)
 
@@ -69,9 +70,22 @@ ALLOWED_AI_FOCUS = {
 }
 ALLOWED_AI_MODELS = set(ALLOWED_ANALYSIS_MODELS)
 
+
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
 def get_db():
     """Get database connection."""
-    return connect_sqlite(current_app, log_label='Profile')
+    return _database_adapter().connect(timeout=10)
 
 
 def _normalise_optional_text(value, *, max_length: int):
@@ -319,15 +333,15 @@ def _normalise_profile_picture(file_bytes: bytes) -> bytes:
     return output.getvalue()
 
 
-def _profile_payload(user: sqlite3.Row) -> dict:
+def _profile_payload(user) -> dict:
     payload = dict(user)
     storage_key = payload.pop('profile_picture_storage_key', None)
     payload['profile_picture_url'] = resolve_image_url(storage_key)
     return payload
 
 
-def _select_profile(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row | None:
-    return conn.execute('''
+def _select_profile(conn, user_id: int):
+    return conn.execute(_sql('''
         SELECT id, username, first_name, last_name, age, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
@@ -340,7 +354,7 @@ def _select_profile(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row | Non
                writing_rhythm_progress_enabled, writing_rhythm_weekly_goal,
                profile_picture_storage_key
         FROM users WHERE id = ?
-    ''', (user_id,)).fetchone()
+    '''), (user_id,)).fetchone()
 
 @profile_bp.route('/profile', methods=['GET'])
 @jwt_required()
@@ -348,12 +362,8 @@ def get_profile():
     """Get current user profile."""
     user_id = int(get_jwt_identity())
     
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    user = _select_profile(conn, user_id)
-    
-    conn.close()
+    with get_db() as conn:
+        user = _select_profile(conn, user_id)
     
     if not user:
         return jsonify({'error': 'User not found'}), 404
@@ -397,20 +407,13 @@ def update_profile():
     
     values.append(user_id)
     
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute(f'''
-        UPDATE users
-        SET {', '.join(updates)}
-        WHERE id = ?
-    ''', values)
-
-    conn.commit()
-
-    updated_user = _select_profile(conn, user_id)
-
-    conn.close()
+    with get_db() as conn:
+        conn.execute(_sql(f'''
+            UPDATE users
+            SET {', '.join(updates)}
+            WHERE id = ?
+        '''), values)
+        updated_user = _select_profile(conn, user_id)
     
     return jsonify({'message': 'Profile updated', 'user': _profile_payload(updated_user)}), 200
 
@@ -433,28 +436,25 @@ def upload_profile_picture():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    conn = get_db()
     old_storage_key = None
     new_storage_key = None
-    try:
+    with get_db() as conn:
         current_user = _select_profile(conn, user_id)
-        if current_user is None:
-            return jsonify({'error': 'User not found'}), 404
+    if current_user is None:
+        return jsonify({'error': 'User not found'}), 404
 
-        old_storage_key = current_user['profile_picture_storage_key']
-        new_storage_key = store_profile_image(image_bytes, user_id=user_id)
-        conn.execute(
-            'UPDATE users SET profile_picture_storage_key = ? WHERE id = ?',
-            (new_storage_key, user_id),
-        )
-        conn.commit()
-        updated_user = _select_profile(conn, user_id)
+    old_storage_key = current_user['profile_picture_storage_key']
+    new_storage_key = store_profile_image(image_bytes, user_id=user_id)
+    try:
+        with get_db() as conn:
+            conn.execute(
+                _sql('UPDATE users SET profile_picture_storage_key = ? WHERE id = ?'),
+                (new_storage_key, user_id),
+            )
+            updated_user = _select_profile(conn, user_id)
     except Exception:
-        conn.rollback()
         delete_image(new_storage_key)
         raise
-    finally:
-        conn.close()
 
     delete_image(old_storage_key)
     return jsonify({
@@ -468,20 +468,17 @@ def upload_profile_picture():
 def delete_profile_picture():
     """Remove the current user's profile picture without changing profile data."""
     user_id = int(get_jwt_identity())
-    conn = get_db()
-    try:
+    with get_db() as conn:
         current_user = _select_profile(conn, user_id)
         if current_user is None:
             return jsonify({'error': 'User not found'}), 404
+
         old_storage_key = current_user['profile_picture_storage_key']
         conn.execute(
-            'UPDATE users SET profile_picture_storage_key = NULL WHERE id = ?',
+            _sql('UPDATE users SET profile_picture_storage_key = NULL WHERE id = ?'),
             (user_id,),
         )
-        conn.commit()
         updated_user = _select_profile(conn, user_id)
-    finally:
-        conn.close()
 
     delete_image(old_storage_key)
     return jsonify({

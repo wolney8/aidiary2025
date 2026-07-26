@@ -6,9 +6,64 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from flask import Flask
 from PIL import Image
 
 from app import create_app
+from routes import profile
+
+
+class _FakePostgresRows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return _FakePostgresRows([
+            {
+                "id": 1,
+                "username": "profile-user",
+                "first_name": None,
+                "last_name": None,
+                "age": None,
+                "sex": None,
+                "goals": None,
+                "dailydiary_api_key": None,
+                "dreamdiary_api_key": None,
+                "chatgpt_daily_diary_coachname": None,
+                "chatgpt_dream_diary_coachname": None,
+                "display_name": "Will",
+                "pronouns": "he/him",
+                "gender": "man",
+                "custom_guidance": None,
+                "timezone": "Europe/London",
+                "holiday_country_code": "GB",
+                "show_public_holidays": 1,
+                "show_on_this_day": 1,
+                "ai_tone": "friendly",
+                "ai_verbosity": "balanced",
+                "ai_focus": "reflective",
+                "ai_model": "gpt-4.1-mini",
+                "allow_ai_history": 1,
+                "allow_ai_attachment_context": 0,
+                "writing_reminders_enabled": 0,
+                "writing_reminder_days": None,
+                "writing_reminder_time": "19:00",
+                "writing_reminder_silence_days": 3,
+                "writing_reminder_entry_types": "daily,dream",
+                "writing_rhythm_progress_enabled": 0,
+                "writing_rhythm_weekly_goal": 4,
+                "profile_picture_storage_key": None,
+            }
+        ])
 
 
 @pytest.fixture
@@ -64,6 +119,30 @@ def _register_and_get_token(client) -> str:
         content_type="application/json",
     )
     return json.loads(response.data)["token"]
+
+
+def test_profile_helpers_use_postgres_placeholders():
+    app = Flask(__name__)
+    app.config["DATABASE_PROVIDER"] = "postgres"
+    conn = _FakePostgresConnection()
+
+    with app.app_context():
+        user = profile._select_profile(conn, 1)
+        update_sql = profile._sql(
+            """
+            UPDATE users
+            SET display_name = ?, timezone = ?
+            WHERE id = ?
+            """
+        )
+
+    select_sql, select_params = conn.calls[0]
+    assert "FROM users WHERE id = $1" in select_sql
+    assert select_params == (1,)
+    assert user["display_name"] == "Will"
+    assert "display_name = $1" in update_sql
+    assert "timezone = $2" in update_sql
+    assert "WHERE id = $3" in update_sql
 
 
 def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_schema):
