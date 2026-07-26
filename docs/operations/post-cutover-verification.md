@@ -85,7 +85,8 @@ Capture:
 - sample count
 
 Store the JSON report outside the repo. If latency is materially worse than the SQLite
-baseline or any endpoint returns `5xx`, roll back before accepting the cutover.
+baseline or any sampled API endpoint returns `4xx`/`5xx`, roll back before accepting the
+cutover.
 
 ## Go/No-Go
 
@@ -93,7 +94,7 @@ Accept the cutover only when:
 
 - no data count mismatches are present
 - no critical manual smoke path fails
-- baseline capture has zero server errors
+- baseline capture has zero API errors
 - media and attachment links work
 - chat observability shows completed events after a test message
 

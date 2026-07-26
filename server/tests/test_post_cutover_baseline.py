@@ -78,3 +78,27 @@ def test_capture_baseline_counts_server_errors():
     assert report["summary"]["error_count"] == 1
     health = next(endpoint for endpoint in report["endpoints"] if endpoint["name"] == "health")
     assert health["error_count"] == 1
+
+
+def test_capture_baseline_counts_auth_failures():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/profile":
+            return httpx.Response(401, json={"msg": "Token has expired"})
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    with httpx.Client(
+        base_url="https://example.test",
+        transport=transport,
+    ) as client:
+        report = capture_baseline(
+            base_url="https://example.test",
+            token="expired-token",
+            samples=1,
+            client=client,
+        )
+
+    assert report["summary"]["error_count"] == 1
+    profile = next(endpoint for endpoint in report["endpoints"] if endpoint["name"] == "profile")
+    assert profile["error_count"] == 1
+    assert profile["samples"][0]["status_code"] == 401
