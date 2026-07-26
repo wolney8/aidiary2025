@@ -905,6 +905,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 class="visually-hidden"
+                aria-label="Choose important day image"
                 (change)="onImportantDayImageSelected($event)"
               />
               <button

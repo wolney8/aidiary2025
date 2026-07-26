@@ -244,18 +244,30 @@ test.describe("WCAG 2.2 AA automated checks", () => {
   });
 
   test("On this day preview in dark theme", async ({ page }) => {
+    const toDateKey = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    const today = new Date();
+    const todayKey = toDateKey(today);
+    const previousYearKey = toDateKey(
+      new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()),
+    );
+
     await seedAuthenticatedSession(
       page,
       "dark",
       undefined,
       {
         enabled: true,
-        date: "2026-07-21",
+        date: todayKey,
         entries: [
           {
             id: 7,
             type: "daily",
-            entry_date: "2025-07-21",
+            entry_date: previousYearKey,
             title: "A calmer afternoon",
             preview: "I noticed that taking a slower route home helped.",
             tags: ["reflection"],
@@ -269,10 +281,10 @@ test.describe("WCAG 2.2 AA automated checks", () => {
         {
           id: 4,
           label: "A meaningful date",
-          starts_on: "2025-07-21",
-          month: 7,
-          day: 21,
-          original_year: 2025,
+          starts_on: previousYearKey,
+          month: today.getMonth() + 1,
+          day: today.getDate(),
+          original_year: today.getFullYear() - 1,
           category: "other",
           recurrence: "yearly",
           icon_name: "event",
@@ -285,7 +297,7 @@ test.describe("WCAG 2.2 AA automated checks", () => {
         daily: [
           {
             id: 1,
-            entry_date: "2026-07-21",
+            entry_date: todayKey,
             entry_time: "19:00",
             title: "Today in focus",
             message: "A short daily entry.",
@@ -297,7 +309,7 @@ test.describe("WCAG 2.2 AA automated checks", () => {
         dreams: [
           {
             id: 2,
-            entry_date: "2026-07-21",
+            entry_date: todayKey,
             entry_time: "08:00",
             title: "A recent dream",
             plot: "A short dream entry.",
@@ -313,7 +325,7 @@ test.describe("WCAG 2.2 AA automated checks", () => {
             title: "A balanced thought",
             status: "completed",
             current_step: 7,
-            record_date: "2026-07-21",
+            record_date: todayKey,
             situation: "A short situation.",
             balanced_thought: "A more balanced response.",
             feelings_before: [],
@@ -332,11 +344,13 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expect(page.getByTestId("cards-important-day-preview")).toBeVisible();
 
     await page.goto("/entries?display=calendar");
-    const showMoreButton = page.getByRole("button", {
-      name: /Show more items for/,
-    });
-    await expect(showMoreButton).toBeVisible();
-    await showMoreButton.click();
+    const onThisDayFilter = page
+      .getByTestId("entries-filter-on-this-day")
+      .locator('[role="option"]');
+    if ((await onThisDayFilter.getAttribute("aria-selected")) !== "true") {
+      await page.getByTestId("entries-filter-on-this-day").click();
+    }
+    await expect(onThisDayFilter).toHaveAttribute("aria-selected", "true");
     await page.getByTestId("calendar-on-this-day-marker").click();
     await expect(page.getByTestId("on-this-day-preview")).toBeVisible();
 
@@ -376,7 +390,7 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
-  for (const route of ["/settings/import", "/settings/important-days"] as const) {
+  for (const route of ["/settings/import", "/settings/personalisation"] as const) {
     test(`${route} in dark theme`, async ({ page }) => {
       await seedAuthenticatedSession(page, "dark");
       await page.goto(route);
@@ -385,4 +399,14 @@ test.describe("WCAG 2.2 AA automated checks", () => {
       await expectNoWcagViolations(page);
     });
   }
+
+  test("important days in dark theme", async ({ page }) => {
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/important-days");
+    await expect(
+      page.getByRole("heading", { name: "Important days" }),
+    ).toBeVisible();
+
+    await expectNoWcagViolations(page);
+  });
 });

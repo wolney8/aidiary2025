@@ -132,10 +132,19 @@ import {
       }
 
       .settings-nav-link.is-active {
+        --mdc-outlined-button-label-text-color: var(
+          --colour-control-selected-text
+        );
+        --mdc-outlined-button-outline-color: var(--colour-control-selected);
+
         border-color: var(--colour-control-selected);
         background: var(--colour-control-selected);
         color: var(--colour-control-selected-text);
         box-shadow: 0 8px 20px var(--colour-primary-shadow);
+      }
+
+      :host ::ng-deep .settings-nav-link.is-active .mdc-button__label {
+        color: var(--colour-control-selected-text) !important;
       }
 
       .settings-nav-link.is-active mat-icon {

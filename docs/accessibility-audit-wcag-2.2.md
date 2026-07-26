@@ -40,6 +40,7 @@ follow-on work. Do not create a second accessibility handoff document for this i
 | A11Y-011 | Major | 4.1.2 A | Notifications | Focusable notification articles acted as buttons while containing other actions. Kept articles structural and added an explicit keyboard-operable mark-read action. |
 | A11Y-012 | Major | 1.4.3 AA, 1.4.11 AA | Search/import/important days | Migrated legacy semantic surfaces, state text, boundaries, and category accents to shared light/dark theme tokens. Intentional elevation shadows also use shared tokens rather than route-local palettes. |
 | A11Y-014 | Advisory | Process | Automated coverage | Added `@axe-core/playwright` checks for login, registration, entry list in both themes, entry creation, populated search, Import, and Important Days. The exact Angular CDK focus-trap sentinel is excluded while `aria-hidden-focus` remains active elsewhere. The gate identified and remediated a hidden but keyboard-focusable Import file input. |
+| A11Y-015 | Major | 1.4.3 AA, 3.2.3 AA, 4.1.2 A | Settings/create/calendar | Refreshed the axe route matrix after Settings and Important Days route changes. Fixed active Settings pill contrast in dark mode, labelled the embedded Important Day image file input, and updated On This Day preview coverage to use current-date calendar behavior. |
 
 ## Open Findings
 
@@ -113,7 +114,7 @@ technology check before issue closure.
 | `cd client && npm run lint` | Passed |
 | `cd client && npm run build` | Passed; existing unused `autosave.service.ts` warning remains |
 | `cd client && npm run test:e2e:smoke` | Passed, 2 tests |
-| `cd client && npm run test:e2e:a11y` | Passed, 8 axe checks across public/authenticated, populated search/settings, and light/dark representative routes |
+| `cd client && npm run test:e2e:a11y` | Passed, 12 axe checks across public/authenticated routes, entry filters, entry creation, On This Day previews, populated search, Settings, standalone Important Days, and light/dark representative routes |
 | Focused login unit spec | Inconclusive: the corrected harness compiled, but Chrome Headless disconnected on the rerun before executing tests due to the repository's recurring Karma ping timeout |
 
 ## Exit Criteria
