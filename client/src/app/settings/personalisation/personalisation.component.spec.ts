@@ -102,6 +102,61 @@ describe("PersonalisationComponent", () => {
     expect(component.successMessage).toBe("Customisation saved.");
   });
 
+  it("normalises writing reminder and rhythm settings into the save payload", () => {
+    component.settings = {
+      ...(component.settings as User),
+      writing_reminders_enabled: true,
+      writing_reminder_days: "friday,monday,funday",
+      writing_reminder_time: "18:30",
+      writing_reminder_silence_days: 5,
+      writing_reminder_entry_types: "thought-record,daily,gratitude",
+      writing_rhythm_progress_enabled: true,
+      writing_rhythm_weekly_goal: 6,
+    };
+
+    component.saveSettings();
+
+    const payload = updateProfileSpy.calls.mostRecent().args[0] as Partial<User>;
+    expect(payload.writing_reminders_enabled).toBeTrue();
+    expect(payload.writing_reminder_days).toBe("monday,friday");
+    expect(payload.writing_reminder_time).toBe("18:30");
+    expect(payload.writing_reminder_silence_days).toBe(5);
+    expect(payload.writing_reminder_entry_types).toBe("daily,thought_record");
+    expect(payload.writing_rhythm_progress_enabled).toBeTrue();
+    expect(payload.writing_rhythm_weekly_goal).toBe(6);
+  });
+
+  it("blocks writing reminders when no counted record types are selected", () => {
+    component.settings = {
+      ...(component.settings as User),
+      writing_reminders_enabled: true,
+      writing_reminder_days: "monday",
+      writing_reminder_time: "19:00",
+      writing_reminder_silence_days: 3,
+      writing_reminder_entry_types: "",
+    };
+    updateProfileSpy.calls.reset();
+
+    component.saveSettings();
+
+    expect(component.errorMessage).toBe("Choose at least one record type to count as writing.");
+    expect(updateProfileSpy).not.toHaveBeenCalled();
+  });
+
+  it("blocks invalid writing rhythm goals before saving", () => {
+    component.settings = {
+      ...(component.settings as User),
+      writing_rhythm_progress_enabled: true,
+      writing_rhythm_weekly_goal: 22,
+    };
+    updateProfileSpy.calls.reset();
+
+    component.saveSettings();
+
+    expect(component.errorMessage).toBe("Weekly writing goal must be between 1 and 21.");
+    expect(updateProfileSpy).not.toHaveBeenCalled();
+  });
+
   it("guards navigation when settings have unsaved changes", async () => {
     component.settings = {
       ...(component.settings as User),
