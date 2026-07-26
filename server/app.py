@@ -43,45 +43,9 @@ def _ensure_nltk_data() -> None:
     except Exception:
         pass
 
-def create_app():
-    """Create and configure Flask application."""
-    app = Flask(__name__)
-    
-    # Configuration
-    app_environment = (os.getenv('APP_ENV') or 'development').strip().lower()
-    jwt_secret = os.getenv('JWT_SECRET')
-    if not jwt_secret and app_environment == 'production':
-        raise RuntimeError('JWT_SECRET must be configured when APP_ENV=production')
-    if not jwt_secret:
-        app.logger.warning('JWT_SECRET is not configured; using local development secret')
-    app.config['JWT_SECRET_KEY'] = jwt_secret or 'dev-secret-key'
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
-    app.config['CHAT_RATE_LIMIT'] = os.getenv('CHAT_RATE_LIMIT', '20 per hour')
-    try:
-        app.config['CHAT_DAILY_TOKEN_BUDGET'] = max(
-            1,
-            int(os.getenv('CHAT_DAILY_TOKEN_BUDGET', '50000')),
-        )
-    except ValueError:
-        app.logger.warning('Invalid CHAT_DAILY_TOKEN_BUDGET; using 50000')
-        app.config['CHAT_DAILY_TOKEN_BUDGET'] = 50000
-    app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
-    database_settings = configure_app_database(app)
-    database_path = database_settings.sqlite_path
-    if not os.path.exists(database_path):
-        app.logger.warning('Database file not found at %s', database_path)
 
-    media_root = os.getenv('MEDIA_ROOT')
-    fallback_media_root = os.path.join(app.root_path, 'media')
-    if media_root:
-        resolved_media_root = media_root if os.path.isabs(media_root) else os.path.join(app.root_path, media_root)
-    else:
-        resolved_media_root = fallback_media_root
-    app.config['MEDIA_ROOT'] = resolved_media_root
-    app.config['MEDIA_URL_PREFIX'] = DEFAULT_MEDIA_URL_PREFIX
-    app.config['MEDIA_BASE_URL'] = (os.getenv('MEDIA_BASE_URL') or '').strip() or None
-    ensure_media_root(resolved_media_root)
-
+def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
+    """Run local SQLite compatibility migrations during development startup."""
     try:
         added_columns = ensure_entry_mood_style_columns(database_path, app.logger.info)
         if added_columns == 0:
@@ -158,6 +122,54 @@ def create_app():
         ensure_cbt_worksheet_tables(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime CBT worksheet migration skipped due to error: %s', migration_exc)
+
+
+def create_app():
+    """Create and configure Flask application."""
+    app = Flask(__name__)
+    
+    # Configuration
+    app_environment = (os.getenv('APP_ENV') or 'development').strip().lower()
+    jwt_secret = os.getenv('JWT_SECRET')
+    if not jwt_secret and app_environment == 'production':
+        raise RuntimeError('JWT_SECRET must be configured when APP_ENV=production')
+    if not jwt_secret:
+        app.logger.warning('JWT_SECRET is not configured; using local development secret')
+    app.config['JWT_SECRET_KEY'] = jwt_secret or 'dev-secret-key'
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
+    app.config['CHAT_RATE_LIMIT'] = os.getenv('CHAT_RATE_LIMIT', '20 per hour')
+    try:
+        app.config['CHAT_DAILY_TOKEN_BUDGET'] = max(
+            1,
+            int(os.getenv('CHAT_DAILY_TOKEN_BUDGET', '50000')),
+        )
+    except ValueError:
+        app.logger.warning('Invalid CHAT_DAILY_TOKEN_BUDGET; using 50000')
+        app.config['CHAT_DAILY_TOKEN_BUDGET'] = 50000
+    app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
+    database_settings = configure_app_database(app)
+    database_path = database_settings.sqlite_path
+    if not os.path.exists(database_path):
+        app.logger.warning('Database file not found at %s', database_path)
+
+    media_root = os.getenv('MEDIA_ROOT')
+    fallback_media_root = os.path.join(app.root_path, 'media')
+    if media_root:
+        resolved_media_root = media_root if os.path.isabs(media_root) else os.path.join(app.root_path, media_root)
+    else:
+        resolved_media_root = fallback_media_root
+    app.config['MEDIA_ROOT'] = resolved_media_root
+    app.config['MEDIA_URL_PREFIX'] = DEFAULT_MEDIA_URL_PREFIX
+    app.config['MEDIA_BASE_URL'] = (os.getenv('MEDIA_BASE_URL') or '').strip() or None
+    ensure_media_root(resolved_media_root)
+
+    if app.config['DATABASE_RUNTIME_MIGRATIONS_ENABLED']:
+        _run_sqlite_runtime_migrations(app, database_path)
+    else:
+        app.logger.info(
+            'Runtime SQLite migrations disabled for provider: %s',
+            app.config['DATABASE_PROVIDER'],
+        )
     
     # CORS configuration
     cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
