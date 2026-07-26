@@ -30,6 +30,33 @@ TERMINAL_EVENTS = {
 }
 
 
+def _evaluate_slo(
+    actual: int | float | None,
+    target: int | float,
+    *,
+    direction: str,
+) -> dict[str, Any]:
+    if actual is None:
+        return {
+            'actual': None,
+            'target': target,
+            'status': 'no_data',
+            'met': None,
+        }
+    if direction == 'gte':
+        met = actual >= target
+    elif direction == 'lte':
+        met = actual <= target
+    else:
+        raise ValueError(f'Unsupported SLO direction: {direction}')
+    return {
+        'actual': actual,
+        'target': target,
+        'status': 'met' if met else 'breached',
+        'met': met,
+    }
+
+
 def _safe_json(value: dict[str, Any] | None) -> str:
     if not value:
         return '{}'
@@ -137,10 +164,57 @@ class ChatObservabilityService:
         output_tokens = sum(int(row['output_tokens'] or 0) for row in rows)
         success_rate = completed_count / terminal_count if terminal_count else None
         error_rate = failed_count / terminal_count if terminal_count else None
+        average_latency_ms = (
+            round(sum(latencies) / len(latencies)) if latencies else None
+        )
+        p95_latency_ms = _percentile(latencies, 0.95)
+        rate_limit_events = event_counts['rate_limited']
+        slo_status = {
+            'success_completion_rate': _evaluate_slo(
+                success_rate,
+                CHAT_SLO_TARGETS['success_completion_rate'],
+                direction='gte',
+            ),
+            'error_rate': _evaluate_slo(
+                error_rate,
+                CHAT_SLO_TARGETS['error_rate'],
+                direction='lte',
+            ),
+            'p95_latency_ms': _evaluate_slo(
+                p95_latency_ms,
+                CHAT_SLO_TARGETS['p95_latency_ms'],
+                direction='lte',
+            ),
+            'rate_limit_events': _evaluate_slo(
+                rate_limit_events,
+                CHAT_SLO_TARGETS['rate_limit_events'],
+                direction='lte',
+            ),
+        }
+        breached_slos = [
+            name
+            for name, status in slo_status.items()
+            if status['status'] == 'breached'
+        ]
+        missing_slos = [
+            name
+            for name, status in slo_status.items()
+            if status['status'] == 'no_data'
+        ]
 
         return {
             'period_days': bounded_days,
             'slo_targets': CHAT_SLO_TARGETS,
+            'slo_status': slo_status,
+            'slo_summary': {
+                'status': 'breached'
+                if breached_slos
+                else 'no_data'
+                if missing_slos and len(missing_slos) == len(slo_status)
+                else 'met',
+                'breached': breached_slos,
+                'no_data': missing_slos,
+            },
             'event_counts': dict(event_counts),
             'error_counts': dict(error_counts),
             'terminal_events': terminal_count,
@@ -148,10 +222,8 @@ class ChatObservabilityService:
             'failed_events': failed_count,
             'success_completion_rate': success_rate,
             'error_rate': error_rate,
-            'average_latency_ms': (
-                round(sum(latencies) / len(latencies)) if latencies else None
-            ),
-            'p95_latency_ms': _percentile(latencies, 0.95),
+            'average_latency_ms': average_latency_ms,
+            'p95_latency_ms': p95_latency_ms,
             'token_usage': {
                 'input_tokens': input_tokens,
                 'output_tokens': output_tokens,
