@@ -2,10 +2,10 @@ import {
   Component,
   Output,
   EventEmitter,
+  HostListener,
   inject,
   OnDestroy,
   OnInit,
-  ViewChild,
   computed,
   signal,
 } from "@angular/core";
@@ -14,7 +14,7 @@ import { BreakpointObserver } from "@angular/cdk/layout";
 import { MatToolbarModule } from "@angular/material/toolbar";
 import { MatIconModule } from "@angular/material/icon";
 import { MatButtonModule } from "@angular/material/button";
-import { MatMenuModule, MatMenuTrigger } from "@angular/material/menu";
+import { MatMenuModule } from "@angular/material/menu";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { MatSlideToggleModule } from "@angular/material/slide-toggle";
@@ -253,12 +253,13 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           <span class="user-name" *ngIf="showUserName()">{{ name }}</span>
         </ng-container>
         <button
-          #notificationMenuTrigger="matMenuTrigger"
           mat-icon-button
           class="notification-bell"
           type="button"
-          [matMenuTriggerFor]="notificationMenu"
+          (click)="toggleNotifications($event)"
           aria-label="Open notifications"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="showNotifications()"
         >
           <ng-container *ngIf="notifications$ | async as notifications">
             <mat-icon>{{ hasRunningImport(notifications) ? "notifications_active" : "notifications_none" }}</mat-icon>
@@ -316,16 +317,33 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         <button mat-menu-item (click)="logout()">Logout</button>
       </mat-menu>
 
-      <mat-menu #notificationMenu="matMenu" class="notification-menu">
-        <div class="notification-panel" (click)="$event.stopPropagation()">
+      <div
+        *ngIf="showNotifications()"
+        class="notification-popover"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="notification-panel-title"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="notification-panel">
           <div class="notification-panel__header">
-            <div class="notification-panel__title">
+            <div class="notification-panel__title" id="notification-panel-title">
               <mat-icon aria-hidden="true">notifications</mat-icon>
               <strong>Notifications</strong>
             </div>
-            <button mat-button type="button" (click)="clearNotifications()">
-              Clear
-            </button>
+            <div class="notification-panel__header-actions">
+              <button mat-button type="button" (click)="clearNotifications()">
+                Clear
+              </button>
+              <button
+                mat-icon-button
+                type="button"
+                (click)="closeNotifications()"
+                aria-label="Close notifications"
+              >
+                <mat-icon aria-hidden="true">close</mat-icon>
+              </button>
+            </div>
           </div>
           <div class="notification-panel__filters">
             <mat-slide-toggle
@@ -345,7 +363,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               <span
                 *ngIf="notification.unread"
                 class="notification-unread-dot"
-                aria-label="Unread notification"
+                aria-hidden="true"
               ></span>
               <div class="notification-item__title">
                 <mat-icon aria-hidden="true">
@@ -401,7 +419,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
             </p>
           </ng-container>
         </div>
-      </mat-menu>
+      </div>
     </mat-toolbar>
   `,
   styles: [
@@ -610,20 +628,27 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         padding: var(--spacing-sm);
         color: var(--colour-text-primary);
         background: var(--colour-surface-elevated);
+        white-space: normal;
       }
-      :host ::ng-deep .notification-menu.mat-mdc-menu-panel {
-        min-width: 0 !important;
-        max-width: min(19rem, calc(100vw - 1rem)) !important;
-        overflow-x: hidden !important;
-      }
-      :host ::ng-deep .notification-menu .mat-mdc-menu-content {
+      .notification-panel *,
+      .notification-panel *::before,
+      .notification-panel *::after {
         box-sizing: border-box;
-        max-width: 100%;
-        overflow-x: hidden;
-        padding: 0;
+      }
+      .notification-popover {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: clamp(0.5rem, 2vw, 1rem);
+        z-index: 1000;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        box-shadow: 0 24px 54px rgba(2, 6, 23, 0.32);
+        overflow: hidden;
       }
       .notification-panel__header,
       .notification-panel__title,
+      .notification-panel__header-actions,
       .notification-item__title,
       .notification-item__actions {
         display: flex;
@@ -638,6 +663,11 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       }
       .notification-panel__title {
         min-width: 0;
+      }
+      .notification-panel mat-icon {
+        flex: 0 0 24px;
+        width: 24px;
+        height: 24px;
       }
       .notification-panel__header > button {
         flex: 0 0 auto;
@@ -688,6 +718,9 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         flex-wrap: wrap;
         margin-top: var(--spacing-md);
       }
+      .notification-item__actions button {
+        min-width: 0;
+      }
       .notification-panel__empty {
         margin: var(--spacing-md) 0 0;
         color: var(--colour-text-secondary);
@@ -723,6 +756,13 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         }
         .logo {
           padding: 8px 12px;
+        }
+        .notification-item__actions {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+        .notification-item__actions button {
+          width: 100%;
         }
       }
 
@@ -890,8 +930,6 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
   ],
 })
 export class TopBarComponent implements OnInit, OnDestroy {
-  @ViewChild("notificationMenuTrigger")
-  private notificationMenuTrigger!: MatMenuTrigger;
   protected readonly searchFilterOptions = [
     { key: "keywords", label: "Entry text", icon: "notes" },
     { key: "tags", label: "Tags", icon: "label" },
@@ -942,6 +980,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   readonly importJob$ = this.importJobService.job$;
   readonly notifications$ = this.importJobService.notifications$;
   readonly showUnreadOnly = signal(false);
+  readonly showNotifications = signal(false);
 
   // Track search loading state
   isSearching = false;
@@ -982,9 +1021,28 @@ export class TopBarComponent implements OnInit, OnDestroy {
     this.themeService.toggleTheme();
   }
 
+  toggleNotifications(event: MouseEvent): void {
+    event.stopPropagation();
+    this.showNotifications.update((isOpen) => !isOpen);
+  }
+
+  closeNotifications(): void {
+    this.showNotifications.set(false);
+  }
+
+  @HostListener("document:click")
+  closeNotificationsOnOutsideClick(): void {
+    this.closeNotifications();
+  }
+
+  @HostListener("document:keydown.escape")
+  closeNotificationsOnEscape(): void {
+    this.closeNotifications();
+  }
+
   openNotificationDestination(notification: AppNotification): void {
     this.importJobService.markRead(notification.id);
-    this.notificationMenuTrigger.closeMenu();
+    this.closeNotifications();
     void this.router.navigateByUrl(notification.destination || "/entries");
   }
 
