@@ -37,6 +37,7 @@ from services.import_service import (
     get_import_history,
 )
 from services.media_storage import delete_image, read_media_bytes
+from services.sql_compat import in_placeholders
 
 import_bp = Blueprint('import', __name__)
 
@@ -182,7 +183,8 @@ def _load_attachment_export_rows(
     if not entry_ids:
         return {}
 
-    placeholders = ','.join('?' for _ in entry_ids)
+    provider = current_app.config.get('DATABASE_PROVIDER', 'sqlite')
+    placeholders = in_placeholders(entry_ids, provider, start=3)
     rows = conn.execute(
         f'''
         SELECT entry_id, asset_role, storage_key, original_filename, mime_type,

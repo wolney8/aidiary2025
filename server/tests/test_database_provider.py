@@ -1,7 +1,7 @@
 import pytest
 
 from app import create_app
-from services.database import resolve_database_settings
+from services.database import connect_sqlite_path, resolve_database_settings
 
 
 def test_database_settings_default_to_sqlite(tmp_path):
@@ -73,3 +73,14 @@ def test_app_records_sqlite_database_provider(monkeypatch, tmp_path):
     assert app.config["DATABASE_PATH"] == str(db_path)
     assert app.config["DATABASE_URL"] == "postgresql://example/rehearsal"
     assert app.config["DATABASE_RUNTIME_MIGRATIONS_ENABLED"] is True
+
+
+def test_connect_sqlite_path_returns_row_mapping(tmp_path):
+    db_path = tmp_path / "app.db"
+    conn = connect_sqlite_path(str(db_path))
+    conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.execute("INSERT INTO sample (name) VALUES (?)", ("test",))
+    row = conn.execute("SELECT id, name FROM sample").fetchone()
+    conn.close()
+
+    assert row["name"] == "test"
