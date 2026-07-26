@@ -5,6 +5,14 @@ import json
 from app import create_app
 import tempfile
 import os
+from flask import Flask
+from routes import auth
+
+
+class _FakeAuthAdapter:
+    def table_columns(self, _conn, table_name):
+        assert table_name == 'users'
+        return {'profile_picture_storage_key', 'writing_reminder_time'}
 
 
 def test_production_startup_requires_explicit_jwt_secret(monkeypatch):
@@ -13,6 +21,36 @@ def test_production_startup_requires_explicit_jwt_secret(monkeypatch):
 
     with pytest.raises(RuntimeError, match='JWT_SECRET must be configured'):
         create_app()
+
+
+def test_auth_helpers_support_postgres_placeholders_and_optional_selects():
+    app = Flask(__name__)
+    app.config['DATABASE_PROVIDER'] = 'postgres'
+    app.config['DATABASE_ADAPTER'] = _FakeAuthAdapter()
+
+    with app.app_context():
+        optional_selects = auth._optional_user_selects(object())
+        insert_sql = auth._sql(
+            auth.append_returning_id(
+                '''
+                INSERT INTO users (username, password, first_name, last_name)
+                VALUES (?, ?, ?, ?)
+                ''',
+                auth._database_provider(),
+            )
+        )
+        login_sql = auth._sql(
+            f'''SELECT id, username, password, first_name, {optional_selects}
+                FROM users WHERE username = ?'''
+        )
+
+    assert 'profile_picture_storage_key' in optional_selects
+    assert "'19:00' AS writing_reminder_time" not in optional_selects
+    assert "'daily,dream' AS writing_reminder_entry_types" in optional_selects
+    assert 'VALUES ($1, $2, $3, $4)' in insert_sql
+    assert 'RETURNING id' in insert_sql
+    assert 'WHERE username = $1' in login_sql
+
 
 @pytest.fixture
 def client():

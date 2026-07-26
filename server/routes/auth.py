@@ -4,9 +4,10 @@ from flask_jwt_extended import create_access_token
 import bcrypt
 import sqlite3
 import re
-from services.database import connect_sqlite, table_columns
+from services.database import SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.media_storage import resolve_image_url
-from services.sql_compat import inserted_id
+from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -58,11 +59,23 @@ def _validate_registration_payload(
 
 def get_db():
     """Get database connection."""
-    return connect_sqlite(current_app, log_label='Auth')
+    return _database_adapter().connect(timeout=10)
 
 
-def _optional_user_selects(cursor: sqlite3.Cursor) -> str:
-    columns = table_columns(cursor.connection, 'users')
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
+def _optional_user_selects(conn) -> str:
+    columns = _database_adapter().table_columns(conn, 'users')
     optional_columns = {
         'profile_picture_storage_key': 'NULL',
         'writing_reminders_enabled': '0',
@@ -81,10 +94,19 @@ def _optional_user_selects(cursor: sqlite3.Cursor) -> str:
             selects.append(f'{fallback} AS {column_name}')
     return ', '.join(selects)
 
+
+def _is_duplicate_username_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return isinstance(exc, sqlite3.IntegrityError) or (
+        'users' in message
+        and 'username' in message
+        and ('unique' in message or 'duplicate' in message)
+    )
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register new user with bcrypt password hashing."""
-    data = request.get_json()
+    data = request.get_json() or {}
     username = _normalise_username(data.get('username'))
     password = str(data.get('password') or '')
     first_name = _normalise_optional_name(data.get('first_name'))
@@ -99,24 +121,26 @@ def register():
     # Hash password with bcrypt
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
     
-    conn = get_db()
-    cursor = conn.cursor()
-    
     try:
-        existing_user = cursor.execute(
-            'SELECT id FROM users WHERE username = ?',
-            (username,),
-        ).fetchone()
-        if existing_user:
-            return jsonify({'error': 'Username already exists'}), 409
+        with get_db() as conn:
+            existing_user = conn.execute(
+                _sql('SELECT id FROM users WHERE username = ?'),
+                (username,),
+            ).fetchone()
+            if existing_user:
+                return jsonify({'error': 'Username already exists'}), 409
 
-        cursor.execute('''
-            INSERT INTO users (username, password, first_name, last_name)
-            VALUES (?, ?, ?, ?)
-        ''', (username, password_hash.decode('utf-8'), first_name, last_name))
-        
-        conn.commit()
-        user_id = inserted_id(cursor, current_app.config.get('DATABASE_PROVIDER', 'sqlite'))
+            cursor = conn.execute(
+                _sql(append_returning_id(
+                    '''
+                    INSERT INTO users (username, password, first_name, last_name)
+                    VALUES (?, ?, ?, ?)
+                    ''',
+                    _database_provider(),
+                )),
+                (username, password_hash.decode('utf-8'), first_name, last_name),
+            )
+            user_id = inserted_id(cursor, _database_provider())
         
         # Create JWT token
         access_token = create_access_token(identity=str(user_id))
@@ -139,32 +163,28 @@ def register():
             }
         }), 201
         
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Username already exists'}), 409
-    finally:
-        conn.close()
+    except Exception as exc:
+        if _is_duplicate_username_error(exc):
+            return jsonify({'error': 'Username already exists'}), 409
+        raise
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """Authenticate user and return JWT token."""
-    data = request.get_json()
+    data = request.get_json() or {}
     username = _normalise_username(data.get('username'))
     password = str(data.get('password') or '')
 
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
     
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    optional_user_selects = _optional_user_selects(cursor)
-    user = cursor.execute(
-        f'''SELECT id, username, password, first_name, {optional_user_selects}
-            FROM users WHERE username = ?''',
-        (username,)
-    ).fetchone()
-    
-    conn.close()
+    with get_db() as conn:
+        optional_user_selects = _optional_user_selects(conn)
+        user = conn.execute(
+            _sql(f'''SELECT id, username, password, first_name, {optional_user_selects}
+                FROM users WHERE username = ?'''),
+            (username,)
+        ).fetchone()
     
     if not user:
         return jsonify({'error': 'Invalid credentials'}), 401
@@ -179,13 +199,11 @@ def login():
             return jsonify({'error': 'Invalid credentials'}), 401
         # Migrate legacy plaintext password to bcrypt on successful login.
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        conn = get_db()
-        conn.execute(
-            'UPDATE users SET password = ? WHERE id = ?',
-            (password_hash.decode('utf-8'), user['id']),
-        )
-        conn.commit()
-        conn.close()
+        with get_db() as conn:
+            conn.execute(
+                _sql('UPDATE users SET password = ? WHERE id = ?'),
+                (password_hash.decode('utf-8'), user['id']),
+            )
     
     # Create JWT token
     access_token = create_access_token(identity=str(user['id']))
