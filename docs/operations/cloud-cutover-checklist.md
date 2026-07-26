@@ -9,6 +9,8 @@ not cut over until every required gate is complete and the readiness validator r
 ## Required Environment
 
 - `DATABASE_URL`: Postgres connection string for the target environment.
+- `DATABASE_PROVIDER`: explicit runtime provider switch. Keep `sqlite` until the
+  Postgres runtime adapter has landed; `DATABASE_URL` alone is rehearsal metadata.
 - `DB_PATH`: retained only for SQLite source/fallback during migration.
 - `JWT_SECRET`: production secret configured.
 - `MEDIA_ROOT` / media backend config: points at the active media store.

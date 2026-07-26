@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager, get_jwt_identity
 from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
+from services.database import configure_app_database
 from services.runtime_migrations import (
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
@@ -65,25 +66,11 @@ def create_app():
         app.logger.warning('Invalid CHAT_DAILY_TOKEN_BUDGET; using 50000')
         app.config['CHAT_DAILY_TOKEN_BUDGET'] = 50000
     app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
-    env_db_path = os.getenv('DB_PATH')
-    fallback_path = os.path.join(app.root_path, 'db', 'app.db')
-
-    if env_db_path:
-        # Resolve relative paths against the server package root
-        resolved_path = env_db_path if os.path.isabs(env_db_path) else os.path.join(app.root_path, env_db_path)
-        if os.path.exists(resolved_path):
-            database_path = resolved_path
-        elif os.path.exists(fallback_path):
-            database_path = fallback_path
-        else:
-            database_path = resolved_path
-    else:
-        database_path = fallback_path
-
+    database_settings = configure_app_database(app)
+    database_path = database_settings.sqlite_path
     if not os.path.exists(database_path):
         app.logger.warning('Database file not found at %s', database_path)
 
-    app.config['DATABASE_PATH'] = database_path
     media_root = os.getenv('MEDIA_ROOT')
     fallback_media_root = os.path.join(app.root_path, 'media')
     if media_root:
