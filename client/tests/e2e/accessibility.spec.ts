@@ -36,6 +36,7 @@ async function seedAuthenticatedSession(
     dreams?: object[];
     thoughtRecords?: object[];
   },
+  reflectionSummariesResponse?: object[],
 ): Promise<void> {
   await page.addInitScript((selectedTheme) => {
     const encode = (value: object) =>
@@ -117,6 +118,14 @@ async function seedAuthenticatedSession(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(calendarResponses?.thoughtRecords ?? []),
+      });
+      return;
+    }
+    if (path.endsWith("/api/reflection-summaries")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(reflectionSummariesResponse ?? []),
       });
       return;
     }
@@ -406,6 +415,132 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expect(
       page.getByRole("heading", { name: "Important days" }),
     ).toBeVisible();
+
+    await expectNoWcagViolations(page);
+  });
+
+  test("thought records dashboard in dark theme", async ({ page }) => {
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      undefined,
+      undefined,
+      undefined,
+      {
+        thoughtRecords: [
+          {
+            id: 14,
+            worksheet_type: "thought_record",
+            title: "Reframing a difficult meeting",
+            status: "completed",
+            current_step: 7,
+            record_date: "2026-07-18",
+            linked_entry_type: null,
+            linked_entry_id: null,
+            situation: "A tense meeting left me second guessing myself.",
+            feelings_before: [{ label: "anxious", intensity: 75 }],
+            unhelpful_thoughts: "I probably handled everything badly.",
+            evidence_for: "I stumbled on one answer.",
+            evidence_against: "I stayed calm and followed up clearly.",
+            balanced_thought: "One awkward answer does not mean the whole meeting failed.",
+            feelings_after: [{ label: "anxious", intensity: 38 }],
+            next_step: "Send a short follow-up note.",
+            ai_response: "This is a more balanced reading of the situation.",
+            ai_responded_at: "2026-07-18T10:00:00Z",
+            ai_response_outdated: false,
+            before_peak_intensity: 75,
+            after_peak_intensity: 38,
+            intensity_change: -37,
+            created_at: "2026-07-18T09:00:00Z",
+            updated_at: "2026-07-18T10:00:00Z",
+            completed_at: "2026-07-18T10:00:00Z",
+          },
+          {
+            id: 15,
+            worksheet_type: "thought_record",
+            title: "Draft reflection",
+            status: "draft",
+            current_step: 3,
+            record_date: "2026-07-21",
+            linked_entry_type: null,
+            linked_entry_id: null,
+            situation: "I noticed a familiar worry starting again.",
+            feelings_before: [{ label: "worried", intensity: 62 }],
+            unhelpful_thoughts: "This will spiral.",
+            evidence_for: "",
+            evidence_against: "",
+            balanced_thought: "",
+            feelings_after: [],
+            next_step: "",
+            ai_response: "",
+            ai_responded_at: null,
+            ai_response_outdated: false,
+            before_peak_intensity: null,
+            after_peak_intensity: null,
+            intensity_change: null,
+            created_at: "2026-07-21T08:00:00Z",
+            updated_at: "2026-07-21T08:30:00Z",
+            completed_at: null,
+          },
+        ],
+      },
+    );
+    await page.goto("/cbt");
+    await expect(page.getByTestId("cbt-dashboard")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Reflection overview" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Completed reflections" }),
+    ).toBeVisible();
+
+    await expectNoWcagViolations(page);
+  });
+
+  test("reflection summaries in dark theme", async ({ page }) => {
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [
+        {
+          id: 5,
+          period_type: "monthly",
+          period_start: "2026-07-01",
+          period_end: "2026-07-31",
+          title: "July reflection",
+          summary_text:
+            "This month shows a repeated pattern of pausing before responding and using structured reflection to recover perspective.",
+          themes: ["reflection", "boundaries", "recovery"],
+          source_refs: [
+            {
+              type: "daily",
+              id: 12,
+              date: "2026-07-11",
+              theme: "a calmer evening",
+            },
+            {
+              type: "thought_record",
+              id: 14,
+              date: "2026-07-18",
+              theme: "reframing a difficult meeting",
+            },
+          ],
+          model: "gpt-4o-mini",
+          created_at: "2026-07-21T10:00:00Z",
+          updated_at: "2026-07-21T10:00:00Z",
+        },
+      ],
+    );
+    await page.goto("/reflections");
+    await expect(page.getByTestId("reflection-summaries")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Generated reflections" }),
+    ).toBeVisible();
+    await expect(page.getByText("July reflection")).toBeVisible();
 
     await expectNoWcagViolations(page);
   });
