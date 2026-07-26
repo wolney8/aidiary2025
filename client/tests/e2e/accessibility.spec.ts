@@ -138,6 +138,15 @@ async function seedAuthenticatedSession(
   });
 }
 
+async function seedNotifications(page: Page, notifications: object[]): Promise<void> {
+  await page.addInitScript((seededNotifications) => {
+    localStorage.setItem(
+      "ai_diary_notifications",
+      JSON.stringify(seededNotifications),
+    );
+  }, notifications);
+}
+
 test.describe("WCAG 2.2 AA automated checks", () => {
   test("login", async ({ page }) => {
     await page.goto("/login");
@@ -541,6 +550,57 @@ test.describe("WCAG 2.2 AA automated checks", () => {
       page.getByRole("heading", { name: "Generated reflections" }),
     ).toBeVisible();
     await expect(page.getByText("July reflection")).toBeVisible();
+
+    await expectNoWcagViolations(page);
+  });
+
+  test("notification menu in compact dark theme", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 640 });
+    await seedAuthenticatedSession(page, "dark");
+    await seedNotifications(page, [
+      {
+        id: "import-completed-e2e",
+        kind: "import",
+        status: "completed",
+        title: "Import completed",
+        message: "Import complete: 680 entries imported.",
+        processed: 680,
+        total: 680,
+        percent: 100,
+        unread: true,
+        isDelayed: false,
+        createdAt: "2026-07-21T10:00:00Z",
+        destination: "/settings/import",
+        actionLabel: "Go to import",
+      },
+      {
+        id: "writing-reminder-e2e",
+        kind: "writing_reminder",
+        status: "completed",
+        title: "Writing reminder",
+        message: "Your chosen writing rhythm is due today.",
+        processed: 0,
+        total: 0,
+        percent: 0,
+        unread: false,
+        isDelayed: false,
+        createdAt: "2026-07-21T09:00:00Z",
+        destination: "/entries/create",
+        actionLabel: "Start entry",
+      },
+    ]);
+
+    await page.goto("/entries");
+    await page.getByLabel("Open notifications").click();
+    const panel = page.locator(".notification-panel");
+    await expect(panel).toBeVisible();
+    await expect(page.getByText("Import completed")).toBeVisible();
+    await expect(page.getByText("Writing reminder")).toBeVisible();
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      )
+      .toBe(true);
 
     await expectNoWcagViolations(page);
   });
