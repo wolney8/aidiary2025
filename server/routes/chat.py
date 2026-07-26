@@ -17,6 +17,7 @@ from services.chat_context_svc import ChatContextService, estimate_tokens
 from services.chat_observability import ChatObservabilityService
 from services.database import connect_sqlite
 from services.openai_svc import ChatStreamError, OpenAIService
+from services.sql_compat import current_date_expr, date_expr
 
 
 chat_bp = Blueprint('chat', __name__)
@@ -90,11 +91,14 @@ def _record_chat_event(**kwargs) -> None:
 
 
 def _daily_token_usage(conn: sqlite3.Connection, user_id: int) -> int:
+    provider = current_app.config.get('DATABASE_PROVIDER', 'sqlite')
+    created_date = date_expr('created_at', provider)
+    current_date = current_date_expr(provider)
     row = conn.execute(
-        """
+        f"""
         SELECT COALESCE(SUM(token_count), 0) AS total
         FROM chat_messages
-        WHERE user_id = ? AND date(created_at) = date('now')
+        WHERE user_id = ? AND {created_date} = {current_date}
         """,
         (user_id,),
     ).fetchone()

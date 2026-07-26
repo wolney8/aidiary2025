@@ -10,6 +10,7 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from services.ai_config import DEFAULT_ANALYSIS_MODEL
 from services.database import connect_sqlite, table_columns
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
+from services.sql_compat import date_expr
 
 reflection_summaries_bp = Blueprint('reflection_summaries', __name__)
 
@@ -146,6 +147,9 @@ def _load_period_sources(
     refs: list[dict[str, object]] = []
     start_iso = period_start.isoformat()
     end_iso = period_end.isoformat()
+    provider = current_app.config.get('DATABASE_PROVIDER', 'sqlite')
+    entry_date_sql = date_expr('entry_date', provider)
+    worksheet_record_date_sql = date_expr('w.record_date', provider)
 
     daily_columns = _table_columns(conn, 'dailydiary_entries')
     if daily_columns:
@@ -163,8 +167,8 @@ def _load_period_sources(
                    {_expr(daily_columns, 'daily_places', 'places')},
                    {_expr(daily_columns, 'ai_response')}
             FROM dailydiary_entries
-            WHERE user_id = ? AND date(entry_date) BETWEEN ? AND ?
-            ORDER BY date(entry_date), id
+            WHERE user_id = ? AND {entry_date_sql} BETWEEN ? AND ?
+            ORDER BY {entry_date_sql}, id
             ''',
             (user_id, start_iso, end_iso),
         ).fetchall()
@@ -197,8 +201,8 @@ def _load_period_sources(
                    {_expr(dream_columns, 'dream_places', 'places')},
                    {_expr(dream_columns, 'summary')}, {_expr(dream_columns, 'interpretation')}
             FROM dreamdiary_entries
-            WHERE user_id = ? AND date(entry_date) BETWEEN ? AND ?
-            ORDER BY date(entry_date), id
+            WHERE user_id = ? AND {entry_date_sql} BETWEEN ? AND ?
+            ORDER BY {entry_date_sql}, id
             ''',
             (user_id, start_iso, end_iso),
         ).fetchall()
@@ -222,8 +226,8 @@ def _load_period_sources(
                    d.next_step, d.ai_response
             FROM cbt_worksheets w
             JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
-            WHERE w.user_id = ? AND date(w.record_date) BETWEEN ? AND ?
-            ORDER BY date(w.record_date), w.id
+            WHERE w.user_id = ? AND {worksheet_record_date_sql} BETWEEN ? AND ?
+            ORDER BY {worksheet_record_date_sql}, w.id
             ''',
             (user_id, start_iso, end_iso),
         ).fetchall()

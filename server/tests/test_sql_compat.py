@@ -4,6 +4,8 @@ from services.sql_compat import (
     adapt_placeholders,
     append_returning_id,
     bind_values,
+    current_date_expr,
+    date_expr,
     in_placeholders,
     inserted_id,
     placeholder,
@@ -108,3 +110,13 @@ def test_inserted_id_uses_postgres_returning_mapping():
 def test_inserted_id_requires_postgres_returned_row():
     with pytest.raises(RuntimeError, match="did not return a row"):
         inserted_id(_Cursor(row=None), "postgres")
+
+
+def test_date_expr_uses_provider_specific_casts():
+    assert date_expr("created_at", "sqlite") == "date(created_at)"
+    assert date_expr("created_at", "postgres") == "(created_at)::date"
+
+
+def test_current_date_expr_uses_provider_specific_current_date():
+    assert current_date_expr("sqlite") == "date('now')"
+    assert current_date_expr("postgres") == "CURRENT_DATE"
