@@ -2,10 +2,27 @@ import json
 import os
 import sqlite3
 import tempfile
+from datetime import date
 
 import pytest
+from flask import Flask
 
 from app import create_app
+from routes import on_this_day
+
+
+class _FakePostgresRows:
+    def fetchall(self):
+        return []
+
+
+class _FakePostgresConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=()):
+        self.calls.append((sql, params))
+        return _FakePostgresRows()
 
 
 @pytest.fixture
@@ -74,6 +91,45 @@ def _register(client, username: str) -> tuple[int, dict[str, str]]:
     )
     payload = json.loads(response.data)
     return payload['user']['id'], {'Authorization': f"Bearer {payload['token']}"}
+
+
+def test_on_this_day_entry_queries_use_postgres_placeholders():
+    app = Flask(__name__)
+    app.config['DATABASE_PROVIDER'] = 'postgres'
+    conn = _FakePostgresConnection()
+
+    with app.app_context():
+        on_this_day._fetch_entry_rows(
+            conn,
+            user_id=9,
+            target=date(2026, 7, 21),
+        )
+
+    daily_sql, daily_params = conn.calls[0]
+    dream_sql, dream_params = conn.calls[1]
+    thought_sql, thought_params = conn.calls[2]
+    assert 'entry.user_id = $1' in daily_sql
+    assert "to_char((entry.entry_date)::date, 'MM-DD') = $2" in daily_sql
+    assert 'EXTRACT(YEAR FROM (entry.entry_date)::date)::integer < $3' in dream_sql
+    assert 'worksheet.user_id = $1' in thought_sql
+    assert 'EXTRACT(YEAR FROM (worksheet.record_date)::date)::integer < $3' in thought_sql
+    assert daily_params == (9, '07-21', 2026, on_this_day.MAX_RESULTS)
+    assert dream_params == daily_params
+    assert thought_params == daily_params
+
+
+def test_on_this_day_hide_insert_uses_postgres_conflict_syntax():
+    app = Flask(__name__)
+    app.config['DATABASE_PROVIDER'] = 'postgres'
+
+    with app.app_context():
+        sql = on_this_day._hide_insert_sql()
+
+    assert 'INSERT OR IGNORE' not in sql
+    assert 'ON CONFLICT(user_id, entry_type, entry_id) DO NOTHING' in sql
+    assert '$1' in sql
+    assert '$2' in sql
+    assert '$3' in sql
 
 
 def test_on_this_day_is_opt_in_and_user_scoped(client):

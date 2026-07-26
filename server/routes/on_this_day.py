@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from datetime import date
 import re
-import sqlite3
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from services.database import connect_sqlite
+from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER
+from services.database_adapter import DatabaseAdapter
 from services.media_storage import resolve_image_url
-from services.sql_compat import date_month_day_expr, date_month_expr, date_year_expr
+from services.sql_compat import adapt_placeholders, date_month_day_expr, date_month_expr, date_year_expr
 
 
 on_this_day_bp = Blueprint('on_this_day', __name__)
@@ -21,8 +21,20 @@ MAX_MONTH_RESULTS = 60
 _WHITESPACE_PATTERN = re.compile(r'\s+')
 
 
-def get_db() -> sqlite3.Connection:
-    return connect_sqlite(current_app, log_label='On this day')
+def _database_adapter() -> DatabaseAdapter:
+    return current_app.config['DATABASE_ADAPTER']
+
+
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
+def get_db():
+    return _database_adapter().connect(timeout=10)
 
 
 def _normalise_target_date(value: str | None) -> date:
@@ -54,7 +66,7 @@ def _parse_tags(value: object) -> list[str]:
     return [tag.strip() for tag in str(value or '').split(',') if tag.strip()][:4]
 
 
-def _resolved_image(row: sqlite3.Row) -> str | None:
+def _resolved_image(row) -> str | None:
     storage_key = row['image_storage_key']
     if storage_key:
         return resolve_image_url(storage_key)
@@ -65,7 +77,7 @@ def _resolved_image(row: sqlite3.Row) -> str | None:
 
 
 def _fetch_entry_rows(
-    conn: sqlite3.Connection,
+    conn,
     *,
     user_id: int,
     target: date,
@@ -80,7 +92,7 @@ def _fetch_entry_rows(
     entries: list[dict] = []
 
     daily_rows = conn.execute(
-        f"""
+        _sql(f"""
         SELECT entry.id, entry.entry_date, entry.title, entry.user_message AS preview,
                entry.tags, entry.image_url, entry.image_storage_key, entry.image_source,
                (SELECT COUNT(*) FROM entry_assets asset
@@ -97,7 +109,7 @@ def _fetch_entry_rows(
           )
         ORDER BY entry.entry_date DESC, entry.id DESC
         LIMIT ?
-        """,
+        """),
         (user_id, month_day, target_year, MAX_RESULTS),
     ).fetchall()
     for row in daily_rows:
@@ -114,7 +126,7 @@ def _fetch_entry_rows(
         })
 
     dream_rows = conn.execute(
-        f"""
+        _sql(f"""
         SELECT entry.id, entry.entry_date, entry.title, entry.plot AS preview,
                entry.tags, entry.image_url, entry.image_storage_key, entry.image_source,
                (SELECT COUNT(*) FROM entry_assets asset
@@ -131,7 +143,7 @@ def _fetch_entry_rows(
           )
         ORDER BY entry.entry_date DESC, entry.id DESC
         LIMIT ?
-        """,
+        """),
         (user_id, month_day, target_year, MAX_RESULTS),
     ).fetchall()
     for row in dream_rows:
@@ -148,7 +160,7 @@ def _fetch_entry_rows(
         })
 
     thought_rows = conn.execute(
-        f"""
+        _sql(f"""
         SELECT worksheet.id, worksheet.record_date AS entry_date, worksheet.title,
                data.situation, data.balanced_thought
         FROM cbt_worksheets worksheet
@@ -164,7 +176,7 @@ def _fetch_entry_rows(
           )
         ORDER BY worksheet.record_date DESC, worksheet.id DESC
         LIMIT ?
-        """,
+        """),
         (user_id, month_day, target_year, MAX_RESULTS),
     ).fetchall()
     for row in thought_rows:
@@ -186,7 +198,7 @@ def _fetch_entry_rows(
 
 
 def _fetch_month_entry_rows(
-    conn: sqlite3.Connection,
+    conn,
     *,
     user_id: int,
     target: date,
@@ -203,7 +215,7 @@ def _fetch_month_entry_rows(
     queries = (
         (
             'daily',
-            f"""
+            _sql(f"""
             SELECT entry.id, entry.entry_date, entry.title,
                    entry.user_message AS preview, entry.tags,
                    entry.image_url, entry.image_storage_key, entry.image_source,
@@ -220,12 +232,12 @@ def _fetch_month_entry_rows(
               )
             ORDER BY entry.entry_date DESC, entry.id DESC
             LIMIT ?
-            """,
+            """),
             'Daily entry',
         ),
         (
             'dream',
-            f"""
+            _sql(f"""
             SELECT entry.id, entry.entry_date, entry.title,
                    entry.plot AS preview, entry.tags,
                    entry.image_url, entry.image_storage_key, entry.image_source,
@@ -242,7 +254,7 @@ def _fetch_month_entry_rows(
               )
             ORDER BY entry.entry_date DESC, entry.id DESC
             LIMIT ?
-            """,
+            """),
             'Dream entry',
         ),
     )
@@ -265,7 +277,7 @@ def _fetch_month_entry_rows(
             })
 
     thought_rows = conn.execute(
-        f"""
+        _sql(f"""
         SELECT worksheet.id, worksheet.record_date AS entry_date, worksheet.title,
                data.situation, data.balanced_thought
         FROM cbt_worksheets worksheet
@@ -281,7 +293,7 @@ def _fetch_month_entry_rows(
           )
         ORDER BY worksheet.record_date DESC, worksheet.id DESC
         LIMIT ?
-        """,
+        """),
         (user_id, month, target_year, MAX_MONTH_RESULTS),
     ).fetchall()
     for row in thought_rows:
@@ -301,6 +313,25 @@ def _fetch_month_entry_rows(
     return entries[:MAX_MONTH_RESULTS]
 
 
+def _hide_insert_sql() -> str:
+    if _database_provider() == POSTGRES_PROVIDER:
+        return _sql(
+            """
+            INSERT INTO entry_resurfacing_preferences
+                (user_id, entry_type, entry_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, entry_type, entry_id) DO NOTHING
+            """
+        )
+    return _sql(
+        """
+        INSERT OR IGNORE INTO entry_resurfacing_preferences
+            (user_id, entry_type, entry_id)
+        VALUES (?, ?, ?)
+        """
+    )
+
+
 @on_this_day_bp.route('/on-this-day', methods=['GET'])
 @jwt_required()
 def get_on_this_day():
@@ -315,10 +346,9 @@ def get_on_this_day():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    conn = get_db()
-    try:
+    with get_db() as conn:
         setting = conn.execute(
-            'SELECT show_on_this_day FROM users WHERE id = ?',
+            _sql('SELECT show_on_this_day FROM users WHERE id = ?'),
             (user_id,),
         ).fetchone()
         enabled = bool(setting and setting['show_on_this_day'])
@@ -328,8 +358,6 @@ def get_on_this_day():
             entries = _fetch_month_entry_rows(conn, user_id=user_id, target=target)
         else:
             entries = _fetch_entry_rows(conn, user_id=user_id, target=target)
-    finally:
-        conn.close()
 
     return jsonify({
         'enabled': enabled,
@@ -356,21 +384,13 @@ def hide_on_this_day_entry():
         'dream': 'SELECT 1 FROM dreamdiary_entries WHERE id = ? AND user_id = ?',
         'thought_record': 'SELECT 1 FROM cbt_worksheets WHERE id = ? AND user_id = ?',
     }
-    conn = get_db()
-    try:
-        owned = conn.execute(ownership_queries[entry_type], (entry_id, user_id)).fetchone()
+    with get_db() as conn:
+        owned = conn.execute(_sql(ownership_queries[entry_type]), (entry_id, user_id)).fetchone()
         if not owned:
             return jsonify({'error': 'Entry not found'}), 404
         conn.execute(
-            """
-            INSERT OR IGNORE INTO entry_resurfacing_preferences
-                (user_id, entry_type, entry_id)
-            VALUES (?, ?, ?)
-            """,
+            _hide_insert_sql(),
             (user_id, entry_type, entry_id),
         )
-        conn.commit()
-    finally:
-        conn.close()
 
     return jsonify({'message': 'Memory hidden', 'entry_type': entry_type, 'entry_id': entry_id}), 200
