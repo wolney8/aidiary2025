@@ -221,7 +221,7 @@ def _load_period_sources(
 
     try:
         rows = conn.execute(
-            '''
+            f'''
             SELECT w.id, w.title, w.record_date, d.situation, d.balanced_thought,
                    d.next_step, d.ai_response
             FROM cbt_worksheets w
