@@ -5,9 +5,11 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from flask import Flask
 
 from app import create_app
 from extensions import limiter
+from routes.chat import _load_model_history, _load_request_messages, _persist_message
 from services.chat_observability import ChatObservabilityService
 from services.openai_svc import ChatStreamError
 
@@ -143,6 +145,34 @@ def test_chat_observability_uses_adapter_placeholders_for_postgres():
     assert '$10' in insert_sql
     assert '$1' in report_sql
     assert '$2' in report_sql
+
+
+def test_chat_storage_helpers_use_postgres_placeholders():
+    app = Flask(__name__)
+    app.config['DATABASE_PROVIDER'] = 'postgres'
+    conn = _FakePostgresConnection()
+
+    with app.app_context():
+        _persist_message(
+            conn,
+            user_id=1,
+            conversation_id=str(uuid4()),
+            role='user',
+            content='Hello',
+            request_id=str(uuid4()),
+        )
+        _load_request_messages(conn, 1, str(uuid4()))
+        _load_model_history(conn, 1, str(uuid4()))
+
+    insert_sql = conn.calls[0][0]
+    request_sql = conn.calls[1][0]
+    history_sql = conn.calls[2][0]
+    assert '$1' in insert_sql
+    assert '$6' in insert_sql
+    assert '$1' in request_sql
+    assert '$2' in request_sql
+    assert '$1' in history_sql
+    assert '$3' in history_sql
 
 
 def test_chat_validation_errors(client):

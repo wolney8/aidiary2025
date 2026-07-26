@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from collections.abc import Iterator
 from time import perf_counter
 from uuid import UUID
@@ -15,9 +16,8 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from extensions import limiter
 from services.chat_context_svc import ChatContextService, estimate_tokens
 from services.chat_observability import ChatObservabilityService
-from services.database import connect_sqlite
 from services.openai_svc import ChatStreamError, OpenAIService
-from services.sql_compat import current_date_expr, date_expr
+from services.sql_compat import adapt_placeholders, current_date_expr, date_expr
 
 
 chat_bp = Blueprint('chat', __name__)
@@ -29,9 +29,19 @@ HISTORY_RESPONSE_LIMIT = 50
 DEFAULT_CHAT_MODEL = 'gpt-4o-mini'
 
 
-def get_db() -> sqlite3.Connection:
+def _database_provider() -> str:
+    return current_app.config.get('DATABASE_PROVIDER', 'sqlite')
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
+
+
+@contextmanager
+def get_db():
     """Get a user-data connection for chat storage."""
-    return connect_sqlite(current_app, log_label='Chat')
+    with current_app.config['DATABASE_ADAPTER'].connect(timeout=30) as conn:
+        yield conn
 
 
 def _parse_conversation_id(raw_value: str | None) -> str | None:
@@ -67,6 +77,18 @@ def _is_missing_chat_table(exc: sqlite3.OperationalError) -> bool:
     return 'no such table: chat_messages' in str(exc).lower()
 
 
+def _is_missing_chat_storage_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        'chat_messages' in message
+        and (
+            'no such table' in message
+            or 'does not exist' in message
+            or 'undefinedtable' in type(exc).__name__.lower()
+        )
+    )
+
+
 def _chat_rate_limit() -> str:
     return str(current_app.config['CHAT_RATE_LIMIT'])
 
@@ -96,11 +118,11 @@ def _daily_token_usage(conn: sqlite3.Connection, user_id: int) -> int:
     created_date = date_expr('created_at', provider)
     current_date = current_date_expr(provider)
     row = conn.execute(
-        f"""
+        _sql(f"""
         SELECT COALESCE(SUM(token_count), 0) AS total
         FROM chat_messages
         WHERE user_id = ? AND {created_date} = {current_date}
-        """,
+        """),
         (user_id,),
     ).fetchone()
     return int(row['total'] or 0)
@@ -112,7 +134,7 @@ def _load_model_history(
     conversation_id: str,
 ) -> list[dict[str, str]]:
     rows = conn.execute(
-        """
+        _sql("""
         SELECT role, content
         FROM (
             SELECT id, role, content
@@ -122,7 +144,7 @@ def _load_model_history(
             LIMIT ?
         )
         ORDER BY id ASC
-        """,
+        """),
         (user_id, conversation_id, MODEL_HISTORY_LIMIT),
     ).fetchall()
     return [{'role': row['role'], 'content': row['content']} for row in rows]
@@ -138,11 +160,11 @@ def _persist_message(
     request_id: str | None = None,
 ) -> None:
     conn.execute(
-        """
+        _sql("""
         INSERT INTO chat_messages (
             user_id, conversation_id, request_id, role, content, token_count
         ) VALUES (?, ?, ?, ?, ?, ?)
-        """,
+        """),
         (user_id, conversation_id, request_id, role, content, _token_count(content)),
     )
 
@@ -155,11 +177,11 @@ def _load_request_messages(
     if request_id is None:
         return {}
     rows = conn.execute(
-        """
+        _sql("""
         SELECT role, content
         FROM chat_messages
         WHERE user_id = ? AND request_id = ?
-        """,
+        """),
         (user_id, request_id),
     ).fetchall()
     return {row['role']: row['content'] for row in rows}
@@ -171,7 +193,7 @@ def _prune_conversation(
     conversation_id: str,
 ) -> None:
     conn.execute(
-        """
+        _sql("""
         DELETE FROM chat_messages
         WHERE user_id = ?
           AND conversation_id = ?
@@ -182,7 +204,7 @@ def _prune_conversation(
               ORDER BY id DESC
               LIMIT ?
           )
-        """,
+        """),
         (user_id, conversation_id, user_id, conversation_id, MAX_MESSAGES_PER_CONVERSATION),
     )
 
@@ -243,46 +265,45 @@ def send_message():
         model=_chat_model(),
     )
 
-    conn = get_db()
     try:
-        existing_request = _load_request_messages(conn, user_id, request_id)
-        if existing_request.get('user') not in (None, message):
-            _record_chat_event(
-                event_type='validation_failed',
-                user_id=user_id,
-                conversation_id=conversation_id,
-                request_id=request_id,
-                error_code='request_id_conflict',
-                input_tokens=input_tokens,
-                model=_chat_model(),
-            )
-            return jsonify({'error': 'request_id is already used by another message'}), 409
-
-        if 'user' not in existing_request:
-            projected_usage = _daily_token_usage(conn, user_id) + input_tokens
-            if projected_usage > current_app.config['CHAT_DAILY_TOKEN_BUDGET']:
+        with get_db() as conn:
+            existing_request = _load_request_messages(conn, user_id, request_id)
+            if existing_request.get('user') not in (None, message):
                 _record_chat_event(
-                    event_type='token_budget_exceeded',
+                    event_type='validation_failed',
                     user_id=user_id,
                     conversation_id=conversation_id,
                     request_id=request_id,
-                    error_code='daily_token_budget_exceeded',
+                    error_code='request_id_conflict',
                     input_tokens=input_tokens,
                     model=_chat_model(),
-                    metadata={'projected_usage': projected_usage},
                 )
-                return jsonify({'error': 'Daily chat limit reached. Resets at midnight.'}), 429
+                return jsonify({'error': 'request_id is already used by another message'}), 409
 
-            _persist_message(
-                conn,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                role='user',
-                content=message,
-                request_id=request_id,
-            )
-            conn.commit()
-        model_history = _load_model_history(conn, user_id, conversation_id)
+            if 'user' not in existing_request:
+                projected_usage = _daily_token_usage(conn, user_id) + input_tokens
+                if projected_usage > current_app.config['CHAT_DAILY_TOKEN_BUDGET']:
+                    _record_chat_event(
+                        event_type='token_budget_exceeded',
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        request_id=request_id,
+                        error_code='daily_token_budget_exceeded',
+                        input_tokens=input_tokens,
+                        model=_chat_model(),
+                        metadata={'projected_usage': projected_usage},
+                    )
+                    return jsonify({'error': 'Daily chat limit reached. Resets at midnight.'}), 429
+
+                _persist_message(
+                    conn,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    role='user',
+                    content=message,
+                    request_id=request_id,
+                )
+            model_history = _load_model_history(conn, user_id, conversation_id)
     except sqlite3.OperationalError as exc:
         if _is_missing_chat_table(exc):
             _record_chat_event(
@@ -296,8 +317,19 @@ def send_message():
             )
             return jsonify({'error': 'chat storage not initialised'}), 503
         raise
-    finally:
-        conn.close()
+    except Exception as exc:
+        if _is_missing_chat_storage_error(exc):
+            _record_chat_event(
+                event_type='storage_unavailable',
+                user_id=user_id,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                error_code='chat_messages_missing',
+                input_tokens=input_tokens,
+                model=_chat_model(),
+            )
+            return jsonify({'error': 'chat storage not initialised'}), 503
+        raise
 
     completed_reply = existing_request.get('assistant')
     if completed_reply is None:
@@ -330,20 +362,20 @@ def send_message():
 
             assistant_reply = ''.join(assistant_chunks)
             if assistant_reply and completed_reply is None:
-                stream_conn = get_db()
                 try:
-                    _persist_message(
-                        stream_conn,
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        role='assistant',
-                        content=assistant_reply,
-                        request_id=request_id,
-                    )
-                    _prune_conversation(stream_conn, user_id, conversation_id)
-                    stream_conn.commit()
-                finally:
-                    stream_conn.close()
+                    with get_db() as stream_conn:
+                        _persist_message(
+                            stream_conn,
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                            role='assistant',
+                            content=assistant_reply,
+                            request_id=request_id,
+                        )
+                        _prune_conversation(stream_conn, user_id, conversation_id)
+                except Exception:
+                    current_app.logger.exception('Chat response could not be persisted')
+                    raise
 
             yield _sse_event({
                 'chunk': '',
@@ -420,28 +452,30 @@ def get_history():
         return jsonify({'error': 'Invalid conversation_id'}), 400
 
     user_id = int(get_jwt_identity())
-    conn = get_db()
     try:
-        rows = conn.execute(
-            """
-            SELECT role, content, token_count, created_at
-            FROM (
-                SELECT id, role, content, token_count, created_at
-                FROM chat_messages
-                WHERE user_id = ? AND conversation_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-            )
-            ORDER BY id ASC
-            """,
-            (user_id, conversation_id, HISTORY_RESPONSE_LIMIT),
-        ).fetchall()
+        with get_db() as conn:
+            rows = conn.execute(
+                _sql("""
+                SELECT role, content, token_count, created_at
+                FROM (
+                    SELECT id, role, content, token_count, created_at
+                    FROM chat_messages
+                    WHERE user_id = ? AND conversation_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                )
+                ORDER BY id ASC
+                """),
+                (user_id, conversation_id, HISTORY_RESPONSE_LIMIT),
+            ).fetchall()
     except sqlite3.OperationalError as exc:
         if _is_missing_chat_table(exc):
             return jsonify({'error': 'chat storage not initialised'}), 503
         raise
-    finally:
-        conn.close()
+    except Exception as exc:
+        if _is_missing_chat_storage_error(exc):
+            return jsonify({'error': 'chat storage not initialised'}), 503
+        raise
 
     return jsonify({
         'conversation_id': conversation_id,
@@ -465,19 +499,20 @@ def clear_conversation():
         return jsonify({'error': 'Invalid conversation_id'}), 400
 
     user_id = int(get_jwt_identity())
-    conn = get_db()
     try:
-        conn.execute(
-            'DELETE FROM chat_messages WHERE user_id = ? AND conversation_id = ?',
-            (user_id, conversation_id),
-        )
-        conn.commit()
+        with get_db() as conn:
+            conn.execute(
+                _sql('DELETE FROM chat_messages WHERE user_id = ? AND conversation_id = ?'),
+                (user_id, conversation_id),
+            )
     except sqlite3.OperationalError as exc:
         if _is_missing_chat_table(exc):
             return jsonify({'error': 'chat storage not initialised'}), 503
         raise
-    finally:
-        conn.close()
+    except Exception as exc:
+        if _is_missing_chat_storage_error(exc):
+            return jsonify({'error': 'chat storage not initialised'}), 503
+        raise
 
     return jsonify({'message': 'Conversation cleared'}), 200
 
