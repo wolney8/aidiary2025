@@ -19,6 +19,7 @@ from services.nltk_enrichment import (
     derive_daily_nltk_fields as _runtime_derive_daily_nltk_fields,
     derive_dream_nltk_fields as _runtime_derive_dream_nltk_fields,
 )
+from services.database import table_columns
 from services.media_storage import store_entry_asset, store_imported_image
 from services.import_adapters import get_import_adapter
 from services.sql_compat import inserted_id
@@ -1689,9 +1690,7 @@ def ensure_import_sessions_table(conn: sqlite3.Connection) -> None:
 def ensure_import_jobs_table(conn: sqlite3.Connection) -> None:
     """Create or repair durable background import job storage."""
     conn.execute(IMPORT_JOBS_DDL)
-    columns = {
-        row[1] for row in conn.execute('PRAGMA table_info(import_jobs)').fetchall()
-    }
+    columns = table_columns(conn, 'import_jobs')
     required_columns = {
         'processed': 'INTEGER NOT NULL DEFAULT 0',
         'total': 'INTEGER NOT NULL DEFAULT 0',

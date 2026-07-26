@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable
 
-from services.database import connect_sqlite_path
+from services.database import connect_sqlite_path, table_columns
 
 
 DEFAULT_CONTEXT_TOKEN_BUDGET = 3000
@@ -246,4 +246,4 @@ class ChatContextService:
 
     @staticmethod
     def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-        return {row[1] for row in conn.execute(f'PRAGMA table_info({table_name})').fetchall()}
+        return table_columns(conn, table_name)

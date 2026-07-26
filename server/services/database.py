@@ -111,3 +111,10 @@ def connect_sqlite_path(
     if journal_mode_wal:
         conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+
+def table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    try:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+    except sqlite3.OperationalError:
+        return set()
