@@ -6,6 +6,7 @@ from flask_jwt_extended import JWTManager, get_jwt_identity
 from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
+from services.database_adapter import DatabaseAdapter
 from services.database import configure_app_database
 from services.runtime_migrations import (
     ensure_cbt_worksheet_tables,
@@ -148,6 +149,7 @@ def create_app():
         app.config['CHAT_DAILY_TOKEN_BUDGET'] = 50000
     app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
     database_settings = configure_app_database(app)
+    app.config['DATABASE_ADAPTER'] = DatabaseAdapter.from_settings(database_settings)
     database_path = database_settings.sqlite_path
     if not os.path.exists(database_path):
         app.logger.warning('Database file not found at %s', database_path)
