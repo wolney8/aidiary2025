@@ -40,6 +40,7 @@ Use `GET /api/chat/observability/report?days=7` with an authenticated token to r
 - input, output, and total token estimates
 - `slo_status`, with each target marked `met`, `breached`, or `no_data`
 - `slo_summary`, with the overall status and any breached target names
+- `slo_alerts`, with machine-readable alert objects for any breached SLO
 
 This endpoint is intentionally read-only and user-scoped. If an admin-wide dashboard is
 needed later, add an admin-only reporting route rather than widening the current endpoint.

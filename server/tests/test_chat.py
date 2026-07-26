@@ -201,6 +201,7 @@ def test_chat_send_history_clear_flow(client, mocked_chat_services):
     assert report['slo_status']['error_rate']['met'] is True
     assert report['slo_status']['p95_latency_ms']['met'] is True
     assert report['slo_status']['rate_limit_events']['met'] is True
+    assert report['slo_alerts'] == []
     assert report['token_usage']['input_tokens'] > 0
     assert report['token_usage']['output_tokens'] > 0
 
@@ -284,6 +285,13 @@ def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_cha
     assert 'error_rate' in report['slo_summary']['breached']
     assert report['slo_status']['success_completion_rate']['met'] is False
     assert report['slo_status']['error_rate']['met'] is False
+    assert {
+        alert['metric']: alert['severity']
+        for alert in report['slo_alerts']
+    } == {
+        'success_completion_rate': 'critical',
+        'error_rate': 'critical',
+    }
 
 
 def test_chat_user_isolation_by_token(client):
@@ -444,6 +452,14 @@ def test_chat_rate_limit_is_applied_per_user(client):
     assert report['error_counts']['rate_limit_exceeded'] == 1
     assert report['slo_summary']['status'] == 'breached'
     assert 'rate_limit_events' in report['slo_summary']['breached']
+    assert {
+        alert['metric']: alert['severity']
+        for alert in report['slo_alerts']
+    } == {
+        'success_completion_rate': 'critical',
+        'error_rate': 'critical',
+        'rate_limit_events': 'warning',
+    }
     client.application.config['RATELIMIT_ENABLED'] = False
 
 
