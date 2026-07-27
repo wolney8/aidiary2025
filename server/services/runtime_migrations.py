@@ -158,6 +158,8 @@ CREATE TABLE IF NOT EXISTS important_days (
     recurrence    TEXT NOT NULL DEFAULT 'yearly',
     icon_name     TEXT NOT NULL DEFAULT 'event',
     accent_color  TEXT NOT NULL DEFAULT 'amber',
+    ends_on       TEXT,
+    linked_entry_refs TEXT,
     image_url     TEXT,
     image_storage_key TEXT,
     note          TEXT,
@@ -172,6 +174,8 @@ _IMPORTANT_DAY_COLUMNS: dict[str, str] = {
     'recurrence': "TEXT NOT NULL DEFAULT 'yearly'",
     'icon_name': "TEXT NOT NULL DEFAULT 'event'",
     'accent_color': "TEXT NOT NULL DEFAULT 'amber'",
+    'ends_on': 'TEXT',
+    'linked_entry_refs': 'TEXT',
     'image_url': 'TEXT',
     'image_storage_key': 'TEXT',
 }
