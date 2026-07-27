@@ -31,6 +31,38 @@ def _load_json(path: Path) -> dict[str, Any]:
         raise ValueError(f"Invalid JSON file: {path}") from exc
 
 
+def _compare_export_table_counts(
+    *,
+    migration_report: dict[str, Any],
+    load_plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    expected_counts = {
+        str(table["name"]): int(table.get("row_count") or 0)
+        for table in migration_report.get("tables") or []
+        if table.get("exists") is True and table.get("name")
+    }
+    if not expected_counts:
+        return []
+
+    exported_counts = {
+        str(table["table"]): int(table.get("row_count") or 0)
+        for table in load_plan.get("tables") or []
+        if table.get("exists") is True and table.get("table")
+    }
+    mismatches = []
+    for table_name, expected_count in sorted(expected_counts.items()):
+        exported_count = exported_counts.get(table_name)
+        if exported_count != expected_count:
+            mismatches.append(
+                {
+                    "table": table_name,
+                    "report_rows": expected_count,
+                    "export_rows": exported_count,
+                }
+            )
+    return mismatches
+
+
 def build_cutover_readiness(
     *,
     migration_report_path: Path,
@@ -98,6 +130,18 @@ def build_cutover_readiness(
                         "report_rows": int(summary.get("total_rows") or 0),
                         "export_rows": int(load_plan["total_rows"]),
                     },
+                }
+            )
+        table_count_mismatches = _compare_export_table_counts(
+            migration_report=migration_report,
+            load_plan=load_plan,
+        )
+        if table_count_mismatches:
+            blockers.append(
+                {
+                    "gate": "jsonl_export_table_counts",
+                    "message": "Exported table row counts do not match the migration report.",
+                    "details": table_count_mismatches,
                 }
             )
         if load_plan["schema_column_mismatches"]:

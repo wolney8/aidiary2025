@@ -1,10 +1,24 @@
 import json
 
 from scripts.validate_cloud_cutover_readiness import build_cutover_readiness
+from scripts.rehearse_cloud_migration import TABLE_ORDER
 
 
 def _write_report(path, *, total_rows=2, blockers=False):
+    table_counts = {
+        "users": 1,
+        "configurations": 0,
+        "dailydiary_entries": max(total_rows - 1, 0),
+    }
     report = {
+        "tables": [
+            {
+                "name": table_name,
+                "exists": True,
+                "row_count": table_counts.get(table_name, 0),
+            }
+            for table_name in TABLE_ORDER
+        ],
         "summary": {
             "tables_present": 2,
             "tables_missing": ["dreamdiary_entries"] if blockers else [],
@@ -145,6 +159,39 @@ def test_cutover_readiness_blocks_export_columns_missing_from_postgres_schema(tm
         "gate": "postgres_schema_columns",
         "message": "Export contains columns missing from the Postgres schema.",
         "details": [{"table": "users", "unknown_columns": ["unexpected"]}],
+    } in readiness["blockers"]
+
+
+def test_cutover_readiness_blocks_per_table_export_count_mismatch(tmp_path):
+    report_path = tmp_path / "report.json"
+    export_dir = tmp_path / "export"
+    _write_report(report_path, total_rows=2)
+    _write_export(export_dir)
+    (export_dir / "users.jsonl").write_text("", encoding="utf-8")
+    (export_dir / "dailydiary_entries.jsonl").write_text(
+        '{"id": 10}\n{"id": 11}\n',
+        encoding="utf-8",
+    )
+
+    readiness = build_cutover_readiness(
+        migration_report_path=report_path,
+        export_dir=export_dir,
+        test_evidence={
+            "backend_tests_passed": True,
+            "frontend_lint_passed": True,
+            "frontend_build_passed": True,
+        },
+        postgres_rehearsal_loaded=True,
+    )
+
+    assert readiness["ready_for_cutover"] is False
+    assert {
+        "gate": "jsonl_export_table_counts",
+        "message": "Exported table row counts do not match the migration report.",
+        "details": [
+            {"table": "dailydiary_entries", "report_rows": 1, "export_rows": 2},
+            {"table": "users", "report_rows": 1, "export_rows": 0},
+        ],
     } in readiness["blockers"]
 
 

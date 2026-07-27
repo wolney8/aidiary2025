@@ -26,7 +26,8 @@ not cut over until every required gate is complete and the readiness validator r
    - no legacy inline image payloads remain
    - no attachment rows have empty storage keys
 3. Export JSONL rows from the same SQLite file used for the audit.
-4. Dry-run the Postgres load plan and confirm row counts match the audit report.
+4. Dry-run the Postgres load plan and confirm total and per-table row counts match the
+   audit report.
 5. Apply the export to a disposable Postgres rehearsal database or Neon branch.
 6. Run production/cloud environment preflight checks.
 7. Run cloud schema/export parity checks.
