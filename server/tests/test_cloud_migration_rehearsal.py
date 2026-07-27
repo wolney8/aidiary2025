@@ -7,6 +7,7 @@ from scripts.load_cloud_migration import (
     _quote_identifier,
     _postgres_schema_columns,
     _split_sql_statements,
+    apply_export_to_postgres,
     build_load_plan,
 )
 from scripts.rehearse_cloud_migration import build_report, export_jsonl
@@ -135,6 +136,15 @@ def test_export_jsonl_writes_existing_tables_only(tmp_path):
     assert str(export_dir / "entry_ai_metadata.jsonl") in written
     assert str(export_dir / "export_history.jsonl") in written
     assert not (export_dir / "dreamdiary_entries.jsonl").exists()
+    manifest = json.loads((export_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["total_rows"] == 6
+    user_manifest = next(
+        table for table in manifest["tables"] if table["table"] == "users"
+    )
+    assert user_manifest["file"] == "users.jsonl"
+    assert user_manifest["row_count"] == 1
+    assert user_manifest["byte_size"] > 0
+    assert len(user_manifest["sha256"]) == 64
 
     user_rows = [
         json.loads(line)
@@ -153,6 +163,8 @@ def test_load_plan_reports_exported_table_counts(tmp_path):
 
     assert plan["total_rows"] == 6
     assert plan["schema_column_mismatches"] == []
+    assert plan["manifest"] == {"present": True, "total_rows": 6}
+    assert plan["manifest_mismatches"] == []
     users_plan = next(table for table in plan["tables"] if table["table"] == "users")
     assert users_plan["exists"] is True
     assert users_plan["row_count"] == 1
@@ -185,8 +197,32 @@ def test_load_plan_flags_columns_missing_from_postgres_schema(tmp_path):
     assert plan["schema_column_mismatches"] == [
         {"table": "users", "unknown_columns": ["unexpected"]}
     ]
+    assert plan["manifest_mismatches"] == [
+        {"gate": "manifest_missing", "message": "Export manifest.json is missing."}
+    ]
     users_plan = next(table for table in plan["tables"] if table["table"] == "users")
     assert users_plan["unknown_columns"] == ["unexpected"]
+
+
+def test_load_plan_flags_manifest_mismatch_before_cloud_apply(tmp_path):
+    db_path = tmp_path / "source.db"
+    export_dir = tmp_path / "exports"
+    _seed_source_db(db_path)
+    export_jsonl(db_path, export_dir)
+    with (export_dir / "users.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write('{"id": 2, "username": "tampered"}\n')
+
+    plan = build_load_plan(export_dir)
+
+    gates = {mismatch["gate"] for mismatch in plan["manifest_mismatches"]}
+    assert {"manifest_row_count", "manifest_byte_size", "manifest_sha256"}.issubset(
+        gates
+    )
+    with pytest.raises(ValueError, match="Export manifest validation failed"):
+        apply_export_to_postgres(
+            database_url="postgresql://example/rehearsal",
+            export_dir=export_dir,
+        )
 
 
 def test_postgres_schema_column_parser_covers_managed_tables():

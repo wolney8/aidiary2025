@@ -8,6 +8,7 @@ It does not write to a cloud database yet.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -199,6 +200,7 @@ def build_report(db_path: Path) -> dict[str, Any]:
 def export_jsonl(db_path: Path, export_dir: Path) -> list[str]:
     export_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
+    manifest_tables = []
     with _connect(db_path) as conn:
         for table_name in TABLE_ORDER:
             if not _table_exists(conn, table_name):
@@ -210,7 +212,34 @@ def export_jsonl(db_path: Path, export_dir: Path) -> list[str]:
                     handle.write(json.dumps(dict(row), ensure_ascii=False, default=str))
                     handle.write("\n")
             written.append(str(output_path))
+            manifest_tables.append(
+                {
+                    "table": table_name,
+                    "file": output_path.name,
+                    "row_count": len(rows),
+                    "byte_size": output_path.stat().st_size,
+                    "sha256": _sha256_file(output_path),
+                }
+            )
+    manifest = {
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source_db": str(db_path),
+        "tables": manifest_tables,
+        "total_rows": sum(table["row_count"] for table in manifest_tables),
+    }
+    (export_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return written
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main() -> int:
@@ -238,10 +267,12 @@ def main() -> int:
 
     report = build_report(source_db)
     if args.export_dir:
+        export_dir = Path(args.export_dir).expanduser().resolve()
         report["exported_files"] = export_jsonl(
             source_db,
-            Path(args.export_dir).expanduser().resolve(),
+            export_dir,
         )
+        report["export_manifest"] = str(export_dir / "manifest.json")
 
     report_text = json.dumps(report, ensure_ascii=False, indent=2)
     if args.report_json:

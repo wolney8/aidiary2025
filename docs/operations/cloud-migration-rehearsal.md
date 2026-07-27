@@ -33,8 +33,10 @@ PYTHONPATH=. python scripts/rehearse_cloud_migration.py \
   --report-json /tmp/aidiary-cloud-migration-report.json
 ```
 
-The export directory contains one `.jsonl` file per migrated table. These files are
-temporary rehearsal artifacts and should not be committed.
+The export directory contains one `.jsonl` file per migrated table plus `manifest.json`.
+The manifest records per-table row counts, byte sizes, and SHA-256 hashes so the loader
+can detect missing or tampered files before a Postgres write. These files are temporary
+rehearsal artifacts and should not be committed.
 
 ## 3. Dry-Run The Postgres Load Plan
 
@@ -45,8 +47,8 @@ PYTHONPATH=. python scripts/load_cloud_migration.py \
   --export-dir /tmp/aidiary-cloud-export
 ```
 
-This checks which exported files will be loaded and how many rows are present. It does not
-connect to Postgres.
+This checks which exported files will be loaded, how many rows are present, and whether
+`manifest.json` still matches the exported JSONL files. It does not connect to Postgres.
 
 ## 4. Plan Explicit Postgres Migrations
 

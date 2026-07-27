@@ -7,6 +7,7 @@ Postgres DATABASE_URL after reviewing the plan.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -63,6 +64,90 @@ def _iter_jsonl(path: Path) -> Iterable[dict[str, Any]]:
                 raise ValueError(f"Invalid JSONL in {path} line {line_number}") from exc
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_export_manifest(export_dir: Path) -> dict[str, Any] | None:
+    manifest_path = export_dir / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid export manifest JSON: {manifest_path}") from exc
+
+
+def _validate_export_manifest(
+    export_dir: Path,
+    manifest: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if manifest is None:
+        return [
+            {
+                "gate": "manifest_missing",
+                "message": "Export manifest.json is missing.",
+            }
+        ]
+    mismatches = []
+    for table in manifest.get("tables") or []:
+        file_name = table.get("file")
+        if not isinstance(file_name, str) or "/" in file_name or "\\" in file_name:
+            mismatches.append(
+                {
+                    "gate": "manifest_file",
+                    "table": table.get("table"),
+                    "message": "Manifest file reference is invalid.",
+                }
+            )
+            continue
+        path = export_dir / file_name
+        if not path.exists():
+            mismatches.append(
+                {
+                    "gate": "manifest_file",
+                    "table": table.get("table"),
+                    "message": "Manifest file is missing from export directory.",
+                }
+            )
+            continue
+        actual_row_count = sum(1 for _row in _iter_jsonl(path))
+        actual_byte_size = path.stat().st_size
+        actual_sha256 = _sha256_file(path)
+        if actual_row_count != table.get("row_count"):
+            mismatches.append(
+                {
+                    "gate": "manifest_row_count",
+                    "table": table.get("table"),
+                    "expected": table.get("row_count"),
+                    "actual": actual_row_count,
+                }
+            )
+        if actual_byte_size != table.get("byte_size"):
+            mismatches.append(
+                {
+                    "gate": "manifest_byte_size",
+                    "table": table.get("table"),
+                    "expected": table.get("byte_size"),
+                    "actual": actual_byte_size,
+                }
+            )
+        if actual_sha256 != table.get("sha256"):
+            mismatches.append(
+                {
+                    "gate": "manifest_sha256",
+                    "table": table.get("table"),
+                    "expected": table.get("sha256"),
+                    "actual": actual_sha256,
+                }
+            )
+    return mismatches
+
+
 def _split_sql_statements(sql: str) -> list[str]:
     statements = []
     current = []
@@ -115,6 +200,8 @@ def build_load_plan(export_dir: Path) -> dict[str, Any]:
     total_rows = 0
     schema_columns_by_table = _postgres_schema_columns()
     schema_column_mismatches = []
+    export_manifest = _load_export_manifest(export_dir)
+    manifest_mismatches = _validate_export_manifest(export_dir, export_manifest)
     for table_name in TABLE_ORDER:
         path = export_dir / f"{table_name}.jsonl"
         if not path.exists():
@@ -155,6 +242,15 @@ def build_load_plan(export_dir: Path) -> dict[str, Any]:
         "total_rows": total_rows,
         "missing_files": [table["table"] for table in tables if not table["exists"]],
         "schema_column_mismatches": schema_column_mismatches,
+        "manifest": (
+            {
+                "present": True,
+                "total_rows": export_manifest.get("total_rows"),
+            }
+            if export_manifest
+            else {"present": False, "total_rows": None}
+        ),
+        "manifest_mismatches": manifest_mismatches,
     }
 
 
@@ -196,19 +292,24 @@ def apply_export_to_postgres(
     export_dir: Path,
     reset_first: bool = False,
 ) -> dict[str, Any]:
-    try:
-        import psycopg
-    except ImportError as exc:
-        raise RuntimeError(
-            'psycopg is required for --apply. Install with: pip install "psycopg[binary]"'
-        ) from exc
-
     plan = build_load_plan(export_dir)
     if plan["schema_column_mismatches"]:
         raise ValueError(
             "Export contains columns not present in the Postgres schema: "
             f"{plan['schema_column_mismatches']}"
         )
+    if plan["manifest_mismatches"]:
+        raise ValueError(
+            "Export manifest validation failed: "
+            f"{plan['manifest_mismatches']}"
+        )
+
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError(
+            'psycopg is required for --apply. Install with: pip install "psycopg[binary]"'
+        ) from exc
     loaded: dict[str, int] = {}
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
     with psycopg.connect(database_url) as conn:
