@@ -83,6 +83,8 @@ Capture:
 - p95 latency
 - error count
 - sample count
+- response shape and collection counts for successful JSON responses, without storing
+  full response bodies
 
 Store the JSON report outside the repo. If latency is materially worse than the SQLite
 baseline or any sampled API endpoint returns `4xx`/`5xx`, roll back before accepting the

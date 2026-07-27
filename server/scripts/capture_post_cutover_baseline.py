@@ -6,6 +6,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from statistics import mean
 from time import perf_counter
 from typing import Any
@@ -70,9 +71,11 @@ def _probe_endpoint(
         started = perf_counter()
         error = None
         status_code = None
+        response_shape = None
         try:
             response = client.request(probe.method, probe.path, headers=headers)
             status_code = response.status_code
+            response_shape = _summarise_json_response(response)
         except httpx.HTTPError as exc:
             error = str(exc)
         latency_ms = round((perf_counter() - started) * 1000)
@@ -81,6 +84,7 @@ def _probe_endpoint(
                 "status_code": status_code,
                 "latency_ms": latency_ms,
                 "error": error,
+                "response_shape": response_shape,
             }
         )
 
@@ -108,6 +112,25 @@ def _probe_endpoint(
         "p95_latency_ms": _percentile(latencies, 0.95),
         "samples": samples_out,
     }
+
+
+def _summarise_json_response(response: httpx.Response) -> dict[str, Any] | None:
+    content_type = response.headers.get("content-type", "")
+    if "json" not in content_type.lower():
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return {"kind": "invalid_json"}
+    if isinstance(payload, list):
+        return {"kind": "list", "item_count": len(payload)}
+    if isinstance(payload, dict):
+        summary: dict[str, Any] = {"kind": "object", "keys": sorted(payload.keys())}
+        for key, value in payload.items():
+            if isinstance(value, list):
+                summary[f"{key}_count"] = len(value)
+        return summary
+    return {"kind": type(payload).__name__}
 
 
 def capture_baseline(
