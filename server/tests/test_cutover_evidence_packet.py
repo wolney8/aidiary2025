@@ -18,6 +18,7 @@ def _write_cutover_artifacts(tmp_path, *, ready=True, baseline_errors=0):
     readiness_report = tmp_path / "readiness-report.json"
     preflight_report = tmp_path / "preflight-report.json"
     baseline_report = tmp_path / "post-cutover-baseline.json"
+    rollback_report = tmp_path / "rollback-report.json"
     _write_json(
         migration_report,
         {"summary": {"tables_present": 18, "total_rows": 42}},
@@ -45,6 +46,14 @@ def _write_cutover_artifacts(tmp_path, *, ready=True, baseline_errors=0):
         baseline_report,
         {"summary": {"error_count": baseline_errors, "p95_latency_ms": 120}},
     )
+    _write_json(
+        rollback_report,
+        {
+            "rollback_rehearsal_passed": ready,
+            "scenario": "failed app smoke after config switch",
+            "blockers": [] if ready else ["auth_smoke_passed"],
+        },
+    )
     return (
         sqlite_backup,
         export_dir,
@@ -52,6 +61,7 @@ def _write_cutover_artifacts(tmp_path, *, ready=True, baseline_errors=0):
         readiness_report,
         preflight_report,
         baseline_report,
+        rollback_report,
     )
 
 
@@ -63,6 +73,7 @@ def test_cutover_evidence_packet_is_complete_with_required_artifacts(tmp_path):
         readiness_report,
         preflight_report,
         baseline_report,
+        rollback_report,
     ) = _write_cutover_artifacts(tmp_path)
 
     packet = build_evidence_packet(
@@ -72,12 +83,12 @@ def test_cutover_evidence_packet_is_complete_with_required_artifacts(tmp_path):
         readiness_report=str(readiness_report),
         preflight_report=str(preflight_report),
         post_cutover_baseline=str(baseline_report),
+        rollback_report=str(rollback_report),
         postgres_target="neon/rehearsal-branch",
         backend_tests_passed=True,
         frontend_lint_passed=True,
         frontend_build_passed=True,
         manual_smoke_passed=True,
-        rollback_rehearsed=True,
     )
 
     assert packet["packet_complete"] is True
@@ -90,6 +101,12 @@ def test_cutover_evidence_packet_is_complete_with_required_artifacts(tmp_path):
     }
     assert packet["preflight_summary"]["ready_for_production"] is True
     assert packet["baseline_summary"]["error_count"] == 0
+    assert packet["rollback_summary"] == {
+        "rollback_rehearsal_passed": True,
+        "scenario": "failed app smoke after config switch",
+        "blockers": [],
+    }
+    assert packet["evidence"]["rollback_rehearsed"] is True
 
 
 def test_cutover_evidence_packet_reports_missing_evidence_flags(tmp_path):
@@ -100,6 +117,7 @@ def test_cutover_evidence_packet_reports_missing_evidence_flags(tmp_path):
         readiness_report,
         preflight_report,
         baseline_report,
+        _rollback_report,
     ) = _write_cutover_artifacts(tmp_path, ready=False, baseline_errors=1)
 
     packet = build_evidence_packet(
@@ -122,6 +140,49 @@ def test_cutover_evidence_packet_reports_missing_evidence_flags(tmp_path):
     assert "post_cutover_baseline_errors" in packet["blockers"]
 
 
+def test_cutover_evidence_packet_blocks_failed_rollback_report(tmp_path):
+    (
+        sqlite_backup,
+        export_dir,
+        migration_report,
+        readiness_report,
+        preflight_report,
+        baseline_report,
+        rollback_report,
+    ) = _write_cutover_artifacts(tmp_path, ready=True)
+    _write_json(
+        rollback_report,
+        {
+            "rollback_rehearsal_passed": False,
+            "scenario": "failed app smoke after config switch",
+            "blockers": ["entries_smoke_passed"],
+        },
+    )
+
+    packet = build_evidence_packet(
+        sqlite_backup=str(sqlite_backup),
+        export_dir=str(export_dir),
+        migration_report=str(migration_report),
+        readiness_report=str(readiness_report),
+        preflight_report=str(preflight_report),
+        post_cutover_baseline=str(baseline_report),
+        rollback_report=str(rollback_report),
+        backend_tests_passed=True,
+        frontend_lint_passed=True,
+        frontend_build_passed=True,
+        manual_smoke_passed=True,
+        rollback_rehearsed=True,
+    )
+
+    assert packet["packet_complete"] is False
+    assert "rollback_report_failed" in packet["blockers"]
+    assert packet["rollback_summary"] == {
+        "rollback_rehearsal_passed": False,
+        "scenario": "failed app smoke after config switch",
+        "blockers": ["entries_smoke_passed"],
+    }
+
+
 def test_cutover_evidence_packet_requires_existing_artifacts(tmp_path):
     (
         sqlite_backup,
@@ -130,6 +191,7 @@ def test_cutover_evidence_packet_requires_existing_artifacts(tmp_path):
         readiness_report,
         _preflight_report,
         _baseline_report,
+        _rollback_report,
     ) = _write_cutover_artifacts(tmp_path)
     sqlite_backup.unlink()
 
@@ -150,6 +212,7 @@ def test_cutover_evidence_packet_requires_preflight_report_for_completion(tmp_pa
         readiness_report,
         _preflight_report,
         baseline_report,
+        _rollback_report,
     ) = _write_cutover_artifacts(tmp_path)
 
     packet = build_evidence_packet(

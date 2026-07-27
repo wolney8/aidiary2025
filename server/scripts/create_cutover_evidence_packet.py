@@ -35,6 +35,7 @@ def build_evidence_packet(
     readiness_report: str,
     preflight_report: str | None = None,
     post_cutover_baseline: str | None = None,
+    rollback_report: str | None = None,
     postgres_target: str = "",
     backend_tests_passed: bool = False,
     frontend_lint_passed: bool = False,
@@ -46,6 +47,7 @@ def build_evidence_packet(
     readiness_data = _load_json(readiness_report)
     preflight_data = _load_json(preflight_report) if preflight_report else None
     baseline_data = _load_json(post_cutover_baseline) if post_cutover_baseline else None
+    rollback_data = _load_json(rollback_report) if rollback_report else None
     runtime_sqlite_usage = readiness_data.get("runtime_sqlite_usage")
 
     evidence = {
@@ -53,7 +55,8 @@ def build_evidence_packet(
         "frontend_lint_passed": frontend_lint_passed,
         "frontend_build_passed": frontend_build_passed,
         "manual_smoke_passed": manual_smoke_passed,
-        "rollback_rehearsed": rollback_rehearsed,
+        "rollback_rehearsed": rollback_rehearsed
+        or bool(rollback_data and rollback_data.get("rollback_rehearsal_passed")),
     }
     blockers = [
         key for key, passed in evidence.items() if passed is not True
@@ -66,6 +69,8 @@ def build_evidence_packet(
         blockers.append("preflight_report_ready_for_production")
     if baseline_data and int((baseline_data.get("summary") or {}).get("error_count") or 0) > 0:
         blockers.append("post_cutover_baseline_errors")
+    if rollback_data and rollback_data.get("rollback_rehearsal_passed") is not True:
+        blockers.append("rollback_report_failed")
 
     return {
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -83,6 +88,11 @@ def build_evidence_packet(
             "post_cutover_baseline": (
                 _resolve_existing_path(post_cutover_baseline)
                 if post_cutover_baseline
+                else None
+            ),
+            "rollback_report": (
+                _resolve_existing_path(rollback_report)
+                if rollback_report
                 else None
             ),
         },
@@ -104,6 +114,17 @@ def build_evidence_packet(
         "baseline_summary": (
             baseline_data.get("summary") if baseline_data else None
         ),
+        "rollback_summary": (
+            {
+                "rollback_rehearsal_passed": bool(
+                    rollback_data.get("rollback_rehearsal_passed")
+                ),
+                "scenario": rollback_data.get("scenario"),
+                "blockers": rollback_data.get("blockers") or [],
+            }
+            if rollback_data
+            else None
+        ),
         "evidence": evidence,
         "packet_complete": not blockers,
         "blockers": blockers,
@@ -120,6 +141,7 @@ def main() -> int:
     parser.add_argument("--readiness-report", required=True)
     parser.add_argument("--preflight-report")
     parser.add_argument("--post-cutover-baseline")
+    parser.add_argument("--rollback-report")
     parser.add_argument("--postgres-target", default="")
     parser.add_argument("--backend-tests-passed", action="store_true")
     parser.add_argument("--frontend-lint-passed", action="store_true")
@@ -136,6 +158,7 @@ def main() -> int:
         readiness_report=args.readiness_report,
         preflight_report=args.preflight_report,
         post_cutover_baseline=args.post_cutover_baseline,
+        rollback_report=args.rollback_report,
         postgres_target=args.postgres_target,
         backend_tests_passed=args.backend_tests_passed,
         frontend_lint_passed=args.frontend_lint_passed,

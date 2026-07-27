@@ -50,7 +50,7 @@ Before production cutover, capture these artifacts:
 - Backend test output.
 - Frontend lint/build output.
 - Manual parity smoke notes.
-- Rollback rehearsal notes.
+- Rollback rehearsal JSON report.
 
 Keep this packet outside the repository unless sanitised.
 
@@ -132,6 +132,7 @@ PYTHONPATH=. python scripts/create_cutover_evidence_packet.py \
   --readiness-report /tmp/aidiary-cloud-readiness.json \
   --preflight-report /tmp/aidiary-production-preflight.json \
   --post-cutover-baseline /tmp/aidiary-post-cutover-baseline.json \
+  --rollback-report /tmp/aidiary-rollback-rehearsal.json \
   --postgres-target "neon/rehearsal-branch-or-production-db" \
   --backend-tests-passed \
   --frontend-lint-passed \
@@ -156,6 +157,27 @@ Run these against a rehearsal branch before production:
   - expected result: login and entry list work from SQLite again
 - Media reference regression:
   - verify image and attachment storage keys still resolve after rollback
+
+Capture the rollback rehearsal result as structured evidence after restoring SQLite
+configuration and running the rollback baseline/smoke:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/create_rollback_rehearsal_report.py \
+  --scenario "failed app smoke after config switch" \
+  --sqlite-backup /tmp/aidiary-sqlite-backup.db \
+  --rollback-baseline /tmp/aidiary-rollback-baseline.json \
+  --postgres-target "neon/rehearsal-branch" \
+  --failure-summary "Backend was pointed back to SQLite after a failed smoke rehearsal." \
+  --config-restored \
+  --health-passed \
+  --auth-smoke-passed \
+  --entries-smoke-passed \
+  --export-smoke-passed \
+  --media-smoke-passed \
+  --output-json /tmp/aidiary-rollback-rehearsal.json
+```
 
 ## Rollback Steps
 
