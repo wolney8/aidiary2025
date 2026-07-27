@@ -760,12 +760,6 @@ type OnThisDayPreviewState = {
               <mat-card
                 class="entry-card"
                 *ngFor="let entry of paginatedEntries"
-                tabindex="0"
-                role="button"
-                [attr.aria-label]="'Open ' + getEntryTitle(entry)"
-                (click)="openEntryDetail(entry)"
-                (keydown.enter)="openEntryDetail(entry)"
-                (keydown.space)="onCardSpacebar($event, entry)"
               >
                 <mat-card-header>
                   <mat-icon mat-card-avatar>
@@ -834,6 +828,7 @@ type OnThisDayPreviewState = {
                     mat-button
                     color="primary"
                     (click)="openEntryDetail(entry, $event)"
+                    [attr.aria-label]="'Open ' + getEntryTitle(entry)"
                   >
                     {{ entry.type === "thought_record" ? "REVIEW RECORD" : "VIEW ENTRY" }}
                   </button>
@@ -3860,11 +3855,6 @@ export class ListComponent implements OnInit, OnDestroy {
     this.router.navigate(["/entries", entry.id], {
       queryParams: this.getDetailContextParams(entry),
     });
-  }
-
-  onCardSpacebar(event: Event, entry: CardItem): void {
-    event.preventDefault();
-    this.openEntryDetail(entry);
   }
 
   private getDetailContextParams(

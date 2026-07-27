@@ -2276,11 +2276,19 @@
   flex-wrap: nowrap;
   gap: 0.9rem;
   align-items: stretch;
+  max-width: calc(100vw - 4rem);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15rem 0.15rem 0.55rem;
+  scrollbar-gutter: stable;
 }
 
 .calendar-preview-card {
   position: relative;
   flex: 0 0 230px;
+  box-sizing: border-box;
+  max-width: min(230px, calc(100vw - 4rem));
+  min-width: 0;
   min-height: 210px;
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 0.85rem;
@@ -2298,6 +2306,7 @@
   opacity: 0;
   animation: previewCardIn 220ms ease-out forwards;
   animation-delay: calc(var(--preview-index, 0) * 70ms);
+  overflow-wrap: anywhere;
 }
 
 .on-this-day-preview-card {
@@ -2307,10 +2316,7 @@
 }
 
 .on-this-day-preview-deck .calendar-preview-cards {
-  max-width: calc(100vw - 4rem);
   overflow-x: auto;
-  padding: 0.15rem 0.15rem 0.55rem;
-  scrollbar-gutter: stable;
 }
 
 .on-this-day-card-open {
@@ -2619,7 +2625,6 @@
 }
 
 .entry-card {
-  cursor: pointer;
   width: 100%;
   min-width: 300px;
   max-width: 350px;

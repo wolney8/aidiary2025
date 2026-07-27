@@ -323,9 +323,10 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         role="dialog"
         aria-modal="false"
         aria-labelledby="notification-panel-title"
+        data-testid="notifications-popover"
         (click)="$event.stopPropagation()"
       >
-        <div class="notification-panel">
+        <div class="notification-panel" data-testid="notifications-panel">
           <div class="notification-panel__header">
             <div class="notification-panel__title" id="notification-panel-title">
               <mat-icon aria-hidden="true">notifications</mat-icon>
@@ -358,6 +359,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               [class.notification-item--unread]="notification.unread"
               role="article"
               [attr.aria-label]="notification.title + (notification.unread ? ', unread' : '')"
+              data-testid="notification-item"
               (click)="markNotificationRead(notification.id)"
             >
               <span

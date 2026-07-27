@@ -25,6 +25,56 @@ async function expectNoWcagViolations(page: Page): Promise<void> {
   expect(results.violations, summary).toEqual([]);
 }
 
+async function applyWcagTextSpacing(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `
+      * {
+        line-height: 1.5 !important;
+        letter-spacing: 0.12em !important;
+        word-spacing: 0.16em !important;
+      }
+
+      p {
+        margin-bottom: 2em !important;
+      }
+    `,
+  });
+}
+
+async function expectNoDocumentHorizontalOverflow(page: Page): Promise<void> {
+  const metrics = await page.evaluate(() => {
+    const documentElement = document.documentElement;
+    const body = document.body;
+    return {
+      bodyClientWidth: body.clientWidth,
+      bodyScrollWidth: body.scrollWidth,
+      documentClientWidth: documentElement.clientWidth,
+      documentScrollWidth: documentElement.scrollWidth,
+    };
+  });
+
+  expect(metrics.documentScrollWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(
+    metrics.documentClientWidth + 1,
+  );
+  expect(metrics.bodyScrollWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(
+    metrics.bodyClientWidth + 1,
+  );
+}
+
+async function expectNoElementHorizontalOverflow(
+  page: Page,
+  testId: string,
+): Promise<void> {
+  const metrics = await page.getByTestId(testId).evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+
+  expect(metrics.scrollWidth, `${testId}: ${JSON.stringify(metrics)}`).toBeLessThanOrEqual(
+    metrics.clientWidth + 1,
+  );
+}
+
 async function seedAuthenticatedSession(
   page: Page,
   theme: "light" | "dark" = "light",
@@ -602,6 +652,130 @@ test.describe("WCAG 2.2 AA automated checks", () => {
       )
       .toBe(true);
 
+    await expectNoWcagViolations(page);
+  });
+
+  test("overlay surfaces reflow with WCAG text spacing", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+
+    const toDateKey = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    const today = new Date();
+    const todayKey = toDateKey(today);
+    const previousYearKey = toDateKey(
+      new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()),
+    );
+    const previewImage =
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'%3E%3Crect width='320' height='180' rx='20' fill='%239bb8ff'/%3E%3Cpath d='M0 130C70 100 105 152 168 116C228 82 254 58 320 88V180H0Z' fill='%23182742' opacity='.52'/%3E%3C/svg%3E";
+
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      undefined,
+      {
+        enabled: true,
+        date: todayKey,
+        entries: [
+          {
+            id: 7,
+            type: "daily",
+            entry_date: previousYearKey,
+            title: "A calmer afternoon",
+            preview: "I noticed that taking a slower route home helped.",
+            tags: ["reflection"],
+            image_url: null,
+            image_source: null,
+            attachment_count: 0,
+          },
+        ],
+      },
+      [
+        {
+          id: 4,
+          label: "A meaningful date with a longer label",
+          starts_on: todayKey,
+          month: today.getMonth() + 1,
+          day: today.getDate(),
+          original_year: today.getFullYear(),
+          category: "other",
+          recurrence: "yearly",
+          icon_name: "event",
+          accent_color: "amber",
+          note: "A short private note with enough copy to exercise wrapping.",
+          image_url: previewImage,
+          linked_entries: [],
+        },
+      ],
+      {
+        thoughtRecords: [
+          {
+            id: 14,
+            worksheet_type: "thought_record",
+            title: "Reframing a difficult meeting",
+            status: "completed",
+            current_step: 7,
+            record_date: todayKey,
+            situation: "A tense meeting left me second guessing myself.",
+            balanced_thought: "One awkward answer does not mean the whole meeting failed.",
+            feelings_before: [],
+            feelings_after: [],
+          },
+        ],
+      },
+    );
+    await seedNotifications(page, [
+      {
+        id: "import-completed-text-spacing",
+        kind: "import",
+        status: "completed",
+        title: "Import completed",
+        message:
+          "Import complete: 680 entries imported with a longer status message for wrapping.",
+        processed: 680,
+        total: 680,
+        percent: 100,
+        unread: true,
+        isDelayed: false,
+        createdAt: "2026-07-21T10:00:00Z",
+        destination: "/settings/import",
+        actionLabel: "Go to import",
+      },
+    ]);
+
+    await page.goto(
+      "/entries?display=cards&show=daily,dreams,thought-records,important-days,on-this-day",
+    );
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+
+    await page.getByLabel("Open notifications").click();
+    await expect(page.getByTestId("notifications-panel")).toBeVisible();
+    await expectNoElementHorizontalOverflow(page, "notifications-panel");
+    await page.getByLabel("Close notifications").click();
+
+    await page.getByTestId("calendar-important-days-summary-trigger").click();
+    await expect(page.getByTestId("cards-important-day-preview")).toBeVisible();
+    await expectNoElementHorizontalOverflow(page, "cards-important-day-preview");
+    await page.getByLabel("View image for A meaningful date with a longer label").click();
+    await expect(page.getByTestId("important-day-image-modal")).toBeVisible();
+    await expect(page.getByLabel("Close important day image")).toBeVisible();
+    await page.getByLabel("Close important day image").click();
+
+    await page.getByTestId("calendar-thought-records-summary-trigger").click();
+    await expect(page.getByTestId("cards-important-day-preview")).toBeHidden();
+    await expect(page.getByTestId("cards-thought-record-preview")).toBeVisible();
+    await expectNoElementHorizontalOverflow(page, "cards-thought-record-preview");
+
+    await page.getByTestId("calendar-on-this-day-month-summary-trigger").click();
+    await expect(page.getByTestId("cards-thought-record-preview")).toBeHidden();
+    await expect(page.getByTestId("cards-on-this-day-preview")).toBeVisible();
+    await expectNoElementHorizontalOverflow(page, "cards-on-this-day-preview");
+
+    await expectNoDocumentHorizontalOverflow(page);
     await expectNoWcagViolations(page);
   });
 });
