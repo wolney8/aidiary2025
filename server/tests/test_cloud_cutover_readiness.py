@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from scripts.validate_cloud_cutover_readiness import build_cutover_readiness
@@ -65,6 +66,47 @@ def _write_export(export_dir):
         "cbt_thought_record_data",
     ]:
         (export_dir / f"{table_name}.jsonl").write_text("", encoding="utf-8")
+    _write_manifest(export_dir)
+
+
+def _write_manifest(export_dir):
+    tables = []
+    for table_name in TABLE_ORDER:
+        path = export_dir / f"{table_name}.jsonl"
+        if not path.exists():
+            continue
+        tables.append(
+            {
+                "table": table_name,
+                "file": path.name,
+                "row_count": sum(
+                    1
+                    for line in path.read_text(encoding="utf-8").splitlines()
+                    if line
+                ),
+                "byte_size": path.stat().st_size,
+                "sha256": _sha256_file(path),
+            }
+        )
+    (export_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "created_at": "2026-07-27T10:00:00Z",
+                "source_db": "/tmp/source.db",
+                "tables": tables,
+                "total_rows": sum(table["row_count"] for table in tables),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _write_clean_runtime_tree(path):
@@ -129,6 +171,8 @@ def test_cutover_readiness_passes_with_clean_evidence(tmp_path):
     assert readiness["load_plan_summary"] == {
         "total_rows": 2,
         "missing_files": [],
+        "manifest": {"present": True, "total_rows": 2},
+        "manifest_mismatches": [],
     }
     assert readiness["runtime_sqlite_usage"]["passed"] is True
 
@@ -142,6 +186,7 @@ def test_cutover_readiness_blocks_export_columns_missing_from_postgres_schema(tm
         '{"id": 1, "unexpected": "bad"}\n',
         encoding="utf-8",
     )
+    _write_manifest(export_dir)
 
     readiness = build_cutover_readiness(
         migration_report_path=report_path,
@@ -172,6 +217,7 @@ def test_cutover_readiness_blocks_per_table_export_count_mismatch(tmp_path):
         '{"id": 10}\n{"id": 11}\n',
         encoding="utf-8",
     )
+    _write_manifest(export_dir)
 
     readiness = build_cutover_readiness(
         migration_report_path=report_path,
@@ -193,6 +239,37 @@ def test_cutover_readiness_blocks_per_table_export_count_mismatch(tmp_path):
             {"table": "users", "report_rows": 1, "export_rows": 0},
         ],
     } in readiness["blockers"]
+
+
+def test_cutover_readiness_blocks_export_manifest_mismatch(tmp_path):
+    report_path = tmp_path / "report.json"
+    export_dir = tmp_path / "export"
+    _write_report(report_path)
+    _write_export(export_dir)
+    with (export_dir / "users.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write('{"id": 2}\n')
+
+    readiness = build_cutover_readiness(
+        migration_report_path=report_path,
+        export_dir=export_dir,
+        test_evidence={
+            "backend_tests_passed": True,
+            "frontend_lint_passed": True,
+            "frontend_build_passed": True,
+        },
+        postgres_rehearsal_loaded=True,
+    )
+
+    assert readiness["ready_for_cutover"] is False
+    manifest_blocker = next(
+        blocker
+        for blocker in readiness["blockers"]
+        if blocker["gate"] == "jsonl_export_manifest"
+    )
+    gates = {detail["gate"] for detail in manifest_blocker["details"]}
+    assert {"manifest_row_count", "manifest_byte_size", "manifest_sha256"}.issubset(
+        gates
+    )
 
 
 def test_cutover_readiness_blocks_direct_sqlite_runtime_usage(tmp_path):

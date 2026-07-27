@@ -28,8 +28,8 @@ not cut over until every required gate is complete and the readiness validator r
    - no legacy inline image payloads remain
    - no attachment rows have empty storage keys
 3. Export JSONL rows from the same SQLite file used for the audit.
-4. Dry-run the Postgres load plan and confirm total and per-table row counts match the
-   audit report.
+4. Dry-run the Postgres load plan and confirm the manifest, total row count, and
+   per-table row counts match the audit report.
 5. Apply the export to a disposable Postgres rehearsal database or Neon branch.
 6. Run production/cloud environment preflight checks.
 7. Run cloud schema/export parity checks.
@@ -118,6 +118,9 @@ PYTHONPATH=. python scripts/validate_cloud_cutover_readiness.py \
   --frontend-build-passed \
   --postgres-rehearsal-loaded
 ```
+
+The readiness report must not contain `jsonl_export_manifest`,
+`jsonl_export_row_count`, or `jsonl_export_table_counts` blockers before cutover.
 
 ## Manual Parity Smoke
 

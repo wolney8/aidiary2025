@@ -152,6 +152,14 @@ def build_cutover_readiness(
                     "details": load_plan["schema_column_mismatches"],
                 }
             )
+        if load_plan["manifest_mismatches"]:
+            blockers.append(
+                {
+                    "gate": "jsonl_export_manifest",
+                    "message": "Export manifest is missing or does not match the JSONL files.",
+                    "details": load_plan["manifest_mismatches"],
+                }
+            )
 
     sqlite_usage_audit = None
     if repo_root is not None:
@@ -198,6 +206,8 @@ def build_cutover_readiness(
             {
                 "total_rows": load_plan["total_rows"],
                 "missing_files": load_plan["missing_files"],
+                "manifest": load_plan["manifest"],
+                "manifest_mismatches": load_plan["manifest_mismatches"],
             }
             if load_plan
             else None
