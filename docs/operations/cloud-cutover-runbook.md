@@ -142,6 +142,31 @@ PYTHONPATH=. python scripts/create_cutover_evidence_packet.py \
   --output-json /tmp/aidiary-cutover-evidence-packet.json
 ```
 
+Rehearsal sign-off command:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/create_cutover_rehearsal_signoff.py \
+  --evidence-packet /tmp/aidiary-cutover-evidence-packet.json \
+  --cutover-lead "Will" \
+  --backend-operator "Will" \
+  --frontend-operator "Will" \
+  --rollback-owner "Will" \
+  --recorder "Will" \
+  --freeze-started-at "2026-07-27T10:00:00Z" \
+  --migration-started-at "2026-07-27T10:05:00Z" \
+  --config-switched-at "2026-07-27T10:20:00Z" \
+  --decision-due-at "2026-07-27T10:35:00Z" \
+  --decision go \
+  --notes "Disposable branch rehearsal completed without rollback triggers." \
+  --output-json /tmp/aidiary-cutover-rehearsal-signoff.json
+```
+
+This report is the final dry-run artifact. It should fail if the evidence packet is
+incomplete, rollback evidence failed, owners are unassigned, timing markers are missing,
+or the explicit decision is `no-go`.
+
 ## Rollback Rehearsal Scenarios
 
 Run these against a rehearsal branch before production:
