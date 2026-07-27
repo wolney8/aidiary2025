@@ -1217,13 +1217,13 @@ export class TopBarComponent implements OnInit, OnDestroy {
   openCompactSearch(): void {
     this.isCompactSearchOpen.set(true);
     this.showSearchHistory = false;
-    queueMicrotask(() => {
+    window.setTimeout(() => {
       const input = document.querySelector<HTMLInputElement>(
         ".search-wrapper .search-input",
       );
       input?.focus();
       input?.select();
-    });
+    }, 0);
   }
 
   closeCompactSearch(): void {

@@ -778,4 +778,142 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoWcagViolations(page);
   });
+
+  test("compact shell and monthly preview controls work from keyboard", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 700 });
+
+    const toDateKey = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    const today = new Date();
+    const todayKey = toDateKey(today);
+    const previousYearKey = toDateKey(
+      new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()),
+    );
+
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      {
+        query: "focus",
+        filters: [],
+        filters_display: "All Entries",
+        results: [],
+      },
+      {
+        enabled: true,
+        date: todayKey,
+        entries: [
+          {
+            id: 7,
+            type: "daily",
+            entry_date: previousYearKey,
+            title: "A calmer afternoon",
+            preview: "I noticed that taking a slower route home helped.",
+            tags: ["reflection"],
+            image_url: null,
+            image_source: null,
+            attachment_count: 0,
+          },
+        ],
+      },
+      [
+        {
+          id: 4,
+          label: "A meaningful date",
+          starts_on: todayKey,
+          month: today.getMonth() + 1,
+          day: today.getDate(),
+          original_year: today.getFullYear(),
+          category: "other",
+          recurrence: "yearly",
+          icon_name: "event",
+          accent_color: "amber",
+          note: "A short private note.",
+          linked_entries: [],
+        },
+      ],
+      {
+        thoughtRecords: [
+          {
+            id: 14,
+            worksheet_type: "thought_record",
+            title: "Reframing a difficult meeting",
+            status: "completed",
+            current_step: 7,
+            record_date: todayKey,
+            situation: "A tense meeting left me second guessing myself.",
+            balanced_thought: "One awkward answer does not mean the whole meeting failed.",
+            feelings_before: [],
+            feelings_after: [],
+          },
+        ],
+      },
+    );
+    await seedNotifications(page, [
+      {
+        id: "import-completed-keyboard",
+        kind: "import",
+        status: "completed",
+        title: "Import completed",
+        message: "Import complete: 680 entries imported.",
+        processed: 680,
+        total: 680,
+        percent: 100,
+        unread: true,
+        isDelayed: false,
+        createdAt: "2026-07-21T10:00:00Z",
+        destination: "/settings/import",
+        actionLabel: "Go to import",
+      },
+    ]);
+
+    await page.goto(
+      "/entries?display=cards&show=daily,dreams,thought-records,important-days,on-this-day",
+    );
+
+    await page.getByLabel("Open search").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByLabel("Search entries, tags, people, and dates")).toBeFocused();
+    await page.keyboard.type("focus");
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("search"))
+      .toBe("focus");
+
+    await page.goto(
+      "/entries?display=cards&show=daily,dreams,thought-records,important-days,on-this-day",
+    );
+
+    await page.getByLabel("Open notifications").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("notifications-panel")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("notifications-panel")).toBeHidden();
+
+    await page.getByTestId("calendar-important-days-summary-trigger").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("cards-important-day-preview")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("cards-important-day-preview")).toBeHidden();
+
+    await page.getByTestId("calendar-thought-records-summary-trigger").focus();
+    await page.keyboard.press(" ");
+    await expect(page.getByTestId("cards-thought-record-preview")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("cards-thought-record-preview")).toBeHidden();
+
+    await page.getByTestId("calendar-on-this-day-month-summary-trigger").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("cards-on-this-day-preview")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("cards-on-this-day-preview")).toBeHidden();
+
+    await expectNoWcagViolations(page);
+  });
 });
