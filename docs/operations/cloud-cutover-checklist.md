@@ -30,9 +30,11 @@ not cut over until every required gate is complete and the readiness validator r
 5. Apply the export to a disposable Postgres rehearsal database or Neon branch.
 6. Run production/cloud environment preflight checks.
 7. Run cloud schema/export parity checks.
-8. Run backend regression tests against the current local app baseline.
-9. Run frontend lint and production build.
-10. Run manual smoke against the rehearsal database before production cutover.
+8. Run the runtime SQLite usage audit and confirm product routes/services use the
+   database adapter rather than direct SQLite connections.
+9. Run backend regression tests against the current local app baseline.
+10. Run frontend lint and production build.
+11. Run manual smoke against the rehearsal database before production cutover.
 
 ## Commands
 
@@ -63,6 +65,12 @@ CORS_ORIGINS="https://your-frontend.example" \
 MEDIA_ROOT="/var/lib/aidiary/media" \
 OPENAI_API_KEY="sk-..." \
 PYTHONPATH=. python scripts/validate_production_preflight.py --require-postgres
+```
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/audit_runtime_sqlite_usage.py --repo-root ..
 ```
 
 ```bash
@@ -100,6 +108,7 @@ source venv/bin/activate
 PYTHONPATH=. python scripts/validate_cloud_cutover_readiness.py \
   --migration-report /tmp/aidiary-cloud-migration-report.json \
   --export-dir /tmp/aidiary-cloud-export \
+  --repo-root .. \
   --backend-tests-passed \
   --frontend-lint-passed \
   --frontend-build-passed \
@@ -164,5 +173,6 @@ Roll back immediately if any of these happen during cutover validation:
 
 ## Sign-Off
 
-Record the final migration report path, export directory, target Postgres branch/database,
-test command outputs, manual smoke result, cutover time, and rollback owner before go-live.
+Record the final migration report path, export directory, runtime SQLite audit result,
+target Postgres branch/database, test command outputs, manual smoke result, cutover
+time, and rollback owner before go-live.

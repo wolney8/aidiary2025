@@ -45,6 +45,7 @@ Before production cutover, capture these artifacts:
 - JSONL export directory path.
 - Postgres target identifier or Neon branch name.
 - Output of `load_cloud_migration.py --apply`.
+- Output of `audit_runtime_sqlite_usage.py`.
 - Output of `validate_cloud_cutover_readiness.py`.
 - Backend test output.
 - Frontend lint/build output.
@@ -104,12 +105,20 @@ DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration
   --reset-first
 ```
 
-7. Run readiness validator with evidence flags.
-8. Switch backend database configuration.
-9. Restart backend.
-10. Run health check and manual parity smoke.
-11. Create the cutover evidence packet.
-12. Accept cutover only if no rollback trigger is hit.
+7. Run runtime SQLite usage audit:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/audit_runtime_sqlite_usage.py --repo-root ..
+```
+
+8. Run readiness validator with evidence flags.
+9. Switch backend database configuration.
+10. Restart backend.
+11. Run health check and manual parity smoke.
+12. Create the cutover evidence packet.
+13. Accept cutover only if no rollback trigger is hit.
 
 Evidence packet command:
 
@@ -170,6 +179,7 @@ Escalate rather than proceeding if:
 - source and export row counts differ
 - any orphan rows are found
 - media reference checks are non-zero
+- runtime SQLite usage audit reports route/service violations
 - backend tests fail
 - frontend build fails
 - rollback path has not been rehearsed
