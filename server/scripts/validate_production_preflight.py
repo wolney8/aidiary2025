@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import parse_qs, urlparse
 
 from services.database import SUPPORTED_DATABASE_PROVIDERS, resolve_database_settings
 
@@ -32,6 +33,38 @@ def _looks_like_postgres_url(database_url: str | None) -> bool:
     if not database_url:
         return False
     return database_url.startswith(("postgresql://", "postgres://"))
+
+
+def _postgres_url_uses_disabled_ssl(database_url: str | None) -> bool:
+    if not database_url:
+        return False
+    query = parse_qs(urlparse(database_url).query)
+    sslmode_values = [value.lower() for value in query.get("sslmode", [])]
+    return "disable" in sslmode_values
+
+
+def _postgres_url_has_pooler_signal(
+    database_url: str | None,
+    env: Mapping[str, str],
+) -> bool:
+    if (env.get("DATABASE_USES_POOLER") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return True
+    if not database_url:
+        return False
+    parsed = urlparse(database_url)
+    host = (parsed.hostname or "").lower()
+    query = parse_qs(parsed.query)
+    query_keys = {key.lower() for key in query}
+    return (
+        "pooler" in host
+        or "pgbouncer" in host
+        or "pool" in host
+        or "pgbouncer" in query_keys
+    )
 
 
 def build_production_preflight(
@@ -101,6 +134,22 @@ def build_production_preflight(
                 gate="database_url",
                 message="DATABASE_URL must be a postgres/postgresql connection string.",
             )
+        elif _postgres_url_uses_disabled_ssl(database_url):
+            _add_gate(
+                blockers,
+                gate="database_url_ssl",
+                message="DATABASE_URL must not disable SSL for cloud Postgres cutover.",
+            )
+        elif not _postgres_url_has_pooler_signal(database_url, env):
+            _add_gate(
+                warnings,
+                gate="database_pooling",
+                severity="warning",
+                message=(
+                    "Postgres cutover should use a pooled connection URL or set "
+                    "DATABASE_USES_POOLER=true after confirming provider pooling."
+                ),
+            )
         if database_settings and database_settings.runtime_migrations_enabled:
             _add_gate(
                 blockers,
@@ -156,6 +205,11 @@ def build_production_preflight(
             "app_env": app_env or None,
             "database_provider": provider or None,
             "database_url_configured": bool(database_url),
+            "database_url_ssl_disabled": _postgres_url_uses_disabled_ssl(database_url),
+            "database_pooler_configured": _postgres_url_has_pooler_signal(
+                database_url,
+                env,
+            ),
             "cors_origins": cors_origins,
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),

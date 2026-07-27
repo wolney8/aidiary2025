@@ -11,6 +11,8 @@ not cut over until every required gate is complete and the readiness validator r
 - `DATABASE_URL`: Postgres connection string for the target environment.
 - `DATABASE_PROVIDER`: explicit runtime provider switch. Keep `sqlite` until the
   Postgres runtime adapter has landed; `DATABASE_URL` alone is rehearsal metadata.
+- `DATABASE_USES_POOLER`: set to `true` only after confirming the configured Postgres URL
+  uses provider pooling. Pooled hostnames are detected automatically when obvious.
 - `DB_PATH`: retained only for SQLite source/fallback during migration.
 - `JWT_SECRET`: production secret configured.
 - `MEDIA_ROOT` / media backend config: points at the active media store.
@@ -62,6 +64,7 @@ APP_ENV=production \
 JWT_SECRET="replace-with-real-secret" \
 DATABASE_PROVIDER=postgres \
 DATABASE_URL="postgresql://..." \
+DATABASE_USES_POOLER=true \
 CORS_ORIGINS="https://your-frontend.example" \
 MEDIA_ROOT="/var/lib/aidiary/media" \
 OPENAI_API_KEY="sk-..." \

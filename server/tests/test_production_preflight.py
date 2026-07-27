@@ -56,7 +56,7 @@ def test_preflight_requires_postgres_for_cloud_cutover(tmp_path):
 def test_preflight_accepts_postgres_cutover_shape(tmp_path):
     env = _base_env()
     env["DATABASE_PROVIDER"] = "postgres"
-    env["DATABASE_URL"] = "postgresql://example/rehearsal"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
 
     report = build_production_preflight(
         root_path=tmp_path,
@@ -67,3 +67,57 @@ def test_preflight_accepts_postgres_cutover_shape(tmp_path):
     assert report["ready_for_production"] is True
     assert report["blockers"] == []
     assert report["summary"]["database_provider"] == "postgres"
+    assert report["summary"]["database_url_ssl_disabled"] is False
+    assert report["summary"]["database_pooler_configured"] is True
+
+
+def test_preflight_blocks_postgres_cutover_with_disabled_ssl(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=disable"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "database_url_ssl" in gates
+    assert report["summary"]["database_url_ssl_disabled"] is True
+
+
+def test_preflight_warns_when_postgres_pooling_is_not_explicit(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example.com/rehearsal?sslmode=require"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "database_pooling" in warning_gates
+    assert report["summary"]["database_pooler_configured"] is False
+
+
+def test_preflight_accepts_explicit_pooler_confirmation(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example.com/rehearsal?sslmode=require"
+    env["DATABASE_USES_POOLER"] = "true"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "database_pooling" not in warning_gates
+    assert report["summary"]["database_pooler_configured"] is True
