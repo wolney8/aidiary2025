@@ -53,6 +53,22 @@ def _write_export(export_dir):
         (export_dir / f"{table_name}.jsonl").write_text("", encoding="utf-8")
 
 
+def _write_clean_runtime_tree(path):
+    route_dir = path / "server" / "routes"
+    service_dir = path / "server" / "services"
+    route_dir.mkdir(parents=True)
+    service_dir.mkdir(parents=True)
+    (route_dir / "entries.py").write_text(
+        "from services.database_adapter import DatabaseAdapter\n",
+        encoding="utf-8",
+    )
+    (service_dir / "database.py").write_text(
+        "def connect_sqlite():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+
 def test_cutover_readiness_blocks_without_required_evidence(tmp_path):
     report_path = tmp_path / "report.json"
     export_dir = tmp_path / "export"
@@ -80,10 +96,12 @@ def test_cutover_readiness_passes_with_clean_evidence(tmp_path):
     export_dir = tmp_path / "export"
     _write_report(report_path)
     _write_export(export_dir)
+    _write_clean_runtime_tree(tmp_path)
 
     readiness = build_cutover_readiness(
         migration_report_path=report_path,
         export_dir=export_dir,
+        repo_root=tmp_path,
         test_evidence={
             "backend_tests_passed": True,
             "frontend_lint_passed": True,
@@ -98,6 +116,7 @@ def test_cutover_readiness_passes_with_clean_evidence(tmp_path):
         "total_rows": 2,
         "missing_files": [],
     }
+    assert readiness["runtime_sqlite_usage"]["passed"] is True
 
 
 def test_cutover_readiness_blocks_export_columns_missing_from_postgres_schema(tmp_path):
@@ -126,4 +145,43 @@ def test_cutover_readiness_blocks_export_columns_missing_from_postgres_schema(tm
         "gate": "postgres_schema_columns",
         "message": "Export contains columns missing from the Postgres schema.",
         "details": [{"table": "users", "unknown_columns": ["unexpected"]}],
+    } in readiness["blockers"]
+
+
+def test_cutover_readiness_blocks_direct_sqlite_runtime_usage(tmp_path):
+    report_path = tmp_path / "report.json"
+    export_dir = tmp_path / "export"
+    _write_report(report_path)
+    _write_export(export_dir)
+    _write_clean_runtime_tree(tmp_path)
+    (tmp_path / "server" / "routes" / "bad.py").write_text(
+        "from services.database import connect_sqlite\n",
+        encoding="utf-8",
+    )
+
+    readiness = build_cutover_readiness(
+        migration_report_path=report_path,
+        export_dir=export_dir,
+        repo_root=tmp_path,
+        test_evidence={
+            "backend_tests_passed": True,
+            "frontend_lint_passed": True,
+            "frontend_build_passed": True,
+        },
+        postgres_rehearsal_loaded=True,
+    )
+
+    assert readiness["ready_for_cutover"] is False
+    assert readiness["runtime_sqlite_usage"]["passed"] is False
+    assert {
+        "gate": "runtime_sqlite_usage",
+        "message": "Product runtime code still contains direct SQLite connection usage.",
+        "details": [
+            {
+                "path": "server/routes/bad.py",
+                "line": 1,
+                "pattern": "connect_sqlite_import",
+                "text": "from services.database import connect_sqlite",
+            }
+        ],
     } in readiness["blockers"]

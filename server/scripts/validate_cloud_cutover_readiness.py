@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from scripts.audit_runtime_sqlite_usage import audit_runtime_sqlite_usage
 from scripts.load_cloud_migration import build_load_plan
 
 
@@ -34,6 +35,7 @@ def build_cutover_readiness(
     *,
     migration_report_path: Path,
     export_dir: Path | None = None,
+    repo_root: Path | None = None,
     test_evidence: dict[str, bool] | None = None,
     postgres_rehearsal_loaded: bool = False,
 ) -> dict[str, Any]:
@@ -107,6 +109,18 @@ def build_cutover_readiness(
                 }
             )
 
+    sqlite_usage_audit = None
+    if repo_root is not None:
+        sqlite_usage_audit = audit_runtime_sqlite_usage(repo_root)
+        if not sqlite_usage_audit["passed"]:
+            blockers.append(
+                {
+                    "gate": "runtime_sqlite_usage",
+                    "message": "Product runtime code still contains direct SQLite connection usage.",
+                    "details": sqlite_usage_audit["violations"],
+                }
+            )
+
     evidence = test_evidence or {}
     missing_evidence = [
         flag for flag in REQUIRED_TEST_FLAGS if evidence.get(flag) is not True
@@ -144,6 +158,7 @@ def build_cutover_readiness(
             if load_plan
             else None
         ),
+        "runtime_sqlite_usage": sqlite_usage_audit,
         "test_evidence": {flag: bool(evidence.get(flag)) for flag in REQUIRED_TEST_FLAGS},
         "postgres_rehearsal_loaded": postgres_rehearsal_loaded,
     }
@@ -162,6 +177,11 @@ def main() -> int:
         "--export-dir",
         help="Optional JSONL export directory to compare against the migration report.",
     )
+    parser.add_argument(
+        "--repo-root",
+        default=Path(__file__).resolve().parents[2],
+        help="Repository root to scan for direct SQLite runtime usage.",
+    )
     parser.add_argument("--backend-tests-passed", action="store_true")
     parser.add_argument("--frontend-lint-passed", action="store_true")
     parser.add_argument("--frontend-build-passed", action="store_true")
@@ -179,6 +199,7 @@ def main() -> int:
             if args.export_dir
             else None
         ),
+        repo_root=Path(args.repo_root).expanduser().resolve(),
         test_evidence={
             "backend_tests_passed": args.backend_tests_passed,
             "frontend_lint_passed": args.frontend_lint_passed,
