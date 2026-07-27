@@ -46,6 +46,7 @@ def build_evidence_packet(
     readiness_data = _load_json(readiness_report)
     preflight_data = _load_json(preflight_report) if preflight_report else None
     baseline_data = _load_json(post_cutover_baseline) if post_cutover_baseline else None
+    runtime_sqlite_usage = readiness_data.get("runtime_sqlite_usage")
 
     evidence = {
         "backend_tests_passed": backend_tests_passed,
@@ -89,6 +90,7 @@ def build_evidence_packet(
         "readiness_summary": {
             "ready_for_cutover": bool(readiness_data.get("ready_for_cutover")),
             "blockers": readiness_data.get("blockers") or [],
+            "runtime_sqlite_usage": runtime_sqlite_usage,
         },
         "preflight_summary": (
             {

@@ -27,6 +27,10 @@ def _write_cutover_artifacts(tmp_path, *, ready=True, baseline_errors=0):
         {
             "ready_for_cutover": ready,
             "blockers": [] if ready else [{"gate": "postgres_rehearsal"}],
+            "runtime_sqlite_usage": {
+                "passed": ready,
+                "violations": [] if ready else [{"path": "server/routes/bad.py"}],
+            },
         },
     )
     _write_json(
@@ -80,6 +84,10 @@ def test_cutover_evidence_packet_is_complete_with_required_artifacts(tmp_path):
     assert packet["blockers"] == []
     assert packet["postgres_target"] == "neon/rehearsal-branch"
     assert packet["migration_summary"]["total_rows"] == 42
+    assert packet["readiness_summary"]["runtime_sqlite_usage"] == {
+        "passed": True,
+        "violations": [],
+    }
     assert packet["preflight_summary"]["ready_for_production"] is True
     assert packet["baseline_summary"]["error_count"] == 0
 
