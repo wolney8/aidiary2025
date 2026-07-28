@@ -26,7 +26,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
     MatInputModule,
   ],
   template: `
-    <mat-card class="export-card">
+    <mat-card class="export-card" data-testid="export-settings-card">
       <mat-card-header>
         <mat-icon mat-card-avatar>download</mat-icon>
         <mat-card-title>Export Entries</mat-card-title>
@@ -117,7 +117,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       </mat-card-actions>
     </mat-card>
 
-    <mat-card class="bulk-delete-card">
+    <mat-card class="bulk-delete-card" data-testid="bulk-delete-settings-card">
       <mat-card-header>
         <mat-icon mat-card-avatar>warning</mat-icon>
         <mat-card-title>Delete All Entries</mat-card-title>
@@ -276,12 +276,17 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       .bulk-delete-card {
         margin-top: var(--spacing-md);
         border-radius: var(--radius-md);
-        border: 1px solid #f3d1d1;
-        background: #fff7f7;
+        border: 1px solid
+          color-mix(in srgb, var(--colour-danger-text) 35%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--colour-danger-bg) 72%,
+          var(--colour-surface)
+        );
       }
 
       .destructive {
-        color: #991b1b;
+        color: var(--colour-danger-text);
       }
 
       .range-summary {
@@ -306,7 +311,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 
       .warning-copy {
         margin: 0;
-        color: #7f1d1d;
+        color: var(--colour-danger-text);
       }
     `,
   ],

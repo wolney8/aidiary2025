@@ -114,6 +114,7 @@ async function seedAuthenticatedSession(
     dreams?: Record<number, object>;
   },
   profileResponse?: object,
+  bulkDeleteReadinessResponse?: object,
 ): Promise<void> {
   await page.addInitScript((selectedTheme) => {
     const encode = (value: object) =>
@@ -189,6 +190,27 @@ async function seedAuthenticatedSession(
             pronouns: "they/them",
             gender: "non-binary",
             profile_picture_url: null,
+          },
+        ),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/entries/bulk-delete-readiness")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          bulkDeleteReadinessResponse ?? {
+            first_entry_date: "2026-06-01",
+            last_entry_date: "2026-07-21",
+            daily_count: 12,
+            dream_count: 4,
+            total_entries: 16,
+            has_entries: true,
+            eligible_for_delete: false,
+            guard_token_present: false,
+            requires_full_export: true,
           },
         ),
       });
@@ -616,6 +638,20 @@ test.describe("WCAG 2.2 AA automated checks", () => {
       await expectNoWcagViolations(page);
     });
   }
+
+  test("Export settings reflow with WCAG text spacing", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/settings/export");
+    await expect(page.getByTestId("export-settings-card")).toBeVisible();
+    await expect(page.getByTestId("bulk-delete-settings-card")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "export-settings-card");
+    await expectNoElementHorizontalOverflow(page, "bulk-delete-settings-card");
+    await expectNoWcagViolations(page);
+  });
 
   test("Customisation settings reflow with WCAG text spacing", async ({
     page,
