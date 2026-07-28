@@ -66,7 +66,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
       </button>
     </section>
 
-    <div class="detail-container" *ngIf="entry">
+    <div class="detail-container" data-testid="entry-detail" *ngIf="entry">
       <div class="analysis-warning" *ngIf="analysisWarningMessage" role="alert">
         {{ analysisWarningMessage }}
       </div>
@@ -106,18 +106,6 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
           class="entry-image-surface"
           [class.clickable]="canExpandDreamImage()"
           [class.expanded]="isDreamImageExpanded"
-          [attr.role]="canExpandDreamImage() ? 'button' : null"
-          [attr.tabindex]="canExpandDreamImage() ? 0 : null"
-          [attr.aria-label]="
-            canExpandDreamImage()
-              ? isDreamImageExpanded
-                ? 'Collapse entry image'
-                : 'Expand entry image'
-              : null
-          "
-          (click)="onDreamImageSurfaceClick($event)"
-          (keydown.enter)="onDreamImageSurfaceClick($event)"
-          (keydown.space)="onDreamImageSurfaceClick($event)"
         >
           <div
             class="entry-image-actions"
@@ -197,15 +185,24 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
             ></mat-progress-spinner>
             <span>{{ getDreamImageBusyLabel() }}</span>
           </div>
-          <img
+          <button
             *ngIf="getEntryImageUrl()"
-            #entryImageElement
-            [src]="getEntryImageUrl()!"
-            alt="Entry image"
-            class="entry-image"
-            [style.object-position]="getDreamImageObjectPosition()"
-            (load)="onEntryImageLoaded()"
-          />
+            class="entry-image-expand-target"
+            type="button"
+            [attr.aria-label]="
+              isDreamImageExpanded ? 'Collapse entry image' : 'Expand entry image'
+            "
+            (click)="onDreamImageSurfaceClick($event)"
+          >
+            <img
+              #entryImageElement
+              [src]="getEntryImageUrl()!"
+              alt="Entry image"
+              class="entry-image"
+              [style.object-position]="getDreamImageObjectPosition()"
+              (load)="onEntryImageLoaded()"
+            />
+          </button>
           <div
             class="entry-image-ai-badge"
             *ngIf="getEntryImageUrl() && isCurrentEntryAiImage()"
@@ -470,7 +467,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
               class="section ai-attachment-context"
               *ngIf="getAnalysisAttachmentRefs().length > 0"
             >
-              <mat-chip-listbox>
+              <mat-chip-listbox aria-label="Attachment context used">
                 <mat-chip-option
                   *ngFor="let ref of getAnalysisAttachmentRefs()"
                   disabled
@@ -745,7 +742,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
       <div class="metadata-bar">
         <div class="metadata-section">
           <h4>My Tags:</h4>
-          <mat-chip-listbox>
+          <mat-chip-listbox aria-label="Entry tags">
             <mat-chip-option
               *ngFor="let tag of getVisibleItems(getTags(), showAllTags)"
               (click)="searchForTag(tag)"
@@ -771,7 +768,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
         <div class="metadata-section" *ngIf="getPeopleArray().length > 0">
           <h4>People:</h4>
-          <mat-chip-listbox>
+          <mat-chip-listbox aria-label="People mentioned">
             <mat-chip-option
               *ngFor="
                 let person of getVisibleItems(getPeopleArray(), showAllPeople)
@@ -799,7 +796,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
         <div class="metadata-section" *ngIf="getPlacesArray().length > 0">
           <h4>Places:</h4>
-          <mat-chip-listbox>
+          <mat-chip-listbox aria-label="Places mentioned">
             <mat-chip-option
               *ngFor="
                 let place of getVisibleItems(getPlacesArray(), showAllPlaces)
@@ -1239,6 +1236,22 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+      }
+
+      .entry-image-expand-target {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .entry-image-expand-target:focus-visible {
+        outline: 3px solid var(--colour-primary);
+        outline-offset: -4px;
       }
 
       .entry-image {

@@ -1037,6 +1037,118 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("populated entry detail reflows with media and attachments", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    const detailImage =
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360'%3E%3Crect width='640' height='360' fill='%23182742'/%3E%3Ccircle cx='488' cy='96' r='88' fill='%239bb8ff' opacity='.75'/%3E%3Cpath d='M0 268C126 206 210 304 336 224C444 156 520 144 640 190V360H0Z' fill='%23f7b267' opacity='.85'/%3E%3C/svg%3E";
+
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      undefined,
+      undefined,
+      undefined,
+      {
+        thoughtRecords: [
+          {
+            id: 52,
+            worksheet_type: "thought_record",
+            title: "Reframing a crowded evening",
+            status: "completed",
+            current_step: 7,
+            record_date: "2026-07-21",
+            situation:
+              "A noisy evening made it harder to notice the useful parts.",
+            balanced_thought:
+              "The evening was busy, but I still found one calm moment.",
+            feelings_before: [],
+            feelings_after: [],
+          },
+        ],
+      },
+      undefined,
+      {
+        daily: {
+          92: {
+            id: 92,
+            entry_date: "2026-07-21",
+            entry_time: "19:00",
+            title: "A detailed entry with media",
+            user_message:
+              "This entry includes a longer body, linked reflection, and several attachment states for compact layout coverage.",
+            ai_response:
+              "A considered response that should wrap cleanly without obscuring the entry detail actions or attachment controls.",
+            tags: "accessibility, media, reflection",
+            daily_people_names: "Penny",
+            daily_places: "London",
+            image_url: detailImage,
+            image_source: "ai",
+            image_position_x: "50",
+            image_position_y: "50",
+            attachments: [
+              {
+                id: 41,
+                asset_role: "attachment",
+                original_filename: "detail-image.png",
+                mime_type: "image/png",
+                file_size_bytes: 24000,
+                sort_order: 0,
+                created_at: "2026-07-21T10:00:00Z",
+                has_derived_text: false,
+                url: detailImage,
+                is_image: true,
+                is_audio: false,
+                is_pdf: false,
+              },
+              {
+                id: 42,
+                asset_role: "attachment",
+                original_filename: "supporting-note.pdf",
+                mime_type: "application/pdf",
+                file_size_bytes: 12000,
+                sort_order: 1,
+                created_at: "2026-07-21T10:00:00Z",
+                derived_text:
+                  "A short extracted PDF note that should remain readable in compact detail layout.",
+                derived_text_source: "pdf-text",
+                has_derived_text: true,
+                url: "https://example.test/supporting-note.pdf",
+                is_image: false,
+                is_audio: false,
+                is_pdf: true,
+              },
+              {
+                id: 43,
+                asset_role: "attachment",
+                original_filename: "voice-note.m4a",
+                mime_type: "audio/mp4",
+                file_size_bytes: 18000,
+                sort_order: 2,
+                created_at: "2026-07-21T10:00:00Z",
+                has_derived_text: false,
+                url: "https://example.test/voice-note.m4a",
+                is_image: false,
+                is_audio: true,
+                is_pdf: false,
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    await page.goto("/entries/92?entryType=daily&showAttachments=1");
+    await expect(page.getByTestId("entry-detail")).toBeVisible();
+    await expect(page.getByText("A detailed entry with media")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "entry-detail");
+    await expectNoWcagViolations(page);
+  });
+
   test("compact shell and monthly preview controls work from keyboard", async ({
     page,
   }) => {
