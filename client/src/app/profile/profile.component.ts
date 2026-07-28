@@ -27,7 +27,7 @@ import { User } from "../core/models/user.model";
     MatIconModule,
   ],
   template: `
-    <div class="profile-container" *ngIf="profile">
+    <div class="profile-container" data-testid="profile-page" *ngIf="profile">
       <div class="header-actions">
         <button
           mat-stroked-button
@@ -67,6 +67,7 @@ import { User } from "../core/models/user.model";
                   class="visually-hidden"
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
+                  aria-label="Choose profile picture"
                   (change)="onProfilePictureSelected($event)"
                 />
                 <button

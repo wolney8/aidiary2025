@@ -113,6 +113,7 @@ async function seedAuthenticatedSession(
     daily?: Record<number, object>;
     dreams?: Record<number, object>;
   },
+  profileResponse?: object,
 ): Promise<void> {
   await page.addInitScript((selectedTheme) => {
     const encode = (value: object) =>
@@ -173,6 +174,27 @@ async function seedAuthenticatedSession(
     }
 
     const path = new URL(url).pathname;
+    if (path.endsWith("/api/profile")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          profileResponse ?? {
+            id: 1,
+            username: "accessibility-e2e",
+            first_name: "Alexandria",
+            last_name: "Accessibility",
+            age: 38,
+            display_name: "Alex",
+            pronouns: "they/them",
+            gender: "non-binary",
+            profile_picture_url: null,
+          },
+        ),
+      });
+      return;
+    }
+
     const dailyDetailMatch = path.match(/\/api\/daily\/(\d+)$/);
     if (dailyDetailMatch) {
       const response =
@@ -608,6 +630,18 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoElementHorizontalOverflow(page, "settings-shell");
     await expectNoElementHorizontalOverflow(page, "customisation-settings");
+    await expectNoWcagViolations(page);
+  });
+
+  test("profile form reflows with WCAG text spacing", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/profile");
+    await expect(page.getByTestId("profile-page")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "profile-page");
     await expectNoWcagViolations(page);
   });
 
