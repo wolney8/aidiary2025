@@ -595,6 +595,22 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     });
   }
 
+  test("Customisation settings reflow with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/settings/personalisation");
+    await expect(page.getByTestId("settings-shell")).toBeVisible();
+    await expect(page.getByTestId("customisation-settings")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "settings-shell");
+    await expectNoElementHorizontalOverflow(page, "customisation-settings");
+    await expectNoWcagViolations(page);
+  });
+
   test("important days in dark theme", async ({ page }) => {
     await seedAuthenticatedSession(page, "dark");
     await page.goto("/important-days");
