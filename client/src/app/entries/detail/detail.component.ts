@@ -704,6 +704,7 @@ const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
                   mat-button
                   type="button"
                   class="entry-attachment-transcript-toggle"
+                  [attr.data-testid]="'entry-attachment-derived-text-toggle-' + attachment.id"
                   (click)="openAttachmentTranscript(attachment)"
                 >
                   {{ getAttachmentFullTextActionLabel(attachment) }}

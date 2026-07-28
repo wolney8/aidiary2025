@@ -24,7 +24,11 @@ export interface ConfirmDialogData {
   standalone: true,
   imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule],
   template: `
-    <div class="confirm-dialog" [class.is-destructive]="isDestructive()">
+    <div
+      class="confirm-dialog"
+      data-testid="app-dialog"
+      [class.is-destructive]="isDestructive()"
+    >
       <div class="dialog-header">
         <div
           class="dialog-icon"
@@ -38,7 +42,14 @@ export interface ConfirmDialogData {
         </div>
         <div class="dialog-copy">
           <h2 mat-dialog-title>{{ data.title }}</h2>
-          <p class="dialog-message">{{ data.message }}</p>
+          <p
+            class="dialog-message"
+            data-testid="app-dialog-message"
+            tabindex="0"
+            [attr.aria-label]="data.title + ' message'"
+          >
+            {{ data.message }}
+          </p>
         </div>
       </div>
 
@@ -55,6 +66,7 @@ export interface ConfirmDialogData {
         <button
           mat-flat-button
           type="button"
+          data-testid="app-dialog-confirm"
           [class.destructive-button]="isDestructive()"
           [class.info-button]="!isDestructive()"
           (click)="close(true)"
@@ -151,7 +163,7 @@ export interface ConfirmDialogData {
 
       .info-button {
         background: var(--colour-primary, #6750a4);
-        color: #fff;
+        color: var(--colour-on-primary, #fff);
       }
     `,
   ],

@@ -75,6 +75,28 @@ async function expectNoElementHorizontalOverflow(
   );
 }
 
+async function expectElementWithinViewport(
+  page: Page,
+  testId: string,
+): Promise<void> {
+  const metrics = await page.getByTestId(testId).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      bottom: rect.bottom,
+      right: rect.right,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    };
+  });
+
+  expect(metrics.bottom, `${testId}: ${JSON.stringify(metrics)}`).toBeLessThanOrEqual(
+    metrics.viewportHeight + 1,
+  );
+  expect(metrics.right, `${testId}: ${JSON.stringify(metrics)}`).toBeLessThanOrEqual(
+    metrics.viewportWidth + 1,
+  );
+}
+
 async function seedAuthenticatedSession(
   page: Page,
   theme: "light" | "dark" = "light",
@@ -87,6 +109,10 @@ async function seedAuthenticatedSession(
     thoughtRecords?: object[];
   },
   reflectionSummariesResponse?: object[],
+  entryDetailResponses?: {
+    daily?: Record<number, object>;
+    dreams?: Record<number, object>;
+  },
 ): Promise<void> {
   await page.addInitScript((selectedTheme) => {
     const encode = (value: object) =>
@@ -147,6 +173,36 @@ async function seedAuthenticatedSession(
     }
 
     const path = new URL(url).pathname;
+    const dailyDetailMatch = path.match(/\/api\/daily\/(\d+)$/);
+    if (dailyDetailMatch) {
+      const response =
+        entryDetailResponses?.daily?.[Number(dailyDetailMatch[1])] ?? null;
+
+      if (response) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(response),
+        });
+        return;
+      }
+    }
+
+    const dreamDetailMatch = path.match(/\/api\/dreams\/(\d+)$/);
+    if (dreamDetailMatch) {
+      const response =
+        entryDetailResponses?.dreams?.[Number(dreamDetailMatch[1])] ?? null;
+
+      if (response) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(response),
+        });
+        return;
+      }
+    }
+
     if (path.endsWith("/api/daily")) {
       await route.fulfill({
         status: 200,
@@ -843,6 +899,70 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expect(page.getByTestId("import-review-modal")).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoElementHorizontalOverflow(page, "import-review-modal");
+    await expectNoWcagViolations(page);
+  });
+
+  test("attachment derived text dialog reflows at short viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        daily: {
+          91: {
+            id: 91,
+            entry_date: "2026-07-21",
+            entry_time: "19:00",
+            title: "Entry with a long attachment transcript",
+            user_message: "This entry has a saved PDF-derived text attachment.",
+            ai_response: "A short response.",
+            tags: "accessibility",
+            daily_people_names: "",
+            daily_places: "",
+            attachments: [
+              {
+                id: 33,
+                asset_role: "attachment",
+                original_filename: "long-derived-text.pdf",
+                mime_type: "application/pdf",
+                file_size_bytes: 12000,
+                sort_order: 0,
+                created_at: "2026-07-21T10:00:00Z",
+                derived_text: Array.from({ length: 24 }, (_, index) =>
+                  `Derived paragraph ${index + 1} with enough words to exercise wrapping and the scrollable app dialog content area.`,
+                ).join("\n\n"),
+                derived_text_source: "pdf-openai",
+                derived_text_updated_at: "2026-07-21T10:05:00Z",
+                has_derived_text: true,
+                url: "https://example.test/long-derived-text.pdf",
+                is_image: false,
+                is_audio: false,
+                is_pdf: true,
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    await page.goto("/entries/91?entryType=daily&showAttachments=1");
+    await expect(
+      page.getByText("Entry with a long attachment transcript"),
+    ).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await page.getByTestId("entry-attachment-derived-text-toggle-33").click();
+    await expect(page.getByTestId("app-dialog")).toBeVisible();
+    await expectElementWithinViewport(page, "app-dialog");
+    await expectNoElementHorizontalOverflow(page, "app-dialog");
+    await expectNoDocumentHorizontalOverflow(page);
     await expectNoWcagViolations(page);
   });
 
