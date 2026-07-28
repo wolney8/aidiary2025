@@ -544,6 +544,47 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("populated search results reflow with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark", {
+      query: "daylio car",
+      filters: ["daily"],
+      filters_display: "Daily entries",
+      results: [
+        {
+          id: 84,
+          type: "daily",
+          title:
+            "A longer search result title about a focused afternoon and a car journey",
+          title_highlight:
+            "A longer search result title about a <mark>focused</mark> afternoon and a <mark>car</mark> journey",
+          entry_date: "2026-07-20",
+          entry_date_display: "Monday, 20th July 2026",
+          tags: "daylio, car, focus, unusually-long-tag-name-for-wrapping",
+          matches: {
+            body:
+              "A longer matching body preview with several phrases that should wrap cleanly without creating horizontal page overflow in compact layouts.",
+            ai_response:
+              "A longer AI response match that gives enough content for the expanded result state to exercise text spacing and card wrapping.",
+          },
+        },
+      ],
+    });
+
+    await page.goto("/entries?search=daylio%20car&filters=daily");
+    await expect(
+      page.getByRole("heading", { name: /1 result/i }),
+    ).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await page.getByRole("button", { name: /Review search result/i }).click();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "search-results");
+    await expectNoWcagViolations(page);
+  });
+
   for (const route of ["/settings/import", "/settings/personalisation"] as const) {
     test(`${route} in dark theme`, async ({ page }) => {
       await seedAuthenticatedSession(page, "dark");

@@ -64,6 +64,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
     <div
       *ngIf="results$ | async as searchState"
       class="search-results"
+      data-testid="search-results"
       (click)="closeExpandedIfClickingAway($event)"
     >
       <div *ngIf="searchState.active" class="search-header">
@@ -349,6 +350,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
                 <button
                   mat-icon-button
                   class="close-btn"
+                  [attr.aria-label]="'Close expanded search result ' + result.title"
                   (click)="closeExpanded($event)"
                 >
                   <mat-icon>close</mat-icon>
@@ -785,7 +787,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       .results-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
         gap: 16px;
         position: relative; /* Allow expanded cards to position relative to grid */
       }
@@ -871,8 +873,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateZ(0);
         width: 100%;
-        min-width: 300px;
-        max-width: 350px;
+        min-width: 0;
+        max-width: none;
       }
 
       /* When expanded, make the expanded card appear below and span wider */
@@ -881,11 +883,13 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         border-left: 4px solid var(--colour-primary);
         overflow: hidden;
         /* Use CSS custom properties for dynamic sizing and positioning */
-        width: var(--expanded-width, min(900px, 90vw));
-        max-width: none; /* Allow custom width to take precedence */
+        width: min(var(--expanded-width, 100%), 100%);
+        max-width: 100%;
         margin: 0; /* Remove default margin since we have connector spacing */
         /* Position using CSS custom properties */
-        transform: translateX(var(--offset-x, 0px));
+        transform: translateX(
+          clamp(-1rem, var(--offset-x, 0px), 1rem)
+        );
         /* Ensure it appears above other content */
         z-index: 20;
         box-shadow: 0 4px 20px var(--colour-shadow-medium);
@@ -915,8 +919,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateZ(0);
         width: 100%;
-        min-width: 300px;
-        max-width: 350px;
+        min-width: 0;
+        max-width: none;
         /* Force consistent height for search result cards too */
         height: 350px;
         display: flex;
