@@ -79,6 +79,14 @@ def test_local_cutover_rehearsal_bundle_writes_safe_artifacts(tmp_path):
         (work_dir / "local-cutover-rehearsal-bundle.json").read_text(encoding="utf-8")
     )
     assert saved_bundle["artifacts"]["export_manifest"].endswith("manifest.json")
+    assert saved_bundle["artifacts"]["operator_summary"].endswith(
+        "operator-summary.md"
+    )
+
+    operator_summary = (work_dir / "operator-summary.md").read_text(encoding="utf-8")
+    assert "Status: NOT READY" in operator_summary
+    assert "SQLite source rows: 2" in operator_summary
+    assert "postgres_rehearsal" in operator_summary
 
 
 def test_local_cutover_rehearsal_bundle_refuses_non_empty_work_dir(tmp_path):

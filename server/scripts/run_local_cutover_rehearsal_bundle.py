@@ -42,6 +42,49 @@ def _write_json(path: Path, payload: dict[str, Any]) -> str:
     return str(path)
 
 
+def _write_operator_summary(
+    path: Path,
+    bundle: dict[str, Any],
+    readiness: dict[str, Any],
+) -> str:
+    summary = bundle["summary"]
+    status = "READY FOR CUTOVER" if summary["ready_for_cutover"] else "NOT READY"
+    blockers = readiness.get("blockers") or []
+    lines = [
+        "# Local Cloud Cutover Rehearsal Summary",
+        "",
+        f"Created: {bundle['created_at']}",
+        f"Status: {status}",
+        "",
+        "## Row Counts",
+        "",
+        f"- SQLite source rows: {summary['source_total_rows']}",
+        f"- JSONL export rows: {summary['export_total_rows']}",
+        f"- Export manifest valid: {'yes' if summary['manifest_valid'] else 'no'}",
+        "",
+        "## Gate Summary",
+        "",
+        "- Runtime SQLite usage audit passed: "
+        f"{'yes' if summary['runtime_sqlite_usage_passed'] else 'no'}",
+        f"- Ready for cutover: {'yes' if summary['ready_for_cutover'] else 'no'}",
+        f"- Blockers: {summary['blocker_count']}",
+        "",
+    ]
+    if blockers:
+        lines.extend(["## Blockers", ""])
+        for blocker in blockers:
+            lines.append(f"- {blocker.get('gate')}: {blocker.get('message')}")
+        lines.append("")
+    lines.extend(["## Next Required Actions", ""])
+    for action in bundle["next_required_actions"]:
+        lines.append(f"- {action}")
+    lines.extend(["", "## Artifacts", ""])
+    for label, artifact_path in bundle["artifacts"].items():
+        lines.append(f"- {label}: `{artifact_path}`")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
 def build_local_cutover_rehearsal_bundle(
     *,
     source_db: Path,
@@ -61,6 +104,7 @@ def build_local_cutover_rehearsal_bundle(
     load_plan_path = work_dir / "load-plan.json"
     readiness_report_path = work_dir / "cutover-readiness.json"
     sqlite_usage_path = work_dir / "runtime-sqlite-usage.json"
+    operator_summary_path = work_dir / "operator-summary.md"
 
     migration_report = build_report(source_db)
     migration_report["exported_files"] = export_jsonl(source_db, export_dir)
@@ -93,6 +137,7 @@ def build_local_cutover_rehearsal_bundle(
             "load_plan": str(load_plan_path),
             "runtime_sqlite_usage": str(sqlite_usage_path),
             "cutover_readiness": str(readiness_report_path),
+            "operator_summary": str(operator_summary_path),
         },
         "summary": {
             "source_total_rows": migration_report["summary"]["total_rows"],
@@ -104,6 +149,7 @@ def build_local_cutover_rehearsal_bundle(
         },
         "next_required_actions": _next_required_actions(readiness),
     }
+    _write_operator_summary(operator_summary_path, bundle, readiness)
     _write_json(work_dir / "local-cutover-rehearsal-bundle.json", bundle)
     return bundle
 
