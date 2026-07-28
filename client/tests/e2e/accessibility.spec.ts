@@ -621,6 +621,23 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("important day editor reflows with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/important-days");
+    await page.getByTestId("important-days-start-create").click();
+    await expect(page.getByTestId("important-day-editor")).toBeVisible();
+    await page.getByRole("button", { name: /choose icon/i }).click();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "important-days-dashboard");
+    await expectNoElementHorizontalOverflow(page, "important-day-editor");
+    await expectNoWcagViolations(page);
+  });
+
   test("thought records dashboard in dark theme", async ({ page }) => {
     await seedAuthenticatedSession(
       page,

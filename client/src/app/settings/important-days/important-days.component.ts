@@ -238,6 +238,7 @@ type ImportantDayDraft = {
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     class="visually-hidden"
+                    aria-label="Choose important day image"
                     (change)="onImageSelected($event)"
                   />
                   <button
