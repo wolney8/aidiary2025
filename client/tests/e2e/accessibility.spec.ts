@@ -367,6 +367,36 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("entry create form reflows with AI and pending attachments", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/entries/create");
+    await expect(page.getByTestId("entry-create-form")).toBeVisible();
+
+    await page.getByTestId("entry-pending-attachment-input").setInputFiles([
+      {
+        name: "context-note.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("PDF-like accessibility fixture"),
+      },
+      {
+        name: "voice-note.m4a",
+        mimeType: "audio/mp4",
+        buffer: Buffer.from("audio accessibility fixture"),
+      },
+    ]);
+    await page.getByTestId("create-respond-ai-toggle").click();
+    await expect(page.getByText("context-note.pdf")).toBeVisible();
+    await expect(page.getByText("voice-note.m4a")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "entry-create-form");
+    await expectNoWcagViolations(page);
+  });
+
   test("On this day preview in dark theme", async ({ page }) => {
     const toDateKey = (date: Date) => {
       const year = date.getFullYear();

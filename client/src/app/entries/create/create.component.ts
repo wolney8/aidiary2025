@@ -168,7 +168,11 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         </mat-card-header>
 
         <mat-card-content>
-          <fieldset class="entry-form-shell" [disabled]="isSaving">
+          <fieldset
+            class="entry-form-shell"
+            data-testid="entry-create-form"
+            [disabled]="isSaving"
+          >
           <mat-button-toggle-group
             class="entry-type-toggle"
             data-testid="entry-type-toggle"
@@ -529,6 +533,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                   multiple
                   accept=".pdf,.jpg,.jpeg,.png,.webp,.mp3,.wav,.m4a,.ogg,.webm,.aiff,image/png,image/jpeg,image/webp,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/mp4,audio/x-m4a,audio/webm,audio/aiff,audio/x-aiff,application/pdf"
                   class="hidden"
+                  data-testid="entry-pending-attachment-input"
                   (change)="onPendingAttachmentSelected($event)"
                 />
                 <button
