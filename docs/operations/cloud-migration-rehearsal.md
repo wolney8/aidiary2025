@@ -5,6 +5,33 @@
 Use this process before any SQLite-to-Postgres cutover. It is designed to be
 non-destructive until the explicit Postgres `--apply` step.
 
+## Fast Local Rehearsal Bundle
+
+Run this first when you want a single local artifact set before touching a cloud
+database:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/run_local_cutover_rehearsal_bundle.py \
+  --source-db db/app.db \
+  --work-dir /tmp/aidiary-local-cutover-rehearsal \
+  --overwrite
+```
+
+This writes:
+
+- migration audit report
+- JSONL table export
+- export `manifest.json`
+- dry-run Postgres load plan
+- runtime SQLite usage audit
+- cutover readiness report
+- `local-cutover-rehearsal-bundle.json`
+
+It does not connect to Postgres. Use the individual steps below when you need to inspect
+or rerun one part of the rehearsal.
+
 ## 1. Audit The SQLite Source
 
 ```bash
