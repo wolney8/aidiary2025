@@ -779,6 +779,73 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("import review modal reflows with WCAG text spacing", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.route("**/api/import/upload", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "review",
+          message: "Review entries before import.",
+          imported_count: 0,
+          skipped_count: 0,
+          error_count: 0,
+          import_session_id: "review-session-e2e",
+          summary: {
+            ready_daily: 2,
+            ready_dreams: 0,
+            duplicate_daily: 1,
+            duplicate_dreams: 0,
+          },
+          review_entries: [
+            {
+              row_id: "row-1",
+              entry_type: "daily",
+              entry_date: "2026-07-21",
+              title: "A longer imported entry title",
+              content_preview:
+                "A longer imported entry preview that needs to wrap without pushing the modal outside the viewport.",
+              mood: "good",
+              is_duplicate: false,
+              attachment_count: 0,
+              source_record_kind: "authored",
+            },
+            {
+              row_id: "row-2",
+              entry_type: "daily",
+              entry_date: "2026-07-22",
+              title: "Potential duplicate",
+              content_preview: "A duplicate candidate preview.",
+              mood: "meh",
+              is_duplicate: true,
+              attachment_count: 0,
+              source_record_kind: "authored",
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto("/settings/import");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "accessibility-import.xlsx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: Buffer.from("mock workbook"),
+    });
+    await page.getByLabel("Upload selected file and import entries").click();
+    await expect(page.getByTestId("import-review-open")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await page.getByTestId("import-review-open").click();
+    await expect(page.getByTestId("import-review-modal")).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "import-review-modal");
+    await expectNoWcagViolations(page);
+  });
+
   test("compact shell and monthly preview controls work from keyboard", async ({
     page,
   }) => {

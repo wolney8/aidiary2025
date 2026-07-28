@@ -332,6 +332,7 @@ type UploadState =
                 <button
                   mat-stroked-button
                   type="button"
+                  data-testid="import-review-open"
                   (click)="openDuplicateReview()"
                 >
                   <mat-icon>table_view</mat-icon>
@@ -489,11 +490,13 @@ type UploadState =
       <div
         *ngIf="isDuplicateModalOpen && importResult"
         class="duplicate-modal-backdrop"
+        data-testid="import-review-backdrop"
         role="presentation"
         (click)="closeDuplicateReview()"
       >
         <div
           class="duplicate-modal"
+          data-testid="import-review-modal"
           role="dialog"
           aria-modal="true"
           aria-labelledby="duplicate-review-title"
@@ -523,7 +526,11 @@ type UploadState =
             </button>
           </div>
 
-          <div #reviewTableWrapper class="duplicate-modal__table-wrapper">
+          <div
+            #reviewTableWrapper
+            class="duplicate-modal__table-wrapper"
+            data-testid="import-review-table-wrapper"
+          >
             <div class="review-selection-bar">
               <button mat-stroked-button type="button" (click)="selectAllReviewEntries()">
                 Select all
@@ -538,7 +545,7 @@ type UploadState =
               <span>Page {{ reviewPage + 1 }} of {{ reviewPageCount }}</span>
               <button mat-icon-button type="button" (click)="changeReviewPage(1)" [disabled]="reviewPage + 1 >= reviewPageCount" aria-label="Next review page"><mat-icon>chevron_right</mat-icon></button>
             </div>
-            <table class="duplicate-table">
+            <table class="duplicate-table" data-testid="import-review-table">
               <thead>
                 <tr>
                   <th scope="col">Include</th>
@@ -604,6 +611,7 @@ type UploadState =
             <button
               mat-raised-button
               class="commit-import-action"
+              data-testid="import-review-commit"
               type="button"
               (click)="commitReviewedImport()"
               [disabled]="isCommittingReview || selectedReviewRowIds.size === 0"

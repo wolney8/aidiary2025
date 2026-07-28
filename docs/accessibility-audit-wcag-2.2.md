@@ -43,6 +43,7 @@ follow-on work. Do not create a second accessibility handoff document for this i
 | A11Y-015 | Major | 1.4.3 AA, 3.2.3 AA, 4.1.2 A | Settings/create/calendar | Refreshed the axe route matrix after Settings and Important Days route changes. Fixed active Settings pill contrast in dark mode, labelled the embedded Important Day image file input, and updated On This Day preview coverage to use current-date calendar behavior. |
 | A11Y-016 | Major | 1.4.10 AA, 1.4.12 AA, 4.1.2 A | Cards and overlays | Added an automated WCAG text-spacing and horizontal-overflow gate for notification, monthly Important Day, Thought Record, image-modal, and On This Day overlays. The gate caught a nested interactive Cards view pattern; cards are now structural and use explicit open actions instead of exposing the whole card as a button containing child buttons. |
 | A11Y-017 | Major | 2.1.1 A, 2.4.3 A, 2.4.7 AA | Shell and calendar previews | Added a compact keyboard journey covering search expansion and submission, notification open/Escape close, and monthly Important Day, Thought Record, and On This Day preview open/Escape close. The gate caught compact search focus timing; the search input is now focused after the expanded compact search field renders. |
+| A11Y-018 | Major | 1.4.10 AA, 1.4.12 AA, 4.1.2 A | Import review | Added stable test IDs and automated WCAG text-spacing/horizontal-overflow coverage for the staged import review modal at a short viewport. |
 
 ## Open Findings
 
@@ -51,7 +52,7 @@ follow-up issues before `#52` closes.
 
 | ID | Severity | WCAG | Area | Required follow-up |
 | --- | --- | --- | --- | --- |
-| A11Y-013 | Major | 2.4.11 AA, 1.4.10 AA | Overlays and responsive layout | Automated text-spacing and horizontal-overflow coverage now exists for notification and calendar preview overlays. Still manually verify transcript and import-review overlays at 200% zoom and short viewport heights, and confirm focused controls remain visible. |
+| A11Y-013 | Major | 2.4.11 AA, 1.4.10 AA | Overlays and responsive layout | Automated text-spacing and horizontal-overflow coverage now exists for notification, calendar preview, image, and import-review overlays. Still manually verify transcript overlays at 200% zoom and short viewport heights, and confirm focused controls remain visible. |
 
 ## Standards Coverage
 
@@ -65,14 +66,14 @@ follow-up issues before `#52` closes.
 | 1.4.1 Use of Colour | Pass by inspection | Selected/error states pair colour with text, icon, weight, or boundary changes. |
 | 1.4.3 Contrast Minimum | Automated pass on representative routes | Axe passes light/dark representative routes; manually verify data-dependent states. |
 | 1.4.4 Resize Text | Pending manual | Verify all scoped journeys at 200% zoom. |
-| 1.4.10 Reflow | Partial automated pass | Notification and calendar preview overlays are covered by the text-spacing overflow gate; complete short-viewport manual checks for import and transcript overlays. |
+| 1.4.10 Reflow | Partial automated pass | Notification, calendar preview, image, and import-review overlays are covered by the text-spacing overflow gate; complete short-viewport manual checks for transcript overlays. |
 | 1.4.11 Non-text Contrast | Automated pass on representative routes | Shared state/border tokens are now used in audited legacy components. |
-| 1.4.12 Text Spacing | Partial automated pass | Notification and calendar preview overlays are covered by the WCAG text-spacing gate; complete manual route smoke for remaining overlays. |
+| 1.4.12 Text Spacing | Partial automated pass | Notification, calendar preview, image, and import-review overlays are covered by the WCAG text-spacing gate; complete manual route smoke for remaining transcript overlays. |
 | 2.1.1 Keyboard | Partial automated pass | Pointer-only timeline, search, and calendar controls were remediated; compact shell and monthly preview keyboard journeys now run in Playwright. Complete full-route manual keyboard smoke. |
 | 2.1.2 No Keyboard Trap | Pass by source inspection | Material dialogs trap and restore focus; complete overlay smoke. |
 | 2.4.1 Bypass Blocks | Pass | Keyboard-visible skip link targets the main landmark. |
 | 2.4.2 Page Titled | Pass | Angular routes define descriptive titles. |
-| 2.4.3 Focus Order | Partial automated pass | Compact shell and monthly preview keyboard journeys now run in Playwright. Verify forms, detail pages, import review, and transcript dialogs manually. |
+| 2.4.3 Focus Order | Partial automated pass | Compact shell and monthly preview keyboard journeys now run in Playwright. Verify forms, detail pages, and transcript dialogs manually. |
 | 2.4.6 Headings and Labels | Pass by inspection | Primary pages expose descriptive level-one headings and labelled controls. |
 | 2.4.7 Focus Visible | Partial automated pass | Shared focus outline restored for custom controls; compact keyboard path is covered. Complete visual focus smoke across remaining forms and dialogs. |
 | 2.4.11 Focus Not Obscured | Pending manual | Verify sticky/scrolling overlays at 200% zoom and short heights. |
@@ -116,7 +117,7 @@ technology check before issue closure.
 | `cd client && npm run lint` | Passed |
 | `cd client && npm run build` | Passed; existing unused `autosave.service.ts` warning remains |
 | `cd client && npm run test:e2e:smoke` | Passed, 2 tests |
-| `cd client && npm run test:e2e:a11y` | Passed, 17 axe/reflow/keyboard checks across public/authenticated routes, entry filters, entry creation, On This Day previews, populated search, Settings, standalone Important Days, notification overlays, monthly preview decks, compact shell keyboard behavior, and light/dark representative routes |
+| `cd client && npm run test:e2e:a11y` | Passed, 18 axe/reflow/keyboard checks across public/authenticated routes, entry filters, entry creation, On This Day previews, populated search, Settings, standalone Important Days, notification overlays, monthly preview decks, import review modal, compact shell keyboard behavior, and light/dark representative routes |
 | Focused login unit spec | Inconclusive: the corrected harness compiled, but Chrome Headless disconnected on the rerun before executing tests due to the repository's recurring Karma ping timeout |
 
 ## Exit Criteria
