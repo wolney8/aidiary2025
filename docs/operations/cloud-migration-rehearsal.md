@@ -5,6 +5,24 @@
 Use this process before any SQLite-to-Postgres cutover. It is designed to be
 non-destructive until the explicit Postgres `--apply` step.
 
+## Current `#28` Status
+
+Local dry-run tooling is in place and was rerun successfully on 29 July 2026. The local
+bundle produced a SQLite audit, JSONL export, manifest validation, load plan, runtime
+SQLite usage audit, readiness report, and operator summary. The dry-run gates showed:
+
+- source/export row counts match
+- export manifest is valid
+- no Postgres schema column mismatches were reported by the load plan
+- no orphan rows were reported by the SQLite audit
+- runtime SQLite usage audit passed
+- backend tests, frontend lint, and frontend build evidence were recorded in the local
+  readiness bundle
+
+The remaining `#28` blocker is not local tooling; it is the first disposable Postgres
+rehearsal load against a real `DATABASE_URL`. Run the Postgres steps below against a
+throwaway Neon branch or equivalent managed Postgres database before closing `#28`.
+
 ## Fast Local Rehearsal Bundle
 
 Run this first when you want a single local artifact set before touching a cloud
@@ -90,12 +108,13 @@ does not connect to Postgres.
 
 ## 5. Apply To A Rehearsal Postgres Database
 
-Install Psycopg only when a real rehearsal database is ready:
+`psycopg[binary]` is pinned in `server/requirements.txt`; install the server
+requirements before this step:
 
 ```bash
 cd server
 source venv/bin/activate
-pip install "psycopg[binary]"
+pip install -r requirements.txt
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/run_postgres_migrations.py \
   --apply
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
