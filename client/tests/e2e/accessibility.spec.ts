@@ -653,6 +653,21 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("Appearance settings reflow with WCAG text spacing", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/settings/appearance");
+    await expect(page.getByTestId("appearance-settings")).toBeVisible();
+    await expect(page.getByTestId("appearance-mode-toggle")).toBeVisible();
+    await expect(page.getByTestId("appearance-preview")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "settings-shell");
+    await expectNoElementHorizontalOverflow(page, "appearance-settings");
+    await expectNoWcagViolations(page);
+  });
+
   test("Customisation settings reflow with WCAG text spacing", async ({
     page,
   }) => {
