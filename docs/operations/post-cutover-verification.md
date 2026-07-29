@@ -9,16 +9,17 @@ comparisons.
 ## First 30 Minutes
 
 1. Confirm `/health` returns `200`.
-2. Log in with a known account.
-3. Confirm entry counts match the migration report.
-4. Open Entries in Cards and Calendar modes.
-5. Open at least one Daily entry, Dream entry, Thought Record, Important Day, attachment,
+2. Confirm `/api/health/database` returns `200` with `ok: true`.
+3. Log in with a known account.
+4. Confirm entry counts match the migration report.
+5. Open Entries in Cards and Calendar modes.
+6. Open at least one Daily entry, Dream entry, Thought Record, Important Day, attachment,
    and reflection summary.
-6. Confirm images and attachments resolve from storage keys.
-7. Run an export package and confirm it completes.
-8. Send one chat message and confirm the response persists in chat history.
-9. Run the baseline capture command and save the JSON outside the repo.
-10. Decide accept/rollback inside the cutover window.
+7. Confirm images and attachments resolve from storage keys.
+8. Run an export package and confirm it completes.
+9. Send one chat message and confirm the response persists in chat history.
+10. Run the baseline capture command and save the JSON outside the repo.
+11. Decide accept/rollback inside the cutover window.
 
 ## Baseline Command
 
@@ -94,6 +95,7 @@ cutover.
 
 Accept the cutover only when:
 
+- app health and database health both pass
 - no data count mismatches are present
 - no critical manual smoke path fails
 - baseline capture has zero API errors

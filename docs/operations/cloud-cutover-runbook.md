@@ -63,7 +63,7 @@ Recommended cutover window for the current app size:
 - T-20 min: run Postgres load into target database.
 - T-15 min: run readiness validator and backend smoke.
 - T-10 min: switch backend configuration to `DATABASE_URL`.
-- T-5 min: restart backend and verify health.
+- T-5 min: restart backend and verify app plus database health.
 - T+0: start manual parity smoke.
 - T+15 min: decide accept or rollback.
 
@@ -116,9 +116,19 @@ PYTHONPATH=. python scripts/audit_runtime_sqlite_usage.py --repo-root ..
 8. Run readiness validator with evidence flags.
 9. Switch backend database configuration.
 10. Restart backend.
-11. Run health check and manual parity smoke.
+11. Run app health, database health, and manual parity smoke.
 12. Create the cutover evidence packet.
 13. Accept cutover only if no rollback trigger is hit.
+
+Health checks after restart:
+
+```bash
+curl -f http://localhost:5001/health
+curl -f http://localhost:5001/api/health/database
+```
+
+The first check proves the Flask app is serving. The second proves the configured
+database provider can accept a query. Both must pass before manual parity smoke starts.
 
 Evidence packet command:
 
@@ -213,6 +223,7 @@ PYTHONPATH=. python scripts/create_rollback_rehearsal_report.py \
 3. Restart backend.
 4. Verify:
    - `/health`
+   - `/api/health/database`
    - login
    - entries list
    - calendar
