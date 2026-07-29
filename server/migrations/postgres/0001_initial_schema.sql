@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS dreamdiary_entries (
     entry_date DATE,
     entry_number INTEGER,
     title TEXT,
-    cast TEXT,
+    "cast" TEXT,
     location TEXT,
     period TEXT,
     emotion TEXT,

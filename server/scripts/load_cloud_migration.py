@@ -20,6 +20,7 @@ from scripts.rehearse_cloud_migration import TABLE_ORDER
 SERVER_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = SERVER_ROOT / "migrations" / "postgres" / "0001_initial_schema.sql"
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+QUOTED_IDENTIFIER_RE = re.compile(r'^"(?P<name>[A-Za-z_][A-Za-z0-9_]*)"$')
 IDENTITY_ID_TABLES = {
     "users",
     "configurations",
@@ -188,7 +189,10 @@ def _postgres_schema_columns(schema_sql: str | None = None) -> dict[str, set[str
             if keyword in TABLE_CONSTRAINT_PREFIXES:
                 continue
             column_name = line.split(maxsplit=1)[0]
-            if IDENTIFIER_RE.match(column_name):
+            quoted_match = QUOTED_IDENTIFIER_RE.match(column_name)
+            if quoted_match:
+                columns.add(quoted_match.group("name"))
+            elif IDENTIFIER_RE.match(column_name):
                 columns.add(column_name)
         columns_by_table[table_name] = columns
     return columns_by_table

@@ -7,9 +7,10 @@ non-destructive until the explicit Postgres `--apply` step.
 
 ## Current `#28` Status
 
-Local dry-run tooling is in place and was rerun successfully on 29 July 2026. The local
-bundle produced a SQLite audit, JSONL export, manifest validation, load plan, runtime
-SQLite usage audit, readiness report, and operator summary. The dry-run gates showed:
+Local dry-run tooling and the first disposable Postgres rehearsal were rerun
+successfully on 29 July 2026. The local bundle produced a SQLite audit, JSONL export,
+manifest validation, load plan, runtime SQLite usage audit, readiness report, and
+operator summary. The rehearsal gates showed:
 
 - source/export row counts match
 - export manifest is valid
@@ -18,10 +19,12 @@ SQLite usage audit, readiness report, and operator summary. The dry-run gates sh
 - runtime SQLite usage audit passed
 - backend tests, frontend lint, and frontend build evidence were recorded in the local
   readiness bundle
+- the exported rows loaded into a disposable Neon Postgres database
+- the readiness bundle returned `ready_for_cutover: true` with `blocker_count: 0`
 
-The remaining `#28` blocker is not local tooling; it is the first disposable Postgres
-rehearsal load against a real `DATABASE_URL`. Run the Postgres steps below against a
-throwaway Neon branch or equivalent managed Postgres database before closing `#28`.
+`#28` is a closeout candidate. Keep the generated `/tmp` artifacts local; do not commit
+database exports or connection strings. Rotate the disposable Neon database password if
+the connection string has been shared outside a local terminal.
 
 ## Fast Local Rehearsal Bundle
 
