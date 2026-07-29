@@ -38,6 +38,7 @@ not cut over until every required gate is complete and the readiness validator r
 9. Run backend regression tests against the current local app baseline.
 10. Run frontend lint and production build.
 11. Run manual smoke against the rehearsal database before production cutover.
+12. Generate the cloud parity report and confirm `parity_ready: true`.
 
 ## Commands
 
@@ -104,6 +105,8 @@ PYTHONPATH=. pytest
 cd client
 npm run lint
 npm run build
+npm run test:e2e:smoke
+npm run test:e2e:a11y
 ```
 
 ```bash
@@ -121,6 +124,24 @@ PYTHONPATH=. python scripts/validate_cloud_cutover_readiness.py \
 
 The readiness report must not contain `jsonl_export_manifest`,
 `jsonl_export_row_count`, or `jsonl_export_table_counts` blockers before cutover.
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/create_cloud_parity_report.py \
+  --readiness-report /tmp/aidiary-local-cutover-rehearsal/cutover-readiness.json \
+  --postgres-target "neon/rehearsal-branch" \
+  --backend-tests-passed \
+  --frontend-lint-passed \
+  --frontend-build-passed \
+  --frontend-smoke-passed \
+  --frontend-a11y-passed \
+  --manual-rehearsal-smoke-passed \
+  --output-json /tmp/aidiary-cloud-parity-report.json \
+  --output-md /tmp/aidiary-cloud-parity-report.md
+```
+
+The parity report must return `parity_ready: true` before moving to the cutover runbook.
 
 ## Manual Parity Smoke
 
