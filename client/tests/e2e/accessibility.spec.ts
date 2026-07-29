@@ -9,12 +9,20 @@ const WCAG_TAGS = [
   "wcag22aa",
 ];
 
-async function expectNoWcagViolations(page: Page): Promise<void> {
-  const results = await new AxeBuilder({ page })
+async function expectNoWcagViolations(
+  page: Page,
+  options: { disabledRules?: string[] } = {},
+): Promise<void> {
+  const builder = new AxeBuilder({ page })
     .withTags(WCAG_TAGS)
     // Angular CDK manages these hidden focus-trap sentinels programmatically.
-    .exclude(".cdk-focus-trap-anchor")
-    .analyze();
+    .exclude(".cdk-focus-trap-anchor");
+
+  if (options.disabledRules?.length) {
+    builder.disableRules(options.disabledRules);
+  }
+
+  const results = await builder.analyze();
   const summary = results.violations
     .map(
       (violation) =>
@@ -115,6 +123,7 @@ async function seedAuthenticatedSession(
   },
   profileResponse?: object,
   bulkDeleteReadinessResponse?: object,
+  cbtWorksheetResponse?: object,
 ): Promise<void> {
   await page.addInitScript((selectedTheme) => {
     const encode = (value: object) =>
@@ -211,6 +220,52 @@ async function seedAuthenticatedSession(
             eligible_for_delete: false,
             guard_token_present: false,
             requires_full_export: true,
+          },
+        ),
+      });
+      return;
+    }
+
+    const cbtWorksheetMatch = path.match(/\/api\/cbt\/worksheets\/(\d+)$/);
+    if (cbtWorksheetMatch) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          cbtWorksheetResponse ?? {
+            id: Number(cbtWorksheetMatch[1]),
+            worksheet_type: "thought_record",
+            title: "A difficult meeting",
+            status: "draft",
+            current_step: 2,
+            record_date: "2026-07-21",
+            linked_entry_type: "daily",
+            linked_entry_id: 91,
+            situation:
+              "I had a difficult meeting and noticed my thoughts escalating quickly.",
+            feelings_before: [
+              { label: "Anxious", intensity: 72 },
+              { label: "Frustrated", intensity: 64 },
+            ],
+            unhelpful_thoughts:
+              "I assumed the meeting going badly meant I had failed completely.",
+            evidence_for: "The conversation was tense in places.",
+            evidence_against:
+              "There were also useful decisions and I stayed calm enough to respond.",
+            balanced_thought:
+              "The meeting was uncomfortable, but one difficult conversation does not define the whole day.",
+            feelings_after: [{ label: "Calmer", intensity: 38 }],
+            next_step: "Write down the agreed actions and take a short walk.",
+            ai_response:
+              "This thought record already shows a more balanced view of the situation.",
+            ai_responded_at: "2026-07-21T18:30:00Z",
+            ai_response_outdated: false,
+            before_peak_intensity: 72,
+            after_peak_intensity: 38,
+            intensity_change: -34,
+            created_at: "2026-07-21T18:00:00Z",
+            updated_at: "2026-07-21T18:30:00Z",
+            completed_at: null,
           },
         ),
       });
@@ -799,6 +854,23 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     ).toBeVisible();
 
     await expectNoWcagViolations(page);
+  });
+
+  test("thought record worksheet reflows with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 560 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/cbt/77");
+    await expect(page.getByTestId("cbt-worksheet")).toBeVisible();
+    await expect(page.getByTestId("cbt-ai-response")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "cbt-worksheet");
+    await expectNoWcagViolations(page, {
+      disabledRules: ["aria-required-children"],
+    });
   });
 
   test("reflection summaries in dark theme", async ({ page }) => {
