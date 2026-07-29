@@ -18,7 +18,7 @@ import { AuthService } from "../../services/auth.service";
     MatDividerModule,
   ],
   template: `
-    <div class="sidenav-container">
+    <div class="sidenav-container" data-testid="app-side-nav">
       <div class="sidenav-header">
         <div class="logo-circle">LOGO</div>
         <h3>AI Diary</h3>
@@ -146,8 +146,10 @@ import { AuthService } from "../../services/auth.service";
   styles: [
     `
       .sidenav-container {
+        box-sizing: border-box;
         width: 250px;
         height: 100%;
+        overflow-x: hidden;
         background: var(--colour-surface);
         border-right: 1px solid var(--colour-border);
       }
@@ -173,6 +175,8 @@ import { AuthService } from "../../services/auth.service";
       }
 
       .sidenav-container a[mat-list-item] {
+        box-sizing: border-box;
+        width: calc(100% - 16px);
         border-radius: var(--radius-sm);
         margin: 2px 8px;
         color: var(--colour-text-primary);

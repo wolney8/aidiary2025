@@ -401,6 +401,34 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     });
   }
 
+  test("compact shell navigation and search reflow with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 640 });
+    await seedAuthenticatedSession(page, "dark");
+    await page.goto("/entries");
+    await expect(page.getByTestId("authenticated-app-shell")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await expect(page.getByTestId("app-side-nav")).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "authenticated-app-shell");
+    await expectNoElementHorizontalOverflow(page, "app-side-nav");
+    await expectNoWcagViolations(page);
+
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Open search" }).click();
+    await expect(
+      page.getByLabel("Search entries, tags, people, and dates"),
+    ).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "authenticated-app-shell");
+    await expectNoElementHorizontalOverflow(page, "app-top-bar");
+    await expectNoWcagViolations(page);
+  });
+
   test("entry display and content filters preserve URL state", async ({ page }) => {
     await seedAuthenticatedSession(page, "dark", undefined, {
       enabled: true,

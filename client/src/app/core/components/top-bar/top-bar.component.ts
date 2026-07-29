@@ -82,6 +82,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       color="primary"
       [class.compact-toolbar]="isCompact()"
       [class.compact-search-mode]="isCompactSearchOpen()"
+      data-testid="app-top-bar"
     >
       <button mat-icon-button (click)="toggleSidenav.emit()" aria-label="Open navigation">
         <mat-icon>menu</mat-icon>
@@ -173,6 +174,9 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           <!-- Search History Dropdown (Google-style) -->
           <div
             class="search-history-dropdown"
+            role="region"
+            aria-label="Search history suggestions"
+            tabindex="0"
             *ngIf="
               (!isCompact() || isCompactSearchOpen()) &&
               showSearchHistory &&
@@ -427,6 +431,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
   styles: [
     `
       mat-toolbar {
+        box-sizing: border-box;
         gap: var(--spacing-sm);
         min-height: 72px;
         padding-inline: clamp(0.5rem, 2vw, 1rem);
@@ -469,19 +474,25 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       }
       .search-wrapper-expanded {
         flex: 1 1 auto;
+        min-width: 0;
+        max-width: 100%;
       }
       .search-form {
+        box-sizing: border-box;
         width: 100%;
         max-width: 540px;
         position: relative;
+        min-width: 0;
       }
       .search-wrapper-compact .search-form {
         max-width: none;
       }
       .search-shell {
+        box-sizing: border-box;
         display: flex;
         align-items: center;
         width: 100%;
+        min-width: 0;
         background: rgba(5, 11, 24, 0.68);
         border-radius: var(--radius-pill);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -492,6 +503,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        flex: 0 0 auto;
         border: none;
         background: transparent;
         color: rgba(255, 255, 255, 0.8);
@@ -526,6 +538,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         box-shadow: 0 0 0 2px rgba(155, 184, 255, 0.24);
       }
       .search-button {
+        flex: 0 0 auto;
         background: none;
         border: none;
         color: rgba(255, 255, 255, 0.82);
@@ -535,6 +548,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       }
       .search-input {
         flex: 1;
+        min-width: 0;
         border: none;
         outline: none;
         font-size: 16px;
