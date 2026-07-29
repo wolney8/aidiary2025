@@ -1,0 +1,576 @@
+Public Platform Architecture and Productisation Plan
+
+Act as a senior software architect, SaaS security engineer, privacy engineer, mobile architect, and technical product manager.
+
+The current project is an AI-assisted diary and dream-journal application. Your task is to assess the existing repository and create an actionable plan for turning it into a secure, reliable, commercially viable public web and mobile platform.
+
+Do not immediately rewrite the application or introduce large architectural changes.
+
+First inspect the existing codebase, current framework, authentication, database models, encryption, AI integrations, deployment configuration, tests, documentation, and security controls. Clearly distinguish:
+
+1. What already exists and works.
+2. What exists but requires improvement.
+3. What is missing.
+4. What must be replaced before a public launch.
+5. What can remain available for a private homelab deployment.
+
+Core Product Goal
+
+Create a web and mobile diary platform comparable in usability to applications such as Daylio, while maintaining its own focus on:
+
+* Daily diary entries.
+* Dream journalling.
+* AI-assisted reflection.
+* Mood and emotional tracking.
+* CBT-informed exercises.
+* Thought records.
+* Personal insights and trends.
+* Easy, low-friction entry creation.
+* Secure synchronisation between web and mobile devices.
+
+A user should be able to open the application, authenticate quickly, and begin writing an entry with minimal navigation.
+
+Required Deliverables
+
+Create or update planning and architecture documents in the repository covering the following areas.
+
+1. Current-State Technical Audit
+
+Review the repository and document:
+
+* Application framework and versions.
+* Frontend and backend architecture.
+* Database technology and schema.
+* Authentication and session management.
+* Password storage.
+* Encryption at rest and in transit.
+* AI model and API integrations.
+* File and attachment storage.
+* Logging and monitoring.
+* Existing tests.
+* Deployment process.
+* Secret and credential management.
+* Current privacy and security weaknesses.
+* Technical debt that would block a public release.
+
+Do not infer that a control exists merely because it is mentioned in documentation. Verify it in the code or configuration.
+
+2. Target Production Architecture
+
+Propose a production architecture that does not depend on the owner’s homelab.
+
+AWS must not be selected because of existing credential and account-management problems.
+
+Compare realistic alternatives such as:
+
+* Google Cloud.
+* Microsoft Azure.
+* Fly.io.
+* Render.
+* Railway.
+* DigitalOcean.
+* Cloudflare.
+* Supabase.
+* Neon.
+* Managed PostgreSQL providers.
+* Other suitable managed European or UK-hosted services.
+
+Recommend a primary architecture and one fallback architecture.
+
+The recommendation must cover:
+
+* Web frontend hosting.
+* Backend/API hosting.
+* Managed relational database.
+* Object/file storage.
+* Authentication.
+* Background jobs.
+* Email delivery.
+* Push notifications.
+* Monitoring and alerting.
+* Error tracking.
+* Backups.
+* Disaster recovery.
+* Secret management.
+* Development, staging, and production environments.
+* Infrastructure as Code.
+* CI/CD.
+* Domain names, TLS, DNS, and CDN.
+* Expected availability and scaling approach.
+
+Prefer managed services over self-managed Kubernetes unless Kubernetes is clearly justified by actual scale or operational requirements.
+
+Provide indicative monthly costs in GBP for:
+
+* Development.
+* Private personal use.
+* Initial public beta.
+* 100 active users.
+* 1,000 active users.
+* 10,000 active users.
+
+Separate fixed platform costs from variable AI usage costs.
+
+3. Private Homelab Edition
+
+Design a supported private edition that can run on the existing homelab without becoming the production platform.
+
+The private edition should:
+
+* Use containers.
+* Support local or private AI models where practical.
+* Avoid hard dependencies on public SaaS services.
+* Use a supported database rather than treating SQLite as a scalable multi-user production database.
+* Have documented backup and restore procedures.
+* Remain compatible with the public edition where reasonably possible.
+
+Clearly document where the private and public editions differ.
+
+4. Accounts, Payments, Tiers, and Entitlements
+
+Design a commercial account and entitlement system supporting:
+
+* Free accounts.
+* Paid monthly subscriptions.
+* Paid annual subscriptions.
+* One-off purchases.
+* Lifetime or permanent entitlements where commercially appropriate.
+* Free access for selected family members.
+* Discounted access for friends.
+* Percentage and fixed-value discounts.
+* Limited-use and expiring promotional codes.
+* Complimentary subscriptions.
+* Trials.
+* Grace periods.
+* Failed-payment handling.
+* Subscription cancellation.
+* Upgrades and downgrades.
+* Refund handling.
+* App Store and Google Play billing constraints.
+* Web-based payments.
+
+Evaluate suitable payment platforms, including Stripe and appropriate alternatives.
+
+Do not tie application permissions directly to payment-provider product names. Create an internal entitlement and feature-flag model such as:
+
+* free
+* personal
+* plus
+* therapeutic
+* lifetime
+* complimentary
+* administrator
+
+Provide a proposed feature matrix, but mark pricing and final tier names as product decisions requiring approval.
+
+Payment webhooks must be:
+
+* Signature verified.
+* Idempotent.
+* Auditable.
+* Replay resistant.
+* Safe against duplicate events.
+* Covered by automated tests.
+
+5. Security and Platform Stability
+
+Create a security plan based on recognised practices such as OWASP ASVS, OWASP Top 10, OWASP API Security, and relevant mobile security guidance.
+
+Cover:
+
+* Secure registration and login.
+* Email verification.
+* Password reset.
+* Optional passkeys.
+* Optional multi-factor authentication.
+* Session invalidation.
+* Brute-force protection.
+* Rate limiting.
+* Bot and abuse protection.
+* CSRF.
+* XSS.
+* SQL injection.
+* SSRF.
+* Secure headers.
+* Content Security Policy.
+* Dependency scanning.
+* Container scanning.
+* Secret scanning.
+* Audit logging.
+* Privileged administrator access.
+* Least-privilege permissions.
+* Database isolation.
+* Encryption in transit.
+* Encryption at rest.
+* Field-level encryption for diary content where appropriate.
+* Key rotation.
+* Backup encryption.
+* Secure deletion and retention.
+* Account export.
+* Account deletion.
+* Incident response.
+* Vulnerability reporting.
+* Security monitoring.
+* Penetration testing before public release.
+
+Never place passwords, payment data, API keys, encryption keys, or diary content in application logs.
+
+No administrator should be able to casually browse private diary entries.
+
+Where operational access may technically be possible, document the controls, approvals, audit records, and limitations.
+
+6. Privacy and Data Protection
+
+Treat diary entries, dreams, CBT records, mood data, and AI conversations as highly sensitive personal data.
+
+Prepare a privacy architecture addressing:
+
+* UK GDPR.
+* Data Protection Act 2018.
+* GDPR where EU users may be served.
+* Data minimisation.
+* Purpose limitation.
+* Consent.
+* Lawful basis.
+* Records of processing.
+* Data retention.
+* Data portability.
+* Right of access.
+* Right to rectification.
+* Right to erasure.
+* International data transfers.
+* Sub-processors.
+* Data processing agreements.
+* Age restrictions.
+* Child accounts and parental consent.
+* Cookie consent.
+* Analytics consent.
+* AI-processing consent.
+* Privacy notices.
+* Terms of service.
+
+Do not state that diary entries are “completely private,” “confidential,” or “visible only to the user” unless that statement is technically and legally accurate.
+
+Instead, design precise user-facing language explaining:
+
+* How entries are encrypted.
+* Whether AI providers receive entry content.
+* Whether content is retained by AI providers.
+* Whether content is used for model training.
+* Which employees or administrators could technically access data.
+* Under what exceptional circumstances access may occur.
+* How backups are handled.
+* How users can export or delete their information.
+
+AI analysis must be optional and based on informed consent.
+
+Where feasible, allow users to create entries without sending them to an AI service.
+
+7. AI Safety and Crisis-Support Behaviour
+
+The application is not a therapist, crisis service, medical device, or substitute for professional care unless a later regulated product process establishes otherwise.
+
+Design an AI safety layer that can recognise possible indications of:
+
+* Self-harm.
+* Suicide.
+* Immediate danger.
+* Abuse.
+* Severe emotional distress.
+* Psychosis or loss of contact with reality.
+* Risk to another person.
+
+Do not rely on simple trigger-word matching alone. Trigger words may appear in dreams, quotations, fiction, historic accounts, or discussions about another person.
+
+Use contextual classification with conservative escalation rules.
+
+When risk is detected:
+
+* Respond calmly and without judgement.
+* Do not diagnose.
+* Do not claim certainty.
+* Encourage immediate human support where appropriate.
+* Present location-appropriate emergency and crisis resources.
+* Ask the user to confirm their country or region when it is not known.
+* Make clear when emergency services should be contacted.
+* Avoid manipulative engagement or emotional dependency.
+* Do not hide, delete, or silently modify the user’s diary entry.
+* Avoid repeatedly displaying crisis interventions after an obvious false positive.
+* Record only the minimum safety metadata required.
+* Do not expose sensitive safety classifications to unauthorised staff or analytics systems.
+
+Regional support information must come from a maintained and verifiable source. Do not hard-code unverified telephone numbers into AI prompts.
+
+Create a documented human-reviewed safety policy and test suite before release.
+
+8. Therapeutic and CBT-Informed Features
+
+Create a distinct “CBT Protocols” or “Guided Tools” area rather than presenting every diary feature as therapy.
+
+Plan features including:
+
+* Structured thought records.
+* Situation, thought, emotion, behaviour, and outcome fields.
+* Emotion intensity ratings.
+* Evidence for and against a thought.
+* Alternative balanced thought.
+* Cognitive distortion identification.
+* Behavioural experiments.
+* Activity and mood scheduling.
+* Worry records.
+* Gratitude and positive-data logs.
+* Sleep and dream pattern reflection.
+* Recurring-theme detection.
+* Personal values.
+* Coping plans.
+* Grounding exercises.
+* User-created prompts.
+* Review with a therapist or counsellor through user-controlled export.
+
+Clearly label which content is:
+
+* General journalling.
+* CBT-informed self-help.
+* AI-generated reflection.
+* Clinician-reviewed material.
+* Not medical advice.
+
+Do not claim that a feature treats or diagnoses a mental-health condition without appropriate clinical evidence and regulatory review.
+
+9. Mobile Applications
+
+Prepare a plan for Apple iOS and Android applications.
+
+Evaluate:
+
+* Native Swift and Kotlin.
+* Flutter.
+* React Native.
+* Progressive Web App.
+* Shared API with platform-specific clients.
+
+Recommend an approach based on the existing codebase and team capacity.
+
+The mobile plan must cover:
+
+* Secure token storage.
+* Biometric unlock.
+* Offline entry creation.
+* Encrypted local storage.
+* Synchronisation and conflict resolution.
+* Push notifications.
+* Deep links.
+* App links and universal links.
+* Accessibility.
+* Screen-reader support.
+* Dynamic text.
+* Local data deletion on logout.
+* Screenshot and app-switcher privacy options.
+* App Store privacy declarations.
+* Google Play data-safety declarations.
+* Apple and Google in-app purchase requirements.
+* Beta distribution through TestFlight and Google Play testing tracks.
+
+Do not simply wrap an insecure website in a WebView and call it a mobile application.
+
+10. External Diary Integration API
+
+Design a versioned public API that permits authorised third-party applications to create diary entries.
+
+Include:
+
+* OAuth 2.1 or another appropriate delegated-authorisation mechanism.
+* User-controlled scopes.
+* Explicit consent.
+* Token revocation.
+* Rate limiting.
+* Idempotency keys.
+* API versioning.
+* OpenAPI documentation.
+* Webhooks where useful.
+* Developer registration.
+* Audit history.
+* Data provenance.
+* Duplicate detection.
+* Entry source identification.
+* Import and export formats.
+* JSON schema for diary entries.
+* Safe handling of Markdown or rich text.
+
+Example scopes might include:
+
+* entries:write
+* entries:read
+* moods:write
+* dreams:write
+* profile:read
+
+Third-party applications must never receive a user’s password or unrestricted account access.
+
+Also investigate compatibility with appropriate interoperability standards and common personal-data export formats, but do not claim compatibility until it is implemented and tested.
+
+11. Reliability and Quality Engineering
+
+Create a testing and operations strategy covering:
+
+* Unit tests.
+* API integration tests.
+* End-to-end tests.
+* Authentication tests.
+* Payment tests.
+* Webhook tests.
+* Permission and entitlement tests.
+* Encryption tests.
+* Privacy tests.
+* AI safety evaluation.
+* Mobile tests.
+* Accessibility tests.
+* Load tests.
+* Backup restoration tests.
+* Disaster-recovery exercises.
+* Dependency update strategy.
+* Database migration tests.
+* Rollback procedures.
+* Feature flags.
+* Canary or staged releases.
+
+Define service-level objectives for the public beta and production service.
+
+Include monitoring for:
+
+* API errors.
+* Authentication failures.
+* Payment failures.
+* Database saturation.
+* AI-provider failures.
+* Queue delays.
+* Mobile sync failures.
+* Backup failures.
+* Suspicious access.
+* Elevated crisis-classification rates.
+
+Monitoring must not expose diary content.
+
+12. Product Analytics
+
+Design privacy-respecting analytics that measure product use without collecting diary text.
+
+Suitable events may include:
+
+* Account created.
+* Entry created.
+* Dream entry created.
+* Thought record completed.
+* AI reflection requested.
+* Export requested.
+* Subscription started.
+* Subscription cancelled.
+* Sync failed.
+
+Never send diary content, dream content, CBT answers, AI prompts, or crisis-related text to advertising or general analytics platforms.
+
+13. Delivery Roadmap
+
+Produce a phased roadmap with dependencies, risks, acceptance criteria, and clear release gates.
+
+Use phases similar to:
+
+* Phase 0: Repository and security audit.
+* Phase 1: Architecture foundations.
+* Phase 2: Production database and authentication.
+* Phase 3: Privacy and encryption controls.
+* Phase 4: Public web beta.
+* Phase 5: Payments and entitlements.
+* Phase 6: CBT-informed tools.
+* Phase 7: AI safety controls.
+* Phase 8: External API.
+* Phase 9: Mobile beta.
+* Phase 10: Public production launch.
+
+For every phase provide:
+
+* Objective.
+* Scope.
+* Files or components affected.
+* Dependencies.
+* Security considerations.
+* Privacy considerations.
+* Tests required.
+* Acceptance criteria.
+* Rollback approach.
+* Estimated complexity.
+* Decisions requiring owner approval.
+
+Do not provide invented calendar deadlines. Use relative size estimates or engineering effort ranges until team availability is known.
+
+14. Architecture Decision Records
+
+Create Architecture Decision Records for major choices, including:
+
+* Hosting provider.
+* Database provider.
+* Authentication system.
+* Payment provider.
+* Backend framework.
+* Web frontend.
+* Mobile framework.
+* Encryption model.
+* AI-provider strategy.
+* Background-job system.
+* File storage.
+* Analytics.
+* Monitoring.
+* Public API authentication.
+
+Each decision must show:
+
+* Context.
+* Options considered.
+* Decision.
+* Rationale.
+* Security impact.
+* Privacy impact.
+* Cost impact.
+* Operational impact.
+* Rejected alternatives.
+* Conditions that would cause the decision to be revisited.
+
+Implementation Rules
+
+* Do not perform a big-bang rewrite.
+* Do not introduce microservices without a demonstrated need.
+* Do not use self-managed Kubernetes merely because it is familiar.
+* Do not treat SQLite as the public multi-user production database.
+* Do not place secrets in source control.
+* Do not implement custom payment-card handling.
+* Do not create custom cryptography.
+* Do not claim medical or therapeutic efficacy without evidence.
+* Do not claim absolute privacy unless it can be proven.
+* Do not expose private entries in logs, analytics, crash reports, support tools, or administrator dashboards.
+* Do not make destructive database changes without migrations, backups, and rollback procedures.
+* Prefer incremental, testable changes.
+* Preserve working functionality.
+* Follow existing repository conventions unless there is a documented reason to change them.
+* Mark assumptions explicitly.
+* Cite official documentation for significant technical, security, payment, mobile-store, privacy, and infrastructure decisions.
+
+Initial Output Required
+
+Before changing application code, produce:
+
+1. A concise executive summary.
+2. A verified current-state audit.
+3. A risk register.
+4. A proposed target architecture.
+5. A hosting and managed-database comparison.
+6. A cost model in GBP.
+7. A proposed subscription and entitlement model.
+8. A privacy and AI-data-flow diagram.
+9. A public API outline.
+10. A mobile strategy.
+11. A phased implementation roadmap.
+12. A list of blocking decisions requiring owner approval.
+13. A list of recommended repository documents and Architecture Decision Records.
+14. The single safest and highest-value first implementation task.
+
+After producing these documents, stop and wait for approval before making structural application changes.
