@@ -921,6 +921,63 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("reflection summaries reflow with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 720, height: 520 });
+    await seedAuthenticatedSession(
+      page,
+      "dark",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [
+        {
+          id: 5,
+          period_type: "monthly",
+          period_start: "2026-07-01",
+          period_end: "2026-07-31",
+          title: "July reflection with a longer generated summary title",
+          summary_text:
+            "This month shows a repeated pattern of pausing before responding and using structured reflection to recover perspective. The summary includes several compact source-backed observations so the card must wrap cleanly under WCAG text spacing without creating horizontal overflow.",
+          themes: [
+            "reflection",
+            "boundaries",
+            "recovery",
+            "longer-theme-name-for-wrapping",
+          ],
+          source_refs: [
+            {
+              type: "daily",
+              id: 12,
+              date: "2026-07-11",
+              theme:
+                "a calmer evening after a difficult conversation with a longer theme",
+            },
+            {
+              type: "thought_record",
+              id: 14,
+              date: "2026-07-18",
+              theme: "reframing a difficult meeting",
+            },
+          ],
+          model: "gpt-4o-mini",
+          created_at: "2026-07-21T10:00:00Z",
+          updated_at: "2026-07-21T10:00:00Z",
+        },
+      ],
+    );
+
+    await page.goto("/reflections");
+    await expect(page.getByTestId("reflection-summaries")).toBeVisible();
+
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "reflection-summaries");
+    await expectNoWcagViolations(page);
+  });
+
   test("notification menu in compact dark theme", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 640 });
     await seedAuthenticatedSession(page, "dark");
