@@ -1,7 +1,31 @@
 # Roadmap
 
-Updated: 21 July 2026. GitHub issues remain the delivery source of truth; this file
+Updated: 29 July 2026. GitHub issues remain the delivery source of truth; this file
 records their intended sequence rather than duplicating issue bodies.
+
+## Future State
+
+AI Diary should become a private, portable, clinically careful reflection system rather
+than a generic notes app. The target product shape is:
+
+- A calendar-first personal record that brings together diary entries, dreams, thought
+  records, important days, on-this-day memories, attachments, and generated reflections
+  without making the interface feel crowded.
+- AI that is opt-in, source-aware, and explainable: responses should state when they use
+  prior entries, attachments, thought records, or period summaries, while avoiding
+  hidden broad surveillance of the user's archive.
+- Data that is portable and cloud-ready: exports must preserve enough manifest metadata
+  to round-trip entries, images, attachments, prompts, important days, and future media
+  references without depending on local filesystem paths.
+- A Material 3 and WCAG-led interface where dark mode, compact layouts, dialogs,
+  tables, cards, pills, icons, and route returns are consistent enough that new features
+  extend the system rather than create one-off screens.
+- A production path that moves from local SQLite convenience to hosted PostgreSQL with
+  rehearsed migration, rollback, integrity checks, and performance baselines.
+
+Near-term work should avoid speculative provider integrations, broad visual redesigns,
+or new AI surfaces until the existing accessibility, portability, and cloud-readiness
+lanes are stable.
 
 ## Immediate Product Lane
 
