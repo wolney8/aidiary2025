@@ -367,6 +367,30 @@ test.describe("WCAG 2.2 AA automated checks", () => {
     await expectNoWcagViolations(page);
   });
 
+  test("authentication forms reflow with WCAG text spacing", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 640 });
+
+    await page.goto("/login?reason=session-expired");
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    await expect(
+      page.getByText("Your session has expired. Please log in again to continue."),
+    ).toBeVisible();
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "login-page");
+    await expectNoWcagViolations(page);
+
+    await page.goto("/register");
+    await expect(page.getByTestId("register-page")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create Account" })).toBeVisible();
+    await applyWcagTextSpacing(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoElementHorizontalOverflow(page, "register-page");
+    await expectNoWcagViolations(page);
+  });
+
   for (const theme of ["light", "dark"] as const) {
     test(`entries in ${theme} theme`, async ({ page }) => {
       await seedAuthenticatedSession(page, theme);

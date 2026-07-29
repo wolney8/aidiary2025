@@ -55,6 +55,7 @@ follow-on work. Do not create a second accessibility handoff document for this i
 | A11Y-027 | Major | 1.4.10 AA, 1.4.12 AA, 4.1.2 A | Appearance settings | Added automated short-viewport WCAG text-spacing, horizontal-overflow, and axe coverage for the Appearance display-mode control, theme presets, and preview panel. |
 | A11Y-028 | Major | 1.4.10 AA, 1.4.12 AA, 4.1.2 A | Thought Record worksheet | Added automated short-viewport WCAG text-spacing, horizontal-overflow, and axe coverage for the seven-step Thought Record worksheet and AI response card. The route-specific gate disables only axe `aria-required-children` because Angular Material's vertical stepper emits a known internal `tablist`/`tabpanel` structure; other axe rules remain active. |
 | A11Y-029 | Major | 1.4.10 AA, 1.4.12 AA, 4.1.2 A | Reflection summaries | Added automated short-viewport WCAG text-spacing, horizontal-overflow, and axe coverage for generated weekly/monthly reflection cards, themes, source-reference links, and the generation form in dark mode. |
+| A11Y-030 | Major | 1.4.10 AA, 1.4.12 AA, 4.1.2 A | Authentication forms | Added automated compact-viewport WCAG text-spacing, horizontal-overflow, and axe coverage for login with session-expired status messaging and the registration form. |
 
 ## Open Findings
 
@@ -63,7 +64,7 @@ follow-up issues before `#52` closes.
 
 | ID | Severity | WCAG | Area | Required follow-up |
 | --- | --- | --- | --- | --- |
-| A11Y-013 | Major | 2.4.11 AA, 1.4.10 AA | Overlays and responsive layout | Automated text-spacing and horizontal-overflow coverage now exists for notification, calendar preview, image, import-review, transcript/derived-text overlays, populated search results, populated entry detail, Profile, Appearance, Export, Customisation settings, standalone Important Day editing, Thought Record worksheet, Reflection summaries, and the create-entry AI/attachment form state. Still manually verify 200% zoom behavior and confirm focused controls remain visible and unobscured across the full dialog/form set. |
+| A11Y-013 | Major | 2.4.11 AA, 1.4.10 AA | Overlays and responsive layout | Automated text-spacing and horizontal-overflow coverage now exists for notification, calendar preview, image, import-review, transcript/derived-text overlays, authentication forms, populated search results, populated entry detail, Profile, Appearance, Export, Customisation settings, standalone Important Day editing, Thought Record worksheet, Reflection summaries, and the create-entry AI/attachment form state. Still manually verify 200% zoom behavior and confirm focused controls remain visible and unobscured across the full dialog/form set. |
 
 ## Standards Coverage
 
@@ -77,9 +78,9 @@ follow-up issues before `#52` closes.
 | 1.4.1 Use of Colour | Pass by inspection | Selected/error states pair colour with text, icon, weight, or boundary changes. |
 | 1.4.3 Contrast Minimum | Automated pass on representative routes | Axe passes light/dark representative routes; manually verify data-dependent states. |
 | 1.4.4 Resize Text | Pending manual | Verify all scoped journeys at 200% zoom. |
-| 1.4.10 Reflow | Partial automated pass | Notification, calendar preview, image, import-review, transcript/derived-text overlays, populated search results, populated entry detail, Profile, Appearance, Export, Customisation settings, standalone Important Day editing, Thought Record worksheet, Reflection summaries, and create-entry AI/attachment form state are covered by the text-spacing overflow gate; complete 200% zoom manual checks. |
+| 1.4.10 Reflow | Partial automated pass | Notification, calendar preview, image, import-review, transcript/derived-text overlays, authentication forms, populated search results, populated entry detail, Profile, Appearance, Export, Customisation settings, standalone Important Day editing, Thought Record worksheet, Reflection summaries, and create-entry AI/attachment form state are covered by the text-spacing overflow gate; complete 200% zoom manual checks. |
 | 1.4.11 Non-text Contrast | Automated pass on representative routes | Shared state/border tokens are now used in audited legacy components. |
-| 1.4.12 Text Spacing | Partial automated pass | Notification, calendar preview, image, import-review, transcript/derived-text overlays, populated search results, populated entry detail, Profile, Appearance, Export, Customisation settings, standalone Important Day editing, Thought Record worksheet, Reflection summaries, and create-entry AI/attachment form state are covered by the WCAG text-spacing gate; complete manual route smoke at 200% zoom. |
+| 1.4.12 Text Spacing | Partial automated pass | Notification, calendar preview, image, import-review, transcript/derived-text overlays, authentication forms, populated search results, populated entry detail, Profile, Appearance, Export, Customisation settings, standalone Important Day editing, Thought Record worksheet, Reflection summaries, and create-entry AI/attachment form state are covered by the WCAG text-spacing gate; complete manual route smoke at 200% zoom. |
 | 2.1.1 Keyboard | Partial automated pass | Pointer-only timeline, search, and calendar controls were remediated; compact shell and monthly preview keyboard journeys now run in Playwright. Complete full-route manual keyboard smoke. |
 | 2.1.2 No Keyboard Trap | Pass by source inspection | Material dialogs trap and restore focus; complete overlay smoke. |
 | 2.4.1 Bypass Blocks | Pass | Keyboard-visible skip link targets the main landmark. |
@@ -114,7 +115,7 @@ technology check before issue closure.
 
 | Journey | Keyboard | 200% zoom | Light/dark | Screen reader |
 | --- | --- | --- | --- | --- |
-| Login and registration | Pending | Pending | Pending | Pending |
+| Login and registration | Pending | Partial automated pass | Pending | Pending |
 | Top bar, search history, notifications, side navigation | Pending | Pending | Pending | Pending |
 | Entry cards, timeline, calendar, and preview decks | Pending | Pending | Pending | Pending |
 | Create/edit/detail including attachments and AI progress | Pending | Pending | Pending | Pending |
@@ -128,7 +129,7 @@ technology check before issue closure.
 | `cd client && npm run lint` | Passed |
 | `cd client && npm run build` | Passed; existing unused `autosave.service.ts` warning remains |
 | `cd client && npm run test:e2e:smoke` | Passed, 2 tests |
-| `cd client && npm run test:e2e:a11y` | Passed, 29 axe/reflow/keyboard checks across public/authenticated routes, entry filters, entry creation, create-entry AI/attachment state, populated entry detail, On This Day previews, populated and expanded search, Profile, Settings/Appearance/Export/Customisation, standalone Important Days and Important Day editing, Thought Record dashboard and worksheet, Reflection summaries, notification overlays, monthly preview decks, import review modal, transcript/derived-text dialog, compact shell keyboard behavior, and light/dark representative routes |
+| `cd client && npm run test:e2e:a11y` | Passed, 30 axe/reflow/keyboard checks across public/authenticated routes, authentication form reflow, entry filters, entry creation, create-entry AI/attachment state, populated entry detail, On This Day previews, populated and expanded search, Profile, Settings/Appearance/Export/Customisation, standalone Important Days and Important Day editing, Thought Record dashboard and worksheet, Reflection summaries, notification overlays, monthly preview decks, import review modal, transcript/derived-text dialog, compact shell keyboard behavior, and light/dark representative routes |
 | Focused login unit spec | Inconclusive: the corrected harness compiled, but Chrome Headless disconnected on the rerun before executing tests due to the repository's recurring Karma ping timeout |
 
 ## Exit Criteria
