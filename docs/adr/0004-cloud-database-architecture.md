@@ -49,6 +49,14 @@ Supabase Postgres and Render Postgres remain compatible alternatives if deployme
 pricing, region, or platform preference changes. The application must not use
 provider-specific features in core data access during the initial cutover.
 
+AWS is not a current target because account/customer-service issues make it an
+operationally blocked path. This does not change the database design: any future AWS RDS
+option would still have to enter through the same standard Postgres `DATABASE_URL`
+contract rather than provider-specific application code.
+
+Provider fallback order is maintained in
+[cloud-database-provider-options.md](../operations/cloud-database-provider-options.md).
+
 ## Architecture Direction
 
 ### Database Access
