@@ -85,6 +85,60 @@ def test_app_records_sqlite_database_provider(monkeypatch, tmp_path):
     assert app.config["DATABASE_ADAPTER"].sqlite_path == str(db_path)
 
 
+def test_database_health_endpoint_reports_provider_status(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+    response = app.test_client().get("/api/health/database")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["provider"] == "sqlite"
+    assert payload["ok"] is True
+    assert "DATABASE_URL" not in str(payload)
+
+
+def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    class FailingAdapter:
+        def health_check(self):
+            return {
+                "provider": "postgres",
+                "ok": False,
+                "latency_ms": None,
+                "error_type": "OperationalError",
+                "message": "Database connection check failed.",
+            }
+
+    app = create_app()
+    app.config["DATABASE_ADAPTER"] = FailingAdapter()
+    response = app.test_client().get("/api/health/database")
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "provider": "postgres",
+        "ok": False,
+        "latency_ms": None,
+        "error_type": "OperationalError",
+        "message": "Database connection check failed.",
+    }
+
+
 def test_app_runs_runtime_migration_hook_for_sqlite(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")

@@ -7,6 +7,7 @@ SQLite now and Postgres later.
 from __future__ import annotations
 
 import re
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
@@ -155,6 +156,26 @@ class DatabaseAdapter:
             return _SqlCompatConnection(conn, self.provider)
 
         raise ValueError(f"Unsupported database provider: {self.provider}")
+
+    def health_check(self) -> dict[str, object]:
+        started_at = time.perf_counter()
+        report: dict[str, object] = {
+            "provider": self.provider,
+            "ok": False,
+            "latency_ms": None,
+        }
+        try:
+            with self.connect(timeout=5) as conn:
+                conn.execute("SELECT 1").fetchone()
+        except Exception as exc:
+            # Keep public health output free of DSNs, credentials, hosts, and row data.
+            report["error_type"] = exc.__class__.__name__
+            report["message"] = "Database connection check failed."
+            return report
+
+        report["ok"] = True
+        report["latency_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+        return report
 
     def table_exists(self, conn, table_name: str) -> bool:
         table_name = _validate_identifier(table_name)

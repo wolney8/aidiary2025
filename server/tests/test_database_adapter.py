@@ -88,6 +88,36 @@ def test_database_adapter_introspects_sqlite_tables_and_columns(tmp_path):
         assert adapter.table_columns(conn, "sample") == {"id", "name"}
 
 
+def test_database_adapter_health_check_reports_sqlite_success(tmp_path):
+    db_path = tmp_path / "app.db"
+    adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
+
+    report = adapter.health_check()
+
+    assert report["provider"] == "sqlite"
+    assert report["ok"] is True
+    assert isinstance(report["latency_ms"], float)
+    assert "database_url" not in report
+    assert "error_type" not in report
+
+
+def test_database_adapter_health_check_sanitizes_failures():
+    adapter = DatabaseAdapter(
+        provider="postgres",
+        sqlite_path="/tmp/fallback.db",
+        database_url="postgresql://user:secret@example.invalid/app",
+    )
+
+    report = adapter.health_check()
+
+    assert report["provider"] == "postgres"
+    assert report["ok"] is False
+    assert report["message"] == "Database connection check failed."
+    assert "error_type" in report
+    assert "secret" not in str(report)
+    assert "example.invalid" not in str(report)
+
+
 def test_database_adapter_rejects_unsafe_table_names(tmp_path):
     db_path = tmp_path / "app.db"
     adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))

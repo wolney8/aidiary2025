@@ -109,6 +109,34 @@ PYTHONPATH=. python scripts/load_cloud_migration.py \
 
 Use `--reset-first` only on a throwaway rehearsal database or branch.
 
+## Failure Visibility
+
+The backend exposes a provider-neutral health endpoint:
+
+```bash
+curl http://localhost:5001/api/health/database
+```
+
+Expected healthy response shape:
+
+```json
+{
+  "provider": "postgres",
+  "ok": true,
+  "latency_ms": 42.0
+}
+```
+
+If the managed database is unavailable, full, paused, misconfigured, or rejecting
+connections, the endpoint returns `503` with sanitized failure metadata. It does not
+expose database URLs, credentials, hosts, or row data.
+
+This is server-side detection only. The app does not yet have offline-first local draft
+sync for a cloud outage. If Neon or another provider rejects writes, the backend should
+return an error and the frontend should surface it; durable offline queueing for user
+entries is a separate product issue because it changes conflict resolution, device
+storage, and account-sync semantics.
+
 ## Owner Decision Needed
 
 Choose one provider account for the first disposable rehearsal:

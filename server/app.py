@@ -273,6 +273,11 @@ def create_app():
     def health():
         return {'status': 'healthy'}, 200
 
+    @app.route('/api/health/database')
+    def database_health():
+        report = app.config['DATABASE_ADAPTER'].health_check()
+        return report, 200 if report.get('ok') is True else 503
+
     @app.route(f'{DEFAULT_MEDIA_URL_PREFIX}/<path:storage_key>')
     def serve_media(storage_key: str):
         return send_from_directory(app.config['MEDIA_ROOT'], storage_key, conditional=True)
