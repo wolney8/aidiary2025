@@ -1,6 +1,7 @@
 # WCAG 2.2 AA Accessibility Audit
 
 Audit date: 21 July 2026  
+Closeout validation updated: 29 July 2026
 Target: WCAG 2.2 Level A and AA  
 Scope: authentication, application shell/navigation, entry list/calendar/search,
 entry create/edit/detail, settings, import/export, dialogs, and responsive themes.
@@ -8,6 +9,21 @@ entry create/edit/detail, settings, import/export, dialogs, and responsive theme
 This is the single working accessibility record for issue `#52`. It records source
 inspection, implemented remediation, automated checks, and the remaining manual or
 follow-on work. Do not create a second accessibility handoff document for this issue.
+
+## Current Closeout Status
+
+No unresolved Blocking findings remain. The current automated gate passes lint, build,
+smoke, and 31 Playwright/axe WCAG checks across the authenticated shell, authentication,
+entry list/cards/calendar/search, create/edit surfaces, detail media/attachments,
+settings/customisation/import/export, Important Days, Thought Records, Reflections,
+notifications, overlays, and compact dark-theme layouts.
+
+The only residual item is the manual assistive-technology pass already tracked as
+`A11Y-013`: 200% zoom, keyboard-only confirmation across long form/dialog journeys, and
+VoiceOver/NVDA confirmation for representative routes. If owner manual smoke accepts
+that residual risk, `#52` is a closeout candidate. If formal screen-reader evidence is
+required, keep `#52` open only for that manual verification pass rather than for code
+remediation.
 
 ## Method
 
@@ -127,10 +143,10 @@ technology check before issue closure.
 
 | Check | Result |
 | --- | --- |
-| `cd client && npm run lint` | Passed |
-| `cd client && npm run build` | Passed; existing unused `autosave.service.ts` warning remains |
-| `cd client && npm run test:e2e:smoke` | Passed, 2 tests |
-| `cd client && npm run test:e2e:a11y` | Passed, 31 axe/reflow/keyboard checks across public/authenticated routes, authentication form reflow, compact shell navigation/search reflow, entry filters, entry creation, create-entry AI/attachment state, populated entry detail, On This Day previews, populated and expanded search, Profile, Settings/Appearance/Export/Customisation, standalone Important Days and Important Day editing, Thought Record dashboard and worksheet, Reflection summaries, notification overlays, monthly preview decks, import review modal, transcript/derived-text dialog, compact shell keyboard behavior, and light/dark representative routes |
+| `cd client && npm run lint` | Passed on 29 July 2026 |
+| `cd client && npm run build` | Passed on 29 July 2026; existing unused `autosave.service.ts` warning remains |
+| `cd client && npm run test:e2e:smoke` | Passed on 29 July 2026, 2 tests |
+| `cd client && npm run test:e2e:a11y` | Passed on 29 July 2026, 31 axe/reflow/keyboard checks across public/authenticated routes, authentication form reflow, compact shell navigation/search reflow, entry filters, entry creation, create-entry AI/attachment state, populated entry detail, On This Day previews, populated and expanded search, Profile, Settings/Appearance/Export/Customisation, standalone Important Days and Important Day editing, Thought Record dashboard and worksheet, Reflection summaries, notification overlays, monthly preview decks, import review modal, transcript/derived-text dialog, compact shell keyboard behavior, and light/dark representative routes |
 | Focused login unit spec | Inconclusive: the corrected harness compiled, but Chrome Headless disconnected on the rerun before executing tests due to the repository's recurring Karma ping timeout |
 
 ## Exit Criteria
