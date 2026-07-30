@@ -21,7 +21,8 @@ not cut over until every required gate is complete and the readiness validator r
 
 ## Pre-Cutover Gates
 
-1. Create a timestamped SQLite backup and keep it outside the repo.
+1. Create a timestamped SQLite backup with `scripts/create_sqlite_backup.py` and keep it
+   outside the repo.
 2. Run SQLite migration audit and confirm:
    - no expected tables are missing
    - no orphan rows are reported
@@ -41,6 +42,16 @@ not cut over until every required gate is complete and the readiness validator r
 12. Generate the cloud parity report and confirm `parity_ready: true`.
 
 ## Commands
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/create_sqlite_backup.py \
+  --source-db db/app.db \
+  --backup-dir ~/AIDiaryBackups \
+  --label pre-cutover \
+  --retain 14
+```
 
 ```bash
 cd server

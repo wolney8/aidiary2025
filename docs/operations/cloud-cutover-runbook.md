@@ -25,6 +25,7 @@ Start the write freeze only when all are true:
 - `main` is clean and pushed.
 - No feature branches are waiting to be merged into the cutover candidate.
 - SQLite backup path is known and outside the repo.
+- The newest SQLite backup manifest has been reviewed for expected table counts.
 - `DATABASE_URL` points to the intended Postgres rehearsal or production target.
 - `cloud-cutover-checklist.md` pre-cutover gates have passed.
 - The rollback owner has confirmed the rollback command path.
@@ -73,7 +74,18 @@ Adjust timings after the first real Neon branch rehearsal.
 
 1. Announce freeze.
 2. Stop or avoid local write activity.
-3. Create SQLite backup.
+3. Create SQLite backup:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/create_sqlite_backup.py \
+  --source-db db/app.db \
+  --backup-dir ~/AIDiaryBackups \
+  --label pre-cutover \
+  --retain 14
+```
+
 4. Run audit/export:
 
 ```bash
@@ -229,6 +241,10 @@ PYTHONPATH=. python scripts/create_rollback_rehearsal_report.py \
    - calendar
    - package export
 5. Record failure details and preserve the failed Postgres database for comparison.
+
+Use [local-sqlite-backup-and-fallback.md](./local-sqlite-backup-and-fallback.md) for
+the exact local fallback process if Neon or another provider becomes unavailable before
+cutover acceptance.
 
 ## Escalation
 
