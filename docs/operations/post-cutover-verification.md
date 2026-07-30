@@ -18,8 +18,9 @@ comparisons.
 7. Confirm images and attachments resolve from storage keys.
 8. Run an export package and confirm it completes.
 9. Send one chat message and confirm the response persists in chat history.
-10. Run the baseline capture command and save the JSON outside the repo.
-11. Decide accept/rollback inside the cutover window.
+10. Run a Postgres snapshot export and save it outside the repo.
+11. Run the baseline capture command and save the JSON outside the repo.
+12. Decide accept/rollback inside the cutover window.
 
 ## Baseline Command
 
@@ -57,6 +58,25 @@ The authenticated check samples:
 - Thought Records
 - On This Day
 - chat observability report
+
+## Postgres Snapshot Command
+
+```bash
+cd server
+source venv/bin/activate
+DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/export_postgres_snapshot.py \
+  --output-dir ~/AIDiaryBackups/postgres-snapshots \
+  --label post-cutover
+```
+
+Then validate the snapshot manifest and schema load plan:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/load_cloud_migration.py \
+  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory>
+```
 
 ## Data Integrity Checks
 
@@ -96,6 +116,7 @@ cutover.
 Accept the cutover only when:
 
 - app health and database health both pass
+- a post-cutover Postgres snapshot exists and its manifest validates
 - no data count mismatches are present
 - no critical manual smoke path fails
 - baseline capture has zero API errors

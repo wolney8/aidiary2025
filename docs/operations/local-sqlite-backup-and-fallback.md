@@ -32,8 +32,8 @@ counts, total rows, and retention actions. It does not export row contents.
 
 ## Suggested Automatic Backup
 
-For local development, run a scheduled backup outside the repo. A simple daily cron
-entry is enough until a hosted scheduler exists:
+For local development before cloud cutover, run a scheduled SQLite backup outside the
+repo. A simple daily cron entry is enough until a hosted scheduler exists:
 
 ```cron
 15 20 * * * cd /Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/server && /bin/zsh -lc 'source venv/bin/activate && PYTHONPATH=. python scripts/create_sqlite_backup.py --source-db db/app.db --backup-dir ~/AIDiaryBackups --label daily --retain 14 >/tmp/aidiary-sqlite-backup.log 2>&1'
@@ -41,6 +41,34 @@ entry is enough until a hosted scheduler exists:
 
 Use `launchd` instead of cron on macOS if you want richer logs and startup behaviour.
 The important constraint is the same: write backups outside the repository.
+
+## Postgres Snapshot After Cutover
+
+After cloud cutover is accepted, local SQLite backups no longer capture new cloud writes.
+Use a scheduled Postgres snapshot export instead:
+
+```bash
+cd server
+source venv/bin/activate
+DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/export_postgres_snapshot.py \
+  --output-dir ~/AIDiaryBackups/postgres-snapshots \
+  --label scheduled
+```
+
+The snapshot uses the same JSONL plus `manifest.json` shape as the migration rehearsal
+export. It is provider-portable and can be validated with the existing cloud load-plan
+checks:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/load_cloud_migration.py \
+  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory>
+```
+
+This gives us durable local evidence of the cloud data even if a managed provider account
+or branch becomes unavailable later. Rebuilding a runnable local SQLite database directly
+from a Postgres snapshot remains a separate restore-tooling issue.
 
 ## Local Fallback If Neon Access Is Lost
 
@@ -78,10 +106,10 @@ curl -f http://localhost:5001/api/health/database
 Do not treat an old SQLite backup as an automatic replacement for a Postgres database
 after users have written new data to Postgres. That would lose cloud-only writes.
 
-After a real cloud cutover is accepted, local fallback requires a separate Postgres-to-
-SQLite export/restore process or a full offline-sync architecture. Until that exists,
-SQLite fallback is a rollback tool for rehearsals and pre-acceptance cutover windows,
-not a long-term multi-writer sync mechanism.
+After a real cloud cutover is accepted, runnable local fallback requires a separate
+Postgres-to-SQLite restore process or a full offline-sync architecture. Until that
+exists, SQLite fallback is a rollback tool for rehearsals and pre-acceptance cutover
+windows, while Postgres snapshots are the local safety record for cloud-era data.
 
 ## Test Data And Real Data
 
