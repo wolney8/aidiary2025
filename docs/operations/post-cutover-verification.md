@@ -78,6 +78,18 @@ PYTHONPATH=. python scripts/load_cloud_migration.py \
   --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory>
 ```
 
+Optional local fallback rehearsal from that snapshot:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/restore_sqlite_from_snapshot.py \
+  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory> \
+  --schema-db db/app.db \
+  --target-db ~/AIDiaryBackups/restored-sqlite/post-cutover-rehearsal.db \
+  --overwrite
+```
+
 ## Data Integrity Checks
 
 Compare post-cutover data against the migration evidence packet:
@@ -117,6 +129,7 @@ Accept the cutover only when:
 
 - app health and database health both pass
 - a post-cutover Postgres snapshot exists and its manifest validates
+- optional but recommended: the snapshot restores into a local SQLite rehearsal DB
 - no data count mismatches are present
 - no critical manual smoke path fails
 - baseline capture has zero API errors

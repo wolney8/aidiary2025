@@ -67,8 +67,32 @@ PYTHONPATH=. python scripts/load_cloud_migration.py \
 ```
 
 This gives us durable local evidence of the cloud data even if a managed provider account
-or branch becomes unavailable later. Rebuilding a runnable local SQLite database directly
-from a Postgres snapshot remains a separate restore-tooling issue.
+or branch becomes unavailable later.
+
+## Restore A Runnable Local SQLite Database From A Snapshot
+
+Use this only with a validated snapshot and a known-good SQLite schema template:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/restore_sqlite_from_snapshot.py \
+  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory> \
+  --schema-db db/app.db \
+  --target-db ~/AIDiaryBackups/restored-sqlite/app-restored.db
+```
+
+The command refuses to overwrite an existing target unless `--overwrite` is supplied. It
+copies the schema from `--schema-db`, clears managed app tables, validates the snapshot
+manifest, loads rows in dependency order, and runs `PRAGMA foreign_key_check`.
+
+For a local fallback run, point the backend at the restored database:
+
+```bash
+DATABASE_PROVIDER=sqlite
+DB_PATH=~/AIDiaryBackups/restored-sqlite/app-restored.db
+DATABASE_URL=
+```
 
 ## Local Fallback If Neon Access Is Lost
 
@@ -106,10 +130,9 @@ curl -f http://localhost:5001/api/health/database
 Do not treat an old SQLite backup as an automatic replacement for a Postgres database
 after users have written new data to Postgres. That would lose cloud-only writes.
 
-After a real cloud cutover is accepted, runnable local fallback requires a separate
-Postgres-to-SQLite restore process or a full offline-sync architecture. Until that
-exists, SQLite fallback is a rollback tool for rehearsals and pre-acceptance cutover
-windows, while Postgres snapshots are the local safety record for cloud-era data.
+After a real cloud cutover is accepted, runnable local fallback should use the latest
+validated Postgres snapshot plus `restore_sqlite_from_snapshot.py`. This is still an
+operator-controlled recovery process, not automatic multi-device offline sync.
 
 ## Test Data And Real Data
 
