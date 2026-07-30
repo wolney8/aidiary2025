@@ -1,5 +1,5 @@
-# Flask application factory with CORS and JWT setup
 import os
+import logging
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, get_jwt_identity
@@ -30,19 +30,58 @@ from services.media_storage import DEFAULT_MEDIA_URL_PREFIX, ensure_media_root
 load_dotenv()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def _ensure_nltk_data() -> None:
-    """Download NLTK corpora required for keyword/NER enrichment, if not already present."""
+    """Check local NLTK resources without blocking app startup on network downloads."""
+    resources = {
+        'punkt': 'tokenizers/punkt',
+        'punkt_tab': 'tokenizers/punkt_tab',
+        'averaged_perceptron_tagger': 'taggers/averaged_perceptron_tagger',
+        'averaged_perceptron_tagger_eng': 'taggers/averaged_perceptron_tagger_eng',
+        'maxent_ne_chunker': 'chunkers/maxent_ne_chunker',
+        'maxent_ne_chunker_tab': 'chunkers/maxent_ne_chunker_tab',
+        'words': 'corpora/words',
+    }
+
     try:
         import nltk
-        for _corpus in [
-            'punkt', 'punkt_tab',
-            'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng',
-            'maxent_ne_chunker', 'maxent_ne_chunker_tab',
-            'words',
-        ]:
-            nltk.download(_corpus, quiet=True)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning('NLTK unavailable; enrichment disabled: %s', exc)
+        return
+
+    missing: list[str] = []
+    for package, resource_path in resources.items():
+        try:
+            nltk.data.find(resource_path)
+        except LookupError:
+            missing.append(package)
+
+    if not missing:
+        return
+
+    if not _env_flag('OPENMYND_AUTO_DOWNLOAD_NLTK', default=False):
+        logging.getLogger(__name__).warning(
+            'NLTK data missing (%s); startup downloads are disabled. '
+            'Set OPENMYND_AUTO_DOWNLOAD_NLTK=true or run the NLTK setup manually.',
+            ', '.join(missing),
+        )
+        return
+
+    for package in missing:
+        try:
+            nltk.download(package, quiet=True)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning(
+                'NLTK package download failed for %s: %s',
+                package,
+                exc,
+            )
 
 
 def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
@@ -282,10 +321,13 @@ def create_app():
     def serve_media(storage_key: str):
         return send_from_directory(app.config['MEDIA_ROOT'], storage_key, conditional=True)
 
-    # Download NLTK data and backfill any entries that were imported before data was available.
+    # Check NLTK data and optionally backfill entries imported before enrichment was available.
     # This legacy backfill is SQLite-only; managed/cloud databases should be migrated explicitly.
     _ensure_nltk_data()
-    if app.config['DATABASE_RUNTIME_MIGRATIONS_ENABLED']:
+    if (
+        app.config['DATABASE_RUNTIME_MIGRATIONS_ENABLED']
+        and _env_flag('OPENMYND_STARTUP_NLTK_BACKFILL', default=False)
+    ):
         try:
             import sqlite3 as _sqlite3
             from services.import_service import backfill_nltk_enrichment

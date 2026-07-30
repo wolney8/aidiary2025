@@ -1,4 +1,6 @@
 import pytest
+import sys
+import types
 
 import app as app_module
 import routes.import_routes as import_routes_module
@@ -184,6 +186,69 @@ def test_app_skips_sqlite_runtime_migrations_when_disabled(monkeypatch, tmp_path
 
     assert app.config["DATABASE_PROVIDER"] == "postgres"
     assert app.config["DATABASE_RUNTIME_MIGRATIONS_ENABLED"] is False
+
+
+def test_nltk_startup_check_does_not_download_by_default(monkeypatch):
+    download_calls = []
+
+    class FakeNltkData:
+        @staticmethod
+        def find(_resource_path):
+            raise LookupError
+
+    fake_nltk = types.SimpleNamespace(
+        data=FakeNltkData(),
+        download=lambda package, quiet=True: download_calls.append((package, quiet)),
+    )
+
+    monkeypatch.setitem(sys.modules, "nltk", fake_nltk)
+    monkeypatch.delenv("OPENMYND_AUTO_DOWNLOAD_NLTK", raising=False)
+
+    app_module._ensure_nltk_data()
+
+    assert download_calls == []
+
+
+def test_nltk_startup_check_downloads_only_when_enabled(monkeypatch):
+    download_calls = []
+
+    class FakeNltkData:
+        @staticmethod
+        def find(_resource_path):
+            raise LookupError
+
+    fake_nltk = types.SimpleNamespace(
+        data=FakeNltkData(),
+        download=lambda package, quiet=True: download_calls.append((package, quiet)),
+    )
+
+    monkeypatch.setitem(sys.modules, "nltk", fake_nltk)
+    monkeypatch.setenv("OPENMYND_AUTO_DOWNLOAD_NLTK", "true")
+
+    app_module._ensure_nltk_data()
+
+    assert download_calls
+    assert all(quiet is True for _package, quiet in download_calls)
+
+
+def test_startup_nltk_backfill_requires_explicit_opt_in(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.delenv("OPENMYND_STARTUP_NLTK_BACKFILL", raising=False)
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    def fail_backfill(_conn, _logger=None):
+        raise AssertionError("Startup NLTK backfill should be opt-in")
+
+    fake_import_service = types.SimpleNamespace(backfill_nltk_enrichment=fail_backfill)
+    monkeypatch.setitem(sys.modules, "services.import_service", fake_import_service)
+
+    create_app()
 
 
 def test_connect_sqlite_path_returns_row_mapping(tmp_path):
