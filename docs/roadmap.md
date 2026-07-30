@@ -29,6 +29,13 @@ lanes are stable.
 
 ## Immediate Product Lane
 
+0. `OpenMynd` platform rename and brand sweep
+   - Replace remaining `AI Diary` / `AIDIARY` product references across frontend titles,
+     shell navigation, auth screens, backend import/export messages, tests, docs, and AI
+     system prompts.
+   - Wire the light/dark logos from `client/src/assets/brand/`.
+   - Keep historical changelog/test-result names only where changing them would falsify
+     past release records.
 1. `#109` On this day and anniversary resurfacing
    - Reuse existing entry, calendar, preview-deck, image, and return-route contracts.
    - Ship neutral resurfacing language plus global and per-entry hide controls.
