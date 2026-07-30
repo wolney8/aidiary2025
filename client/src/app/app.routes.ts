@@ -1,6 +1,6 @@
 // Application routing configuration
 import { Routes } from "@angular/router";
-import { authGuard } from "./auth/auth.guard";
+import { authGuard, authMatchGuard } from "./auth/auth.guard";
 import { pendingChangesGuard } from "./entries/pending-changes.guard";
 
 export const routes: Routes = [
@@ -23,6 +23,7 @@ export const routes: Routes = [
     path: "entries",
     title: "Entries | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./entries/list/list.component").then((m) => m.ListComponent),
   },
@@ -30,6 +31,7 @@ export const routes: Routes = [
     path: "entries/create",
     title: "New entry | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
       import("./entries/create/create.component").then(
@@ -40,6 +42,7 @@ export const routes: Routes = [
     path: "entries/:id/edit",
     title: "Edit entry | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
       import("./entries/create/create.component").then(
@@ -50,6 +53,7 @@ export const routes: Routes = [
     path: "entries/:id",
     title: "View entry | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./entries/detail/detail.component").then(
         (m) => m.DetailComponent,
@@ -59,6 +63,7 @@ export const routes: Routes = [
     path: "cbt",
     title: "Thought records | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./cbt/cbt-dashboard.component").then(
         (m) => m.CbtDashboardComponent,
@@ -68,6 +73,7 @@ export const routes: Routes = [
     path: "cbt/:id",
     title: "Thought record | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
       import("./cbt/cbt-worksheet.component").then(
@@ -78,6 +84,7 @@ export const routes: Routes = [
     path: "important-days",
     title: "Important days | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./settings/important-days/important-days.component").then(
         (m) => m.ImportantDaysComponent,
@@ -87,6 +94,7 @@ export const routes: Routes = [
     path: "reflections",
     title: "Reflection summaries | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./reflections/reflection-summaries.component").then(
         (m) => m.ReflectionSummariesComponent,
@@ -96,6 +104,7 @@ export const routes: Routes = [
     path: "profile",
     title: "Profile | AI Diary",
     canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
       import("./profile/profile.component").then((m) => m.ProfileComponent),
@@ -104,6 +113,8 @@ export const routes: Routes = [
     path: "settings",
     title: "Settings | AI Diary",
     canActivate: [authGuard],
+    canActivateChild: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./settings/settings.component").then((m) => m.SettingsComponent),
     children: [
