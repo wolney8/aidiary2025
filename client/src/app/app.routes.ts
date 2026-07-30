@@ -7,13 +7,13 @@ export const routes: Routes = [
   { path: "", redirectTo: "/login", pathMatch: "full" },
   {
     path: "login",
-    title: "Login | AI Diary",
+    title: "Login | OpenMynd",
     loadComponent: () =>
       import("./auth/login/login.component").then((m) => m.LoginComponent),
   },
   {
     path: "register",
-    title: "Create account | AI Diary",
+    title: "Create account | OpenMynd",
     loadComponent: () =>
       import("./auth/register/register.component").then(
         (m) => m.RegisterComponent,
@@ -21,7 +21,7 @@ export const routes: Routes = [
   },
   {
     path: "entries",
-    title: "Entries | AI Diary",
+    title: "Entries | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
@@ -29,7 +29,7 @@ export const routes: Routes = [
   },
   {
     path: "entries/create",
-    title: "New entry | AI Diary",
+    title: "New entry | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
@@ -40,7 +40,7 @@ export const routes: Routes = [
   },
   {
     path: "entries/:id/edit",
-    title: "Edit entry | AI Diary",
+    title: "Edit entry | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
@@ -51,7 +51,7 @@ export const routes: Routes = [
   },
   {
     path: "entries/:id",
-    title: "View entry | AI Diary",
+    title: "View entry | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
@@ -61,7 +61,7 @@ export const routes: Routes = [
   },
   {
     path: "cbt",
-    title: "Thought records | AI Diary",
+    title: "Thought records | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
@@ -71,7 +71,7 @@ export const routes: Routes = [
   },
   {
     path: "cbt/:id",
-    title: "Thought record | AI Diary",
+    title: "Thought record | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
@@ -82,7 +82,7 @@ export const routes: Routes = [
   },
   {
     path: "important-days",
-    title: "Important days | AI Diary",
+    title: "Important days | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
@@ -92,7 +92,7 @@ export const routes: Routes = [
   },
   {
     path: "reflections",
-    title: "Reflection summaries | AI Diary",
+    title: "Reflection summaries | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
@@ -102,7 +102,7 @@ export const routes: Routes = [
   },
   {
     path: "profile",
-    title: "Profile | AI Diary",
+    title: "Profile | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
@@ -111,7 +111,7 @@ export const routes: Routes = [
   },
   {
     path: "settings",
-    title: "Settings | AI Diary",
+    title: "Settings | OpenMynd",
     canActivate: [authGuard],
     canActivateChild: [authGuard],
     canMatch: [authMatchGuard],
@@ -125,7 +125,7 @@ export const routes: Routes = [
       },
       {
         path: "appearance",
-        title: "Appearance | AI Diary",
+        title: "Appearance | OpenMynd",
         loadComponent: () =>
           import("./settings/appearance/appearance.component").then(
             (m) => m.AppearanceComponent,
@@ -133,7 +133,7 @@ export const routes: Routes = [
       },
       {
         path: "personalisation",
-        title: "Customisation | AI Diary",
+        title: "Customisation | OpenMynd",
         canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
           import("./settings/personalisation/personalisation.component").then(
@@ -147,7 +147,7 @@ export const routes: Routes = [
       },
       {
         path: "import",
-        title: "Import | AI Diary",
+        title: "Import | OpenMynd",
         canDeactivate: [pendingChangesGuard],
         loadComponent: () =>
           import("./settings/import/import.component").then(
@@ -156,7 +156,7 @@ export const routes: Routes = [
       },
       {
         path: "export",
-        title: "Export | AI Diary",
+        title: "Export | OpenMynd",
         loadComponent: () =>
           import("./settings/export/export.component").then(
             (m) => m.ExportComponent,

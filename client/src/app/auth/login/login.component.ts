@@ -27,7 +27,7 @@ import { AuthService } from "../../core/services/auth.service";
     <div class="auth-container" data-testid="login-page">
       <mat-card class="auth-card">
         <mat-card-header>
-          <h1 mat-card-title>Login to AI Diary</h1>
+          <h1 mat-card-title>Login to OpenMynd</h1>
         </mat-card-header>
 
         <mat-card-content>

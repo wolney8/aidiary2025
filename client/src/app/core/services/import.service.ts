@@ -500,7 +500,7 @@ export class ImportService {
     if (!allowedMimeTypes.includes(file.type) && file.type !== "") {
       // Some browsers report empty MIME type for Excel — allow it if extension is correct
       if (file.type !== "") {
-        return `Invalid file type for ${source === "daylio" ? "Daylio" : "AI Diary"} import.`;
+        return `Invalid file type for ${source === "daylio" ? "Daylio" : "OpenMynd"} import.`;
       }
     }
 

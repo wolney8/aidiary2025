@@ -114,7 +114,7 @@ export class AppComponent {
     InactivityWarningResult
   >;
 
-  title = "AI Diary";
+  title = "OpenMynd";
   isAuthenticated = this.authService.isAuthenticated();
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 

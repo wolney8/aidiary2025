@@ -3,9 +3,9 @@ import { expect, test } from "@playwright/test";
 test("login screen loads with core controls", async ({ page }) => {
   await page.goto("/login");
 
-  await expect(page).toHaveTitle("Login | AI Diary");
+  await expect(page).toHaveTitle("Login | OpenMynd");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Login to AI Diary" }),
+    page.getByRole("heading", { level: 1, name: "Login to OpenMynd" }),
   ).toBeVisible();
   await expect(page.getByLabel("Username")).toBeVisible();
   await expect(page.getByLabel("Password")).toBeVisible();
@@ -23,7 +23,7 @@ test("login screen loads with core controls", async ({ page }) => {
 test("registration screen exposes labelled account controls", async ({ page }) => {
   await page.goto("/register");
 
-  await expect(page).toHaveTitle("Create account | AI Diary");
+  await expect(page).toHaveTitle("Create account | OpenMynd");
   await expect(
     page.getByRole("heading", { level: 1, name: "Create Account" }),
   ).toBeVisible();

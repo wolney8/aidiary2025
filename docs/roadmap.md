@@ -5,7 +5,7 @@ records their intended sequence rather than duplicating issue bodies.
 
 ## Future State
 
-AI Diary should become a private, portable, clinically careful reflection system rather
+OpenMynd should become a private, portable, clinically careful reflection system rather
 than a generic notes app. The target product shape is:
 
 - A calendar-first personal record that brings together diary entries, dreams, thought
@@ -30,9 +30,11 @@ lanes are stable.
 ## Immediate Product Lane
 
 0. `OpenMynd` platform rename and brand sweep
-   - Replace remaining `AI Diary` / `AIDIARY` product references across frontend titles,
-     shell navigation, auth screens, backend import/export messages, tests, docs, and AI
-     system prompts.
+   - Replace user-facing `AI Diary` / `AIDIARY` product references across frontend
+     titles, shell navigation, auth screens, backend import/export messages, tests,
+     docs, and AI system prompts.
+   - Keep legacy storage keys and import/export package identifiers where renaming would
+     break existing sessions or package compatibility.
    - Wire the light/dark logos from `client/src/assets/brand/`.
    - Keep historical changelog/test-result names only where changing them would falsify
      past release records.

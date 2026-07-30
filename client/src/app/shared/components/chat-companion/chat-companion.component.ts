@@ -564,7 +564,7 @@ export class ChatCompanionComponent {
     return (
       user?.chatgpt_daily_diary_coachname?.trim() ||
       user?.chatgpt_dream_diary_coachname?.trim() ||
-      "AI Diary"
+      "OpenMynd"
     );
   });
   draft = "";

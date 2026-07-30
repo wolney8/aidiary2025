@@ -492,7 +492,7 @@ def parse_import_package(file_bytes: bytes) -> dict:
                 package_type = manifest.get('package_type')
                 if package_type and package_type != 'aidiary_export':
                     manifest_warnings.append(
-                        f'Package type "{package_type}" is not the standard AI Diary export type; '
+                        f'Package type "{package_type}" is not the standard OpenMynd export type; '
                         'only recognised workbook and media fields will be imported.'
                     )
 

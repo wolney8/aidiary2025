@@ -1,4 +1,4 @@
-# AI Diary Public Platform Productisation Draft
+# OpenMynd Public Platform Productisation Draft
 
 Public-safe planning draft for future platform productisation.
 
@@ -6,7 +6,7 @@ Date: 2026-07-29
 
 ## 1. Executive Summary
 
-AI Diary is currently a capable private web application with meaningful product depth:
+OpenMynd is currently a capable private web application with meaningful product depth:
 daily entries, dream entries, thought records, important days, on-this-day resurfacing,
 attachments, import/export, AI analysis, image generation, reflection summaries,
 dark/light themes, and growing WCAG coverage.

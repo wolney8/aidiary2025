@@ -36,28 +36,28 @@ $primary-palette: (
   ),
 );
 
-$ai-diary-primary: mat.define-palette($primary-palette, 500);
-$ai-diary-accent: mat.define-palette(mat.$pink-palette, A200);
-$ai-diary-warn: mat.define-palette(mat.$red-palette);
+$openmynd-primary: mat.define-palette($primary-palette, 500);
+$openmynd-accent: mat.define-palette(mat.$pink-palette, A200);
+$openmynd-warn: mat.define-palette(mat.$red-palette);
 
-$ai-diary-theme: mat.define-light-theme(
+$openmynd-theme: mat.define-light-theme(
   (
     color: (
-      primary: $ai-diary-primary,
-      accent: $ai-diary-accent,
-      warn: $ai-diary-warn,
+      primary: $openmynd-primary,
+      accent: $openmynd-accent,
+      warn: $openmynd-warn,
     ),
     typography: mat.define-typography-config(),
     density: 0,
   )
 );
 
-$ai-diary-dark-theme: mat.define-dark-theme(
+$openmynd-dark-theme: mat.define-dark-theme(
   (
     color: (
-      primary: $ai-diary-primary,
-      accent: $ai-diary-accent,
-      warn: $ai-diary-warn,
+      primary: $openmynd-primary,
+      accent: $openmynd-accent,
+      warn: $openmynd-warn,
     ),
     typography: mat.define-typography-config(),
     density: 0,
@@ -65,10 +65,10 @@ $ai-diary-dark-theme: mat.define-dark-theme(
 );
 
 @include mat.core();
-@include mat.all-component-themes($ai-diary-theme);
+@include mat.all-component-themes($openmynd-theme);
 
 html[data-theme="dark"] {
-  @include mat.all-component-colors($ai-diary-dark-theme);
+  @include mat.all-component-colors($openmynd-dark-theme);
 }
 
 // Global styles

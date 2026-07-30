@@ -1,1 +1,1 @@
-export const APP_VERSION = 'AIDIARY v0.11.6';
+export const APP_VERSION = 'OpenMynd v0.11.6';

@@ -1,6 +1,6 @@
 # README.md
 
-# AI Diary
+# OpenMynd
 
 Angular + Flask application for daily and dream diary entries with AI analysis.
 

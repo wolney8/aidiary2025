@@ -355,7 +355,7 @@ async function seedNotifications(page: Page, notifications: object[]): Promise<v
 test.describe("WCAG 2.2 AA automated checks", () => {
   test("login", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByRole("heading", { name: "Login to AI Diary" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Login to OpenMynd" })).toBeVisible();
 
     await expectNoWcagViolations(page);
   });

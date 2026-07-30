@@ -123,7 +123,7 @@ describe("LoginComponent returnUrl navigation", () => {
     const username = fixture.nativeElement.querySelector('input[name="username"]');
     const password = fixture.nativeElement.querySelector('input[name="password"]');
 
-    expect(heading?.textContent).toContain("Login to AI Diary");
+    expect(heading?.textContent).toContain("Login to OpenMynd");
     expect(username?.getAttribute("autocomplete")).toBe("username");
     expect(password?.getAttribute("autocomplete")).toBe("current-password");
   });

@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "ai-diary": {
+    "openmynd": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -18,7 +18,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:browser",
           "options": {
-            "outputPath": "dist/ai-diary",
+            "outputPath": "dist/openmynd",
             "index": "src/index.html",
             "main": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -61,11 +61,11 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "buildTarget": "ai-diary:build:development"
+            "buildTarget": "openmynd:build:development"
           },
           "configurations": {
             "production": {
-              "buildTarget": "ai-diary:build:production"
+              "buildTarget": "openmynd:build:production"
             }
           }
         },
