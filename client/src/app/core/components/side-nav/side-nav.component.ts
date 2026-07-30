@@ -1,11 +1,12 @@
 // Side navigation matching wireframes
-import { Component, Output, EventEmitter, inject } from "@angular/core";
+import { Component, Output, EventEmitter, computed, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { RouterModule } from "@angular/router";
 import { MatListModule } from "@angular/material/list";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDividerModule } from "@angular/material/divider";
 import { AuthService } from "../../services/auth.service";
+import { ThemeService } from "../../services/theme.service";
 
 @Component({
   selector: "app-side-nav",
@@ -20,8 +21,14 @@ import { AuthService } from "../../services/auth.service";
   template: `
     <div class="sidenav-container" data-testid="app-side-nav">
       <div class="sidenav-header">
-        <div class="logo-circle">LOGO</div>
-        <h3>AI Diary</h3>
+        <div class="logo-circle" aria-hidden="true">
+          <img
+            class="brand-logo-image"
+            [src]="brandLogoSrc()"
+            alt=""
+          />
+        </div>
+        <h3>OpenMynd</h3>
       </div>
 
       <mat-nav-list>
@@ -164,14 +171,21 @@ import { AuthService } from "../../services/auth.service";
       .logo-circle {
         width: 60px;
         height: 60px;
-        background: var(--colour-secondary);
-        color: var(--colour-surface);
         border-radius: var(--radius-pill);
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto var(--spacing-sm);
-        font-weight: 700;
+        overflow: hidden;
+        background: var(--colour-surface-elevated);
+        border: 1px solid var(--colour-border);
+        box-shadow: 0 8px 18px var(--colour-shadow-soft);
+      }
+
+      .brand-logo-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .sidenav-container a[mat-list-item] {
@@ -206,6 +220,12 @@ import { AuthService } from "../../services/auth.service";
 export class SideNavComponent {
   @Output() closeSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
+  private readonly themeService = inject(ThemeService);
+  readonly brandLogoSrc = computed(() =>
+    this.themeService.isDark()
+      ? "assets/brand/openmynd-logo-dark.jpg"
+      : "assets/brand/openmynd-logo-light.jpg",
+  );
 
   logout(): void {
     this.authService.logout();

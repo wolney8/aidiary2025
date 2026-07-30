@@ -91,10 +91,17 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       <button
         class="logo"
         (click)="goHome()"
-        aria-label="Home"
+        aria-label="OpenMynd home"
         *ngIf="!isCompactSearchOpen()"
+        data-testid="top-bar-brand"
       >
-        LOGO
+        <img
+          class="brand-logo-image"
+          [src]="brandLogoSrc()"
+          alt=""
+          aria-hidden="true"
+        />
+        <span class="brand-logo-text">OpenMynd</span>
       </button>
 
       <div
@@ -451,11 +458,28 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .logo {
         background: rgba(255, 255, 255, 0.12);
         color: var(--colour-toolbar-text);
-        padding: 8px 16px;
+        min-height: 44px;
+        padding: 4px 14px 4px 6px;
         border-radius: var(--radius-pill);
         font-weight: 700;
         cursor: pointer;
         border: 1px solid rgba(255, 255, 255, 0.18);
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        letter-spacing: 0.01em;
+      }
+      .brand-logo-image {
+        width: 34px;
+        height: 34px;
+        border-radius: var(--radius-pill);
+        object-fit: cover;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 4px 12px rgba(2, 6, 23, 0.18);
+      }
+      .brand-logo-text {
+        line-height: 1;
+        white-space: nowrap;
       }
       .spacer {
         flex: 1;
@@ -771,7 +795,10 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           padding-inline: 0.5rem;
         }
         .logo {
-          padding: 8px 12px;
+          padding: 4px;
+        }
+        .brand-logo-text {
+          display: none;
         }
         .notification-item__actions {
           display: grid;
@@ -993,6 +1020,11 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   versionLabel = APP_VERSION;
   readonly isDarkTheme = this.themeService.isDark;
+  readonly brandLogoSrc = computed(() =>
+    this.isDarkTheme()
+      ? "assets/brand/openmynd-logo-dark.jpg"
+      : "assets/brand/openmynd-logo-light.jpg",
+  );
   readonly importJob$ = this.importJobService.job$;
   readonly notifications$ = this.importJobService.notifications$;
   readonly showUnreadOnly = signal(false);

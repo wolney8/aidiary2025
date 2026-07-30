@@ -4,8 +4,8 @@ Place app logo assets here so Angular includes them in the production build.
 
 Expected files:
 
-- `openmynd-logo-light.svg` or `openmynd-logo-light.png`
-- `openmynd-logo-dark.svg` or `openmynd-logo-dark.png`
+- `openmynd-logo-light.svg`, `openmynd-logo-light.png`, or `openmynd-logo-light.jpg`
+- `openmynd-logo-dark.svg`, `openmynd-logo-dark.png`, or `openmynd-logo-dark.jpg`
 
 Usage intent:
 
