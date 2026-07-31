@@ -173,7 +173,7 @@ def test_sql_compat_connection_adapts_direct_execute_placeholders():
     conn.execute("SELECT * FROM users WHERE id = ? AND note = '?'", (7,))
 
     assert raw_conn.calls == [
-        ("SELECT * FROM users WHERE id = $1 AND note = '?'", (7,))
+        ("SELECT * FROM users WHERE id = %s AND note = '?'", (7,))
     ]
 
 
@@ -186,7 +186,7 @@ def test_sql_compat_cursor_adapts_execute_placeholders_and_preserves_cursor_api(
     assert returned is cursor
     assert cursor.connection.database_provider == "postgres"
     assert raw_conn.cursor_obj.calls == [
-        ("UPDATE users SET name = $1 WHERE id = $2", ("Will", 7))
+        ("UPDATE users SET name = %s WHERE id = %s", ("Will", 7))
     ]
     assert cursor.fetchone() == {"id": 123}
 

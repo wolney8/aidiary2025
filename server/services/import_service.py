@@ -1692,6 +1692,15 @@ def ensure_import_sessions_table(conn: sqlite3.Connection) -> None:
 
 def ensure_import_jobs_table(conn: sqlite3.Connection) -> None:
     """Create or repair durable background import job storage."""
+    if _connection_provider(conn) != 'sqlite':
+        row = conn.execute("SELECT to_regclass(?) AS table_name", ('public.import_jobs',)).fetchone()
+        table_name = row.get('table_name') if isinstance(row, dict) else row[0]
+        if table_name is None:
+            raise RuntimeError(
+                'Postgres import_jobs table is missing. Run managed Postgres migrations before startup.'
+            )
+        return
+
     conn.execute(IMPORT_JOBS_DDL)
     columns = table_columns(conn, 'import_jobs')
     required_columns = {

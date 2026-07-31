@@ -15,7 +15,7 @@ def placeholder(index: int, provider: str) -> str:
     if provider == POSTGRES_PROVIDER:
         if index < 1:
             raise ValueError("Postgres placeholders are 1-based")
-        return f"${index}"
+        return "%s"
     raise ValueError(f"Unsupported database provider: {provider}")
 
 
@@ -36,6 +36,7 @@ def adapt_placeholders(sql: str, provider: str, *, start: int = 1) -> str:
 
     Literal question marks inside single-quoted strings are preserved. The helper
     intentionally stays small and explicit; it does not attempt full SQL parsing.
+    psycopg uses `%s` client-side bind markers, not PostgreSQL `$1` server-side markers.
     """
     if provider == SQLITE_PROVIDER:
         return sql

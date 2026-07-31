@@ -7,6 +7,7 @@ import routes.import_routes as import_routes_module
 from app import create_app
 from services.database import DatabaseSettings
 from services.database import connect_sqlite_path, resolve_database_settings, table_columns, table_info
+from services.import_service import ensure_import_jobs_table
 
 
 def test_database_settings_default_to_sqlite(tmp_path):
@@ -323,6 +324,38 @@ def test_table_info_returns_column_metadata(tmp_path):
     assert info[1][3] == 1
 
     conn.close()
+
+
+class _PostgresImportJobsConnection:
+    database_provider = "postgres"
+
+    def __init__(self, table_exists: bool):
+        self.table_exists = table_exists
+        self.executed_sql: list[str] = []
+
+    def execute(self, sql, params=None):
+        self.executed_sql.append(sql)
+        if "PRAGMA" in sql:
+            raise AssertionError("Postgres import_jobs check must not issue PRAGMA")
+        return self
+
+    def fetchone(self):
+        return {"table_name": "import_jobs" if self.table_exists else None}
+
+
+def test_ensure_import_jobs_table_uses_managed_postgres_schema():
+    conn = _PostgresImportJobsConnection(table_exists=True)
+
+    ensure_import_jobs_table(conn)
+
+    assert conn.executed_sql == ["SELECT to_regclass(?) AS table_name"]
+
+
+def test_ensure_import_jobs_table_requires_postgres_migration_schema():
+    conn = _PostgresImportJobsConnection(table_exists=False)
+
+    with pytest.raises(RuntimeError, match="Postgres import_jobs table is missing"):
+        ensure_import_jobs_table(conn)
 
 
 def test_table_columns_returns_empty_set_for_missing_table(tmp_path):

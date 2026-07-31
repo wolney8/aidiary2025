@@ -30,9 +30,9 @@ def test_placeholder_uses_sqlite_question_marks():
     assert placeholders(3, "sqlite") == "?, ?, ?"
 
 
-def test_placeholder_uses_postgres_numbered_parameters():
-    assert placeholder(1, "postgres") == "$1"
-    assert placeholders(3, "postgres", start=2) == "$2, $3, $4"
+def test_placeholder_uses_postgres_psycopg_parameters():
+    assert placeholder(1, "postgres") == "%s"
+    assert placeholders(3, "postgres", start=2) == "%s, %s, %s"
 
 
 def test_placeholder_rejects_invalid_postgres_index():
@@ -56,7 +56,7 @@ def test_adapt_placeholders_converts_postgres_markers_outside_strings():
 
     assert (
         adapt_placeholders(sql, "postgres")
-        == "SELECT * FROM users WHERE id = $1 AND note = '?' AND username = $2"
+        == "SELECT * FROM users WHERE id = %s AND note = '?' AND username = %s"
     )
 
 
@@ -65,7 +65,7 @@ def test_adapt_placeholders_handles_escaped_single_quotes():
 
     assert (
         adapt_placeholders(sql, "postgres")
-        == "SELECT * FROM notes WHERE text = 'it''s ? literal' AND id = $1"
+        == "SELECT * FROM notes WHERE text = 'it''s ? literal' AND id = %s"
     )
 
 
@@ -89,7 +89,7 @@ def test_append_returning_id_preserves_statement_semicolon():
 
 
 def test_append_returning_id_is_idempotent():
-    sql = "INSERT INTO users (username) VALUES ($1) RETURNING id"
+    sql = "INSERT INTO users (username) VALUES (%s) RETURNING id"
 
     assert append_returning_id(sql, "postgres") == sql
 
