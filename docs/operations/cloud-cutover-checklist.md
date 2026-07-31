@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this checklist before switching AI Diary from local SQLite to managed Postgres. Do
+Use this checklist before switching OpenMynd from local SQLite to managed Postgres. Do
 not cut over until every required gate is complete and the readiness validator returns
 `ready_for_cutover: true`.
 
@@ -16,8 +16,14 @@ not cut over until every required gate is complete and the readiness validator r
 - `DB_PATH`: retained only for SQLite source/fallback during migration.
 - `JWT_SECRET`: production secret configured.
 - `MEDIA_ROOT` / media backend config: points at the active media store.
+- `RATELIMIT_STORAGE_URI`: shared limiter backend such as Redis; `memory://` is local
+  development only.
 - `OPENAI_API_KEY`: configured only in the backend environment.
 - `CORS_ORIGINS`: production frontend origin.
+- `OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK`: leave `false` except during an explicitly
+  documented emergency rollback window.
+- `OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION`: leave `false` except during an
+  explicitly documented emergency SQLite fallback window.
 
 ## Pre-Cutover Gates
 
@@ -78,7 +84,8 @@ DATABASE_PROVIDER=postgres \
 DATABASE_URL="postgresql://..." \
 DATABASE_USES_POOLER=true \
 CORS_ORIGINS="https://your-frontend.example" \
-MEDIA_ROOT="/var/lib/aidiary/media" \
+MEDIA_ROOT="/var/lib/openmynd/media" \
+RATELIMIT_STORAGE_URI="redis://..." \
 OPENAI_API_KEY="sk-..." \
 PYTHONPATH=. python scripts/validate_production_preflight.py --require-postgres
 ```
@@ -205,6 +212,9 @@ Roll back immediately if any of these happen during cutover validation:
 
 1. Stop writes to the Postgres-backed deployment.
 2. Restore the previous backend configuration using `DB_PATH`.
+   - if `APP_ENV=production`, set `OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true`
+     and `OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=true` only for the rollback
+     window
 3. Restart backend workers.
 4. Verify login, entry list, calendar, and export.
 5. Preserve the failed Postgres database for comparison; do not truncate it until the

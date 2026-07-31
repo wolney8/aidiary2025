@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this process while AI Diary is still SQLite-first or during a controlled cloud
+Use this process while OpenMynd is still SQLite-first or during a controlled cloud
 cutover rehearsal. The goal is to preserve a restorable local database if Neon or
 another managed Postgres provider becomes unavailable.
 
@@ -36,7 +36,7 @@ For local development before cloud cutover, run a scheduled SQLite backup outsid
 repo. A simple daily cron entry is enough until a hosted scheduler exists:
 
 ```cron
-15 20 * * * cd /Users/will_work/Scripts/PythonScripts/aidiary2025/aidiary2025/server && /bin/zsh -lc 'source venv/bin/activate && PYTHONPATH=. python scripts/create_sqlite_backup.py --source-db db/app.db --backup-dir ~/AIDiaryBackups --label daily --retain 14 >/tmp/aidiary-sqlite-backup.log 2>&1'
+15 20 * * * cd /Users/will_work/Scripts/PythonScripts/openmynd/server && /bin/zsh -lc 'source venv/bin/activate && PYTHONPATH=. python scripts/create_sqlite_backup.py --source-db db/app.db --backup-dir ~/AIDiaryBackups --label daily --retain 14 >/tmp/openmynd-sqlite-backup.log 2>&1'
 ```
 
 Use `launchd` instead of cron on macOS if you want richer logs and startup behaviour.
@@ -92,6 +92,8 @@ For a local fallback run, point the backend at the restored database:
 DATABASE_PROVIDER=sqlite
 DB_PATH=~/AIDiaryBackups/restored-sqlite/app-restored.db
 DATABASE_URL=
+OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true
+OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=true
 ```
 
 ## Local Fallback If Neon Access Is Lost
@@ -112,17 +114,21 @@ cp ~/AIDiaryBackups/aidiary-sqlite-YYYYMMDDTHHMMSSZ-pre-cutover.db server/db/app
 DATABASE_PROVIDER=sqlite
 DB_PATH=server/db/app.db
 DATABASE_URL=
+OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true
+OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=true
 ```
 
-5. Restart the backend.
-6. Verify:
+5. If `APP_ENV=production`, set the two `OPENMYND_ALLOW_*` flags only for the rollback
+   window and record why the fallback is active.
+6. Restart the backend.
+7. Verify:
 
 ```bash
 curl -f http://localhost:5001/health
 curl -f http://localhost:5001/api/health/database
 ```
 
-7. Run the local smoke paths: login, entries list, calendar, create/edit entry, images,
+8. Run the local smoke paths: login, entries list, calendar, create/edit entry, images,
    attachments, import history, and export package.
 
 ## Split-Brain Rule

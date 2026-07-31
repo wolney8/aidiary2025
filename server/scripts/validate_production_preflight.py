@@ -67,6 +67,13 @@ def _postgres_url_has_pooler_signal(
     )
 
 
+def _env_flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
+    value = env.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_production_preflight(
     *,
     root_path: Path,
@@ -121,6 +128,40 @@ def build_production_preflight(
         _add_gate(blockers, gate="database_settings", message=str(exc))
 
     database_url = (env.get("DATABASE_URL") or "").strip() or None
+    allow_sqlite_fallback = _env_flag(
+        env,
+        "OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK",
+    )
+    allow_runtime_migrations = _env_flag(
+        env,
+        "OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION",
+    )
+
+    if app_env == "production" and provider == "sqlite" and not allow_sqlite_fallback:
+        _add_gate(
+            blockers,
+            gate="production_database_provider",
+            message=(
+                "APP_ENV=production requires DATABASE_PROVIDER=postgres unless "
+                "OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true is set for a documented rollback window."
+            ),
+        )
+
+    if (
+        app_env == "production"
+        and database_settings
+        and database_settings.runtime_migrations_enabled
+        and not allow_runtime_migrations
+    ):
+        _add_gate(
+            blockers,
+            gate="production_runtime_migrations",
+            message=(
+                "Runtime database migrations are blocked in production. "
+                "Run explicit migration tooling before startup."
+            ),
+        )
+
     if require_postgres:
         if provider != "postgres":
             _add_gate(
@@ -179,12 +220,30 @@ def build_production_preflight(
 
     media_root = (env.get("MEDIA_ROOT") or "").strip()
     media_base_url = (env.get("MEDIA_BASE_URL") or "").strip()
-    if not media_root and not media_base_url:
+    if app_env == "production" and not media_root and not media_base_url:
+        _add_gate(
+            blockers,
+            gate="media_storage",
+            message=(
+                "MEDIA_ROOT or MEDIA_BASE_URL must be explicit before production deployment."
+            ),
+        )
+    elif not media_root and not media_base_url:
         _add_gate(
             warnings,
             gate="media_storage",
             severity="warning",
             message="MEDIA_ROOT or MEDIA_BASE_URL should be explicit before production deployment.",
+        )
+
+    rate_limit_storage_uri = (env.get("RATELIMIT_STORAGE_URI") or "memory://").strip()
+    if app_env == "production" and rate_limit_storage_uri == "memory://":
+        _add_gate(
+            blockers,
+            gate="rate_limit_storage",
+            message=(
+                "RATELIMIT_STORAGE_URI=memory:// is not safe for production; use Redis or another shared limiter backend."
+            ),
         )
 
     openai_key = (env.get("OPENAI_API_KEY") or "").strip()
@@ -210,9 +269,12 @@ def build_production_preflight(
                 database_url,
                 env,
             ),
+            "sqlite_production_fallback_allowed": allow_sqlite_fallback,
+            "runtime_migrations_allowed_in_production": allow_runtime_migrations,
             "cors_origins": cors_origins,
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),
+            "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
             "openai_api_key_configured": bool(openai_key),
         },
     }

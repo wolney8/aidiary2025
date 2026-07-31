@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This runbook defines the operational sequence for moving AI Diary from SQLite to managed
+This runbook defines the operational sequence for moving OpenMynd from SQLite to managed
 Postgres after `cloud-cutover-checklist.md` passes. It is intentionally conservative:
 cutover is a configuration switch only after migration tooling, parity checks, and
 rollback rehearsal have completed.
@@ -127,6 +127,10 @@ PYTHONPATH=. python scripts/audit_runtime_sqlite_usage.py --repo-root ..
 
 8. Run readiness validator with evidence flags.
 9. Switch backend database configuration.
+   - public production target: `APP_ENV=production`, `DATABASE_PROVIDER=postgres`,
+     `DATABASE_URL`, explicit `MEDIA_ROOT` or media backend config, and shared
+     `RATELIMIT_STORAGE_URI`
+   - do not set `OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK` during normal cutover
 10. Restart backend.
 11. Run app health, database health, and manual parity smoke.
 12. Create the cutover evidence packet.
@@ -232,6 +236,9 @@ PYTHONPATH=. python scripts/create_rollback_rehearsal_report.py \
 2. Restore previous backend config:
    - remove or disable `DATABASE_URL`
    - restore `DB_PATH` to the SQLite source or backup
+   - if `APP_ENV=production`, set `OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true`
+     and `OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=true` only for the rollback
+     window
 3. Restart backend.
 4. Verify:
    - `/health`

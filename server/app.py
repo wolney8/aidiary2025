@@ -7,7 +7,7 @@ from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
 from services.database_adapter import DatabaseAdapter
-from services.database import configure_app_database
+from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_database
 from services.runtime_migrations import (
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
@@ -82,6 +82,65 @@ def _ensure_nltk_data() -> None:
                 package,
                 exc,
             )
+
+
+def _production_runtime_blockers(
+    *,
+    database_provider: str,
+    runtime_migrations_enabled: bool,
+    media_root_configured: bool,
+    media_base_url_configured: bool,
+    cors_origins: list[str],
+    rate_limit_storage_uri: str,
+) -> list[str]:
+    blockers: list[str] = []
+
+    if database_provider == SQLITE_PROVIDER and not _env_flag(
+        'OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK',
+        default=False,
+    ):
+        blockers.append(
+            'DATABASE_PROVIDER=sqlite is blocked when APP_ENV=production. '
+            'Use DATABASE_PROVIDER=postgres for public production, or set '
+            'OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true only for a documented '
+            'emergency rollback window.'
+        )
+
+    if database_provider == POSTGRES_PROVIDER and runtime_migrations_enabled:
+        blockers.append('Runtime SQLite migrations must be disabled for Postgres production.')
+
+    if runtime_migrations_enabled and not _env_flag(
+        'OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION',
+        default=False,
+    ):
+        blockers.append(
+            'Runtime database migrations are blocked when APP_ENV=production. '
+            'Run explicit migration tooling before startup, or opt in only for a '
+            'controlled emergency fallback.'
+        )
+
+    if not media_root_configured and not media_base_url_configured:
+        blockers.append(
+            'MEDIA_ROOT or MEDIA_BASE_URL must be explicit when APP_ENV=production; '
+            'do not use the repository-local media directory for public production.'
+        )
+
+    if rate_limit_storage_uri == 'memory://':
+        blockers.append(
+            'RATELIMIT_STORAGE_URI=memory:// is blocked when APP_ENV=production. '
+            'Use Redis or another shared limiter backend.'
+        )
+
+    if not cors_origins or '*' in cors_origins or any(
+        marker in origin
+        for origin in cors_origins
+        for marker in ('localhost', '127.0.0.1', '0.0.0.0')
+    ):
+        blockers.append(
+            'CORS_ORIGINS must contain only production frontend origins when APP_ENV=production.'
+        )
+
+    return blockers
 
 
 def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
@@ -204,6 +263,26 @@ def create_app():
     app.config['MEDIA_BASE_URL'] = (os.getenv('MEDIA_BASE_URL') or '').strip() or None
     ensure_media_root(resolved_media_root)
 
+    cors_origins = [
+        origin.strip()
+        for origin in os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
+        if origin.strip()
+    ]
+    if app_environment == 'production':
+        production_blockers = _production_runtime_blockers(
+            database_provider=database_settings.provider,
+            runtime_migrations_enabled=database_settings.runtime_migrations_enabled,
+            media_root_configured=bool((media_root or '').strip()),
+            media_base_url_configured=bool(app.config['MEDIA_BASE_URL']),
+            cors_origins=cors_origins,
+            rate_limit_storage_uri=app.config['RATELIMIT_STORAGE_URI'],
+        )
+        if production_blockers:
+            raise RuntimeError(
+                'Unsafe production runtime configuration: '
+                + ' '.join(production_blockers)
+            )
+
     if app.config['DATABASE_RUNTIME_MIGRATIONS_ENABLED']:
         _run_sqlite_runtime_migrations(app, database_path)
     else:
@@ -213,7 +292,6 @@ def create_app():
         )
     
     # CORS configuration
-    cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
     CORS(app, origins=cors_origins, supports_credentials=True)
     
     # JWT initialisation
