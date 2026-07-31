@@ -110,7 +110,8 @@ source venv/bin/activate
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
   --export-dir /tmp/aidiary-cloud-export \
   --apply \
-  --reset-first
+  --reset-first \
+  --confirm-reset RESET_NON_EMPTY_POSTGRES
 ```
 
 ```bash

@@ -114,8 +114,13 @@ source venv/bin/activate
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
   --export-dir /tmp/aidiary-cloud-export \
   --apply \
-  --reset-first
+  --reset-first \
+  --confirm-reset RESET_NON_EMPTY_POSTGRES
 ```
+
+The reset confirmation is required only when the target already contains OpenMynd
+managed rows. Do not use it against a production database unless the reset is part of
+an approved cutover or rollback procedure.
 
 7. Run runtime SQLite usage audit:
 

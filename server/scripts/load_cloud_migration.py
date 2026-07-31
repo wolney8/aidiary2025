@@ -38,6 +38,7 @@ IDENTITY_ID_TABLES = {
     "cbt_worksheets",
     "entry_ai_metadata",
 }
+RESET_CONFIRMATION_TOKEN = "RESET_NON_EMPTY_POSTGRES"
 TABLE_CONSTRAINT_PREFIXES = (
     "CHECK",
     "CONSTRAINT",
@@ -290,11 +291,61 @@ def _reset_identity_sequences(cursor, table_names: Iterable[str]) -> None:
         )
 
 
+def _managed_table_row_counts(cursor, table_names: Iterable[str]) -> dict[str, int]:
+    row_counts: dict[str, int] = {}
+    for table_name in table_names:
+        cursor.execute("SELECT to_regclass(%s)", (f"public.{table_name}",))
+        table_ref = cursor.fetchone()
+        if not table_ref or table_ref[0] is None:
+            continue
+        cursor.execute(f"SELECT COUNT(*) FROM {_quote_identifier(table_name)}")
+        row = cursor.fetchone()
+        row_counts[table_name] = int(row[0] or 0)
+    return row_counts
+
+
+def _validate_postgres_target_load_safety(
+    cursor,
+    *,
+    reset_first: bool,
+    reset_confirmation: str | None,
+) -> dict[str, Any]:
+    row_counts = _managed_table_row_counts(cursor, TABLE_ORDER)
+    non_empty_counts = {
+        table_name: row_count
+        for table_name, row_count in row_counts.items()
+        if row_count > 0
+    }
+    existing_total_rows = sum(row_counts.values())
+
+    if reset_first:
+        if non_empty_counts and reset_confirmation != RESET_CONFIRMATION_TOKEN:
+            raise RuntimeError(
+                "Refusing to reset a non-empty Postgres target. Re-run with "
+                f"--confirm-reset {RESET_CONFIRMATION_TOKEN} only after confirming "
+                "this is a disposable rehearsal target or an approved cutover reset."
+            )
+    elif non_empty_counts:
+        raise RuntimeError(
+            "Refusing to load into a non-empty Postgres target without --reset-first. "
+            "Use an empty target, or use --reset-first with explicit confirmation "
+            "when overwriting is intentional."
+        )
+
+    return {
+        "existing_total_rows": existing_total_rows,
+        "non_empty_table_counts": non_empty_counts,
+        "reset_first": reset_first,
+        "reset_confirmation_required": bool(reset_first and non_empty_counts),
+    }
+
+
 def apply_export_to_postgres(
     *,
     database_url: str,
     export_dir: Path,
     reset_first: bool = False,
+    reset_confirmation: str | None = None,
 ) -> dict[str, Any]:
     plan = build_load_plan(export_dir)
     if plan["schema_column_mismatches"]:
@@ -316,10 +367,16 @@ def apply_export_to_postgres(
         ) from exc
     loaded: dict[str, int] = {}
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
+    reset_safety: dict[str, Any] | None = None
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cursor:
             for statement in _split_sql_statements(schema_sql):
                 cursor.execute(statement)
+            reset_safety = _validate_postgres_target_load_safety(
+                cursor,
+                reset_first=reset_first,
+                reset_confirmation=reset_confirmation,
+            )
             if reset_first:
                 table_list = ", ".join(
                     _quote_identifier(table_name) for table_name in reversed(TABLE_ORDER)
@@ -337,6 +394,7 @@ def apply_export_to_postgres(
     return {
         "loaded": loaded,
         "total_loaded": sum(loaded.values()),
+        "reset_safety": reset_safety,
         "source_plan": plan,
     }
 
@@ -365,6 +423,14 @@ def main() -> int:
         action="store_true",
         help="TRUNCATE managed migration tables before loading. Use only on rehearsal DBs.",
     )
+    parser.add_argument(
+        "--confirm-reset",
+        default=None,
+        help=(
+            "Required token when --reset-first would wipe a non-empty Postgres target. "
+            f"Use exactly: {RESET_CONFIRMATION_TOKEN}"
+        ),
+    )
     args = parser.parse_args()
 
     export_dir = Path(args.export_dir).expanduser().resolve()
@@ -382,6 +448,7 @@ def main() -> int:
         database_url=args.database_url,
         export_dir=export_dir,
         reset_first=args.reset_first,
+        reset_confirmation=args.confirm_reset,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

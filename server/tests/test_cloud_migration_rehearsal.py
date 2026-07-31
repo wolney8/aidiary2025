@@ -4,9 +4,12 @@ import sqlite3
 import pytest
 
 from scripts.load_cloud_migration import (
+    RESET_CONFIRMATION_TOKEN,
+    _managed_table_row_counts,
     _quote_identifier,
     _postgres_schema_columns,
     _split_sql_statements,
+    _validate_postgres_target_load_safety,
     apply_export_to_postgres,
     build_load_plan,
 )
@@ -246,3 +249,92 @@ def test_postgres_loader_sql_helpers_are_safe():
         "CREATE TABLE one (name TEXT DEFAULT 'a;b')",
         "CREATE TABLE two (id BIGINT)",
     ]
+
+
+class _FakePostgresInspectionCursor:
+    def __init__(self, row_counts):
+        self.row_counts = row_counts
+        self.executed = []
+        self._last_result = None
+
+    def execute(self, statement, params=None):
+        self.executed.append((statement, params))
+        if statement == "SELECT to_regclass(%s)":
+            table_name = str(params[0]).split(".", 1)[1]
+            self._last_result = (f"public.{table_name}",) if table_name in self.row_counts else (None,)
+            return self
+        if statement.startswith("SELECT COUNT(*) FROM "):
+            table_name = statement.rsplit('"', 2)[1]
+            self._last_result = (self.row_counts[table_name],)
+            return self
+        raise AssertionError(f"Unexpected statement: {statement}")
+
+    def fetchone(self):
+        return self._last_result
+
+
+def test_managed_table_row_counts_skips_missing_postgres_tables():
+    cursor = _FakePostgresInspectionCursor({"users": 2, "dailydiary_entries": 5})
+
+    counts = _managed_table_row_counts(
+        cursor,
+        ["users", "missing_table", "dailydiary_entries"],
+    )
+
+    assert counts == {"users": 2, "dailydiary_entries": 5}
+
+
+def test_postgres_loader_allows_empty_target_without_reset_confirmation():
+    cursor = _FakePostgresInspectionCursor({"users": 0, "dailydiary_entries": 0})
+
+    safety = _validate_postgres_target_load_safety(
+        cursor,
+        reset_first=True,
+        reset_confirmation=None,
+    )
+
+    assert safety == {
+        "existing_total_rows": 0,
+        "non_empty_table_counts": {},
+        "reset_first": True,
+        "reset_confirmation_required": False,
+    }
+
+
+def test_postgres_loader_blocks_append_into_non_empty_target():
+    cursor = _FakePostgresInspectionCursor({"users": 2})
+
+    with pytest.raises(RuntimeError, match="Refusing to load into a non-empty Postgres target"):
+        _validate_postgres_target_load_safety(
+            cursor,
+            reset_first=False,
+            reset_confirmation=None,
+        )
+
+
+def test_postgres_loader_blocks_unconfirmed_reset_of_non_empty_target():
+    cursor = _FakePostgresInspectionCursor({"users": 2})
+
+    with pytest.raises(RuntimeError, match="Refusing to reset a non-empty Postgres target"):
+        _validate_postgres_target_load_safety(
+            cursor,
+            reset_first=True,
+            reset_confirmation=None,
+        )
+
+
+def test_postgres_loader_allows_confirmed_reset_of_non_empty_target():
+    cursor = _FakePostgresInspectionCursor({"users": 2})
+
+    safety = _validate_postgres_target_load_safety(
+        cursor,
+        reset_first=True,
+        reset_confirmation=RESET_CONFIRMATION_TOKEN,
+    )
+
+    assert safety == {
+        "existing_total_rows": 2,
+        "non_empty_table_counts": {"users": 2},
+        "reset_first": True,
+        "reset_confirmation_required": True,
+    }
