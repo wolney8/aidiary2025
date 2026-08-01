@@ -33,10 +33,30 @@ counts, total rows, and retention actions. It does not export row contents.
 ## Suggested Automatic Backup
 
 For local development before cloud cutover, run a scheduled SQLite backup outside the
-repo. A simple daily cron entry is enough until a hosted scheduler exists:
+repo. After Neon/Postgres is configured, use the same scheduled bundle to capture both
+the local SQLite fallback and a Postgres JSONL snapshot.
+
+Preferred scheduled command:
+
+```bash
+cd server
+source venv/bin/activate
+DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/run_database_backup_bundle.py \
+  --sqlite-source-db db/app.db \
+  --sqlite-backup-dir ~/OpenMyndBackups \
+  --postgres-snapshot-dir ~/OpenMyndBackups/postgres-snapshots \
+  --label daily \
+  --sqlite-retain 14
+```
+
+The bundle writes a summary JSON under `~/OpenMyndBackups` unless `--summary-json` is
+provided. Use that summary as the first place to check whether scheduled backup tasks
+completed, failed, or were skipped.
+
+A simple daily cron entry is enough until a hosted scheduler exists:
 
 ```cron
-15 20 * * * cd /Users/will_work/Scripts/PythonScripts/openmynd/server && /bin/zsh -lc 'source venv/bin/activate && PYTHONPATH=. python scripts/create_sqlite_backup.py --source-db db/app.db --backup-dir ~/OpenMyndBackups --label daily --retain 14 >/tmp/openmynd-sqlite-backup.log 2>&1'
+15 20 * * * cd /Users/will_work/Scripts/PythonScripts/openmynd/server && /bin/zsh -lc 'source venv/bin/activate && DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/run_database_backup_bundle.py --sqlite-source-db db/app.db --sqlite-backup-dir ~/OpenMyndBackups --postgres-snapshot-dir ~/OpenMyndBackups/postgres-snapshots --label daily --sqlite-retain 14 >/tmp/openmynd-database-backup.log 2>&1'
 ```
 
 Use `launchd` instead of cron on macOS if you want richer logs and startup behaviour.
