@@ -272,6 +272,67 @@ def test_cutover_readiness_blocks_export_manifest_mismatch(tmp_path):
     )
 
 
+def test_cutover_readiness_blocks_failed_media_audit(tmp_path):
+    report_path = tmp_path / "report.json"
+    media_audit_path = tmp_path / "media-audit.json"
+    _write_report(report_path)
+    media_audit_path.write_text(
+        json.dumps(
+            {
+                "ready_for_cutover": False,
+                "summary": {
+                    "references_checked": 2,
+                    "present": 1,
+                    "missing": 1,
+                    "invalid": 0,
+                },
+                "missing": [
+                    {
+                        "source": "daily_images",
+                        "record_id": 10,
+                        "storage_key": "entries/daily/1/missing.jpg",
+                    }
+                ],
+                "invalid": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = build_cutover_readiness(
+        migration_report_path=report_path,
+        media_audit_path=media_audit_path,
+        test_evidence={
+            "backend_tests_passed": True,
+            "frontend_lint_passed": True,
+            "frontend_build_passed": True,
+        },
+        postgres_rehearsal_loaded=True,
+    )
+
+    assert readiness["ready_for_cutover"] is False
+    assert {
+        "gate": "media_storage_files",
+        "message": "Database media references do not match the active media store.",
+        "details": {
+            "summary": {
+                "references_checked": 2,
+                "present": 1,
+                "missing": 1,
+                "invalid": 0,
+            },
+            "missing": [
+                {
+                    "source": "daily_images",
+                    "record_id": 10,
+                    "storage_key": "entries/daily/1/missing.jpg",
+                }
+            ],
+            "invalid": [],
+        },
+    } in readiness["blockers"]
+
+
 def test_cutover_readiness_blocks_direct_sqlite_runtime_usage(tmp_path):
     report_path = tmp_path / "report.json"
     export_dir = tmp_path / "export"

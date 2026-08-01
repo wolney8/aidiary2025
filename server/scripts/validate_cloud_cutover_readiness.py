@@ -67,6 +67,7 @@ def build_cutover_readiness(
     *,
     migration_report_path: Path,
     export_dir: Path | None = None,
+    media_audit_path: Path | None = None,
     repo_root: Path | None = None,
     test_evidence: dict[str, bool] | None = None,
     postgres_rehearsal_loaded: bool = False,
@@ -161,6 +162,22 @@ def build_cutover_readiness(
                 }
             )
 
+    media_audit = None
+    if media_audit_path is not None:
+        media_audit = _load_json(media_audit_path)
+        if media_audit.get("ready_for_cutover") is not True:
+            blockers.append(
+                {
+                    "gate": "media_storage_files",
+                    "message": "Database media references do not match the active media store.",
+                    "details": {
+                        "summary": media_audit.get("summary"),
+                        "missing": media_audit.get("missing"),
+                        "invalid": media_audit.get("invalid"),
+                    },
+                }
+            )
+
     sqlite_usage_audit = None
     if repo_root is not None:
         sqlite_usage_audit = audit_runtime_sqlite_usage(repo_root)
@@ -212,6 +229,7 @@ def build_cutover_readiness(
             if load_plan
             else None
         ),
+        "media_audit": media_audit,
         "runtime_sqlite_usage": sqlite_usage_audit,
         "test_evidence": {flag: bool(evidence.get(flag)) for flag in REQUIRED_TEST_FLAGS},
         "postgres_rehearsal_loaded": postgres_rehearsal_loaded,
@@ -230,6 +248,10 @@ def main() -> int:
     parser.add_argument(
         "--export-dir",
         help="Optional JSONL export directory to compare against the migration report.",
+    )
+    parser.add_argument(
+        "--media-audit",
+        help="Optional JSON report produced by audit_media_storage.py.",
     )
     parser.add_argument(
         "--repo-root",
@@ -251,6 +273,11 @@ def main() -> int:
         export_dir=(
             Path(args.export_dir).expanduser().resolve()
             if args.export_dir
+            else None
+        ),
+        media_audit_path=(
+            Path(args.media_audit).expanduser().resolve()
+            if args.media_audit
             else None
         ),
         repo_root=Path(args.repo_root).expanduser().resolve(),
