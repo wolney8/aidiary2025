@@ -102,7 +102,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 PYTHONPATH=. python scripts/run_postgres_migrations.py --apply
 PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-local-cutover-rehearsal/export \
+  --export-dir /tmp/openmynd-local-cutover-rehearsal/export \
   --apply \
   --reset-first
 ```

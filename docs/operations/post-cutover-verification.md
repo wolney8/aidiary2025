@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Run this immediately after switching AI Diary to the cloud database. The goal is to prove
+Run this immediately after switching OpenMynd to the cloud database. The goal is to prove
 data correctness, catch regressions quickly, and record a baseline for future performance
 comparisons.
 
@@ -32,7 +32,7 @@ source venv/bin/activate
 PYTHONPATH=. python scripts/capture_post_cutover_baseline.py \
   --base-url http://localhost:5001 \
   --samples 3 \
-  --output-json /tmp/aidiary-post-cutover-baseline.json
+  --output-json /tmp/openmynd-post-cutover-baseline.json
 ```
 
 Authenticated check:
@@ -44,7 +44,7 @@ PYTHONPATH=. python scripts/capture_post_cutover_baseline.py \
   --base-url http://localhost:5001 \
   --token "$JWT_ACCESS_TOKEN" \
   --samples 3 \
-  --output-json /tmp/aidiary-post-cutover-baseline.json
+  --output-json /tmp/openmynd-post-cutover-baseline.json
 ```
 
 The authenticated check samples:
@@ -65,7 +65,7 @@ The authenticated check samples:
 cd server
 source venv/bin/activate
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/export_postgres_snapshot.py \
-  --output-dir ~/AIDiaryBackups/postgres-snapshots \
+  --output-dir ~/OpenMyndBackups/postgres-snapshots \
   --label post-cutover
 ```
 
@@ -75,7 +75,7 @@ Then validate the snapshot manifest and schema load plan:
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory>
+  --export-dir ~/OpenMyndBackups/postgres-snapshots/<snapshot-directory>
 ```
 
 Optional local fallback rehearsal from that snapshot:
@@ -84,9 +84,9 @@ Optional local fallback rehearsal from that snapshot:
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/restore_sqlite_from_snapshot.py \
-  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory> \
+  --export-dir ~/OpenMyndBackups/postgres-snapshots/<snapshot-directory> \
   --schema-db db/app.db \
-  --target-db ~/AIDiaryBackups/restored-sqlite/post-cutover-rehearsal.db \
+  --target-db ~/OpenMyndBackups/restored-sqlite/post-cutover-rehearsal.db \
   --overwrite
 ```
 

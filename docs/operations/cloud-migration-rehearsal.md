@@ -36,7 +36,7 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/run_local_cutover_rehearsal_bundle.py \
   --source-db db/app.db \
-  --work-dir /tmp/aidiary-local-cutover-rehearsal \
+  --work-dir /tmp/openmynd-local-cutover-rehearsal \
   --overwrite
 ```
 
@@ -60,7 +60,7 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/rehearse_cloud_migration.py \
   --source-db db/app.db \
-  --report-json /tmp/aidiary-cloud-migration-report.json
+  --report-json /tmp/openmynd-cloud-migration-report.json
 ```
 
 Review the report for:
@@ -77,8 +77,8 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/rehearse_cloud_migration.py \
   --source-db db/app.db \
-  --export-dir /tmp/aidiary-cloud-export \
-  --report-json /tmp/aidiary-cloud-migration-report.json
+  --export-dir /tmp/openmynd-cloud-export \
+  --report-json /tmp/openmynd-cloud-migration-report.json
 ```
 
 The export directory contains one `.jsonl` file per migrated table plus `manifest.json`.
@@ -92,7 +92,7 @@ rehearsal artifacts and should not be committed.
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-cloud-export
+  --export-dir /tmp/openmynd-cloud-export
 ```
 
 This checks which exported files will be loaded, how many rows are present, and whether
@@ -121,7 +121,7 @@ pip install -r requirements.txt
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/run_postgres_migrations.py \
   --apply
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-cloud-export \
+  --export-dir /tmp/openmynd-cloud-export \
   --apply \
   --reset-first
 ```

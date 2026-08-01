@@ -54,7 +54,7 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_sqlite_backup.py \
   --source-db db/app.db \
-  --backup-dir ~/AIDiaryBackups \
+  --backup-dir ~/OpenMyndBackups \
   --label pre-cutover \
   --retain 14
 ```
@@ -64,15 +64,15 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/rehearse_cloud_migration.py \
   --source-db db/app.db \
-  --export-dir /tmp/aidiary-cloud-export \
-  --report-json /tmp/aidiary-cloud-migration-report.json
+  --export-dir /tmp/openmynd-cloud-export \
+  --report-json /tmp/openmynd-cloud-migration-report.json
 ```
 
 ```bash
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-cloud-export
+  --export-dir /tmp/openmynd-cloud-export
 ```
 
 ```bash
@@ -108,7 +108,7 @@ PYTHONPATH=. pytest tests/test_cloud_schema_parity.py \
 cd server
 source venv/bin/activate
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-cloud-export \
+  --export-dir /tmp/openmynd-cloud-export \
   --apply \
   --reset-first \
   --confirm-reset RESET_NON_EMPTY_POSTGRES
@@ -132,8 +132,8 @@ npm run test:e2e:a11y
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/validate_cloud_cutover_readiness.py \
-  --migration-report /tmp/aidiary-cloud-migration-report.json \
-  --export-dir /tmp/aidiary-cloud-export \
+  --migration-report /tmp/openmynd-cloud-migration-report.json \
+  --export-dir /tmp/openmynd-cloud-export \
   --repo-root .. \
   --backend-tests-passed \
   --frontend-lint-passed \
@@ -148,7 +148,7 @@ The readiness report must not contain `jsonl_export_manifest`,
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_cloud_parity_report.py \
-  --readiness-report /tmp/aidiary-local-cutover-rehearsal/cutover-readiness.json \
+  --readiness-report /tmp/openmynd-local-cutover-rehearsal/cutover-readiness.json \
   --postgres-target "neon/rehearsal-branch" \
   --backend-tests-passed \
   --frontend-lint-passed \
@@ -156,8 +156,8 @@ PYTHONPATH=. python scripts/create_cloud_parity_report.py \
   --frontend-smoke-passed \
   --frontend-a11y-passed \
   --manual-rehearsal-smoke-passed \
-  --output-json /tmp/aidiary-cloud-parity-report.json \
-  --output-md /tmp/aidiary-cloud-parity-report.md
+  --output-json /tmp/openmynd-cloud-parity-report.json \
+  --output-md /tmp/openmynd-cloud-parity-report.md
 ```
 
 The parity report must return `parity_ready: true` before moving to the cutover runbook.

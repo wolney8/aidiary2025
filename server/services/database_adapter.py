@@ -192,7 +192,7 @@ class DatabaseAdapter:
                 SELECT 1
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
-                  AND table_name = $1
+                  AND table_name = ?
                 """,
                 (table_name,),
             ).fetchone()

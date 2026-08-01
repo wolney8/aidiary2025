@@ -17,15 +17,15 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_sqlite_backup.py \
   --source-db db/app.db \
-  --backup-dir ~/AIDiaryBackups \
+  --backup-dir ~/OpenMyndBackups \
   --label pre-cutover \
   --retain 14
 ```
 
 The command writes:
 
-- `aidiary-sqlite-<timestamp>-<label>.db`
-- `aidiary-sqlite-<timestamp>-<label>.manifest.json`
+- `openmynd-sqlite-<timestamp>-<label>.db`
+- `openmynd-sqlite-<timestamp>-<label>.manifest.json`
 
 The manifest records only operational metadata: backup path, byte size, checksum, table
 counts, total rows, and retention actions. It does not export row contents.
@@ -36,7 +36,7 @@ For local development before cloud cutover, run a scheduled SQLite backup outsid
 repo. A simple daily cron entry is enough until a hosted scheduler exists:
 
 ```cron
-15 20 * * * cd /Users/will_work/Scripts/PythonScripts/openmynd/server && /bin/zsh -lc 'source venv/bin/activate && PYTHONPATH=. python scripts/create_sqlite_backup.py --source-db db/app.db --backup-dir ~/AIDiaryBackups --label daily --retain 14 >/tmp/openmynd-sqlite-backup.log 2>&1'
+15 20 * * * cd /Users/will_work/Scripts/PythonScripts/openmynd/server && /bin/zsh -lc 'source venv/bin/activate && PYTHONPATH=. python scripts/create_sqlite_backup.py --source-db db/app.db --backup-dir ~/OpenMyndBackups --label daily --retain 14 >/tmp/openmynd-sqlite-backup.log 2>&1'
 ```
 
 Use `launchd` instead of cron on macOS if you want richer logs and startup behaviour.
@@ -51,7 +51,7 @@ Use a scheduled Postgres snapshot export instead:
 cd server
 source venv/bin/activate
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/export_postgres_snapshot.py \
-  --output-dir ~/AIDiaryBackups/postgres-snapshots \
+  --output-dir ~/OpenMyndBackups/postgres-snapshots \
   --label scheduled
 ```
 
@@ -63,7 +63,7 @@ checks:
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory>
+  --export-dir ~/OpenMyndBackups/postgres-snapshots/<snapshot-directory>
 ```
 
 This gives us durable local evidence of the cloud data even if a managed provider account
@@ -77,9 +77,9 @@ Use this only with a validated snapshot and a known-good SQLite schema template:
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/restore_sqlite_from_snapshot.py \
-  --export-dir ~/AIDiaryBackups/postgres-snapshots/<snapshot-directory> \
+  --export-dir ~/OpenMyndBackups/postgres-snapshots/<snapshot-directory> \
   --schema-db db/app.db \
-  --target-db ~/AIDiaryBackups/restored-sqlite/app-restored.db
+  --target-db ~/OpenMyndBackups/restored-sqlite/app-restored.db
 ```
 
 The command refuses to overwrite an existing target unless `--overwrite` is supplied. It
@@ -90,7 +90,7 @@ For a local fallback run, point the backend at the restored database:
 
 ```bash
 DATABASE_PROVIDER=sqlite
-DB_PATH=~/AIDiaryBackups/restored-sqlite/app-restored.db
+DB_PATH=~/OpenMyndBackups/restored-sqlite/app-restored.db
 DATABASE_URL=
 OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK=true
 OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=true
@@ -105,7 +105,7 @@ If Neon is unavailable before the cloud cutover is accepted:
 3. Copy it to the intended local runtime path, for example:
 
 ```bash
-cp ~/AIDiaryBackups/aidiary-sqlite-YYYYMMDDTHHMMSSZ-pre-cutover.db server/db/app.db
+cp ~/OpenMyndBackups/openmynd-sqlite-YYYYMMDDTHHMMSSZ-pre-cutover.db server/db/app.db
 ```
 
 4. Start the backend with local SQLite configuration:

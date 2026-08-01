@@ -88,6 +88,29 @@ def test_database_adapter_introspects_sqlite_tables_and_columns(tmp_path):
         assert adapter.table_columns(conn, "sample") == {"id", "name"}
 
 
+def test_database_adapter_introspects_postgres_tables_with_psycopg_placeholders():
+    raw_conn = _FakeConnection()
+    adapter = DatabaseAdapter(
+        provider="postgres",
+        sqlite_path="/tmp/fallback.db",
+        database_url="postgresql://example/rehearsal",
+    )
+
+    assert adapter.table_exists(_SqlCompatConnection(raw_conn, "postgres"), "users") is True
+
+    assert raw_conn.calls == [
+        (
+            """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = %s
+                """,
+            ("users",),
+        )
+    ]
+
+
 def test_database_adapter_health_check_reports_sqlite_success(tmp_path):
     db_path = tmp_path / "app.db"
     adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))

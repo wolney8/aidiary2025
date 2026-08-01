@@ -67,7 +67,7 @@ def test_create_sqlite_backup_prunes_old_backups_with_manifests(tmp_path):
         retain=2,
     )
 
-    remaining_backups = sorted(backup_dir.glob("aidiary-sqlite-*.db"))
+    remaining_backups = sorted(backup_dir.glob("openmynd-sqlite-*.db"))
     assert len(remaining_backups) == 2
     assert not Path(first["backup_path"]).exists()
     assert not Path(first["backup_path"]).with_suffix(".manifest.json").exists()

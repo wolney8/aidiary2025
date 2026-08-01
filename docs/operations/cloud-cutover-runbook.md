@@ -81,7 +81,7 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_sqlite_backup.py \
   --source-db db/app.db \
-  --backup-dir ~/AIDiaryBackups \
+  --backup-dir ~/OpenMyndBackups \
   --label pre-cutover \
   --retain 14
 ```
@@ -93,8 +93,8 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/rehearse_cloud_migration.py \
   --source-db db/app.db \
-  --export-dir /tmp/aidiary-cloud-export \
-  --report-json /tmp/aidiary-cloud-migration-report.json
+  --export-dir /tmp/openmynd-cloud-export \
+  --report-json /tmp/openmynd-cloud-migration-report.json
 ```
 
 5. Run loader dry-run:
@@ -103,7 +103,7 @@ PYTHONPATH=. python scripts/rehearse_cloud_migration.py \
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-cloud-export
+  --export-dir /tmp/openmynd-cloud-export
 ```
 
 6. Apply to Postgres target:
@@ -112,7 +112,7 @@ PYTHONPATH=. python scripts/load_cloud_migration.py \
 cd server
 source venv/bin/activate
 DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/load_cloud_migration.py \
-  --export-dir /tmp/aidiary-cloud-export \
+  --export-dir /tmp/openmynd-cloud-export \
   --apply \
   --reset-first \
   --confirm-reset RESET_NON_EMPTY_POSTGRES
@@ -157,20 +157,20 @@ Evidence packet command:
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_cutover_evidence_packet.py \
-  --sqlite-backup /tmp/aidiary-sqlite-backup.db \
-  --export-dir /tmp/aidiary-cloud-export \
-  --migration-report /tmp/aidiary-cloud-migration-report.json \
-  --readiness-report /tmp/aidiary-cloud-readiness.json \
-  --preflight-report /tmp/aidiary-production-preflight.json \
-  --post-cutover-baseline /tmp/aidiary-post-cutover-baseline.json \
-  --rollback-report /tmp/aidiary-rollback-rehearsal.json \
+  --sqlite-backup /tmp/openmynd-sqlite-backup.db \
+  --export-dir /tmp/openmynd-cloud-export \
+  --migration-report /tmp/openmynd-cloud-migration-report.json \
+  --readiness-report /tmp/openmynd-cloud-readiness.json \
+  --preflight-report /tmp/openmynd-production-preflight.json \
+  --post-cutover-baseline /tmp/openmynd-post-cutover-baseline.json \
+  --rollback-report /tmp/openmynd-rollback-rehearsal.json \
   --postgres-target "neon/rehearsal-branch-or-production-db" \
   --backend-tests-passed \
   --frontend-lint-passed \
   --frontend-build-passed \
   --manual-smoke-passed \
   --rollback-rehearsed \
-  --output-json /tmp/aidiary-cutover-evidence-packet.json
+  --output-json /tmp/openmynd-cutover-evidence-packet.json
 ```
 
 Rehearsal sign-off command:
@@ -179,7 +179,7 @@ Rehearsal sign-off command:
 cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_cutover_rehearsal_signoff.py \
-  --evidence-packet /tmp/aidiary-cutover-evidence-packet.json \
+  --evidence-packet /tmp/openmynd-cutover-evidence-packet.json \
   --cutover-lead "Will" \
   --backend-operator "Will" \
   --frontend-operator "Will" \
@@ -191,7 +191,7 @@ PYTHONPATH=. python scripts/create_cutover_rehearsal_signoff.py \
   --decision-due-at "2026-07-27T10:35:00Z" \
   --decision go \
   --notes "Disposable branch rehearsal completed without rollback triggers." \
-  --output-json /tmp/aidiary-cutover-rehearsal-signoff.json
+  --output-json /tmp/openmynd-cutover-rehearsal-signoff.json
 ```
 
 This report is the final dry-run artifact. It should fail if the evidence packet is
@@ -222,8 +222,8 @@ cd server
 source venv/bin/activate
 PYTHONPATH=. python scripts/create_rollback_rehearsal_report.py \
   --scenario "failed app smoke after config switch" \
-  --sqlite-backup /tmp/aidiary-sqlite-backup.db \
-  --rollback-baseline /tmp/aidiary-rollback-baseline.json \
+  --sqlite-backup /tmp/openmynd-sqlite-backup.db \
+  --rollback-baseline /tmp/openmynd-rollback-baseline.json \
   --postgres-target "neon/rehearsal-branch" \
   --failure-summary "Backend was pointed back to SQLite after a failed smoke rehearsal." \
   --config-restored \
@@ -232,7 +232,7 @@ PYTHONPATH=. python scripts/create_rollback_rehearsal_report.py \
   --entries-smoke-passed \
   --export-smoke-passed \
   --media-smoke-passed \
-  --output-json /tmp/aidiary-rollback-rehearsal.json
+  --output-json /tmp/openmynd-rollback-rehearsal.json
 ```
 
 ## Rollback Steps

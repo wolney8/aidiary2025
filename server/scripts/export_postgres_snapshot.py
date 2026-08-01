@@ -20,7 +20,7 @@ from services.database import POSTGRES_PROVIDER
 from services.database_adapter import DatabaseAdapter
 
 
-DEFAULT_SNAPSHOT_DIR = Path.home() / "AIDiaryBackups" / "postgres-snapshots"
+DEFAULT_SNAPSHOT_DIR = Path.home() / "OpenMyndBackups" / "postgres-snapshots"
 
 
 class SnapshotAdapter(Protocol):

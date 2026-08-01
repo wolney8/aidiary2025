@@ -18,7 +18,8 @@ from typing import Any
 
 SERVER_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = SERVER_ROOT / "db" / "app.db"
-DEFAULT_BACKUP_DIR = Path.home() / "AIDiaryBackups"
+DEFAULT_BACKUP_DIR = Path.home() / "OpenMyndBackups"
+BACKUP_FILE_PREFIX = "openmynd-sqlite"
 
 
 def _utc_timestamp() -> str:
@@ -54,14 +55,14 @@ def _table_counts(db_path: Path) -> dict[str, int]:
 
 def _backup_files(backup_dir: Path) -> list[Path]:
     return sorted(
-        backup_dir.glob("aidiary-sqlite-*.db"),
+        backup_dir.glob(f"{BACKUP_FILE_PREFIX}-*.db"),
         key=lambda path: (path.stat().st_mtime_ns, path.name),
         reverse=True,
     )
 
 
 def _next_backup_path(backup_dir: Path, label: str) -> Path:
-    stem = f"aidiary-sqlite-{_utc_timestamp()}-{_safe_label(label)}"
+    stem = f"{BACKUP_FILE_PREFIX}-{_utc_timestamp()}-{_safe_label(label)}"
     candidate = backup_dir / f"{stem}.db"
     suffix = 2
     while candidate.exists():
@@ -132,7 +133,7 @@ def main() -> int:
     parser.add_argument(
         "--backup-dir",
         default=os.getenv("SQLITE_BACKUP_DIR") or str(DEFAULT_BACKUP_DIR),
-        help="Directory where backup files are written. Defaults to SQLITE_BACKUP_DIR or ~/AIDiaryBackups.",
+        help="Directory where backup files are written. Defaults to SQLITE_BACKUP_DIR or ~/OpenMyndBackups.",
     )
     parser.add_argument(
         "--label",
