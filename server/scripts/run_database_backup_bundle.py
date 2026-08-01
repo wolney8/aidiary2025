@@ -11,9 +11,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from scripts.create_sqlite_backup import DEFAULT_BACKUP_DIR, DEFAULT_DB_PATH, create_sqlite_backup
 from scripts.export_postgres_snapshot import DEFAULT_SNAPSHOT_DIR, export_postgres_snapshot
@@ -23,6 +24,9 @@ from services.database_adapter import DatabaseAdapter
 
 BackupCallable = Callable[..., dict[str, Any]]
 SnapshotCallable = Callable[..., dict[str, Any]]
+NotifyCallable = Callable[..., dict[str, Any]]
+NotifyMode = Literal["failure", "always", "never"]
+SECRET_URL_RE = re.compile(r"postgres(?:ql)?://[^\s'\"<>]+", re.IGNORECASE)
 
 
 def _utc_timestamp() -> str:
@@ -31,6 +35,75 @@ def _utc_timestamp() -> str:
 
 def _default_summary_path(output_dir: Path) -> Path:
     return output_dir.expanduser().resolve() / f"database-backup-bundle-{_utc_timestamp()}.json"
+
+
+def _redact_secrets(value: Any) -> Any:
+    if isinstance(value, str):
+        return SECRET_URL_RE.sub("postgresql://<redacted>", value)
+    if isinstance(value, list):
+        return [_redact_secrets(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_secrets(item) for key, item in value.items()}
+    return value
+
+
+def send_backup_webhook_notification(
+    *,
+    webhook_url: str,
+    summary: dict[str, Any],
+    timeout_seconds: float = 10,
+) -> dict[str, Any]:
+    try:
+        import httpx
+    except ImportError as exc:  # pragma: no cover - dependency exists in normal runtime.
+        raise RuntimeError("httpx is required for webhook notifications") from exc
+
+    payload = {
+        "event": "openmynd.database_backup_bundle",
+        "ok": summary.get("ok") is True,
+        "created_at": summary.get("created_at"),
+        "label": summary.get("label"),
+        "counts": summary.get("counts"),
+        "summary_path": summary.get("summary_path"),
+        "tasks": summary.get("tasks"),
+    }
+    response = httpx.post(
+        webhook_url,
+        json=_redact_secrets(payload),
+        timeout=timeout_seconds,
+    )
+    response.raise_for_status()
+    return {
+        "status": "sent",
+        "status_code": response.status_code,
+    }
+
+
+def _maybe_send_notification(
+    *,
+    summary: dict[str, Any],
+    webhook_url: str | None,
+    notify_mode: NotifyMode,
+    notify_fn: NotifyCallable = send_backup_webhook_notification,
+) -> dict[str, Any]:
+    if not webhook_url or notify_mode == "never":
+        return {
+            "status": "skipped",
+            "reason": "notification disabled",
+        }
+    if notify_mode == "failure" and summary.get("ok") is True:
+        return {
+            "status": "skipped",
+            "reason": "backup bundle completed successfully",
+        }
+    try:
+        return notify_fn(webhook_url=webhook_url, summary=summary)
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "error_type": exc.__class__.__name__,
+            "message": _redact_secrets(str(exc)),
+        }
 
 
 def run_database_backup_bundle(
@@ -42,8 +115,11 @@ def run_database_backup_bundle(
     label: str = "scheduled",
     sqlite_retain: int = 14,
     summary_json: Path | None = None,
+    notification_webhook_url: str | None = None,
+    notify_mode: NotifyMode = "failure",
     create_sqlite_backup_fn: BackupCallable = create_sqlite_backup,
     export_postgres_snapshot_fn: SnapshotCallable = export_postgres_snapshot,
+    notify_fn: NotifyCallable = send_backup_webhook_notification,
 ) -> dict[str, Any]:
     sqlite_source_db = sqlite_source_db.expanduser().resolve()
     sqlite_backup_dir = sqlite_backup_dir.expanduser().resolve()
@@ -68,7 +144,7 @@ def run_database_backup_bundle(
             tasks["sqlite_backup"] = {
                 "status": "failed",
                 "error_type": exc.__class__.__name__,
-                "message": str(exc),
+                "message": _redact_secrets(str(exc)),
             }
     else:
         tasks["sqlite_backup"] = {
@@ -95,7 +171,7 @@ def run_database_backup_bundle(
             tasks["postgres_snapshot"] = {
                 "status": "failed",
                 "error_type": exc.__class__.__name__,
-                "message": str(exc),
+                "message": _redact_secrets(str(exc)),
             }
     else:
         tasks["postgres_snapshot"] = {
@@ -123,6 +199,13 @@ def run_database_backup_bundle(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     summary["summary_path"] = str(output_path)
+    summary["notification"] = _maybe_send_notification(
+        summary=summary,
+        webhook_url=notification_webhook_url,
+        notify_mode=notify_mode,
+        notify_fn=notify_fn,
+    )
+    output_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return summary
 
 
@@ -165,6 +248,17 @@ def main() -> int:
         "--summary-json",
         help="Optional path for the backup bundle summary JSON.",
     )
+    parser.add_argument(
+        "--notification-webhook-url",
+        default=os.getenv("DATABASE_BACKUP_WEBHOOK_URL") or "",
+        help="Optional webhook URL for backup bundle notifications.",
+    )
+    parser.add_argument(
+        "--notify",
+        choices=("failure", "always", "never"),
+        default=os.getenv("DATABASE_BACKUP_NOTIFY", "failure"),
+        help="When to send webhook notifications. Defaults to failure.",
+    )
     args = parser.parse_args()
 
     summary = run_database_backup_bundle(
@@ -175,6 +269,8 @@ def main() -> int:
         label=args.label,
         sqlite_retain=args.sqlite_retain,
         summary_json=Path(args.summary_json) if args.summary_json else None,
+        notification_webhook_url=args.notification_webhook_url.strip() or None,
+        notify_mode=args.notify,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return int(summary["exit_code"])

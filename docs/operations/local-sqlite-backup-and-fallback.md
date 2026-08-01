@@ -62,6 +62,23 @@ A simple daily cron entry is enough until a hosted scheduler exists:
 Use `launchd` instead of cron on macOS if you want richer logs and startup behaviour.
 The important constraint is the same: write backups outside the repository.
 
+Optional webhook notification:
+
+```bash
+DATABASE_BACKUP_WEBHOOK_URL="https://monitor.example/hooks/openmynd" \
+DATABASE_BACKUP_NOTIFY=failure \
+DATABASE_URL="postgresql://..." \
+PYTHONPATH=. python scripts/run_database_backup_bundle.py \
+  --sqlite-source-db db/app.db \
+  --sqlite-backup-dir ~/OpenMyndBackups \
+  --postgres-snapshot-dir ~/OpenMyndBackups/postgres-snapshots \
+  --label daily
+```
+
+`DATABASE_BACKUP_NOTIFY` supports `failure`, `always`, or `never`. The bundle summary
+redacts Postgres connection strings from task errors and notification errors, but the
+webhook URL itself is still a secret and must stay out of committed files.
+
 ## Postgres Snapshot After Cutover
 
 After cloud cutover is accepted, local SQLite backups no longer capture new cloud writes.
