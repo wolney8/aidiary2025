@@ -9,9 +9,11 @@ The bundle is intentionally conservative:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -24,9 +26,12 @@ from services.database_adapter import DatabaseAdapter
 
 BackupCallable = Callable[..., dict[str, Any]]
 SnapshotCallable = Callable[..., dict[str, Any]]
+MediaBackupCallable = Callable[..., dict[str, Any]]
 NotifyCallable = Callable[..., dict[str, Any]]
 NotifyMode = Literal["failure", "always", "never"]
 SECRET_URL_RE = re.compile(r"postgres(?:ql)?://[^\s'\"<>]+", re.IGNORECASE)
+DEFAULT_MEDIA_ROOT = Path(__file__).resolve().parents[1] / "media"
+DEFAULT_MEDIA_BACKUP_DIR = Path.home() / "OpenMyndBackups" / "media"
 
 
 def _utc_timestamp() -> str:
@@ -45,6 +50,53 @@ def _redact_secrets(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _redact_secrets(item) for key, item in value.items()}
     return value
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _safe_label(label: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", label.strip().lower()).strip("-") or "backup"
+
+
+def create_media_archive(
+    *,
+    media_root: Path,
+    output_dir: Path,
+    label: str = "scheduled",
+) -> dict[str, Any]:
+    media_root = media_root.expanduser().resolve()
+    output_dir = output_dir.expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = output_dir / f"openmynd-media-{_utc_timestamp()}-{_safe_label(label)}.zip"
+
+    files = sorted(path for path in media_root.rglob("*") if path.is_file())
+    with zipfile.ZipFile(archive_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in files:
+            archive.write(path, f"media/{path.relative_to(media_root).as_posix()}")
+
+    manifest = {
+        "provider": "local_media",
+        "label": label,
+        "media_root": str(media_root),
+        "archive_path": str(archive_path),
+        "file_count": len(files),
+        "source_bytes": sum(path.stat().st_size for path in files),
+        "archive_bytes": archive_path.stat().st_size,
+        "sha256": _sha256_file(archive_path),
+    }
+    manifest_path = archive_path.with_suffix(".manifest.json")
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    manifest["manifest_path"] = str(manifest_path)
+    return manifest
 
 
 def send_backup_webhook_notification(
@@ -112,6 +164,8 @@ def run_database_backup_bundle(
     sqlite_backup_dir: Path,
     postgres_database_url: str | None,
     postgres_snapshot_dir: Path,
+    media_root: Path | None = None,
+    media_backup_dir: Path | None = None,
     label: str = "scheduled",
     sqlite_retain: int = 14,
     summary_json: Path | None = None,
@@ -119,11 +173,16 @@ def run_database_backup_bundle(
     notify_mode: NotifyMode = "failure",
     create_sqlite_backup_fn: BackupCallable = create_sqlite_backup,
     export_postgres_snapshot_fn: SnapshotCallable = export_postgres_snapshot,
+    create_media_archive_fn: MediaBackupCallable = create_media_archive,
     notify_fn: NotifyCallable = send_backup_webhook_notification,
 ) -> dict[str, Any]:
     sqlite_source_db = sqlite_source_db.expanduser().resolve()
     sqlite_backup_dir = sqlite_backup_dir.expanduser().resolve()
     postgres_snapshot_dir = postgres_snapshot_dir.expanduser().resolve()
+    resolved_media_root = media_root.expanduser().resolve() if media_root else None
+    resolved_media_backup_dir = (
+        media_backup_dir.expanduser().resolve() if media_backup_dir else DEFAULT_MEDIA_BACKUP_DIR
+    )
 
     tasks: dict[str, Any] = {}
     exit_code = 0
@@ -177,6 +236,34 @@ def run_database_backup_bundle(
         tasks["postgres_snapshot"] = {
             "status": "skipped",
             "reason": "DATABASE_URL was not supplied.",
+        }
+
+    if resolved_media_root is None:
+        tasks["media_archive"] = {
+            "status": "skipped",
+            "reason": "MEDIA_ROOT was not supplied.",
+        }
+    elif resolved_media_root.exists():
+        try:
+            tasks["media_archive"] = {
+                "status": "completed",
+                "manifest": create_media_archive_fn(
+                    media_root=resolved_media_root,
+                    output_dir=resolved_media_backup_dir,
+                    label=label,
+                ),
+            }
+        except Exception as exc:  # pragma: no cover - exercised through injected tests.
+            exit_code = 1
+            tasks["media_archive"] = {
+                "status": "failed",
+                "error_type": exc.__class__.__name__,
+                "message": _redact_secrets(str(exc)),
+            }
+    else:
+        tasks["media_archive"] = {
+            "status": "skipped",
+            "reason": f"Media root not found: {resolved_media_root}",
         }
 
     completed = sum(1 for task in tasks.values() if task["status"] == "completed")
@@ -234,6 +321,16 @@ def main() -> int:
         help="Directory for Postgres JSONL snapshots.",
     )
     parser.add_argument(
+        "--media-root",
+        default=os.getenv("MEDIA_ROOT") or str(DEFAULT_MEDIA_ROOT),
+        help="Media root to archive with the database backups.",
+    )
+    parser.add_argument(
+        "--media-backup-dir",
+        default=os.getenv("MEDIA_BACKUP_DIR") or str(DEFAULT_MEDIA_BACKUP_DIR),
+        help="Directory for media zip archives.",
+    )
+    parser.add_argument(
         "--label",
         default=os.getenv("DATABASE_BACKUP_LABEL") or "scheduled",
         help="Short label included in generated backup/snapshot directories.",
@@ -266,6 +363,8 @@ def main() -> int:
         sqlite_backup_dir=Path(args.sqlite_backup_dir),
         postgres_database_url=args.database_url.strip() or None,
         postgres_snapshot_dir=Path(args.postgres_snapshot_dir),
+        media_root=Path(args.media_root) if args.media_root.strip() else None,
+        media_backup_dir=Path(args.media_backup_dir),
         label=args.label,
         sqlite_retain=args.sqlite_retain,
         summary_json=Path(args.summary_json) if args.summary_json else None,
