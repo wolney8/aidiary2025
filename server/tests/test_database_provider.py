@@ -7,7 +7,12 @@ import routes.import_routes as import_routes_module
 from app import create_app
 from services.database import DatabaseSettings
 from services.database import connect_sqlite_path, resolve_database_settings, table_columns, table_info
-from services.import_service import ensure_import_jobs_table
+from services.import_service import (
+    ensure_export_history_table,
+    ensure_history_table,
+    ensure_import_jobs_table,
+    ensure_import_sessions_table,
+)
 
 
 def test_database_settings_default_to_sqlite(tmp_path):
@@ -326,36 +331,58 @@ def test_table_info_returns_column_metadata(tmp_path):
     conn.close()
 
 
-class _PostgresImportJobsConnection:
+class _PostgresManagedTableConnection:
     database_provider = "postgres"
 
     def __init__(self, table_exists: bool):
         self.table_exists = table_exists
         self.executed_sql: list[str] = []
+        self.last_params = None
 
     def execute(self, sql, params=None):
         self.executed_sql.append(sql)
-        if "PRAGMA" in sql:
-            raise AssertionError("Postgres import_jobs check must not issue PRAGMA")
+        self.last_params = params
+        if "PRAGMA" in sql or "AUTOINCREMENT" in sql:
+            raise AssertionError("Postgres managed table check must not issue SQLite SQL")
         return self
 
     def fetchone(self):
-        return {"table_name": "import_jobs" if self.table_exists else None}
+        requested_table = self.last_params[0] if self.last_params else "public.unknown"
+        return {"table_name": requested_table if self.table_exists else None}
 
 
-def test_ensure_import_jobs_table_uses_managed_postgres_schema():
-    conn = _PostgresImportJobsConnection(table_exists=True)
+@pytest.mark.parametrize(
+    ("ensure_fn", "table_name"),
+    [
+        (ensure_history_table, "import_history"),
+        (ensure_export_history_table, "export_history"),
+        (ensure_import_sessions_table, "import_sessions"),
+        (ensure_import_jobs_table, "import_jobs"),
+    ],
+)
+def test_import_schema_helpers_use_managed_postgres_schema(ensure_fn, table_name):
+    conn = _PostgresManagedTableConnection(table_exists=True)
 
-    ensure_import_jobs_table(conn)
+    ensure_fn(conn)
 
     assert conn.executed_sql == ["SELECT to_regclass(?) AS table_name"]
+    assert conn.last_params == (f"public.{table_name}",)
 
 
-def test_ensure_import_jobs_table_requires_postgres_migration_schema():
-    conn = _PostgresImportJobsConnection(table_exists=False)
+@pytest.mark.parametrize(
+    ("ensure_fn", "table_name"),
+    [
+        (ensure_history_table, "import_history"),
+        (ensure_export_history_table, "export_history"),
+        (ensure_import_sessions_table, "import_sessions"),
+        (ensure_import_jobs_table, "import_jobs"),
+    ],
+)
+def test_import_schema_helpers_require_postgres_migration_schema(ensure_fn, table_name):
+    conn = _PostgresManagedTableConnection(table_exists=False)
 
-    with pytest.raises(RuntimeError, match="Postgres import_jobs table is missing"):
-        ensure_import_jobs_table(conn)
+    with pytest.raises(RuntimeError, match=f"Postgres {table_name} table is missing"):
+        ensure_fn(conn)
 
 
 def test_table_columns_returns_empty_set_for_missing_table(tmp_path):

@@ -1559,8 +1559,21 @@ CREATE TABLE IF NOT EXISTS import_jobs (
 '''
 
 
+def _require_managed_postgres_table(conn, table_name: str) -> None:
+    row = conn.execute("SELECT to_regclass(?) AS table_name", (f'public.{table_name}',)).fetchone()
+    resolved_table_name = row.get('table_name') if isinstance(row, dict) else row[0]
+    if resolved_table_name is None:
+        raise RuntimeError(
+            f'Postgres {table_name} table is missing. Run managed Postgres migrations before startup.'
+        )
+
+
 def ensure_history_table(conn: sqlite3.Connection) -> None:
     """Create or repair import_history table for older local databases."""
+    if _connection_provider(conn) != 'sqlite':
+        _require_managed_postgres_table(conn, 'import_history')
+        return
+
     conn.execute(IMPORT_HISTORY_DDL)
 
     table_info_rows = table_info(conn, 'import_history')
@@ -1643,6 +1656,10 @@ def ensure_history_table(conn: sqlite3.Connection) -> None:
 
 def ensure_export_history_table(conn: sqlite3.Connection) -> None:
     """Create or repair export_history table for guarded bulk-delete flow."""
+    if _connection_provider(conn) != 'sqlite':
+        _require_managed_postgres_table(conn, 'export_history')
+        return
+
     conn.execute(EXPORT_HISTORY_DDL)
 
     columns = {row[1]: row for row in table_info(conn, 'export_history')}
@@ -1671,6 +1688,10 @@ def ensure_export_history_table(conn: sqlite3.Connection) -> None:
 
 def ensure_import_sessions_table(conn: sqlite3.Connection) -> None:
     """Create or repair import_sessions table used for staged duplicate review."""
+    if _connection_provider(conn) != 'sqlite':
+        _require_managed_postgres_table(conn, 'import_sessions')
+        return
+
     conn.execute(IMPORT_SESSIONS_DDL)
 
     columns = {row[1]: row for row in table_info(conn, 'import_sessions')}
@@ -1693,12 +1714,7 @@ def ensure_import_sessions_table(conn: sqlite3.Connection) -> None:
 def ensure_import_jobs_table(conn: sqlite3.Connection) -> None:
     """Create or repair durable background import job storage."""
     if _connection_provider(conn) != 'sqlite':
-        row = conn.execute("SELECT to_regclass(?) AS table_name", ('public.import_jobs',)).fetchone()
-        table_name = row.get('table_name') if isinstance(row, dict) else row[0]
-        if table_name is None:
-            raise RuntimeError(
-                'Postgres import_jobs table is missing. Run managed Postgres migrations before startup.'
-            )
+        _require_managed_postgres_table(conn, 'import_jobs')
         return
 
     conn.execute(IMPORT_JOBS_DDL)
