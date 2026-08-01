@@ -40,6 +40,17 @@ _TARGET_COLUMNS: dict[str, dict[str, str]] = {
     },
 }
 
+_ENTRY_LIST_INDEXES: dict[str, dict[str, str]] = {
+    'dailydiary_entries': {
+        'index_name': 'idx_daily_entries_user_list_order',
+        'entry_time_fallback': '19:00',
+    },
+    'dreamdiary_entries': {
+        'index_name': 'idx_dream_entries_user_list_order',
+        'entry_time_fallback': '08:00',
+    },
+}
+
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'profile_picture_storage_key': 'TEXT',
     'display_name': 'TEXT',
@@ -340,8 +351,25 @@ def ensure_entry_mood_style_columns(
                     f'ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}'
                 )
                 added_columns += 1
+                table_columns.add(column_name)
                 if log:
                     log('Runtime migration added column %s.%s', table_name, column_name)
+
+            index_config = _ENTRY_LIST_INDEXES.get(table_name)
+            index_columns = {'user_id', 'entry_date', 'entry_time', 'entry_number', 'id'}
+            if index_config and index_columns.issubset(table_columns):
+                cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS {index_config['index_name']}
+                    ON {table_name}(
+                        user_id,
+                        entry_date DESC,
+                        COALESCE(entry_time, '{index_config['entry_time_fallback']}') DESC,
+                        entry_number DESC,
+                        id DESC
+                    )
+                    """
+                )
 
     return added_columns
 
