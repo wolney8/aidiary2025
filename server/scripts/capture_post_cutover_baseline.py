@@ -16,11 +16,12 @@ import httpx
 
 PUBLIC_ENDPOINTS = [
     ("health", "GET", "/health"),
-    ("public_holiday_countries", "GET", "/api/public-holidays/countries"),
+    ("database_health", "GET", "/api/health/database"),
 ]
 
 AUTH_ENDPOINTS = [
     ("profile", "GET", "/api/profile"),
+    ("public_holiday_countries", "GET", "/api/public-holidays/countries"),
     ("daily_entries", "GET", "/api/daily"),
     ("dream_entries", "GET", "/api/dreams"),
     ("important_days", "GET", "/api/important-days"),

@@ -29,6 +29,7 @@ def test_capture_baseline_samples_public_and_auth_endpoints():
     assert report["summary"]["error_count"] == 0
     assert report["summary"]["sample_count"] == len(report["endpoints"]) * 2
     assert "/health" in seen_paths
+    assert "/api/health/database" in seen_paths
     assert "/api/profile" in seen_paths
     profile = next(endpoint for endpoint in report["endpoints"] if endpoint["name"] == "profile")
     assert profile["samples"][0]["response_shape"] == {
