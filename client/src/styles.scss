@@ -145,6 +145,17 @@ body {
   --colour-control-selected: #1d4ed8;
   --colour-control-selected-hover: #1e40af;
   --colour-control-selected-text: #ffffff;
+  --gradient-auth-ambient: linear-gradient(
+    125deg,
+    #7dd3fc 0%,
+    #6366f1 26%,
+    #a855f7 52%,
+    #ec4899 76%,
+    #fcd34d 100%
+  );
+  --motion-standard: 0.25s ease;
+  --motion-emphasized: 0.3s cubic-bezier(0.2, 0, 0, 1);
+  --motion-ambient-gradient: 18s cubic-bezier(0.2, 0, 0, 1) infinite alternate;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -169,7 +180,7 @@ html[data-theme="dark"] {
   --colour-text-primary: #e2e8f0;
   --colour-text-secondary: #cbd5e1;
   --colour-border: #31455f;
-  --colour-overlay: rgba(2, 6, 23, 0.78);
+  --colour-overlay: rgba(2, 6, 23, 0.84);
   --colour-shadow-soft: rgba(2, 6, 23, 0.22);
   --colour-shadow-medium: rgba(2, 6, 23, 0.28);
   --colour-shadow-strong: rgba(2, 6, 23, 0.36);
@@ -209,7 +220,47 @@ html[data-theme="dark"] {
   --colour-control-selected: #9bb8ff;
   --colour-control-selected-hover: #bfd1ff;
   --colour-control-selected-text: #07111d;
+  --gradient-auth-ambient: linear-gradient(
+    125deg,
+    #07111d 0%,
+    #0f3b5f 24%,
+    #3b1d73 52%,
+    #7f1d5f 76%,
+    #2f1f13 100%
+  );
   --focus-outline: 2px solid #7fb0ff;
+}
+
+.mat-mdc-tooltip {
+  --mdc-plain-tooltip-container-color: var(--colour-surface-elevated);
+  --mdc-plain-tooltip-supporting-text-color: var(--colour-text-primary);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 24px var(--colour-shadow-medium);
+}
+
+html[data-theme="dark"] .mat-mdc-tooltip {
+  --mdc-plain-tooltip-container-color: #0b1424;
+  --mdc-plain-tooltip-supporting-text-color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.mat-drawer-backdrop.mat-drawer-shown,
+.cdk-overlay-dark-backdrop {
+  background: var(--colour-overlay);
+}
+
+html[data-theme="dark"] .mat-drawer-backdrop.mat-drawer-shown,
+html[data-theme="dark"] .cdk-overlay-dark-backdrop {
+  background: rgba(2, 6, 23, 0.86);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-standard: 0.01ms linear;
+    --motion-emphasized: 0.01ms linear;
+    --motion-ambient-gradient: 0.01ms linear;
+  }
 }
 
 html[data-theme-preset="ocean"] {

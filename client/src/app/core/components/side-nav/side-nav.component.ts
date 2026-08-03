@@ -115,32 +115,6 @@ import { ThemeService } from "../../services/theme.service";
           <span matListItemTitle>Reflections</span>
         </a>
 
-        <a
-          mat-list-item
-          routerLink="/profile"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #profileRla="routerLinkActive"
-          [attr.aria-current]="profileRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-        >
-          <mat-icon matListItemIcon>person</mat-icon>
-          <span matListItemTitle>Profile</span>
-        </a>
-
-        <a
-          mat-list-item
-          routerLink="/settings"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #settingsRla="routerLinkActive"
-          [attr.aria-current]="settingsRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-        >
-          <mat-icon matListItemIcon>settings</mat-icon>
-          <span matListItemTitle>Settings</span>
-        </a>
-
         <mat-divider></mat-divider>
 
         <a mat-list-item (click)="logout()">
@@ -190,24 +164,26 @@ import { ThemeService } from "../../services/theme.service";
 
       .sidenav-container a[mat-list-item] {
         box-sizing: border-box;
-        width: calc(100% - 16px);
-        border-radius: var(--radius-sm);
-        margin: 2px 8px;
+        width: calc(100% - var(--spacing-sm));
+        min-height: 48px;
+        border-radius: var(--radius-pill);
+        margin: 4px var(--spacing-xs);
         color: var(--colour-text-primary);
       }
 
       .sidenav-container a[mat-list-item]:hover {
-        background: var(--colour-surface-muted);
+        background: var(--colour-control-hover);
       }
 
       .sidenav-container a[mat-list-item].is-active {
-        background: var(--colour-surface-muted);
-        border-left: 3px solid var(--colour-primary);
-        font-weight: 600;
+        background: var(--colour-control-selected);
+        color: var(--colour-control-selected-text);
+        box-shadow: 0 8px 18px var(--colour-primary-shadow);
+        font-weight: 800;
       }
 
       .sidenav-container a[mat-list-item].is-active mat-icon {
-        color: var(--colour-primary);
+        color: currentColor;
       }
 
       .sidenav-container a[mat-list-item]:focus-visible {

@@ -200,7 +200,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
   styles: [
     `
       .export-card {
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         border: 1px solid var(--colour-border);
         background: var(--colour-surface);
       }
@@ -214,7 +214,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         margin-top: var(--spacing-md);
         padding: var(--spacing-sm) var(--spacing-md);
         border: 1px solid var(--colour-border);
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
         color: var(--colour-text-secondary);
       }
@@ -249,10 +249,16 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 
       .filter-field input {
         border: 1px solid var(--colour-border);
-        border-radius: var(--radius-sm);
-        background: var(--colour-background);
-        color: var(--colour-text);
-        padding: 8px 10px;
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-primary);
+        padding: 10px 14px;
+        min-height: 44px;
+      }
+
+      .filter-field input:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
       }
 
       .type-row {
@@ -262,20 +268,27 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .feedback {
-        margin-top: var(--spacing-sm);
+        margin: var(--spacing-sm) 0 0;
+        padding: var(--spacing-sm) var(--spacing-md);
+        border-radius: var(--radius-lg);
+        font-weight: 700;
       }
 
       .success {
-        color: #1b5e20;
+        border: 1px solid var(--colour-emerald-border);
+        background: var(--colour-success-bg);
+        color: var(--colour-success-text);
       }
 
       .error {
-        color: #b71c1c;
+        border: 1px solid var(--colour-rose-border);
+        background: var(--colour-danger-bg);
+        color: var(--colour-danger-text);
       }
 
       .bulk-delete-card {
         margin-top: var(--spacing-md);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         border: 1px solid
           color-mix(in srgb, var(--colour-danger-text) 35%, transparent);
         background: color-mix(
@@ -307,6 +320,17 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         display: grid;
         gap: var(--spacing-sm);
         padding-top: var(--spacing-sm);
+      }
+
+      mat-card-actions {
+        padding: 0 var(--spacing-md) var(--spacing-md);
+      }
+
+      mat-card-actions button,
+      .danger-zone button,
+      .bulk-delete-stage button {
+        border-radius: var(--radius-pill);
+        min-height: 44px;
       }
 
       .warning-copy {
@@ -508,7 +532,7 @@ export class ExportComponent implements OnInit {
     const anchor = document.createElement("a");
     const stamp = new Date().toISOString().slice(0, 10);
     anchor.href = url;
-    anchor.download = filename || `aidiary_export_${stamp}.zip`;
+    anchor.download = filename || `openmynd_export_${stamp}.zip`;
     anchor.click();
     window.URL.revokeObjectURL(url);
   }

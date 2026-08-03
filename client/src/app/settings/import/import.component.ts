@@ -790,11 +790,13 @@ type UploadState =
         padding: var(--spacing-md, 16px);
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: var(--spacing-md);
       }
 
       .step-card {
-        border-radius: 12px;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface);
       }
 
       .step-icon {
@@ -802,10 +804,19 @@ type UploadState =
       }
 
       mat-card-actions {
-        padding: 8px 16px 16px;
+        padding: var(--spacing-xs) var(--spacing-md) var(--spacing-md);
         display: flex;
-        gap: 8px;
+        gap: var(--spacing-xs);
         flex-wrap: wrap;
+      }
+
+      mat-card-actions button,
+      .review-actions button,
+      .review-pagination button,
+      .review-selection-bar button,
+      .commit-import-action {
+        border-radius: var(--radius-pill);
+        min-height: 44px;
       }
 
       .hint-text {
@@ -821,9 +832,9 @@ type UploadState =
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        gap: var(--spacing-xs);
         border: 2px dashed var(--colour-border);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 32px 16px;
         cursor: pointer;
         transition:
@@ -919,7 +930,7 @@ type UploadState =
       .processing-spinner {
         width: 2rem;
         height: 2rem;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         border: 3px solid var(--colour-border);
         border-top-color: var(--colour-primary);
         animation: import-processing-spin 900ms linear infinite;
@@ -951,9 +962,9 @@ type UploadState =
       .feedback {
         display: flex;
         align-items: flex-start;
-        gap: 12px;
-        padding: 12px 16px;
-        border-radius: 8px;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border-radius: var(--radius-lg);
         margin-top: 16px;
         font-size: 14px;
         line-height: 1.5;
@@ -1021,7 +1032,7 @@ type UploadState =
         flex-direction: column;
         background: var(--colour-surface-elevated);
         color: var(--colour-text-primary);
-        border-radius: 18px;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--colour-border);
         box-shadow: 0 28px 60px var(--colour-shadow-strong);
       }
@@ -1089,7 +1100,7 @@ type UploadState =
         margin-top: var(--spacing-md);
         padding: var(--spacing-md);
         border: 1px solid var(--colour-info-text);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         background: var(--colour-info-bg);
         color: var(--colour-info-text);
       }

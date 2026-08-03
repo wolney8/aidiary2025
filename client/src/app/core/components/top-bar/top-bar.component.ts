@@ -31,9 +31,8 @@ import {
 } from "@angular/animations";
 import { DomSanitizer, SafeHtml } from "@angular/platform-browser";
 import { AuthService } from "../../services/auth.service";
-import { APP_VERSION } from "../../../version";
-import { Observable, Subject } from "rxjs";
-import { map, filter, takeUntil } from "rxjs/operators";
+import { Subject } from "rxjs";
+import { filter, takeUntil } from "rxjs/operators";
 import { SearchService } from "../../services/search.service";
 import { Location } from "@angular/common";
 import { ThemeService } from "../../services/theme.service";
@@ -260,27 +259,6 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       </div>
 
       <div class="user-section" *ngIf="!isCompactSearchOpen()">
-        <ng-container *ngIf="userName$ | async as name">
-          <span class="user-name" *ngIf="showUserName()">{{ name }}</span>
-        </ng-container>
-        <button
-          mat-icon-button
-          class="notification-bell"
-          type="button"
-          (click)="toggleNotifications($event)"
-          aria-label="Open notifications"
-          aria-haspopup="dialog"
-          [attr.aria-expanded]="showNotifications()"
-        >
-          <ng-container *ngIf="notifications$ | async as notifications">
-            <mat-icon>{{ hasRunningImport(notifications) ? "notifications_active" : "notifications_none" }}</mat-icon>
-            <span
-              *ngIf="getUnreadCount(notifications) > 0"
-              class="notification-count"
-              aria-hidden="true"
-            >{{ getUnreadBadgeLabel(notifications) }}</span>
-          </ng-container>
-        </button>
         <button
           type="button"
           class="theme-toggle"
@@ -303,6 +281,24 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         </button>
         <button
           mat-icon-button
+          class="notification-bell"
+          type="button"
+          (click)="toggleNotifications($event)"
+          aria-label="Open notifications"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="showNotifications()"
+        >
+          <ng-container *ngIf="notifications$ | async as notifications">
+            <mat-icon>{{ hasRunningImport(notifications) ? "notifications_active" : "notifications_none" }}</mat-icon>
+            <span
+              *ngIf="getUnreadCount(notifications) > 0"
+              class="notification-count"
+              aria-hidden="true"
+            >{{ getUnreadBadgeLabel(notifications) }}</span>
+          </ng-container>
+        </button>
+        <button
+          mat-icon-button
           class="account-menu-trigger"
           [matMenuTriggerFor]="userMenu"
           aria-label="Open account menu"
@@ -321,11 +317,37 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         </button>
       </div>
 
-      <mat-menu #userMenu="matMenu">
-        <button mat-menu-item routerLink="/profile">Profile</button>
-        <button mat-menu-item routerLink="/settings">Settings</button>
-        <button mat-menu-item disabled>{{ versionLabel }}</button>
-        <button mat-menu-item (click)="logout()">Logout</button>
+      <mat-menu #userMenu="matMenu" panelClass="account-menu-panel">
+        <ng-container *ngIf="currentUser$ | async as user">
+          <div class="account-menu-summary" (click)="$event.stopPropagation()">
+            <span class="account-menu-avatar" aria-hidden="true">
+              <img
+                *ngIf="user.profile_picture_url; else menuAccountIcon"
+                [src]="user.profile_picture_url"
+                alt=""
+              />
+              <ng-template #menuAccountIcon>
+                <mat-icon>account_circle</mat-icon>
+              </ng-template>
+            </span>
+            <div>
+              <strong>{{ getAccountDisplayName(user) }}</strong>
+            </div>
+          </div>
+          <div class="account-menu-divider" role="separator"></div>
+        </ng-container>
+        <button mat-menu-item routerLink="/profile">
+          <mat-icon aria-hidden="true">person</mat-icon>
+          <span>Profile</span>
+        </button>
+        <button mat-menu-item routerLink="/settings">
+          <mat-icon aria-hidden="true">settings</mat-icon>
+          <span>Settings</span>
+        </button>
+        <button mat-menu-item (click)="logout()">
+          <mat-icon aria-hidden="true">logout</mat-icon>
+          <span>Logout</span>
+        </button>
       </mat-menu>
 
       <div
@@ -341,7 +363,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           <div class="notification-panel__header">
             <div class="notification-panel__title" id="notification-panel-title">
               <mat-icon aria-hidden="true">notifications</mat-icon>
-              <strong>Notifications</strong>
+              <strong class="sr-only">Notifications</strong>
             </div>
             <div class="notification-panel__header-actions">
               <button mat-button type="button" (click)="clearNotifications()">
@@ -504,7 +526,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .search-form {
         box-sizing: border-box;
         width: 100%;
-        max-width: 540px;
+        max-width: min(760px, 52vw);
         position: relative;
         min-width: 0;
       }
@@ -585,18 +607,25 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .user-section {
         display: flex;
         align-items: center;
-        gap: var(--spacing-sm);
+        gap: var(--spacing-xs);
         flex-shrink: 0;
       }
       .account-menu-trigger {
-        width: 52px;
-        height: 48px;
+        width: 58px;
+        height: 52px;
         overflow: hidden;
       }
+
+      .account-menu-trigger mat-icon {
+        width: 34px;
+        height: 34px;
+        font-size: 34px;
+      }
+
       .account-avatar {
         display: block;
-        width: 38px;
-        height: 38px;
+        width: 44px;
+        height: 44px;
         border: 1px solid rgba(255, 255, 255, 0.36);
         border-radius: 50%;
         object-fit: cover;
@@ -608,8 +637,8 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       }
       .theme-toggle {
         position: relative;
-        width: 40px;
-        height: 40px;
+        width: 38px;
+        height: 38px;
         padding: 0;
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 32px;
@@ -635,16 +664,16 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         display: flex;
         flex-direction: column;
         width: 100%;
-        height: 80px;
+        height: 76px;
         transform: translateY(0);
         transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
       }
       .theme-toggle.is-dark .theme-toggle-track {
-        transform: translateY(-40px);
+        transform: translateY(-38px);
       }
       .theme-toggle-slot {
-        width: 40px;
-        height: 40px;
+        width: 38px;
+        height: 38px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -655,14 +684,11 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         width: 21px;
         height: 21px;
       }
-      .user-name {
-        white-space: nowrap;
-      }
       .notification-panel {
         box-sizing: border-box;
-        width: min(17rem, calc(100vw - 1rem));
+        width: min(23rem, calc(100vw - 1rem));
         max-width: 100%;
-        max-height: min(70vh, 32rem);
+        max-height: min(72vh, 36rem);
         overflow-y: auto;
         overflow-x: hidden;
         padding: var(--spacing-sm);
@@ -698,33 +724,39 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .notification-panel__header {
         justify-content: space-between;
         min-width: 0;
-        padding-bottom: var(--spacing-sm);
+        padding-bottom: var(--spacing-xs);
         border-bottom: 1px solid var(--colour-border);
       }
       .notification-panel__title {
         min-width: 0;
       }
+      .notification-panel__title mat-icon {
+        color: var(--colour-text-primary);
+      }
       .notification-panel mat-icon {
-        flex: 0 0 24px;
-        width: 24px;
-        height: 24px;
+        flex: 0 0 22px;
+        width: 22px;
+        height: 22px;
+        font-size: 22px;
       }
       .notification-panel__header > button {
         flex: 0 0 auto;
       }
       .notification-panel__filters {
-        padding: var(--spacing-sm) 0;
+        padding: var(--spacing-xs) 0;
+        font-size: 0.9rem;
       }
       .notification-item {
         box-sizing: border-box;
         min-width: 0;
         position: relative;
-        margin-top: var(--spacing-sm);
-        padding: var(--spacing-md);
+        margin-top: var(--spacing-xs);
+        padding: var(--spacing-sm);
         border: 1px solid var(--colour-border);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
         cursor: pointer;
+        font-size: 0.92rem;
       }
       .notification-item:hover,
       .notification-item:focus-within {
@@ -743,7 +775,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         background: var(--colour-primary);
       }
       .notification-item p {
-        margin: var(--spacing-sm) 0;
+        margin: var(--spacing-xs) 0;
         color: var(--colour-text-secondary);
         overflow-wrap: anywhere;
       }
@@ -756,7 +788,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .notification-item__actions {
         justify-content: flex-end;
         flex-wrap: wrap;
-        margin-top: var(--spacing-md);
+        margin-top: var(--spacing-sm);
       }
       .notification-item__actions button {
         min-width: 0;
@@ -788,6 +820,87 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
         line-height: 1;
         transform: translate(25%, -20%);
         pointer-events: none;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      :host ::ng-deep .account-menu-panel.mat-mdc-menu-panel {
+        min-width: 18rem;
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        color: var(--colour-text-primary);
+        box-shadow: 0 24px 54px var(--colour-shadow-strong);
+      }
+
+      :host ::ng-deep .account-menu-panel .mat-mdc-menu-content {
+        padding: var(--spacing-xs);
+      }
+
+      .account-menu-summary {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        color: var(--colour-text-primary);
+      }
+
+      .account-menu-summary strong,
+      .account-menu-summary span {
+        display: block;
+        line-height: 1.25;
+      }
+
+      .account-menu-summary span {
+        color: var(--colour-text-secondary);
+        font-size: 0.9rem;
+      }
+
+      .account-menu-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        flex: 0 0 3rem;
+        overflow: hidden;
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+      }
+
+      .account-menu-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .account-menu-avatar mat-icon {
+        display: block;
+        width: 2.1rem;
+        height: 2.1rem;
+        font-size: 2.1rem;
+        line-height: 2.1rem;
+      }
+
+      .account-menu-divider {
+        height: 1px;
+        margin: var(--spacing-xs);
+        background: var(--colour-border);
+      }
+
+      :host ::ng-deep .account-menu-panel .mat-mdc-menu-item {
+        min-height: 44px;
+        border-radius: var(--radius-pill);
       }
 
       @media (max-width: 767px) {
@@ -961,6 +1074,20 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       }
 
       /* Responsive adjustments */
+      @media (min-width: 769px) {
+        .search-wrapper:not(.search-wrapper-compact) {
+          position: absolute;
+          left: 50%;
+          width: min(760px, calc(100vw - 34rem));
+          max-width: 760px;
+          transform: translateX(-50%);
+        }
+
+        .search-wrapper:not(.search-wrapper-compact) .search-form {
+          max-width: 100%;
+        }
+      }
+
       @media (max-width: 768px) {
         .search-form {
           max-width: none;
@@ -988,9 +1115,6 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   readonly isCompact = computed(() => this.isCompactViewport());
   readonly isCompactSearchOpen = signal(false);
-  readonly showUserName = computed(
-    () => !this.isCompactViewport() && !this.isMediumViewport(),
-  );
   @Output() toggleSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
   private searchService = inject(SearchService);
@@ -1010,15 +1134,8 @@ export class TopBarComponent implements OnInit, OnDestroy {
   protected searchInputFocused = false;
   protected currentSearchQuery = "";
 
-  userName$: Observable<string | null> = this.authService.currentUser$.pipe(
-    map(
-      (user) =>
-        user?.display_name || user?.first_name || user?.username || null,
-    ),
-  );
   readonly currentUser$ = this.authService.currentUser$;
 
-  versionLabel = APP_VERSION;
   readonly isDarkTheme = this.themeService.isDark;
   readonly brandLogoSrc = computed(() =>
     this.isDarkTheme()
@@ -1141,6 +1258,13 @@ export class TopBarComponent implements OnInit, OnDestroy {
     return this.showUnreadOnly()
       ? notifications.filter((notification) => notification.unread)
       : notifications;
+  }
+
+  getAccountDisplayName(user: {
+    display_name?: string | null;
+    first_name?: string | null;
+  }): string {
+    return user.display_name || user.first_name || "Account";
   }
 
   filterResults(): void {

@@ -9,7 +9,7 @@ def _base_env() -> dict[str, str]:
         "DB_PATH": "db/app.db",
         "CORS_ORIGINS": "https://diary.example.com",
         "OPENAI_API_KEY": "sk-test",
-        "MEDIA_ROOT": "/var/lib/aidiary/media",
+        "MEDIA_ROOT": "/var/lib/openmynd/media",
         "RATELIMIT_STORAGE_URI": "redis://localhost:6379/0",
     }
 

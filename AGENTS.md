@@ -1,4 +1,4 @@
-# AI Diary Agent Contract
+# OpenMynd Agent Contract
 
 This is the authoritative entry point for Codex work in this repository. Source code,
 tests, and current configuration override historical documentation when they disagree.
@@ -6,7 +6,7 @@ Legacy material under `.github/agents/` is not an active orchestration system.
 
 ## Project goals
 
-Prioritise work that improves a private, dependable AI diary while preserving:
+Prioritise work that improves a private, dependable AI-supported diary while preserving:
 
 - user data, privacy, and ownership
 - Daily and Dream behavioural consistency where appropriate

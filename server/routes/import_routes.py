@@ -1118,7 +1118,7 @@ def download_template():
         buffer,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True,
-        download_name='aidiary_import_template.xlsx',
+        download_name='openmynd_import_template.xlsx',
     )
 
 
@@ -1333,9 +1333,9 @@ def export_entries():
         or not include_daily
         or not include_dreams
     )
-    filename = f'aidiary_export_{stamp}.zip'
+    filename = f'openmynd_export_{stamp}.zip'
     if has_filters:
-        filename = f'aidiary_export_filtered_{stamp}.zip'
+        filename = f'openmynd_export_filtered_{stamp}.zip'
 
     ensure_export_history_table(conn)
     is_full_range = bool(

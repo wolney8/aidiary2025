@@ -180,7 +180,7 @@ def test_chat_system_prompt_stays_within_context_budget(tmp_path):
     prompt = ChatContextService(database_path, token_budget=100).build_system_prompt(1)
 
     assert estimate_tokens(prompt) <= 100
-    assert prompt.startswith('You are a supportive AI diary companion.')
+    assert prompt.startswith('You are a supportive OpenMynd diary companion.')
 
 
 class _FakePostgresConnection:
@@ -281,7 +281,7 @@ class _FakePostgresAdapter:
             SELECT 1
             FROM information_schema.tables
             WHERE table_schema = 'public'
-              AND table_name = $1
+              AND table_name = %s
             """,
             (table_name,),
         ).fetchone() is not None
@@ -294,7 +294,7 @@ class _FakePostgresAdapter:
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND table_name = $1
+                  AND table_name = %s
                 """,
                 (table_name,),
             ).fetchall()
@@ -312,9 +312,8 @@ def test_chat_context_uses_adapter_and_postgres_placeholders():
     daily_query = next(
         sql for sql, _params in adapter.connection.calls if 'FROM dailydiary_entries' in sql
     )
-    assert '$1' in user_query
-    assert '$1' in daily_query
-    assert '$2' in daily_query
+    assert '%s' in user_query
+    assert '%s' in daily_query
 
 
 def test_chat_messages_runtime_migration_is_idempotent(tmp_path):

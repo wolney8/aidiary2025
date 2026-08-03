@@ -2,13 +2,13 @@
 
 ## Overview
 
-**Project name**: AI Diary  
-**Architecture**: Angular client + Flask API + SQLite + OpenAI  
+**Project name**: OpenMynd
+**Architecture**: Angular client + Flask API + SQLite/Postgres-compatible data layer + OpenAI
 **Delivery mode**: Single-developer workflow (user + Copilot in VS Code)
 
 ### Goals
 
-- Deliver a stable AI Diary platform with clear daily and dream journalling workflows.
+- Deliver a stable OpenMynd platform with clear daily and dream journalling workflows.
 - Keep compatibility with the existing SQLite database and established API contracts.
 - Maintain British English across user-facing text, documentation, and comments.
 - Ship in milestone waves with practical validation after each wave.
