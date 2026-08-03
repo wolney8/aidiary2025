@@ -18,6 +18,7 @@ import {
 import { environment } from "../environments/environment";
 import { environment as environmentProd } from "../environments/environment.prod";
 import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-companion.component";
+import { APP_VERSION } from "./version";
 
 @Component({
   selector: "app-root",
@@ -46,6 +47,12 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
           <main id="main-content" class="main-content" tabindex="-1">
             <router-outlet></router-outlet>
           </main>
+          <footer class="app-footer" aria-label="OpenMynd information">
+            <span>OpenMynd {{ versionLabel }}</span>
+            <button type="button" disabled>Privacy policy</button>
+            <button type="button" disabled>Terms</button>
+            <button type="button" disabled>Cookie policy</button>
+          </footer>
           <app-chat-companion
             *ngIf="showChatCompanion"
             data-testid="chat-companion"
@@ -91,6 +98,27 @@ import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-
         margin: 0 auto;
       }
 
+      .app-footer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-xs);
+        flex-wrap: wrap;
+        padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+      }
+
+      .app-footer button {
+        min-height: 36px;
+        padding: 0 0.8rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        font: inherit;
+      }
+
       .public-main-content {
         max-width: none;
         padding: 0;
@@ -115,6 +143,7 @@ export class AppComponent {
   >;
 
   title = "OpenMynd";
+  readonly versionLabel = APP_VERSION;
   isAuthenticated = this.authService.isAuthenticated();
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 

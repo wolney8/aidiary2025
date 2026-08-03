@@ -388,10 +388,10 @@ Default behaviour:
 Response:
 
 - `200` with attachment content type:
-  - `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - `application/zip`
 - Download filename:
-  - default: `aidiary_export_<timestamp>.xlsx`
-  - filtered: `aidiary_export_filtered_<timestamp>.xlsx`
+  - default: `openmynd_export_<timestamp>.zip`
+  - filtered: `openmynd_export_filtered_<timestamp>.zip`
 
 Workbook shape:
 

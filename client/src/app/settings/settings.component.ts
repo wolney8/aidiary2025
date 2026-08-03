@@ -116,9 +116,11 @@ import {
 
       .settings-nav-link {
         min-height: 44px;
+        border-radius: var(--radius-pill);
         border-color: transparent;
         color: var(--colour-text-secondary);
         background: transparent;
+        font-weight: 700;
       }
 
       .settings-nav-link:hover {
@@ -129,6 +131,9 @@ import {
 
       .settings-nav-link mat-icon {
         margin-right: var(--spacing-xs);
+        width: 20px;
+        height: 20px;
+        font-size: 20px;
       }
 
       .settings-nav-link.is-active {

@@ -30,7 +30,7 @@ lanes are stable.
 ## Immediate Product Lane
 
 0. `OpenMynd` platform rename and brand sweep
-   - Replace user-facing `AI Diary` / `AIDIARY` product references across frontend
+   - Replace user-facing legacy product references across frontend
      titles, shell navigation, auth screens, backend import/export messages, tests,
      docs, and AI system prompts.
    - Keep legacy storage keys and import/export package identifiers where renaming would

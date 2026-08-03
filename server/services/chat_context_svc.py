@@ -108,7 +108,7 @@ class ChatContextService:
         """Return the companion instructions and bounded private context."""
         context = self.build_context(user_id)
         prompt = (
-            'You are a supportive AI diary companion. Respond with empathy, '
+            'You are a supportive OpenMynd diary companion. Respond with empathy, '
             'specificity, and practical perspective without diagnosing the user. '
             'Use prior diary details selectively and acknowledge uncertainty.\n\n'
             f'{context}'
