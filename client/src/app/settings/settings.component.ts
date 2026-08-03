@@ -1,7 +1,6 @@
 import { CommonModule } from "@angular/common";
 import { Component } from "@angular/core";
 import { MatButtonModule } from "@angular/material/button";
-import { MatCardModule } from "@angular/material/card";
 import { MatIconModule } from "@angular/material/icon";
 import {
   RouterLink,
@@ -18,7 +17,6 @@ import {
     RouterLinkActive,
     RouterOutlet,
     MatButtonModule,
-    MatCardModule,
     MatIconModule,
   ],
   template: `
@@ -78,11 +76,9 @@ import {
         </a>
       </nav>
 
-      <mat-card class="settings-content" data-testid="settings-content">
-        <mat-card-content>
-          <router-outlet></router-outlet>
-        </mat-card-content>
-      </mat-card>
+      <main class="settings-content" data-testid="settings-content">
+        <router-outlet></router-outlet>
+      </main>
     </section>
   `,
   styles: [
@@ -159,10 +155,11 @@ import {
       .settings-content {
         border-radius: var(--radius-lg);
         border: 1px solid var(--colour-border);
-        background: var(--colour-surface);
-      }
-
-      .settings-content mat-card-content {
+        background: color-mix(
+          in srgb,
+          var(--colour-surface) 82%,
+          transparent
+        );
         padding: var(--spacing-md);
       }
 
@@ -181,7 +178,7 @@ import {
           justify-content: center;
         }
 
-        .settings-content mat-card-content {
+        .settings-content {
           padding: var(--spacing-sm);
         }
       }
