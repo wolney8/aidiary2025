@@ -2,8 +2,8 @@ import { CommonModule } from "@angular/common";
 import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { MatButtonModule } from "@angular/material/button";
-import { MatCardModule } from "@angular/material/card";
 import { MatCheckboxModule } from "@angular/material/checkbox";
+import { MatExpansionModule } from "@angular/material/expansion";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
@@ -24,8 +24,8 @@ import { User } from "../../core/models/user.model";
     CommonModule,
     FormsModule,
     MatButtonModule,
-    MatCardModule,
     MatCheckboxModule,
+    MatExpansionModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -42,14 +42,18 @@ import { User } from "../../core/models/user.model";
       </header>
 
       <form (ngSubmit)="saveSettings()" class="settings-form">
-        <mat-card class="group-card" data-testid="customisation-calendar-card">
-          <mat-card-header>
-            <mat-card-title>Calendar And Holidays</mat-card-title>
-            <mat-card-subtitle>
+        <mat-expansion-panel
+          class="settings-panel"
+          expanded
+          data-testid="customisation-calendar-card"
+        >
+          <mat-expansion-panel-header>
+            <mat-panel-title>Calendar and holidays</mat-panel-title>
+            <mat-panel-description>
               Choose which reference dates appear in calendar view.
-            </mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content class="field-grid">
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+          <div class="field-grid">
             <div class="ai-behaviour-group checkbox-row-wide">
               <div class="checkbox-stack">
                 <div class="checkbox-row">
@@ -105,17 +109,20 @@ import { User } from "../../core/models/user.model";
                 maxlength="64"
               />
             </mat-form-field>
-          </mat-card-content>
-        </mat-card>
+          </div>
+        </mat-expansion-panel>
 
-        <mat-card class="group-card" data-testid="customisation-writing-card">
-          <mat-card-header>
-            <mat-card-title>Writing Rhythm</mat-card-title>
-            <mat-card-subtitle>
+        <mat-expansion-panel
+          class="settings-panel"
+          data-testid="customisation-writing-card"
+        >
+          <mat-expansion-panel-header>
+            <mat-panel-title>Writing rhythm</mat-panel-title>
+            <mat-panel-description>
               Gentle in-app prompts after quiet gaps.
-            </mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content class="field-grid rhythm-grid">
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+          <div class="field-grid rhythm-grid">
             <div class="ai-behaviour-group checkbox-row-wide">
               <div class="checkbox-row">
                 <mat-checkbox
@@ -218,17 +225,20 @@ import { User } from "../../core/models/user.model";
               />
               <mat-hint>Counted records per week.</mat-hint>
             </mat-form-field>
-          </mat-card-content>
-        </mat-card>
+          </div>
+        </mat-expansion-panel>
 
-        <mat-card class="group-card" data-testid="customisation-ai-card">
-          <mat-card-header>
-            <mat-card-title>AI Behaviour</mat-card-title>
-            <mat-card-subtitle>
+        <mat-expansion-panel
+          class="settings-panel"
+          data-testid="customisation-ai-card"
+        >
+          <mat-expansion-panel-header>
+            <mat-panel-title>AI behaviour</mat-panel-title>
+            <mat-panel-description>
               Control tone, depth, and how much context the AI may use.
-            </mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content class="field-grid ai-behaviour-grid">
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+          <div class="field-grid ai-behaviour-grid">
             <div class="ai-behaviour-note checkbox-row-wide">
               <strong>Cost and depth</strong>
               <p>
@@ -341,8 +351,8 @@ import { User } from "../../core/models/user.model";
                 </div>
               </div>
             </div>
-          </mat-card-content>
-        </mat-card>
+          </div>
+        </mat-expansion-panel>
 
         <div class="actions">
           <button
@@ -396,28 +406,40 @@ import { User } from "../../core/models/user.model";
         gap: var(--spacing-md);
       }
 
-      .group-card {
+      .settings-panel {
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
         background: var(--colour-surface);
-        box-shadow: 0 12px 30px var(--colour-shadow-soft);
+        box-shadow: 0 10px 24px var(--colour-shadow-soft);
+        overflow: hidden;
       }
 
-      .group-card mat-card-header {
-        padding-bottom: var(--spacing-xs);
+      .settings-panel + .settings-panel {
+        margin-top: 0;
       }
 
-      .group-card mat-card-title {
+      :host ::ng-deep .settings-panel .mat-expansion-panel-body {
+        padding: 0 var(--spacing-md) var(--spacing-md);
+      }
+
+      :host ::ng-deep .settings-panel .mat-expansion-panel-header {
+        min-height: 76px;
+        padding: var(--spacing-sm) var(--spacing-md);
+      }
+
+      :host ::ng-deep .settings-panel .mat-expansion-panel-header-title {
         color: var(--colour-text-primary);
         font-weight: 800;
+        font-size: 1rem;
       }
 
-      .group-card mat-card-subtitle {
+      :host ::ng-deep .settings-panel .mat-expansion-panel-header-description {
         color: var(--colour-text-secondary);
+        flex-grow: 2;
       }
 
-      .group-card mat-card-content {
-        padding-top: var(--spacing-sm);
+      :host ::ng-deep .settings-panel .mat-expansion-indicator::after {
+        color: var(--colour-text-primary);
       }
 
       .field-grid {
@@ -569,8 +591,23 @@ import { User } from "../../core/models/user.model";
       }
 
       @media (max-width: 720px) {
-        .group-card mat-card-content {
+        :host ::ng-deep .settings-panel .mat-expansion-panel-body {
           padding-inline: var(--spacing-sm);
+        }
+
+        :host ::ng-deep .settings-panel .mat-expansion-panel-header {
+          align-items: flex-start;
+          min-height: auto;
+          padding: var(--spacing-sm);
+        }
+
+        :host ::ng-deep .settings-panel .mat-content {
+          display: grid;
+          gap: 0.25rem;
+        }
+
+        :host ::ng-deep .settings-panel .mat-expansion-panel-header-description {
+          margin-left: 0;
         }
       }
     `,
