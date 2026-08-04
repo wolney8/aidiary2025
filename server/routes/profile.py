@@ -293,6 +293,8 @@ def _normalise_profile_update(field: str, value):
         return 1 if bool(value) else 0
     if field == 'writing_rhythm_weekly_goal':
         return _normalise_weekly_goal(value)
+    if field == 'chat_enabled':
+        return 1 if bool(value) else 0
 
     return value
 
@@ -352,6 +354,7 @@ def _select_profile(conn, user_id: int):
                writing_reminders_enabled, writing_reminder_days, writing_reminder_time,
                writing_reminder_silence_days, writing_reminder_entry_types,
                writing_rhythm_progress_enabled, writing_rhythm_weekly_goal,
+               chat_enabled,
                profile_picture_storage_key
         FROM users WHERE id = ?
     '''), (user_id,)).fetchone()
@@ -388,7 +391,8 @@ def update_profile():
         'ai_focus', 'ai_model', 'allow_ai_history', 'allow_ai_attachment_context',
         'writing_reminders_enabled', 'writing_reminder_days', 'writing_reminder_time',
         'writing_reminder_silence_days', 'writing_reminder_entry_types',
-        'writing_rhythm_progress_enabled', 'writing_rhythm_weekly_goal'
+        'writing_rhythm_progress_enabled', 'writing_rhythm_weekly_goal',
+        'chat_enabled'
     ]
     
     updates = []

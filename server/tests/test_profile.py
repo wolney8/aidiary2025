@@ -61,6 +61,7 @@ class _FakePostgresConnection:
                 "writing_reminder_entry_types": "daily,dream",
                 "writing_rhythm_progress_enabled": 0,
                 "writing_rhythm_weekly_goal": 4,
+                "chat_enabled": 1,
                 "profile_picture_storage_key": None,
             }
         ])
@@ -137,12 +138,12 @@ def test_profile_helpers_use_postgres_placeholders():
         )
 
     select_sql, select_params = conn.calls[0]
-    assert "FROM users WHERE id = $1" in select_sql
+    assert "FROM users WHERE id = %s" in select_sql
     assert select_params == (1,)
     assert user["display_name"] == "Will"
-    assert "display_name = $1" in update_sql
-    assert "timezone = $2" in update_sql
-    assert "WHERE id = $3" in update_sql
+    assert "display_name = %s" in update_sql
+    assert "timezone = %s" in update_sql
+    assert "WHERE id = %s" in update_sql
 
 
 def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_schema):
@@ -173,6 +174,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["writing_reminder_entry_types"] == "daily,dream"
     assert data["writing_rhythm_progress_enabled"] == 0
     assert data["writing_rhythm_weekly_goal"] == 4
+    assert data["chat_enabled"] == 1
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -202,6 +204,7 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "writing_reminder_entry_types" in columns
     assert "writing_rhythm_progress_enabled" in columns
     assert "writing_rhythm_weekly_goal" in columns
+    assert "chat_enabled" in columns
 
 
 def test_profile_picture_upload_normalises_replaces_and_deletes(
@@ -300,6 +303,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
                 "writing_reminder_entry_types": ["daily", "dream", "thought_record"],
                 "writing_rhythm_progress_enabled": True,
                 "writing_rhythm_weekly_goal": 6,
+                "chat_enabled": False,
                 "chatgpt_daily_diary_coachname": "Sage",
             }
         ),
@@ -332,6 +336,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     )
     assert data["user"]["writing_rhythm_progress_enabled"] == 1
     assert data["user"]["writing_rhythm_weekly_goal"] == 6
+    assert data["user"]["chat_enabled"] == 0
     assert data["user"]["chatgpt_daily_diary_coachname"] == "Sage"
 
 

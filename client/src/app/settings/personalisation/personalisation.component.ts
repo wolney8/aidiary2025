@@ -354,6 +354,34 @@ import { User } from "../../core/models/user.model";
           </div>
         </mat-expansion-panel>
 
+        <mat-expansion-panel
+          class="settings-panel"
+          data-testid="customisation-app-card"
+        >
+          <mat-expansion-panel-header>
+            <mat-panel-title>App behaviour</mat-panel-title>
+            <mat-panel-description>
+              Choose optional interface features.
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+          <div class="field-grid">
+            <div class="ai-behaviour-group checkbox-row-wide">
+              <div class="checkbox-row">
+                <mat-checkbox
+                  [(ngModel)]="settings.chat_enabled"
+                  name="chat_enabled"
+                  data-testid="customisation-chat-toggle"
+                >
+                  Show AI chat companion
+                </mat-checkbox>
+                <p class="checkbox-hint">
+                  Controls the floating chat button in the app shell.
+                </p>
+              </div>
+            </div>
+          </div>
+        </mat-expansion-panel>
+
         <div class="actions">
           <button
             mat-raised-button
@@ -677,6 +705,10 @@ export class PersonalisationComponent implements OnInit {
             profile.allow_ai_attachment_context === undefined
               ? false
               : Boolean(profile.allow_ai_attachment_context),
+          chat_enabled:
+            profile.chat_enabled === undefined
+              ? true
+              : Boolean(profile.chat_enabled),
           writing_reminders_enabled:
             profile.writing_reminders_enabled === undefined
               ? false
@@ -831,6 +863,7 @@ export class PersonalisationComponent implements OnInit {
       ai_model: String(settings.ai_model || "").trim(),
       allow_ai_history: Boolean(settings.allow_ai_history),
       allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
+      chat_enabled: settings.chat_enabled !== false,
       writing_reminders_enabled: Boolean(settings.writing_reminders_enabled),
       writing_reminder_days: this.normaliseReminderDays(settings.writing_reminder_days),
       writing_reminder_time: String(settings.writing_reminder_time || "19:00").trim(),
@@ -860,6 +893,7 @@ export class PersonalisationComponent implements OnInit {
       ai_model: String(settings.ai_model || "").trim(),
       allow_ai_history: Boolean(settings.allow_ai_history),
       allow_ai_attachment_context: Boolean(settings.allow_ai_attachment_context),
+      chat_enabled: settings.chat_enabled !== false,
       writing_reminders_enabled: Boolean(settings.writing_reminders_enabled),
       writing_reminder_days: this.normaliseReminderDays(settings.writing_reminder_days),
       writing_reminder_time: String(settings.writing_reminder_time || "19:00").trim(),

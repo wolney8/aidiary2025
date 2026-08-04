@@ -20,6 +20,27 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "privacy",
+    title: "Privacy policy | OpenMynd",
+    data: { legalPage: "privacy" },
+    loadComponent: () =>
+      import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
+  },
+  {
+    path: "terms",
+    title: "Terms | OpenMynd",
+    data: { legalPage: "terms" },
+    loadComponent: () =>
+      import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
+  },
+  {
+    path: "cookies",
+    title: "Cookie policy | OpenMynd",
+    data: { legalPage: "cookies" },
+    loadComponent: () =>
+      import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
+  },
+  {
     path: "entries",
     title: "Entries | OpenMynd",
     canActivate: [authGuard],

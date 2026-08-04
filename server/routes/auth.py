@@ -85,6 +85,7 @@ def _optional_user_selects(conn) -> str:
         'writing_reminder_entry_types': "'daily,dream'",
         'writing_rhythm_progress_enabled': '0',
         'writing_rhythm_weekly_goal': '4',
+        'chat_enabled': '1',
     }
     selects = []
     for column_name, fallback in optional_columns.items():
@@ -160,6 +161,7 @@ def register():
                 'writing_reminder_entry_types': 'daily,dream',
                 'writing_rhythm_progress_enabled': False,
                 'writing_rhythm_weekly_goal': 4,
+                'chat_enabled': True,
             }
         }), 201
         
@@ -228,5 +230,6 @@ def login():
                 user['writing_rhythm_progress_enabled']
             ),
             'writing_rhythm_weekly_goal': user['writing_rhythm_weekly_goal'] or 4,
+            'chat_enabled': bool(user['chat_enabled']),
         }
     }), 200

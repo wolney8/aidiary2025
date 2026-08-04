@@ -74,6 +74,7 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'writing_reminder_entry_types': "TEXT DEFAULT 'daily,dream'",
     'writing_rhythm_progress_enabled': 'INTEGER DEFAULT 0',
     'writing_rhythm_weekly_goal': 'INTEGER DEFAULT 4',
+    'chat_enabled': 'INTEGER DEFAULT 1',
 }
 
 _EXPORT_HISTORY_DDL = """

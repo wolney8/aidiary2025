@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
     writing_reminder_silence_days INTEGER DEFAULT 3,
     writing_reminder_entry_types TEXT DEFAULT 'daily,dream',
     writing_rhythm_progress_enabled INTEGER DEFAULT 0,
-    writing_rhythm_weekly_goal INTEGER DEFAULT 4
+    writing_rhythm_weekly_goal INTEGER DEFAULT 4,
+    chat_enabled INTEGER DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS configurations (
