@@ -273,6 +273,67 @@ def test_profile_picture_upload_rejects_invalid_content(client_with_legacy_user_
     assert json.loads(response.data)["error"] == "Choose a valid JPEG, PNG, or WebP image"
 
 
+def test_account_delete_requires_confirmation_and_removes_user_data(
+    client_with_legacy_user_schema,
+):
+    client, db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    media_root = Path(os.environ["MEDIA_ROOT"])
+    storage_key = "entries/daily/1/delete-me.jpg"
+    media_path = media_root / storage_key
+    media_path.parent.mkdir(parents=True, exist_ok=True)
+    media_path.write_bytes(b"image-bytes")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE users SET profile_picture_storage_key = ? WHERE id = 1",
+            (storage_key,)
+        )
+
+    blocked_response = client.delete(
+        "/api/profile/account",
+        headers=headers,
+        data=json.dumps({
+            "password": "testpass123",
+            "confirmation": "DELETE",
+        }),
+        content_type="application/json",
+    )
+    assert blocked_response.status_code == 400
+
+    wrong_password_response = client.delete(
+        "/api/profile/account",
+        headers=headers,
+        data=json.dumps({
+            "password": "wrongpass123",
+            "confirmation": "DELETE MY ACCOUNT",
+        }),
+        content_type="application/json",
+    )
+    assert wrong_password_response.status_code == 400
+    assert json.loads(wrong_password_response.data)["error"] == "Password did not match."
+    assert media_path.exists()
+
+    delete_response = client.delete(
+        "/api/profile/account",
+        headers=headers,
+        data=json.dumps({
+            "password": "testpass123",
+            "confirmation": "DELETE MY ACCOUNT",
+        }),
+        content_type="application/json",
+    )
+
+    assert delete_response.status_code == 200
+    assert json.loads(delete_response.data)["message"] == "Account deleted"
+    assert not media_path.exists()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+
+
 def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_schema):
     client, _db_path = client_with_legacy_user_schema
     token = _register_and_get_token(client)

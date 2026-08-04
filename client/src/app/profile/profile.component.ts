@@ -10,6 +10,7 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { Router } from "@angular/router";
 import { AppDialogService } from "../core/services/app-dialog.service";
+import { AuthService } from "../core/services/auth.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 
@@ -190,6 +191,59 @@ import { User } from "../core/models/user.model";
             {{ successMessage }}
           </p>
           <p class="status error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+          <section class="danger-zone" aria-labelledby="account-delete-heading">
+            <div class="danger-zone-copy">
+              <span class="danger-zone-icon" aria-hidden="true">
+                <mat-icon>delete_forever</mat-icon>
+              </span>
+              <div>
+                <h3 id="account-delete-heading">Delete account</h3>
+                <p>
+                  Permanently removes your account, entries, attachments, images,
+                  thought records, settings, and chat history.
+                </p>
+              </div>
+            </div>
+
+            <div class="delete-account-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Password</mat-label>
+                <input
+                  matInput
+                  type="password"
+                  autocomplete="current-password"
+                  [(ngModel)]="accountDeletePassword"
+                  name="account_delete_password"
+                  [disabled]="deletingAccount"
+                />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Type DELETE MY ACCOUNT</mat-label>
+                <input
+                  matInput
+                  [(ngModel)]="accountDeleteConfirmation"
+                  name="account_delete_confirmation"
+                  [disabled]="deletingAccount"
+                />
+              </mat-form-field>
+            </div>
+
+            <div class="danger-actions">
+              <button
+                mat-raised-button
+                color="warn"
+                type="button"
+                [disabled]="!canDeleteAccount()"
+                (click)="deleteAccount()"
+                data-testid="profile-delete-account-button"
+              >
+                <mat-icon>delete_forever</mat-icon>
+                {{ deletingAccount ? "Deleting..." : "Delete account" }}
+              </button>
+            </div>
+          </section>
         </mat-card-content>
       </mat-card>
     </div>
@@ -308,6 +362,54 @@ import { User } from "../core/models/user.model";
         color: #c62828;
       }
 
+      .danger-zone {
+        display: grid;
+        gap: var(--spacing-md);
+        margin-top: var(--spacing-lg);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-danger-text);
+        border-radius: var(--radius-lg);
+        background: var(--colour-danger-bg);
+      }
+
+      .danger-zone-copy {
+        display: flex;
+        gap: var(--spacing-sm);
+        align-items: flex-start;
+      }
+
+      .danger-zone-copy h3,
+      .danger-zone-copy p {
+        margin: 0;
+      }
+
+      .danger-zone-copy p {
+        margin-top: var(--spacing-xs);
+        color: var(--colour-danger-text);
+      }
+
+      .danger-zone-icon {
+        display: grid;
+        width: 3rem;
+        height: 3rem;
+        flex: 0 0 3rem;
+        place-items: center;
+        border-radius: var(--radius-pill);
+        background: var(--colour-danger-text);
+        color: var(--colour-danger-bg);
+      }
+
+      .delete-account-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: var(--spacing-sm);
+      }
+
+      .danger-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
       @media (max-width: 600px) {
         .profile-picture-section {
           align-items: flex-start;
@@ -319,6 +421,7 @@ import { User } from "../core/models/user.model";
 })
 export class ProfileComponent implements OnInit {
   private appDialog = inject(AppDialogService);
+  private authService = inject(AuthService);
   private profileService = inject(ProfileService);
   private location = inject(Location);
   private router = inject(Router);
@@ -326,6 +429,9 @@ export class ProfileComponent implements OnInit {
   profile: User | null = null;
   saving = false;
   pictureSaving = false;
+  deletingAccount = false;
+  accountDeletePassword = "";
+  accountDeleteConfirmation = "";
   successMessage = "";
   errorMessage = "";
   private initialProfileSnapshot = "";
@@ -455,6 +561,47 @@ export class ProfileComponent implements OnInit {
           this.pictureSaving = false;
           this.errorMessage =
             error?.error?.error || "Profile picture removal failed. Please try again.";
+        },
+      });
+    });
+  }
+
+  canDeleteAccount(): boolean {
+    return (
+      !this.deletingAccount &&
+      this.accountDeletePassword.length > 0 &&
+      this.accountDeleteConfirmation.trim() === "DELETE MY ACCOUNT"
+    );
+  }
+
+  deleteAccount(): void {
+    if (!this.canDeleteAccount()) return;
+
+    void this.appDialog.confirm({
+      title: "Permanently delete account?",
+      message:
+        "This deletes your account and all OpenMynd data for this user. This cannot be undone.",
+      confirmText: "Delete account",
+      cancelText: "Cancel",
+      variant: "danger",
+    }).then((confirmed) => {
+      if (!confirmed) return;
+
+      this.deletingAccount = true;
+      this.errorMessage = "";
+      this.successMessage = "";
+      this.profileService.deleteAccount({
+        password: this.accountDeletePassword,
+        confirmation: this.accountDeleteConfirmation.trim(),
+      }).subscribe({
+        next: () => {
+          this.deletingAccount = false;
+          this.authService.logout();
+        },
+        error: (error) => {
+          this.deletingAccount = false;
+          this.errorMessage =
+            error?.error?.error || "Account deletion failed. Please try again.";
         },
       });
     });

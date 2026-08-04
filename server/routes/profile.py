@@ -4,9 +4,15 @@ from io import BytesIO
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+import bcrypt
 import re
 from PIL import Image, ImageOps, UnidentifiedImageError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from services.account_deletion import (
+    collect_user_media_storage_keys,
+    delete_user_account_data,
+    delete_user_media,
+)
 from services.ai_config import ALLOWED_ANALYSIS_MODELS
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
@@ -69,6 +75,7 @@ ALLOWED_AI_FOCUS = {
     'creative-prompts',
 }
 ALLOWED_AI_MODELS = set(ALLOWED_ANALYSIS_MODELS)
+ACCOUNT_DELETE_CONFIRMATION = 'DELETE MY ACCOUNT'
 
 
 def _database_adapter() -> DatabaseAdapter:
@@ -489,3 +496,42 @@ def delete_profile_picture():
         'message': 'Profile picture removed',
         'user': _profile_payload(updated_user),
     }), 200
+
+
+@profile_bp.route('/profile/account', methods=['DELETE'])
+@jwt_required()
+def delete_account():
+    """Permanently delete the authenticated user's account and app-owned data."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+    password = str(data.get('password') or '')
+    confirmation = str(data.get('confirmation') or '').strip()
+
+    if confirmation != ACCOUNT_DELETE_CONFIRMATION:
+        return jsonify({
+            'error': f'Type {ACCOUNT_DELETE_CONFIRMATION} to confirm account deletion.'
+        }), 400
+    if not password:
+        return jsonify({'error': 'Password is required to delete your account.'}), 400
+
+    with get_db() as conn:
+        user = conn.execute(
+            _sql('SELECT id, password FROM users WHERE id = ?'),
+            (user_id,),
+        ).fetchone()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        if not _password_matches(password, user['password']):
+            return jsonify({'error': 'Password did not match.'}), 400
+
+        media_storage_keys = collect_user_media_storage_keys(conn, user_id)
+        delete_user_account_data(conn, user_id)
+
+    delete_user_media(media_storage_keys)
+    return jsonify({'message': 'Account deleted'}), 200
+
+
+def _password_matches(password: str, stored_password: str) -> bool:
+    if stored_password.startswith('$2b$'):
+        return bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8'))
+    return password == stored_password
