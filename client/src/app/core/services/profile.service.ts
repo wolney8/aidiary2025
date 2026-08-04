@@ -68,4 +68,17 @@ export class ProfileService {
       tap((response) => this.authService.syncCurrentUser(response.user)),
     );
   }
+
+  deleteAccount(payload: {
+    password: string;
+    confirmation: string;
+  }): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/profile/account`,
+      {
+        headers: this.buildHeaders(),
+        body: payload,
+      },
+    );
+  }
 }
