@@ -30,6 +30,7 @@ export interface User {
   writing_reminder_entry_types?: string;
   writing_rhythm_progress_enabled?: boolean;
   writing_rhythm_weekly_goal?: number;
+  chat_enabled?: boolean;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;

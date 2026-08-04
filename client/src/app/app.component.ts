@@ -2,7 +2,7 @@
 import { Component, DestroyRef, inject, isDevMode } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { CommonModule } from "@angular/common";
-import { NavigationEnd, Router, RouterOutlet } from "@angular/router";
+import { NavigationEnd, Router, RouterLink, RouterOutlet } from "@angular/router";
 import { TopBarComponent } from "./core/components/top-bar/top-bar.component";
 import { SideNavComponent } from "./core/components/side-nav/side-nav.component";
 import { MatSidenavModule } from "@angular/material/sidenav";
@@ -19,6 +19,7 @@ import { environment } from "../environments/environment";
 import { environment as environmentProd } from "../environments/environment.prod";
 import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-companion.component";
 import { APP_VERSION } from "./version";
+import { User } from "./core/models/user.model";
 
 @Component({
   selector: "app-root",
@@ -26,6 +27,7 @@ import { APP_VERSION } from "./version";
   imports: [
     CommonModule,
     RouterOutlet,
+    RouterLink,
     TopBarComponent,
     SideNavComponent,
     MatSidenavModule,
@@ -49,9 +51,9 @@ import { APP_VERSION } from "./version";
           </main>
           <footer class="app-footer" aria-label="OpenMynd information">
             <span>OpenMynd {{ versionLabel }}</span>
-            <button type="button" disabled>Privacy policy</button>
-            <button type="button" disabled>Terms</button>
-            <button type="button" disabled>Cookie policy</button>
+            <a routerLink="/privacy">Privacy policy</a>
+            <a routerLink="/terms">Terms</a>
+            <a routerLink="/cookies">Cookie policy</a>
           </footer>
           <app-chat-companion
             *ngIf="showChatCompanion"
@@ -109,7 +111,10 @@ import { APP_VERSION } from "./version";
         font-size: 0.88rem;
       }
 
-      .app-footer button {
+      .app-footer a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         min-height: 36px;
         padding: 0 0.8rem;
         border: 1px solid var(--colour-border);
@@ -117,6 +122,18 @@ import { APP_VERSION } from "./version";
         background: var(--colour-surface-muted);
         color: var(--colour-text-secondary);
         font: inherit;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .app-footer a:hover {
+        background: var(--colour-control-hover);
+        color: var(--colour-text-primary);
+      }
+
+      .app-footer a:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: 3px;
       }
 
       .public-main-content {
@@ -145,6 +162,7 @@ export class AppComponent {
   title = "OpenMynd";
   readonly versionLabel = APP_VERSION;
   isAuthenticated = this.authService.isAuthenticated();
+  currentUser = this.authService.getCurrentUser();
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
   constructor() {
@@ -164,6 +182,7 @@ export class AppComponent {
     this.authService.currentUser$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((user) => {
+        this.currentUser = user;
         this.isAuthenticated = !!user && this.authService.isAuthenticated();
         this.showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
@@ -254,6 +273,14 @@ export class AppComponent {
   }
 
   private shouldShowChatCompanion(url: string): boolean {
-    return this.isAuthenticated && !this.isCbtRoute(url);
+    return (
+      this.isAuthenticated &&
+      this.isChatEnabled(this.currentUser) &&
+      !this.isCbtRoute(url)
+    );
+  }
+
+  private isChatEnabled(user: User | null): boolean {
+    return Number(user?.chat_enabled ?? 1) !== 0;
   }
 }

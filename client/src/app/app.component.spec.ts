@@ -155,6 +155,16 @@ describe("AppComponent inactivity integration", () => {
     expect(fixture.componentInstance.showChatCompanion).toBeTrue();
   });
 
+  it("hides the chat companion when the saved profile preference is disabled", () => {
+    const user = { id: 1, username: "tester", chat_enabled: 0 } as User;
+    authServiceMock.isAuthenticated.and.returnValue(true);
+
+    currentUserSubject.next(user);
+    routerEvents.next(new NavigationEnd(1, "/entries", "/entries"));
+
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+  });
+
   it("stay action resets timer", () => {
     const closeResult$ = new Subject<InactivityWarningResult | undefined>();
     const dialogRef = {

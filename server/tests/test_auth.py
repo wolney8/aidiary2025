@@ -47,9 +47,10 @@ def test_auth_helpers_support_postgres_placeholders_and_optional_selects():
     assert 'profile_picture_storage_key' in optional_selects
     assert "'19:00' AS writing_reminder_time" not in optional_selects
     assert "'daily,dream' AS writing_reminder_entry_types" in optional_selects
-    assert 'VALUES ($1, $2, $3, $4)' in insert_sql
+    assert '1 AS chat_enabled' in optional_selects
+    assert 'VALUES (%s, %s, %s, %s)' in insert_sql
     assert 'RETURNING id' in insert_sql
-    assert 'WHERE username = $1' in login_sql
+    assert 'WHERE username = %s' in login_sql
 
 
 @pytest.fixture

@@ -67,6 +67,10 @@ describe("PersonalisationComponent", () => {
     expect(component.settings?.show_on_this_day).toBeFalse();
   });
 
+  it("defaults the AI chat companion to visible", () => {
+    expect(component.settings?.chat_enabled).toBeTrue();
+  });
+
   it("shows the custom guidance counter", () => {
     expect(component.getCustomGuidanceLength()).toBe(21);
   });
@@ -89,6 +93,7 @@ describe("PersonalisationComponent", () => {
       ...(component.settings as User),
       ai_tone: "empathetic",
       show_on_this_day: true,
+      chat_enabled: false,
     };
 
     component.saveSettings();
@@ -96,6 +101,7 @@ describe("PersonalisationComponent", () => {
     const payload = updateProfileSpy.calls.mostRecent().args[0] as Partial<User>;
     expect(payload.ai_tone).toBe("empathetic");
     expect(payload.show_on_this_day).toBeTrue();
+    expect(payload.chat_enabled).toBeFalse();
     expect(payload.display_name).toBeUndefined();
     expect(payload.dailydiary_api_key).toBeUndefined();
     expect(payload.chatgpt_daily_diary_coachname).toBeUndefined();
