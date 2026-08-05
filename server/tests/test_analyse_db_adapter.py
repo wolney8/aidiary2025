@@ -58,7 +58,7 @@ def test_user_analysis_settings_adapts_placeholders_for_configured_provider():
         settings = analyse._load_user_analysis_settings(conn, 7)
 
     sql, params = conn.calls[0]
-    assert "WHERE id = $1" in sql
+    assert "WHERE id = %s" in sql
     assert "?" not in sql
     assert params == (7,)
     assert settings["personal_context"] == (
@@ -85,12 +85,12 @@ def test_related_history_context_adapts_all_query_placeholders_for_configured_pr
     assert context is None
     daily_sql, daily_params = conn.calls[1]
     thought_record_sql, thought_record_params = conn.calls[2]
-    assert "user_id = $1" in daily_sql
-    assert "entry_date <= $3" in daily_sql
-    assert "id != $5" in daily_sql
+    assert "user_id = %s" in daily_sql
+    assert "entry_date <= %s" in daily_sql
+    assert "id != %s" in daily_sql
     assert "?" not in daily_sql
     assert daily_params == (7, "2026-07-21", "2026-07-21", 22, 22, analyse.RELATED_CONTEXT_SCAN_LIMIT)
-    assert "w.user_id = $1" in thought_record_sql
-    assert "w.record_date <= $3" in thought_record_sql
+    assert "w.user_id = %s" in thought_record_sql
+    assert "w.record_date <= %s" in thought_record_sql
     assert "?" not in thought_record_sql
     assert thought_record_params == (7, "2026-07-21", "2026-07-21", analyse.RELATED_CONTEXT_SCAN_LIMIT)

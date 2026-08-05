@@ -25,6 +25,7 @@ _USER_TABLES: tuple[str, ...] = (
     "import_sessions",
     "export_history",
     "import_history",
+    "auth_identities",
     "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",

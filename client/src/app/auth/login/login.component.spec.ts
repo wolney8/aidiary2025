@@ -76,24 +76,24 @@ describe("LoginComponent returnUrl navigation", () => {
     });
   });
 
-  it("falls back to /entries for unsafe absolute returnUrl values", () => {
+  it("falls back to /dashboard for unsafe absolute returnUrl values", () => {
     queryParams = { returnUrl: "https://example.com/phishing" };
     component.credentials = { username: "user", password: "password" };
 
     component.onSubmit();
 
-    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/entries", {
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/dashboard", {
       replaceUrl: true,
     });
   });
 
-  it("falls back to /entries when returnUrl is missing", () => {
+  it("falls back to /dashboard when returnUrl is missing", () => {
     queryParams = {};
     component.credentials = { username: "user", password: "password" };
 
     component.onSubmit();
 
-    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/entries", {
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/dashboard", {
       replaceUrl: true,
     });
   });
@@ -123,9 +123,25 @@ describe("LoginComponent returnUrl navigation", () => {
     const username = fixture.nativeElement.querySelector('input[name="username"]');
     const password = fixture.nativeElement.querySelector('input[name="password"]');
 
-    expect(heading?.textContent).toContain("Login to OpenMynd");
+    expect(heading?.textContent).toContain("Log in to OpenMynd");
     expect(username?.getAttribute("autocomplete")).toBe("username");
     expect(password?.getAttribute("autocomplete")).toBe("current-password");
+  });
+
+  it("renders provider sign-in actions as disabled until OAuth is configured", () => {
+    fixture.detectChanges();
+
+    const googleButton = fixture.nativeElement.querySelector(
+      '[data-testid="login-google-placeholder"]',
+    ) as HTMLButtonElement | null;
+    const microsoftButton = fixture.nativeElement.querySelector(
+      '[data-testid="login-microsoft-placeholder"]',
+    ) as HTMLButtonElement | null;
+
+    expect(googleButton?.disabled).toBeTrue();
+    expect(microsoftButton?.disabled).toBeTrue();
+    expect(googleButton?.textContent).toContain("Continue with Google");
+    expect(microsoftButton?.textContent).toContain("Continue with Microsoft");
   });
 
   it("announces validation failures as alerts", () => {

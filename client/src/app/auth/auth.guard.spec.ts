@@ -97,6 +97,18 @@ describe("authGuard", () => {
     expect(redirectUrl).toBe("/login?returnUrl=%2Fsettings%2Fimport");
   });
 
+  it("uses dashboard as the protected-route fallback return target", () => {
+    isAuthenticated = false;
+
+    const result = TestBed.runInInjectionContext(() =>
+      authMatchGuard({ path: "" } as Route, []),
+    );
+
+    expect(result instanceof UrlTree).toBeTrue();
+    const redirectUrl = router.serializeUrl(result as UrlTree);
+    expect(redirectUrl).toBe("/login?returnUrl=%2Fdashboard");
+  });
+
   it("allows route matching when authenticated", () => {
     isAuthenticated = true;
 

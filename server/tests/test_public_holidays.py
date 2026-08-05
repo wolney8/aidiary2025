@@ -212,6 +212,5 @@ def test_public_holiday_cache_uses_postgres_placeholders():
 
     assert holidays == [{"name": "Cached"}]
     sql, params = conn.calls[0]
-    assert "$1" in sql
-    assert "$2" in sql
+    assert sql.count("%s") == 2
     assert params == ("GB", 2026)

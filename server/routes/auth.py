@@ -192,9 +192,16 @@ def login():
         return jsonify({'error': 'Invalid credentials'}), 401
     
     # Check password (handle both bcrypt and legacy plaintext)
-    stored_password = user['password']
+    stored_password = user['password'] or ''
     if stored_password.startswith('$2b$'):  # bcrypt hash
-        if not bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8')):
+        try:
+            password_matches = bcrypt.checkpw(
+                password.encode('utf-8'),
+                stored_password.encode('utf-8'),
+            )
+        except ValueError:
+            password_matches = False
+        if not password_matches:
             return jsonify({'error': 'Invalid credentials'}), 401
     else:  # Legacy plaintext (should be migrated)
         if password != stored_password:

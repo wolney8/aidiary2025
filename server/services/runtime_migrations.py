@@ -77,6 +77,23 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'chat_enabled': 'INTEGER DEFAULT 1',
 }
 
+_AUTH_IDENTITIES_DDL = """
+CREATE TABLE IF NOT EXISTS auth_identities (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL,
+    provider            TEXT NOT NULL,
+    provider_subject    TEXT NOT NULL,
+    email               TEXT,
+    email_verified      INTEGER NOT NULL DEFAULT 0,
+    display_name        TEXT,
+    profile_picture_url TEXT,
+    created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(provider, provider_subject)
+)
+"""
+
 _EXPORT_HISTORY_DDL = """
 CREATE TABLE IF NOT EXISTS export_history (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -443,6 +460,26 @@ def ensure_user_settings_columns(
                 log('Runtime migration added column %s.%s', 'users', column_name)
 
     return added_columns
+
+
+def ensure_auth_identities_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure future OAuth/OIDC identities can be linked to local accounts."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_AUTH_IDENTITIES_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_auth_identities_user_provider
+            ON auth_identities(user_id, provider)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'auth_identities')
+
+    return True
 
 
 def ensure_export_history_table(

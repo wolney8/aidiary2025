@@ -272,11 +272,16 @@ export class AppComponent {
     return /^\/cbt(?:\/|\?|#|$)/.test(url);
   }
 
+  private isDashboardRoute(url: string): boolean {
+    return /^\/dashboard(?:\/|\?|#|$)/.test(url);
+  }
+
   private shouldShowChatCompanion(url: string): boolean {
     return (
       this.isAuthenticated &&
       this.isChatEnabled(this.currentUser) &&
-      !this.isCbtRoute(url)
+      !this.isCbtRoute(url) &&
+      !this.isDashboardRoute(url)
     );
   }
 

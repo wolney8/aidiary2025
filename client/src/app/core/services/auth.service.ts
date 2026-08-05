@@ -78,7 +78,7 @@ export class AuthService {
     this.router.navigate(["/login"], {
       queryParams: {
         reason: "session-expired",
-        returnUrl: currentUrl || "/entries",
+        returnUrl: currentUrl || "/dashboard",
       },
       replaceUrl: true,
     });

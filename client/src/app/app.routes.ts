@@ -4,7 +4,7 @@ import { authGuard, authMatchGuard } from "./auth/auth.guard";
 import { pendingChangesGuard } from "./entries/pending-changes.guard";
 
 export const routes: Routes = [
-  { path: "", redirectTo: "/login", pathMatch: "full" },
+  { path: "", redirectTo: "/dashboard", pathMatch: "full" },
   {
     path: "login",
     title: "Login | OpenMynd",
@@ -39,6 +39,16 @@ export const routes: Routes = [
     data: { legalPage: "cookies" },
     loadComponent: () =>
       import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
+  },
+  {
+    path: "dashboard",
+    title: "Dashboard | OpenMynd",
+    canActivate: [authGuard],
+    canMatch: [authMatchGuard],
+    loadComponent: () =>
+      import("./dashboard/dashboard.component").then(
+        (m) => m.DashboardComponent,
+      ),
   },
   {
     path: "entries",

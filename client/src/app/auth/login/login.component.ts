@@ -457,11 +457,11 @@ export class LoginComponent implements OnInit {
       !returnUrl.startsWith("/") ||
       returnUrl.startsWith("//")
     ) {
-      return "/entries";
+      return "/dashboard";
     }
 
     if (returnUrl.includes("://") || returnUrl === "/login") {
-      return "/entries";
+      return "/dashboard";
     }
 
     return returnUrl;

@@ -108,11 +108,11 @@ def test_on_this_day_entry_queries_use_postgres_placeholders():
     daily_sql, daily_params = conn.calls[0]
     dream_sql, dream_params = conn.calls[1]
     thought_sql, thought_params = conn.calls[2]
-    assert 'entry.user_id = $1' in daily_sql
-    assert "to_char((entry.entry_date)::date, 'MM-DD') = $2" in daily_sql
-    assert 'EXTRACT(YEAR FROM (entry.entry_date)::date)::integer < $3' in dream_sql
-    assert 'worksheet.user_id = $1' in thought_sql
-    assert 'EXTRACT(YEAR FROM (worksheet.record_date)::date)::integer < $3' in thought_sql
+    assert 'entry.user_id = %s' in daily_sql
+    assert "to_char((entry.entry_date)::date, 'MM-DD') = %s" in daily_sql
+    assert 'EXTRACT(YEAR FROM (entry.entry_date)::date)::integer < %s' in dream_sql
+    assert 'worksheet.user_id = %s' in thought_sql
+    assert 'EXTRACT(YEAR FROM (worksheet.record_date)::date)::integer < %s' in thought_sql
     assert daily_params == (9, '07-21', 2026, on_this_day.MAX_RESULTS)
     assert dream_params == daily_params
     assert thought_params == daily_params
@@ -127,9 +127,7 @@ def test_on_this_day_hide_insert_uses_postgres_conflict_syntax():
 
     assert 'INSERT OR IGNORE' not in sql
     assert 'ON CONFLICT(user_id, entry_type, entry_id) DO NOTHING' in sql
-    assert '$1' in sql
-    assert '$2' in sql
-    assert '$3' in sql
+    assert sql.count('%s') == 3
 
 
 def test_on_this_day_is_opt_in_and_user_scoped(client):

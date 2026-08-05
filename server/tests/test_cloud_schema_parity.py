@@ -8,6 +8,7 @@ from scripts.load_cloud_migration import (
 )
 from scripts.rehearse_cloud_migration import TABLE_ORDER
 from services.runtime_migrations import (
+    ensure_auth_identities_table,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
     ensure_chat_observability_events_table,
@@ -101,6 +102,7 @@ def _build_runtime_sqlite_schema(db_path):
     ensure_entry_mood_style_columns(str(db_path))
     ensure_entry_ai_metadata_table(str(db_path))
     ensure_user_settings_columns(str(db_path))
+    ensure_auth_identities_table(str(db_path))
     ensure_export_history_table(str(db_path))
     ensure_import_sessions_table(str(db_path))
     ensure_import_jobs_table(str(db_path))
@@ -129,6 +131,7 @@ def test_runtime_sqlite_managed_columns_exist_in_postgres_schema(tmp_path):
 
     managed_tables = {
         "users",
+        "auth_identities",
         "dailydiary_entries",
         "dreamdiary_entries",
         "entry_ai_metadata",
@@ -183,3 +186,35 @@ def test_important_day_runtime_schema_covers_cloud_fields(tmp_path):
         assert {"ends_on", "linked_entry_refs"}.issubset(
             _sqlite_columns(conn, "important_days")
         )
+
+
+def test_auth_identity_runtime_schema_supports_provider_registration(tmp_path):
+    db_path = tmp_path / "auth-identities.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL
+            )
+            """
+        )
+
+    ensure_auth_identities_table(str(db_path))
+
+    with sqlite3.connect(db_path) as conn:
+        assert {
+            "user_id",
+            "provider",
+            "provider_subject",
+            "email",
+            "email_verified",
+            "display_name",
+            "profile_picture_url",
+        }.issubset(_sqlite_columns(conn, "auth_identities"))
+        indexes = {
+            str(row[1])
+            for row in conn.execute("PRAGMA index_list(auth_identities)").fetchall()
+        }
+        assert "idx_auth_identities_user_provider" in indexes

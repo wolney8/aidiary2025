@@ -20,7 +20,7 @@ function requireAuthenticated(returnUrl: string): boolean | UrlTree {
   }
 
   const queryParams: Record<string, string> = {
-    returnUrl: returnUrl || "/entries",
+    returnUrl: returnUrl || "/dashboard",
   };
   if (authService.consumeSessionExpiredFlag()) {
     queryParams["reason"] = "session-expired";
@@ -33,7 +33,7 @@ export const authGuard: CanActivateFn = (
   _route: ActivatedRouteSnapshot,
   state: RouterStateSnapshot,
 ): boolean | UrlTree => {
-  return requireAuthenticated(state.url || "/entries");
+  return requireAuthenticated(state.url || "/dashboard");
 };
 
 export const authMatchGuard: CanMatchFn = (
@@ -41,5 +41,5 @@ export const authMatchGuard: CanMatchFn = (
   segments: UrlSegment[],
 ): boolean | UrlTree => {
   const segmentPath = segments.map((segment) => segment.path).join("/");
-  return requireAuthenticated(segmentPath ? `/${segmentPath}` : "/entries");
+  return requireAuthenticated(segmentPath ? `/${segmentPath}` : "/dashboard");
 };

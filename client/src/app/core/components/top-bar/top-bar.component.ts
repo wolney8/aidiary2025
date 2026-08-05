@@ -1338,7 +1338,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   }
 
   goHome(): void {
-    this.router.navigate(["/entries"]).then(() => {
+    this.router.navigate(["/dashboard"]).then(() => {
       this.searchService.clear();
       this.searchForm.patchValue({ query: "" });
     });

@@ -9,6 +9,7 @@ from extensions import limiter
 from services.database_adapter import DatabaseAdapter
 from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_database
 from services.runtime_migrations import (
+    ensure_auth_identities_table,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
     ensure_chat_observability_events_table,
@@ -163,6 +164,11 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
             app.logger.info('Runtime user settings migration check: no column changes needed')
     except Exception as migration_exc:
         app.logger.warning('Runtime user settings migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_auth_identities_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime auth identities migration skipped due to error: %s', migration_exc)
 
     try:
         ensure_export_history_table(database_path, app.logger.info)
@@ -365,6 +371,7 @@ def create_app():
     from routes.reflection_summaries import reflection_summaries_bp
     from routes.chat import chat_bp
     from routes.cbt import cbt_bp
+    from routes.dashboard import dashboard_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
@@ -377,6 +384,7 @@ def create_app():
     app.register_blueprint(reflection_summaries_bp, url_prefix='/api')
     app.register_blueprint(chat_bp, url_prefix='/api')
     app.register_blueprint(cbt_bp, url_prefix='/api')
+    app.register_blueprint(dashboard_bp, url_prefix='/api')
 
     try:
         recovered_jobs = recover_import_jobs(app)

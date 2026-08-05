@@ -326,3 +326,24 @@ def test_login_migrates_legacy_plaintext_password_to_bcrypt(client):
     conn.close()
 
     assert updated_password.startswith('$2b$')
+
+
+def test_login_rejects_unusable_password_hash_without_crashing(client):
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    conn.execute("""
+        INSERT INTO users (id, username, password, first_name, last_name)
+        VALUES (?, ?, ?, ?, ?)
+    """, (100, 'provideruser', '$2b$not-a-valid-hash', 'Provider', 'User'))
+    conn.commit()
+    conn.close()
+
+    response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'provideruser',
+            'password': 'anything123'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 401
