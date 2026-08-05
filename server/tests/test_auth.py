@@ -279,7 +279,7 @@ def test_oauth_providers_report_disabled_when_unconfigured(client, monkeypatch):
     assert providers["microsoft"]["enabled"] is False
 
 
-def test_oauth_providers_detect_config_without_enabling_callback_flow(client, monkeypatch):
+def test_oauth_providers_enable_configured_provider_without_exposing_secret(client, monkeypatch):
     monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
     monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
     monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
@@ -293,10 +293,84 @@ def test_oauth_providers_detect_config_without_enabling_callback_flow(client, mo
     payload = json.loads(response.data)
     providers = {provider["id"]: provider for provider in payload["providers"]}
     assert providers["google"]["configured"] is True
-    assert providers["google"]["enabled"] is False
-    assert providers["google"]["status"] == "configured_pending_callback"
+    assert providers["google"]["enabled"] is True
+    assert providers["google"]["status"] == "enabled"
+    assert providers["google"]["start_url"] == "/api/oauth/google/start"
     assert "google-secret" not in response.get_data(as_text=True)
     assert providers["microsoft"]["configured"] is False
+
+
+def test_oauth_start_redirects_to_provider_with_signed_state(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+
+    response = client.get("/api/oauth/google/start?returnUrl=/entries")
+
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+    assert "client_id=google-client" in location
+    assert "scope=openid+email+profile" in location
+    assert "state=" in location
+
+
+class _OAuthResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+def test_oauth_callback_creates_user_identity_and_redirects_to_frontend(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:4200")
+    with client.application.app_context():
+        state = auth._sign_oauth_state({
+            "provider": "google",
+            "return_url": "/dashboard",
+            "nonce": "test",
+        })
+
+    monkeypatch.setattr(
+        auth.httpx,
+        "post",
+        lambda *_args, **_kwargs: _OAuthResponse({"access_token": "provider-token"}),
+    )
+    monkeypatch.setattr(
+        auth.httpx,
+        "get",
+        lambda *_args, **_kwargs: _OAuthResponse({
+            "sub": "google-user-123",
+            "email": "OAuthUser@example.com",
+            "email_verified": True,
+            "name": "OAuth User",
+            "given_name": "OAuth",
+            "family_name": "User",
+            "picture": "https://example.test/avatar.jpg",
+        }),
+    )
+
+    response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("http://localhost:4200/oauth/callback#")
+    assert "token=" in response.headers["Location"]
+    assert "returnUrl=%2Fdashboard" in response.headers["Location"]
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        identity = conn.execute(
+            "SELECT provider, provider_subject, email, email_verified FROM auth_identities"
+        ).fetchone()
+        user = conn.execute("SELECT username, first_name, last_name FROM users").fetchone()
+    assert identity == ("google", "google-user-123", "oauthuser@example.com", 1)
+    assert user == ("oauthuser", "OAuth", "User")
 
 
 def test_login_success(client):

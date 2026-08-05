@@ -61,7 +61,8 @@ export interface OAuthProvider {
   label: string;
   enabled: boolean;
   configured: boolean;
-  status: "not_configured" | "configured_pending_callback";
+  status: "not_configured" | "enabled";
+  start_url: string | null;
 }
 
 export interface OAuthProvidersResponse {

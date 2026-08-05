@@ -44,6 +44,7 @@ describe("LoginComponent returnUrl navigation", () => {
               enabled: false,
               configured: false,
               status: "not_configured",
+              start_url: null,
             },
             {
               id: "microsoft",
@@ -51,6 +52,7 @@ describe("LoginComponent returnUrl navigation", () => {
               enabled: false,
               configured: false,
               status: "not_configured",
+              start_url: null,
             },
           ],
         }),

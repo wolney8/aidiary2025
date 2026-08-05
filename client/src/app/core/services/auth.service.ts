@@ -8,6 +8,7 @@ import {
   RegisterRequest,
   AuthResponse,
   User,
+  OAuthProvider,
   OAuthProvidersResponse,
 } from "../models/user.model";
 import { environment } from "../../../environments/environment";
@@ -63,6 +64,23 @@ export class AuthService {
 
   getOAuthProviders(): Observable<OAuthProvidersResponse> {
     return this.http.get<OAuthProvidersResponse>(`${this.apiUrl}/oauth/providers`);
+  }
+
+  completeOAuthLogin(response: AuthResponse): void {
+    this.sessionExpiredSinceLastCheck = false;
+    localStorage.setItem(this.tokenKey, response.token);
+    localStorage.setItem(this.userKey, JSON.stringify(response.user));
+    this.currentUserSubject.next(response.user);
+  }
+
+  getOAuthStartUrl(provider: OAuthProvider, returnUrl = "/dashboard"): string {
+    if (!provider.start_url) {
+      return "";
+    }
+    const apiRoot = this.apiUrl.replace(/\/api\/?$/, "");
+    const url = new URL(provider.start_url, `${apiRoot}/`);
+    url.searchParams.set("returnUrl", returnUrl);
+    return url.toString();
   }
 
   logout(): void {

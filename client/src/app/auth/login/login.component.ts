@@ -477,12 +477,15 @@ export class LoginComponent implements OnInit {
   }
 
   startOAuth(provider: OAuthProvider): void {
-    if (!provider.enabled) {
+    const startUrl = this.authService.getOAuthStartUrl(
+      provider,
+      this.getSafeReturnUrl(),
+    );
+    if (!provider.enabled || !startUrl) {
       return;
     }
 
-    this.errorMessage =
-      "External sign-in is not available yet. Please use username and password.";
+    window.location.assign(startUrl);
   }
 
   getProviderMark(provider: OAuthProvider): string {
@@ -497,6 +500,7 @@ export class LoginComponent implements OnInit {
         enabled: false,
         configured: false,
         status: "not_configured",
+        start_url: null,
       },
       {
         id: "microsoft",
@@ -504,6 +508,7 @@ export class LoginComponent implements OnInit {
         enabled: false,
         configured: false,
         status: "not_configured",
+        start_url: null,
       },
     ];
   }

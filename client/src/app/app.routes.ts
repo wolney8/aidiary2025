@@ -20,6 +20,14 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "oauth/callback",
+    title: "Completing sign-in | OpenMynd",
+    loadComponent: () =>
+      import("./auth/oauth-callback/oauth-callback.component").then(
+        (m) => m.OAuthCallbackComponent,
+      ),
+  },
+  {
     path: "privacy",
     title: "Privacy policy | OpenMynd",
     data: { legalPage: "privacy" },
