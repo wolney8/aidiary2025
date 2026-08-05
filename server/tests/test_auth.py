@@ -259,6 +259,46 @@ def test_register_rejects_duplicate_username(client):
     data = json.loads(second_response.data)
     assert data['error'] == 'Username already exists'
 
+
+def test_oauth_providers_report_disabled_when_unconfigured(client, monkeypatch):
+    for provider in ("GOOGLE", "MICROSOFT"):
+        monkeypatch.delenv(f"OAUTH_{provider}_CLIENT_ID", raising=False)
+        monkeypatch.delenv(f"OAUTH_{provider}_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv(f"OAUTH_{provider}_REDIRECT_URI", raising=False)
+
+    response = client.get("/api/oauth/providers")
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    providers = {provider["id"]: provider for provider in payload["providers"]}
+    assert providers["google"]["label"] == "Google"
+    assert providers["google"]["configured"] is False
+    assert providers["google"]["enabled"] is False
+    assert providers["google"]["status"] == "not_configured"
+    assert providers["microsoft"]["configured"] is False
+    assert providers["microsoft"]["enabled"] is False
+
+
+def test_oauth_providers_detect_config_without_enabling_callback_flow(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.delenv("OAUTH_MICROSOFT_CLIENT_ID", raising=False)
+    monkeypatch.delenv("OAUTH_MICROSOFT_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("OAUTH_MICROSOFT_REDIRECT_URI", raising=False)
+
+    response = client.get("/api/oauth/providers")
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    providers = {provider["id"]: provider for provider in payload["providers"]}
+    assert providers["google"]["configured"] is True
+    assert providers["google"]["enabled"] is False
+    assert providers["google"]["status"] == "configured_pending_callback"
+    assert "google-secret" not in response.get_data(as_text=True)
+    assert providers["microsoft"]["configured"] is False
+
+
 def test_login_success(client):
     """Test successful login."""
     # First register a user

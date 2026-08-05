@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token
 import bcrypt
 import sqlite3
 import re
+import os
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.media_storage import resolve_image_url
@@ -17,6 +18,16 @@ MAX_USERNAME_LENGTH = 32
 MAX_NAME_LENGTH = 12
 USERNAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+$')
 NAME_PATTERN = re.compile(r"^[A-Za-z]+(?:[ '-][A-Za-z]+)*$")
+OAUTH_PROVIDERS = {
+    'google': {
+        'label': 'Google',
+        'env_prefix': 'GOOGLE',
+    },
+    'microsoft': {
+        'label': 'Microsoft',
+        'env_prefix': 'MICROSOFT',
+    },
+}
 
 
 def _normalise_username(raw: object) -> str:
@@ -103,6 +114,35 @@ def _is_duplicate_username_error(exc: Exception) -> bool:
         and 'username' in message
         and ('unique' in message or 'duplicate' in message)
     )
+
+
+def _oauth_provider_payload(provider_id: str, config: dict[str, str]) -> dict[str, object]:
+    prefix = config['env_prefix']
+    required_env = [
+        f'OAUTH_{prefix}_CLIENT_ID',
+        f'OAUTH_{prefix}_CLIENT_SECRET',
+        f'OAUTH_{prefix}_REDIRECT_URI',
+    ]
+    configured = all(os.getenv(name, '').strip() for name in required_env)
+    return {
+        'id': provider_id,
+        'label': config['label'],
+        'enabled': False,
+        'configured': configured,
+        'status': 'configured_pending_callback' if configured else 'not_configured',
+    }
+
+
+@auth_bp.route('/oauth/providers', methods=['GET'])
+def oauth_providers():
+    """Report OAuth/OIDC provider readiness without exposing secrets."""
+    return jsonify({
+        'providers': [
+            _oauth_provider_payload(provider_id, config)
+            for provider_id, config in OAUTH_PROVIDERS.items()
+        ],
+    }), 200
+
 
 @auth_bp.route('/register', methods=['POST'])
 def register():

@@ -10,6 +10,7 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { AuthService } from "../../core/services/auth.service";
 import { ThemeService } from "../../core/services/theme.service";
+import { OAuthProvider } from "../../core/models/user.model";
 
 @Component({
   selector: "app-login",
@@ -104,24 +105,22 @@ import { ThemeService } from "../../core/services/theme.service";
 
           <div class="oauth-actions" aria-label="External sign-in options">
             <button
+              *ngFor="let provider of oauthProviders"
               mat-stroked-button
               type="button"
               class="oauth-button"
-              disabled
-              data-testid="login-google-placeholder"
+              [disabled]="!provider.enabled || isLoading"
+              [attr.data-testid]="'login-' + provider.id + '-oauth'"
+              (click)="startOAuth(provider)"
             >
-              <span class="oauth-mark" aria-hidden="true">G</span>
-              <span>Continue with Google</span>
-            </button>
-            <button
-              mat-stroked-button
-              type="button"
-              class="oauth-button"
-              disabled
-              data-testid="login-microsoft-placeholder"
-            >
-              <span class="oauth-mark oauth-mark--microsoft" aria-hidden="true">M</span>
-              <span>Continue with Microsoft</span>
+              <span
+                class="oauth-mark"
+                [class.oauth-mark--microsoft]="provider.id === 'microsoft'"
+                aria-hidden="true"
+              >
+                {{ getProviderMark(provider) }}
+              </span>
+              <span>Continue with {{ provider.label }}</span>
             </button>
           </div>
 
@@ -406,6 +405,7 @@ export class LoginComponent implements OnInit {
   errorMessage = "";
   sessionInfoMessage = "";
   isLoading = false;
+  oauthProviders: OAuthProvider[] = this.defaultOAuthProviders();
 
   ngOnInit(): void {
     const reason = this.route.snapshot.queryParamMap.get("reason");
@@ -413,6 +413,15 @@ export class LoginComponent implements OnInit {
       this.sessionInfoMessage =
         "Your session has expired. Please log in again to continue.";
     }
+
+    this.authService.getOAuthProviders().subscribe({
+      next: ({ providers }) => {
+        this.oauthProviders = providers.length ? providers : this.defaultOAuthProviders();
+      },
+      error: () => {
+        this.oauthProviders = this.defaultOAuthProviders();
+      },
+    });
   }
 
   onSubmit(): void {
@@ -465,5 +474,37 @@ export class LoginComponent implements OnInit {
     }
 
     return returnUrl;
+  }
+
+  startOAuth(provider: OAuthProvider): void {
+    if (!provider.enabled) {
+      return;
+    }
+
+    this.errorMessage =
+      "External sign-in is not available yet. Please use username and password.";
+  }
+
+  getProviderMark(provider: OAuthProvider): string {
+    return provider.id === "microsoft" ? "M" : "G";
+  }
+
+  private defaultOAuthProviders(): OAuthProvider[] {
+    return [
+      {
+        id: "google",
+        label: "Google",
+        enabled: false,
+        configured: false,
+        status: "not_configured",
+      },
+      {
+        id: "microsoft",
+        label: "Microsoft",
+        enabled: false,
+        configured: false,
+        status: "not_configured",
+      },
+    ];
   }
 }

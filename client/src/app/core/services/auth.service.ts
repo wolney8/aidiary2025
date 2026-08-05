@@ -8,6 +8,7 @@ import {
   RegisterRequest,
   AuthResponse,
   User,
+  OAuthProvidersResponse,
 } from "../models/user.model";
 import { environment } from "../../../environments/environment";
 
@@ -58,6 +59,10 @@ export class AuthService {
         this.currentUserSubject.next(response.user);
       }),
     );
+  }
+
+  getOAuthProviders(): Observable<OAuthProvidersResponse> {
+    return this.http.get<OAuthProvidersResponse>(`${this.apiUrl}/oauth/providers`);
   }
 
   logout(): void {

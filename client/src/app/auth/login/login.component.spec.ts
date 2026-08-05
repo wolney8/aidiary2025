@@ -10,6 +10,7 @@ describe("LoginComponent returnUrl navigation", () => {
   let queryParams: Record<string, string>;
   let authServiceMock: {
     login: (...args: unknown[]) => unknown;
+    getOAuthProviders: () => unknown;
   };
   let routerMock: {
     navigateByUrl: (...args: unknown[]) => unknown;
@@ -32,6 +33,26 @@ describe("LoginComponent returnUrl navigation", () => {
             last_name: "User",
             email: "test@example.com",
           },
+        }),
+      ),
+      getOAuthProviders: jasmine.createSpy("getOAuthProviders").and.returnValue(
+        of({
+          providers: [
+            {
+              id: "google",
+              label: "Google",
+              enabled: false,
+              configured: false,
+              status: "not_configured",
+            },
+            {
+              id: "microsoft",
+              label: "Microsoft",
+              enabled: false,
+              configured: false,
+              status: "not_configured",
+            },
+          ],
         }),
       ),
     };
@@ -132,10 +153,10 @@ describe("LoginComponent returnUrl navigation", () => {
     fixture.detectChanges();
 
     const googleButton = fixture.nativeElement.querySelector(
-      '[data-testid="login-google-placeholder"]',
+      '[data-testid="login-google-oauth"]',
     ) as HTMLButtonElement | null;
     const microsoftButton = fixture.nativeElement.querySelector(
-      '[data-testid="login-microsoft-placeholder"]',
+      '[data-testid="login-microsoft-oauth"]',
     ) as HTMLButtonElement | null;
 
     expect(googleButton?.disabled).toBeTrue();

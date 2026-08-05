@@ -53,3 +53,17 @@ export interface AuthResponse {
   token: string;
   user: User;
 }
+
+export type OAuthProviderId = "google" | "microsoft";
+
+export interface OAuthProvider {
+  id: OAuthProviderId;
+  label: string;
+  enabled: boolean;
+  configured: boolean;
+  status: "not_configured" | "configured_pending_callback";
+}
+
+export interface OAuthProvidersResponse {
+  providers: OAuthProvider[];
+}

@@ -1,5 +1,5 @@
 // Registration component
-import { Component, computed, inject } from '@angular/core';
+import { Component, OnInit, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../../core/services/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
+import { OAuthProvider } from '../../core/models/user.model';
 
 @Component({
   selector: 'app-register',
@@ -126,24 +127,22 @@ import { ThemeService } from '../../core/services/theme.service';
 
           <div class="oauth-actions" aria-label="External account creation options">
             <button
+              *ngFor="let provider of oauthProviders"
               mat-stroked-button
               type="button"
               class="oauth-button"
-              disabled
-              data-testid="register-google-placeholder"
+              [disabled]="!provider.enabled || submitting"
+              [attr.data-testid]="'register-' + provider.id + '-oauth'"
+              (click)="startOAuth(provider)"
             >
-              <span class="oauth-mark" aria-hidden="true">G</span>
-              <span>Continue with Google</span>
-            </button>
-            <button
-              mat-stroked-button
-              type="button"
-              class="oauth-button"
-              disabled
-              data-testid="register-microsoft-placeholder"
-            >
-              <span class="oauth-mark oauth-mark--microsoft" aria-hidden="true">M</span>
-              <span>Continue with Microsoft</span>
+              <span
+                class="oauth-mark"
+                [class.oauth-mark--microsoft]="provider.id === 'microsoft'"
+                aria-hidden="true"
+              >
+                {{ getProviderMark(provider) }}
+              </span>
+              <span>Continue with {{ provider.label }}</span>
             </button>
           </div>
 
@@ -383,7 +382,7 @@ import { ThemeService } from '../../core/services/theme.service';
     }
   `]
 })
-export class RegisterComponent {
+export class RegisterComponent implements OnInit {
   private authService = inject(AuthService);
   private router = inject(Router);
   private readonly themeService = inject(ThemeService);
@@ -402,6 +401,18 @@ export class RegisterComponent {
   confirmPassword = '';
   submitting = false;
   errorMessage = '';
+  oauthProviders: OAuthProvider[] = this.defaultOAuthProviders();
+
+  ngOnInit(): void {
+    this.authService.getOAuthProviders().subscribe({
+      next: ({ providers }) => {
+        this.oauthProviders = providers.length ? providers : this.defaultOAuthProviders();
+      },
+      error: () => {
+        this.oauthProviders = this.defaultOAuthProviders();
+      },
+    });
+  }
   
   onSubmit(): void {
     this.errorMessage = '';
@@ -433,5 +444,37 @@ export class RegisterComponent {
         this.submitting = false;
       }
     });
+  }
+
+  startOAuth(provider: OAuthProvider): void {
+    if (!provider.enabled) {
+      return;
+    }
+
+    this.errorMessage =
+      'External account creation is not available yet. Please use username and password.';
+  }
+
+  getProviderMark(provider: OAuthProvider): string {
+    return provider.id === 'microsoft' ? 'M' : 'G';
+  }
+
+  private defaultOAuthProviders(): OAuthProvider[] {
+    return [
+      {
+        id: 'google',
+        label: 'Google',
+        enabled: false,
+        configured: false,
+        status: 'not_configured',
+      },
+      {
+        id: 'microsoft',
+        label: 'Microsoft',
+        enabled: false,
+        configured: false,
+        status: 'not_configured',
+      },
+    ];
   }
 }
