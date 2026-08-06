@@ -1,7 +1,8 @@
 # Roadmap
 
-Updated: 29 July 2026. GitHub issues remain the delivery source of truth; this file
-records their intended sequence rather than duplicating issue bodies.
+Updated: 6 August 2026. GitHub issues remain the delivery source of truth; this file
+records the intended sequence and the major readiness gaps that should not be lost
+between delivery sessions.
 
 ## Future State
 
@@ -23,40 +24,55 @@ than a generic notes app. The target product shape is:
 - A production path that moves from local SQLite convenience to hosted PostgreSQL with
   rehearsed migration, rollback, integrity checks, and performance baselines.
 
-Near-term work should avoid speculative provider integrations, broad visual redesigns,
-or new AI surfaces until the existing accessibility, portability, and cloud-readiness
-lanes are stable.
+Near-term work should now prioritise public-readiness hardening and gap closure over
+new broad product surfaces.
 
-## Immediate Product Lane
+## Current Readiness Lanes
 
-0. `OpenMynd` platform rename and brand sweep
-   - Replace user-facing legacy product references across frontend
-     titles, shell navigation, auth screens, backend import/export messages, tests,
-     docs, and AI system prompts.
-   - Keep legacy storage keys and import/export package identifiers where renaming would
-     break existing sessions or package compatibility.
-   - Wire the light/dark logos from `client/src/assets/brand/`.
-   - Keep historical changelog/test-result names only where changing them would falsify
-     past release records.
-1. `#109` On this day and anniversary resurfacing
-   - Reuse existing entry, calendar, preview-deck, image, and return-route contracts.
-   - Ship neutral resurfacing language plus global and per-entry hide controls.
-2. `#110` Weekly and monthly reflection summaries
-   - Add explicit, cost-aware AI generation with bounded source references and persisted
-     summary provenance.
-3. `#111` Gentle writing rhythm and opt-in reminders
-   - Build on the in-app notification model with timezone-safe, non-punitive prompts.
-   - Keep browser notifications out until permission and service-worker delivery are
-     deliberately designed.
+1. Security and privacy baseline
+   - Finish public-launch security review before any real public onboarding.
+   - Harden auth rate limiting, browser session storage, legacy password migration,
+     account recovery, audit logging, and consent/privacy evidence.
+2. Database operations and cloud readiness
+   - Keep SQLite as the current local fallback while rehearsing Neon/Postgres cutover.
+   - Complete backup, restore, maintenance, rollback, integrity, and performance
+     evidence before switching production data stores.
+3. Chat and AI context validation
+   - Chat already has bounded user-scoped Daily/Dream context. It still needs a product
+     pass to respect AI-history privacy settings explicitly and to decide whether Chat
+     should include Thought Records, Important Days, attachment-derived text, and
+     reflection summaries.
+   - Entry AI analysis already uses related-entry memory and optional attachment
+     context. Keep making source use visible and bounded.
+4. Import and portability validation
+   - The current import path supports OpenMynd `.xlsx`/`.zip` and Daylio `.csv`/`.daylio`.
+   - No ChatGPT import adapter is planned. The remaining personal-data task is to fill
+     the OpenMynd import workbook with real diary entries, run the staged review, and
+     confirm import, revert, duplicate handling, and media/attachment expectations.
+5. Testing and release gates
+   - Backend unit/integration coverage is strong. Browser workflow coverage should be
+     expanded for the highest-risk paths: OAuth onboarding, Chat context, import
+     review/commit/revert, dashboard, account deletion, and dark/light accessibility.
+   - Keep `npm run lint`, `npm run build`, `npm run test:e2e:smoke`, and
+     `npm run test:e2e:a11y` as release-boundary frontend gates.
 
-## Quality Lane
+## Product Gaps To Keep Visible
 
-- Finish the manual matrix in `#52`: keyboard-only journeys, 200% zoom, short viewport
-  overlays, light/dark data states, and VoiceOver/NVDA checks.
-- Keep `npm run test:e2e:a11y` as a standard frontend gate alongside lint, build, and
-  focused smoke tests.
-- Complete `#66` chat observability and SLOs after the motivation feature sequence,
-  unless production chat reliability becomes urgent sooner.
+- Chat: full smoke and automated coverage for prior-entry context, privacy settings,
+  source disclosure, rate limits, retry/error handling, and disabled-chat behavior.
+- Personal import: end-to-end import of the user's real diary data through the OpenMynd
+  XLSX template, including staged review before commit and safe revert.
+- Dashboard: deeper analytics can later include stronger year-over-year insights,
+  important-day comparisons, and clearer mental-health pattern summaries once the data
+  set is stable.
+- Attachments: audio transcription, attachment-derived metadata, and AI attachment
+  context should remain opt-in and source-visible.
+- Legal/compliance: privacy policy, terms, cookie consent, data deletion, export, and
+  AI data-processing disclosures need production review.
+- Payments/entitlements: billing, subscription state, free-tier limits, and AI-cost
+  controls are not yet implemented.
+- Operations: production monitoring, backup alerts, database capacity alerts, and
+  incident runbooks remain required.
 
 ## Cloud Migration Lane
 
