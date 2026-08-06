@@ -115,10 +115,12 @@ def test_database_adapter_health_check_reports_sqlite_success(tmp_path):
     db_path = tmp_path / "app.db"
     adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
 
-    report = adapter.health_check()
+    report = adapter.health_check(write=True)
 
     assert report["provider"] == "sqlite"
     assert report["ok"] is True
+    assert report["read_ok"] is True
+    assert report["write_ok"] is True
     assert isinstance(report["latency_ms"], float)
     assert "database_url" not in report
     assert "error_type" not in report

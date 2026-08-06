@@ -4,10 +4,12 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, get_jwt_identity, verify_jwt_in_request
 from flask_limiter.errors import RateLimitExceeded
+from werkzeug.exceptions import HTTPException
 from dotenv import load_dotenv
 from extensions import limiter
 from services.database_adapter import DatabaseAdapter
 from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_database
+from services.database_resilience import classify_database_exception
 from services.runtime_migrations import (
     ensure_auth_identities_table,
     ensure_cbt_worksheet_tables,
@@ -322,6 +324,30 @@ def create_app():
         app.logger.error('500 Internal Server Error: %s', err)
         return {'msg': 'Internal Server Error'}, 500
 
+    @app.errorhandler(Exception)
+    def _handle_unexpected_exception(err):
+        if isinstance(err, HTTPException):
+            return err
+
+        database_failure = classify_database_exception(err)
+        if database_failure:
+            app.logger.error(
+                'Database failure classified: category=%s code=%s provider=%s path=%s error_type=%s',
+                database_failure.category,
+                database_failure.code,
+                app.config.get('DATABASE_PROVIDER', 'unknown'),
+                request.path,
+                err.__class__.__name__,
+            )
+            return jsonify({
+                'error': database_failure.user_message,
+                'code': database_failure.code,
+                'category': database_failure.category,
+            }), database_failure.status_code
+
+        app.logger.exception('Unhandled application exception on %s', request.path)
+        return {'msg': 'Internal Server Error'}, 500
+
     @app.errorhandler(RateLimitExceeded)
     def _handle_chat_rate_limit(_err):
         if request.path.startswith('/api/chat/'):
@@ -449,7 +475,8 @@ def create_app():
 
     @app.route('/api/health/database')
     def database_health():
-        report = app.config['DATABASE_ADAPTER'].health_check()
+        write = str(request.args.get('write') or '').strip().lower() in {'1', 'true', 'yes'}
+        report = app.config['DATABASE_ADAPTER'].health_check(write=write)
         return report, 200 if report.get('ok') is True else 503
 
     @app.route(f'{DEFAULT_MEDIA_URL_PREFIX}/<path:storage_key>')

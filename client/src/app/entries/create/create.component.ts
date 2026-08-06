@@ -3304,6 +3304,14 @@ export class CreateComponent implements OnInit, OnDestroy {
   private handleSaveError(error: unknown, fallbackMessage: string): void {
     this.thoughtRecordAfterSave = null;
     if (error instanceof HttpErrorResponse) {
+      const apiCode =
+        typeof error.error?.code === "string" ? error.error.code : "";
+      if (apiCode.startsWith("database_")) {
+        this.handleError(
+          "Save did not complete because OpenMynd could not write to the database. Your entry is still on this screen; try again before leaving.",
+        );
+        return;
+      }
       const apiMessage =
         typeof error.error?.error === "string" ? error.error.error : "";
       if (apiMessage) {

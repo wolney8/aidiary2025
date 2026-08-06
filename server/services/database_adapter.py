@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import time
+import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
@@ -157,16 +158,36 @@ class DatabaseAdapter:
 
         raise ValueError(f"Unsupported database provider: {self.provider}")
 
-    def health_check(self) -> dict[str, object]:
+    def health_check(self, *, write: bool = False) -> dict[str, object]:
         started_at = time.perf_counter()
         report: dict[str, object] = {
             "provider": self.provider,
             "ok": False,
+            "read_ok": False,
+            "write_ok": None if not write else False,
             "latency_ms": None,
         }
         try:
             with self.connect(timeout=5) as conn:
                 conn.execute("SELECT 1").fetchone()
+                report["read_ok"] = True
+                if write:
+                    conn.execute(
+                        """
+                        CREATE TEMP TABLE IF NOT EXISTS openmynd_database_health_probe (
+                            id TEXT PRIMARY KEY,
+                            checked_at TEXT NOT NULL
+                        )
+                        """
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO openmynd_database_health_probe (id, checked_at)
+                        VALUES (?, ?)
+                        """,
+                        (str(uuid.uuid4()), str(time.time())),
+                    )
+                    report["write_ok"] = True
         except Exception as exc:
             # Keep public health output free of DSNs, credentials, hosts, and row data.
             report["error_type"] = exc.__class__.__name__
