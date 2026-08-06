@@ -1,5 +1,6 @@
 import pytest
 import sys
+import sqlite3
 import types
 
 import app as app_module
@@ -150,7 +151,29 @@ def test_database_health_endpoint_reports_provider_status(monkeypatch, tmp_path)
     payload = response.get_json()
     assert payload["provider"] == "sqlite"
     assert payload["ok"] is True
+    assert payload["read_ok"] is True
+    assert payload["write_ok"] is None
     assert "DATABASE_URL" not in str(payload)
+
+
+def test_database_health_endpoint_can_probe_write_readiness(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+    response = app.test_client().get("/api/health/database?write=true")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["read_ok"] is True
+    assert payload["write_ok"] is True
 
 
 def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, tmp_path):
@@ -164,7 +187,7 @@ def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, t
     monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
 
     class FailingAdapter:
-        def health_check(self):
+        def health_check(self, *, write=False):
             return {
                 "provider": "postgres",
                 "ok": False,
@@ -185,6 +208,31 @@ def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, t
         "error_type": "OperationalError",
         "message": "Database connection check failed.",
     }
+
+
+def test_database_write_failure_returns_sanitized_api_error(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+
+    @app.route("/api/test-database-write-failure", methods=["POST"])
+    def test_database_write_failure():
+        raise sqlite3.OperationalError("database or disk is full")
+
+    response = app.test_client().post("/api/test-database-write-failure")
+
+    assert response.status_code == 507
+    payload = response.get_json()
+    assert payload["code"] == "database_storage_exhausted"
+    assert payload["category"] == "storage_or_quota"
+    assert "database or disk is full" not in str(payload)
 
 
 def test_app_runs_runtime_migration_hook_for_sqlite(monkeypatch, tmp_path):
