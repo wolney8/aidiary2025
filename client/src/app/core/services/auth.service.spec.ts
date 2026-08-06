@@ -40,31 +40,31 @@ describe("AuthService session handling", () => {
   }
 
   it("logout clears session and keeps manual logout behaviour", () => {
-    localStorage.setItem("ai_diary_token", "token");
+    localStorage.setItem("openmynd_token", "token");
     localStorage.setItem(
-      "ai_diary_user",
+      "openmynd_user",
       JSON.stringify({ id: 1, username: "tester" }),
     );
 
     service.logout();
 
-    expect(localStorage.getItem("ai_diary_token")).toBeNull();
-    expect(localStorage.getItem("ai_diary_user")).toBeNull();
+    expect(localStorage.getItem("openmynd_token")).toBeNull();
+    expect(localStorage.getItem("openmynd_user")).toBeNull();
     expect(routerMock.navigate).toHaveBeenCalledWith(["/login"]);
   });
 
   it("handleSessionExpired redirects to login with expiry reason on protected pages", () => {
-    localStorage.setItem("ai_diary_token", "token");
+    localStorage.setItem("openmynd_token", "token");
     localStorage.setItem(
-      "ai_diary_user",
+      "openmynd_user",
       JSON.stringify({ id: 1, username: "tester" }),
     );
     routerMock.url = "/entries";
 
     service.handleSessionExpired();
 
-    expect(localStorage.getItem("ai_diary_token")).toBeNull();
-    expect(localStorage.getItem("ai_diary_user")).toBeNull();
+    expect(localStorage.getItem("openmynd_token")).toBeNull();
+    expect(localStorage.getItem("openmynd_user")).toBeNull();
     expect(routerMock.navigate).toHaveBeenCalledWith(["/login"], {
       queryParams: {
         reason: "session-expired",
@@ -92,7 +92,7 @@ describe("AuthService session handling", () => {
 
   it("accepts a structurally valid unexpired JWT", () => {
     localStorage.setItem(
-      "ai_diary_token",
+      "openmynd_token",
       createToken(Math.floor(Date.now() / 1000) + 60),
     );
 
@@ -101,25 +101,25 @@ describe("AuthService session handling", () => {
 
   it("clears an expired JWT before protected navigation", () => {
     localStorage.setItem(
-      "ai_diary_token",
+      "openmynd_token",
       createToken(Math.floor(Date.now() / 1000) - 60),
     );
     localStorage.setItem(
-      "ai_diary_user",
+      "openmynd_user",
       JSON.stringify({ id: 1, username: "tester" }),
     );
 
     expect(service.isAuthenticated()).toBeFalse();
     expect(service.consumeSessionExpiredFlag()).toBeTrue();
     expect(service.consumeSessionExpiredFlag()).toBeFalse();
-    expect(localStorage.getItem("ai_diary_token")).toBeNull();
-    expect(localStorage.getItem("ai_diary_user")).toBeNull();
+    expect(localStorage.getItem("openmynd_token")).toBeNull();
+    expect(localStorage.getItem("openmynd_user")).toBeNull();
   });
 
   it("rejects malformed token data", () => {
-    localStorage.setItem("ai_diary_token", "not-a-jwt");
+    localStorage.setItem("openmynd_token", "not-a-jwt");
 
     expect(service.isAuthenticated()).toBeFalse();
-    expect(localStorage.getItem("ai_diary_token")).toBeNull();
+    expect(localStorage.getItem("openmynd_token")).toBeNull();
   });
 });

@@ -9,6 +9,8 @@ describe("AppearanceComponent", () => {
   let themeService: ThemeService;
 
   beforeEach(async () => {
+    localStorage.removeItem("openmynd_theme_mode");
+    localStorage.removeItem("openmynd_theme_preset");
     localStorage.removeItem("ai_diary_theme_mode");
     localStorage.removeItem("ai_diary_theme_preset");
 
@@ -23,6 +25,8 @@ describe("AppearanceComponent", () => {
   });
 
   afterEach(() => {
+    localStorage.removeItem("openmynd_theme_mode");
+    localStorage.removeItem("openmynd_theme_preset");
     localStorage.removeItem("ai_diary_theme_mode");
     localStorage.removeItem("ai_diary_theme_preset");
   });

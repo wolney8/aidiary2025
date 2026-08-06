@@ -81,6 +81,8 @@ _DEFAULT_IMPORT_TIMES = {
 }
 _PACKAGE_WORKBOOK_NAME = 'entries.xlsx'
 _PACKAGE_MANIFEST_NAME = 'manifest.json'
+PACKAGE_TYPE = 'openmynd_export'
+LEGACY_PACKAGE_TYPES = {'aidiary_export'}
 PACKAGE_FORMAT_VERSION = 1
 PORTABILITY_CONTRACT = {
     'contract_version': 1,
@@ -342,7 +344,7 @@ def _derive_dream_nltk_fields(row_data: dict[str, str]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def _get_package_staging_root() -> str:
-    return tempfile.mkdtemp(prefix='aidiary-import-package-')
+    return tempfile.mkdtemp(prefix='openmynd-import-package-')
 
 
 def _load_package_manifest(zip_file: zipfile.ZipFile) -> dict:
@@ -490,7 +492,7 @@ def parse_import_package(file_bytes: bytes) -> dict:
                 )
             elif isinstance(manifest, dict) and manifest:
                 package_type = manifest.get('package_type')
-                if package_type and package_type != 'aidiary_export':
+                if package_type and package_type not in {PACKAGE_TYPE, *LEGACY_PACKAGE_TYPES}:
                     manifest_warnings.append(
                         f'Package type "{package_type}" is not the standard OpenMynd export type; '
                         'only recognised workbook and media fields will be imported.'

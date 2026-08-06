@@ -205,7 +205,9 @@ export class ImportService {
           map((response: HttpResponse<Blob>) => ({
             blob: response.body ?? new Blob(),
             guardToken:
-              response.headers.get("X-AiDiary-Export-Token") ?? undefined,
+              response.headers.get("X-OpenMynd-Export-Token") ??
+              response.headers.get("X-AiDiary-Export-Token") ??
+              undefined,
             filename:
               this.parseDownloadFilename(
                 response.headers.get("Content-Disposition"),

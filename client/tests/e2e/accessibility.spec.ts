@@ -134,12 +134,12 @@ async function seedAuthenticatedSession(
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
     const token = `${encode({ alg: "none", typ: "JWT" })}.${encode({ exp: expiresAt })}.e2e`;
 
-    localStorage.setItem("ai_diary_token", token);
+    localStorage.setItem("openmynd_token", token);
     localStorage.setItem(
-      "ai_diary_user",
+      "openmynd_user",
       JSON.stringify({ id: 1, username: "accessibility-e2e" }),
     );
-    localStorage.setItem("ai_diary_theme_mode", selectedTheme);
+    localStorage.setItem("openmynd_theme_mode", selectedTheme);
   }, theme);
 
   await page.route("**/api/**", async (route) => {
@@ -346,7 +346,7 @@ async function seedAuthenticatedSession(
 async function seedNotifications(page: Page, notifications: object[]): Promise<void> {
   await page.addInitScript((seededNotifications) => {
     localStorage.setItem(
-      "ai_diary_notifications",
+      "openmynd_notifications",
       JSON.stringify(seededNotifications),
     );
   }, notifications);
@@ -355,7 +355,7 @@ async function seedNotifications(page: Page, notifications: object[]): Promise<v
 test.describe("WCAG 2.2 AA automated checks", () => {
   test("login", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByRole("heading", { name: "Login to OpenMynd" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Log in to OpenMynd" })).toBeVisible();
 
     await expectNoWcagViolations(page);
   });

@@ -20,14 +20,17 @@ export class AuthService {
   private http = inject(HttpClient);
   private router = inject(Router);
   private apiUrl = environment.apiBaseUrl;
-  private tokenKey = "ai_diary_token";
-  private userKey = "ai_diary_user";
+  private tokenKey = "openmynd_token";
+  private legacyTokenKey = "ai_diary_token";
+  private userKey = "openmynd_user";
+  private legacyUserKey = "ai_diary_user";
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private sessionExpiredSinceLastCheck = false;
 
   currentUser$ = this.currentUserSubject.asObservable();
 
   constructor() {
+    this.migrateLegacySession();
     const storedUser = localStorage.getItem(this.userKey);
     if (storedUser) {
       try {
@@ -44,8 +47,7 @@ export class AuthService {
       .pipe(
         tap((response) => {
           this.sessionExpiredSinceLastCheck = false;
-          localStorage.setItem(this.tokenKey, response.token);
-          localStorage.setItem(this.userKey, JSON.stringify(response.user));
+          this.storeSession(response);
           this.currentUserSubject.next(response.user);
         }),
       );
@@ -55,8 +57,7 @@ export class AuthService {
     return this.http.post<AuthResponse>(`${this.apiUrl}/register`, data).pipe(
       tap((response) => {
         this.sessionExpiredSinceLastCheck = false;
-        localStorage.setItem(this.tokenKey, response.token);
-        localStorage.setItem(this.userKey, JSON.stringify(response.user));
+        this.storeSession(response);
         this.currentUserSubject.next(response.user);
       }),
     );
@@ -68,8 +69,7 @@ export class AuthService {
 
   completeOAuthLogin(response: AuthResponse): void {
     this.sessionExpiredSinceLastCheck = false;
-    localStorage.setItem(this.tokenKey, response.token);
-    localStorage.setItem(this.userKey, JSON.stringify(response.user));
+    this.storeSession(response);
     this.currentUserSubject.next(response.user);
   }
 
@@ -134,12 +134,14 @@ export class AuthService {
 
   private clearSession(): void {
     localStorage.removeItem(this.tokenKey);
+    localStorage.removeItem(this.legacyTokenKey);
     localStorage.removeItem(this.userKey);
+    localStorage.removeItem(this.legacyUserKey);
     this.currentUserSubject.next(null);
   }
 
   getToken(): string | null {
-    return localStorage.getItem(this.tokenKey);
+    return localStorage.getItem(this.tokenKey) ?? localStorage.getItem(this.legacyTokenKey);
   }
 
   isAuthenticated(): boolean {
@@ -165,6 +167,7 @@ export class AuthService {
 
   syncCurrentUser(user: User): void {
     localStorage.setItem(this.userKey, JSON.stringify(user));
+    localStorage.removeItem(this.legacyUserKey);
     this.currentUserSubject.next(user);
   }
 
@@ -189,6 +192,28 @@ export class AuthService {
       );
     } catch {
       return true;
+    }
+  }
+
+  private storeSession(response: AuthResponse): void {
+    localStorage.setItem(this.tokenKey, response.token);
+    localStorage.setItem(this.userKey, JSON.stringify(response.user));
+    localStorage.removeItem(this.legacyTokenKey);
+    localStorage.removeItem(this.legacyUserKey);
+  }
+
+  private migrateLegacySession(): void {
+    const legacyToken = localStorage.getItem(this.legacyTokenKey);
+    const legacyUser = localStorage.getItem(this.legacyUserKey);
+    if (legacyToken && !localStorage.getItem(this.tokenKey)) {
+      localStorage.setItem(this.tokenKey, legacyToken);
+    }
+    if (legacyUser && !localStorage.getItem(this.userKey)) {
+      localStorage.setItem(this.userKey, legacyUser);
+    }
+    if (legacyToken || legacyUser) {
+      localStorage.removeItem(this.legacyTokenKey);
+      localStorage.removeItem(this.legacyUserKey);
     }
   }
 }

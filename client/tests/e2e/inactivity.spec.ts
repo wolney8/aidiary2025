@@ -16,9 +16,9 @@ async function openAuthenticatedEntries(page: Page): Promise<void> {
     const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
     const token = `${encode({ alg: "none", typ: "JWT" })}.${encode({ exp: expiresAt })}.e2e`;
 
-    localStorage.setItem("ai_diary_token", token);
+    localStorage.setItem("openmynd_token", token);
     localStorage.setItem(
-      "ai_diary_user",
+      "openmynd_user",
       JSON.stringify({ id: 1, username: "inactivity-e2e" }),
     );
   });
@@ -79,6 +79,6 @@ test("an authenticated user is logged out when the warning expires", async ({
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByTestId("authenticated-app-shell")).toHaveCount(0);
   await expect(
-    page.evaluate(() => localStorage.getItem("ai_diary_token")),
+    page.evaluate(() => localStorage.getItem("openmynd_token")),
   ).resolves.toBeNull();
 });

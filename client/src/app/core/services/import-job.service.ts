@@ -3,9 +3,12 @@ import { BehaviorSubject, Observable, Subscription, of, timer } from "rxjs";
 import { catchError, switchMap, tap } from "rxjs/operators";
 import { ImportJobStatus, ImportService } from "./import.service";
 
-const ACTIVE_IMPORT_JOB_KEY = "ai_diary_active_import_job";
-const NOTIFICATIONS_KEY = "ai_diary_notifications";
-const DISMISSED_NOTIFICATIONS_KEY = "ai_diary_dismissed_notifications";
+const ACTIVE_IMPORT_JOB_KEY = "openmynd_active_import_job";
+const LEGACY_ACTIVE_IMPORT_JOB_KEY = "ai_diary_active_import_job";
+const NOTIFICATIONS_KEY = "openmynd_notifications";
+const LEGACY_NOTIFICATIONS_KEY = "ai_diary_notifications";
+const DISMISSED_NOTIFICATIONS_KEY = "openmynd_dismissed_notifications";
+const LEGACY_DISMISSED_NOTIFICATIONS_KEY = "ai_diary_dismissed_notifications";
 
 export interface AppNotification {
   id: string;
@@ -37,7 +40,13 @@ export class ImportJobService {
   readonly notifications$ = this.notificationsSubject.asObservable();
 
   constructor() {
-    const savedJobId = localStorage.getItem(ACTIVE_IMPORT_JOB_KEY);
+    const savedJobId =
+      localStorage.getItem(ACTIVE_IMPORT_JOB_KEY) ??
+      localStorage.getItem(LEGACY_ACTIVE_IMPORT_JOB_KEY);
+    if (savedJobId && !localStorage.getItem(ACTIVE_IMPORT_JOB_KEY)) {
+      localStorage.setItem(ACTIVE_IMPORT_JOB_KEY, savedJobId);
+      localStorage.removeItem(LEGACY_ACTIVE_IMPORT_JOB_KEY);
+    }
     if (savedJobId) this.startPolling(savedJobId);
   }
 
@@ -240,18 +249,28 @@ export class ImportJobService {
 
   private restoreNotifications(): AppNotification[] {
     try {
-      const saved = JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) ?? "[]");
+      const raw =
+        localStorage.getItem(NOTIFICATIONS_KEY) ??
+        localStorage.getItem(LEGACY_NOTIFICATIONS_KEY) ??
+        "[]";
+      const saved = JSON.parse(raw);
       if (!Array.isArray(saved)) {
         return [];
       }
-      return saved.filter(
+      const notifications = saved.filter(
         (notification): notification is AppNotification =>
           typeof notification?.id === "string" &&
           typeof notification?.title === "string" &&
           typeof notification?.message === "string",
       );
+      if (!localStorage.getItem(NOTIFICATIONS_KEY)) {
+        localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
+        localStorage.removeItem(LEGACY_NOTIFICATIONS_KEY);
+      }
+      return notifications;
     } catch {
       localStorage.removeItem(NOTIFICATIONS_KEY);
+      localStorage.removeItem(LEGACY_NOTIFICATIONS_KEY);
       return [];
     }
   }
@@ -259,11 +278,14 @@ export class ImportJobService {
   private isDismissedNotification(notificationId: string): boolean {
     try {
       const dismissed = JSON.parse(
-        localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ?? "[]",
+        localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ??
+          localStorage.getItem(LEGACY_DISMISSED_NOTIFICATIONS_KEY) ??
+          "[]",
       );
       return Array.isArray(dismissed) && dismissed.includes(notificationId);
     } catch {
       localStorage.removeItem(DISMISSED_NOTIFICATIONS_KEY);
+      localStorage.removeItem(LEGACY_DISMISSED_NOTIFICATIONS_KEY);
       return false;
     }
   }
@@ -271,13 +293,16 @@ export class ImportJobService {
   private rememberDismissedNotification(notificationId: string): void {
     try {
       const dismissed = JSON.parse(
-        localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ?? "[]",
+        localStorage.getItem(DISMISSED_NOTIFICATIONS_KEY) ??
+          localStorage.getItem(LEGACY_DISMISSED_NOTIFICATIONS_KEY) ??
+          "[]",
       );
       const dismissedIds = Array.isArray(dismissed) ? dismissed : [];
       localStorage.setItem(
         DISMISSED_NOTIFICATIONS_KEY,
         JSON.stringify([...new Set([notificationId, ...dismissedIds])].slice(0, 100)),
       );
+      localStorage.removeItem(LEGACY_DISMISSED_NOTIFICATIONS_KEY);
     } catch {
       localStorage.setItem(
         DISMISSED_NOTIFICATIONS_KEY,
@@ -290,6 +315,7 @@ export class ImportJobService {
     this.pollSubscription?.unsubscribe();
     this.pollSubscription = null;
     localStorage.removeItem(ACTIVE_IMPORT_JOB_KEY);
+    localStorage.removeItem(LEGACY_ACTIVE_IMPORT_JOB_KEY);
     this.jobSubject.next(null);
   }
 }

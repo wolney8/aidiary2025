@@ -17,6 +17,7 @@ from services.database_adapter import DatabaseAdapter
 from services.import_service import (
     DAILY_IMPORT_HEADERS,
     DREAM_IMPORT_HEADERS,
+    PACKAGE_TYPE,
     PACKAGE_FORMAT_VERSION,
     PORTABILITY_CONTRACT,
     validate_file,
@@ -1490,7 +1491,7 @@ def export_entries():
             'manifest.json',
             json.dumps(
                 {
-                    'package_type': 'aidiary_export',
+                    'package_type': PACKAGE_TYPE,
                     'version': PACKAGE_FORMAT_VERSION,
                     'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                     'portability': PORTABILITY_CONTRACT,
@@ -1509,7 +1510,10 @@ def export_entries():
         as_attachment=True,
         download_name=filename,
     )
-    response.headers['Access-Control-Expose-Headers'] = 'X-AiDiary-Export-Token'
+    response.headers['Access-Control-Expose-Headers'] = (
+        'X-OpenMynd-Export-Token, X-AiDiary-Export-Token'
+    )
     if export_record['guard_token']:
+        response.headers['X-OpenMynd-Export-Token'] = export_record['guard_token']
         response.headers['X-AiDiary-Export-Token'] = export_record['guard_token']
     return response

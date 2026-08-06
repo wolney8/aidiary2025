@@ -474,7 +474,7 @@ def test_bulk_delete_succeeds_after_full_range_export(client):
         headers={'Authorization': f'Bearer {token}'},
     )
     assert export_response.status_code == 200
-    guard_token = export_response.headers.get('X-AiDiary-Export-Token')
+    guard_token = export_response.headers.get('X-OpenMynd-Export-Token')
     assert guard_token
 
     readiness_response = client.get(

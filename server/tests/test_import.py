@@ -233,7 +233,7 @@ def _make_zip_package(
         dream_rows=dream_rows,
     )
     manifest = {
-        'package_type': 'aidiary_export',
+        'package_type': 'openmynd_export',
         'version': 1,
         'generated_at': '2026-06-10T00:00:00Z',
         'assets': manifest_assets or {},
@@ -2029,7 +2029,7 @@ class TestExportDownload:
         wb, manifest, package_members = _load_export_package(resp.data)
         assert 'Daily' in wb.sheetnames
         assert 'Dreams' in wb.sheetnames
-        assert manifest['package_type'] == 'aidiary_export'
+        assert manifest['package_type'] == 'openmynd_export'
         assert manifest['version'] == 1
         assert manifest['portability']['contract_version'] == 1
         assert manifest['portability']['workbook_fields']['daily'] == list(DAILY_IMPORT_HEADERS)
@@ -2154,8 +2154,9 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
-        guard_token = resp.headers.get('X-AiDiary-Export-Token')
+        guard_token = resp.headers.get('X-OpenMynd-Export-Token')
         assert guard_token
+        assert resp.headers.get('X-AiDiary-Export-Token') == guard_token
 
         conn = sqlite3.connect(db_path)
         row = conn.execute(
@@ -2190,7 +2191,7 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
-        assert resp.headers.get('X-AiDiary-Export-Token') is None
+        assert resp.headers.get('X-OpenMynd-Export-Token') is None
 
     def test_export_daily_only(self, client):
         token = _register_and_login(client)
