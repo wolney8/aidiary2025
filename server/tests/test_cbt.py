@@ -136,10 +136,10 @@ def test_cbt_helpers_support_postgres_placeholders_and_returning_id():
     assert linked_type == 'daily'
     assert linked_id == 12
     assert linked_entry_date == '2026-07-21'
-    assert 'FROM dailydiary_entries WHERE id = $1 AND user_id = $2' in link_sql
+    assert 'FROM dailydiary_entries WHERE id = %s AND user_id = %s' in link_sql
     assert link_params == (12, 3)
-    assert 'WHERE w.id = $1 AND w.user_id = $2' in worksheet_sql
-    assert "VALUES ($1, $2, $3, 'draft', $4, $5, $6, $7)" in insert_sql
+    assert 'WHERE w.id = %s AND w.user_id = %s' in worksheet_sql
+    assert "VALUES (%s, %s, %s, 'draft', %s, %s, %s, %s)" in insert_sql
     assert 'RETURNING id' in insert_sql
 
 

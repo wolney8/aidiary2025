@@ -141,10 +141,8 @@ def test_chat_observability_uses_adapter_placeholders_for_postgres():
 
     insert_sql = adapter.connection.calls[0][0]
     report_sql = adapter.connection.calls[1][0]
-    assert '$1' in insert_sql
-    assert '$10' in insert_sql
-    assert '$1' in report_sql
-    assert '$2' in report_sql
+    assert insert_sql.count('%s') == 10
+    assert report_sql.count('%s') == 2
 
 
 def test_chat_storage_helpers_use_postgres_placeholders():
@@ -167,12 +165,9 @@ def test_chat_storage_helpers_use_postgres_placeholders():
     insert_sql = conn.calls[0][0]
     request_sql = conn.calls[1][0]
     history_sql = conn.calls[2][0]
-    assert '$1' in insert_sql
-    assert '$6' in insert_sql
-    assert '$1' in request_sql
-    assert '$2' in request_sql
-    assert '$1' in history_sql
-    assert '$3' in history_sql
+    assert insert_sql.count('%s') == 6
+    assert request_sql.count('%s') == 2
+    assert history_sql.count('%s') == 3
 
 
 def test_chat_validation_errors(client):

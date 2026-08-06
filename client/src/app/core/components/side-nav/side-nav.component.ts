@@ -34,15 +34,30 @@ import { ThemeService } from "../../services/theme.service";
       <mat-nav-list>
         <a
           mat-list-item
+          routerLink="/dashboard"
+          routerLinkActive="is-active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          #dashboardRla="routerLinkActive"
+          [attr.aria-current]="dashboardRla.isActive ? 'page' : null"
+          (click)="closeSidenav.emit()"
+          data-testid="nav-dashboard"
+        >
+          <mat-icon matListItemIcon>dashboard</mat-icon>
+          <span matListItemTitle>Dashboard</span>
+        </a>
+
+        <a
+          mat-list-item
           routerLink="/entries"
           routerLinkActive="is-active"
           [routerLinkActiveOptions]="{ exact: true }"
-          #homeRla="routerLinkActive"
-          [attr.aria-current]="homeRla.isActive ? 'page' : null"
+          #entriesRla="routerLinkActive"
+          [attr.aria-current]="entriesRla.isActive ? 'page' : null"
           (click)="closeSidenav.emit()"
+          data-testid="nav-entries"
         >
-          <mat-icon matListItemIcon>home</mat-icon>
-          <span matListItemTitle>Home</span>
+          <mat-icon matListItemIcon>auto_stories</mat-icon>
+          <span matListItemTitle>Entries</span>
         </a>
 
         <a

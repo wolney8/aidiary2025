@@ -336,9 +336,9 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           </div>
           <div class="account-menu-divider" role="separator"></div>
         </ng-container>
-        <button mat-menu-item routerLink="/profile">
+        <button mat-menu-item routerLink="/account">
           <mat-icon aria-hidden="true">person</mat-icon>
-          <span>Profile</span>
+          <span>Account</span>
         </button>
         <button mat-menu-item routerLink="/settings">
           <mat-icon aria-hidden="true">settings</mat-icon>
@@ -1338,7 +1338,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
   }
 
   goHome(): void {
-    this.router.navigate(["/entries"]).then(() => {
+    this.router.navigate(["/dashboard"]).then(() => {
       this.searchService.clear();
       this.searchForm.patchValue({ query: "" });
     });

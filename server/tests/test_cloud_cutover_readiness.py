@@ -46,6 +46,7 @@ def _write_report(path, *, total_rows=2, blockers=False):
 def _write_export(export_dir):
     export_dir.mkdir()
     (export_dir / "users.jsonl").write_text('{"id": 1}\n', encoding="utf-8")
+    (export_dir / "auth_identities.jsonl").write_text("", encoding="utf-8")
     (export_dir / "configurations.jsonl").write_text("", encoding="utf-8")
     (export_dir / "dailydiary_entries.jsonl").write_text('{"id": 10}\n', encoding="utf-8")
     for table_name in [

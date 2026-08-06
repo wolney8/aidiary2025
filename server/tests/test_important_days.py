@@ -94,8 +94,8 @@ def test_important_day_sql_helpers_support_postgres_placeholders_and_returning_i
             )
         )
 
-    assert "WHERE user_id = $1" in list_sql
-    assert "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)" in insert_sql
+    assert "WHERE user_id = %s" in list_sql
+    assert "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)" in insert_sql
     assert "RETURNING id" in insert_sql
 
 

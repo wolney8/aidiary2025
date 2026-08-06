@@ -775,22 +775,24 @@ export class PersonalisationComponent implements OnInit {
     });
   }
 
-  private validateSettings(settings: User): string | null {
-    const displayName = String(settings.display_name || "").trim();
-    if (displayName && displayName.length > 8) {
-      return "Display name must be 8 characters or fewer.";
-    }
-    if (displayName && !/^[A-Za-z][A-Za-z '\-]{0,7}$/.test(displayName)) {
-      return "Display name may only use letters, spaces, apostrophes, and hyphens.";
-    }
+	  private validateSettings(settings: User): string | null {
+	    const displayName = String(settings.display_name || "").trim();
+	    if (displayName && displayName.length > 24) {
+	      return "Display name must be 24 characters or fewer.";
+	    }
+	    if (displayName && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/.test(displayName)) {
+	      return "Display name may only use letters, numbers, hyphens, and underscores.";
+	    }
 
-    const customGuidance = String(settings.custom_guidance || "").trim();
-    if (
-      customGuidance &&
-      !/^[A-Za-z0-9 ,.?!'"()&/\-:]{1,100}$/.test(customGuidance)
-    ) {
-      return "Goals and custom AI guidance must use plain text and basic punctuation only.";
-    }
+	    const customGuidance = String(settings.custom_guidance || "").trim();
+	    if (
+	      customGuidance &&
+	      (/[<>{}\[\]`;]/.test(customGuidance) ||
+	        /javascript:|script|onerror|onclick/i.test(customGuidance) ||
+	        !/^[A-Za-z0-9][A-Za-z0-9 ,.?!'"()&/\-:]{0,99}$/.test(customGuidance))
+	    ) {
+	      return "Goals and custom AI guidance must be plain text only; code or scripts are not allowed.";
+	    }
 
     if (settings.writing_reminders_enabled) {
       const reminderTime = String(settings.writing_reminder_time || "").trim();

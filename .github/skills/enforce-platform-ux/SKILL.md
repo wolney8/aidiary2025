@@ -55,12 +55,19 @@ Apply this skill before editing user-facing UI and repeat the review before hand
   treatment; cancel/back remains visually safe.
 - Use app-native dialogs for in-app confirmation and alerts. Keep browser prompts only
   for refresh or tab-close protection.
+- App-native dialogs must use the shared Material 3 dialog primitive unless there is a
+  documented reason not to. Dialog surfaces use rounded M3 container corners, consistent
+  padding, one clear title/message hierarchy, and action buttons aligned to the same
+  baseline.
 
 ### Modals, rows, and tables
 
 - Dialogs require a concise accessible title, bounded width, scrollable content with a
   visible close path, focus trap/restoration, Escape behavior, and actions that remain
   reachable at 200% zoom and short viewport heights.
+- Dialog leading icons must be optically centred inside their circular container and
+  aligned with the title/message block. Do not ship a dialog where the icon, title,
+  message, or action labels appear vertically offset from their visual row.
 - Rows require consistent leading icon/avatar, text hierarchy, metadata alignment, and
   trailing actions. Avoid controls overlapping wrapping titles.
 - Use semantic tables for genuinely tabular data, with headers and keyboard-accessible
@@ -78,6 +85,11 @@ Apply this skill before editing user-facing UI and repeat the review before hand
   tooltip where the action is not self-evident.
 - Keep paired leading/trailing icons optically aligned and equally inset from container
   edges.
+- For every icon-plus-text control, verify the icon and label share the same visual
+  centreline. Prefer shared button label alignment rules over component-local margins.
+- Do not rely on Angular Material's generated DOM classes as the only alignment fix. If
+  a generated wrapper must be targeted, keep the selector broad enough to protect the
+  shared Material primitive across Login, Register, dialogs, cards, tables, and settings.
 
 ### Stable inspection and test hooks
 
@@ -148,7 +160,8 @@ Before handoff:
 1. Inspect the actual diff for one-off CSS, hardcoded colours, duplicated components,
    inconsistent labels, touching controls, uneven container padding, mixed icon styles,
    and desktop-only assumptions.
-2. Compare the result with the nearest equivalent AI Diary screen.
+2. Compare the result with the nearest equivalent AI Diary screen, including icon/text
+   baseline alignment in buttons, rows, cards, top-bar actions, and dialogs.
 3. Run the applicable frontend build, tests, lint, and smoke checks from
    `docs/playbooks/testing-and-validation.md`.
 4. Manually verify affected routes at compact and desktop widths, in light and dark

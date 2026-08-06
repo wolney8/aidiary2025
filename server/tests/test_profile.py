@@ -31,6 +31,9 @@ class _FakePostgresConnection:
             {
                 "id": 1,
                 "username": "profile-user",
+                "email": "oauth@example.com",
+                "auth_provider": "google",
+                "registered_at": "2026-08-06T09:00:00Z",
                 "first_name": None,
                 "last_name": None,
                 "age": None,
@@ -62,9 +65,17 @@ class _FakePostgresConnection:
                 "writing_rhythm_progress_enabled": 0,
                 "writing_rhythm_weekly_goal": 4,
                 "chat_enabled": 1,
+                "password_auth_enabled": 1,
+                "onboarding_completed": 1,
                 "profile_picture_storage_key": None,
             }
         ])
+
+
+class _FakePostgresAdapter:
+    def table_exists(self, _conn, table_name):
+        assert table_name == "auth_identities"
+        return True
 
 
 @pytest.fixture
@@ -125,6 +136,7 @@ def _register_and_get_token(client) -> str:
 def test_profile_helpers_use_postgres_placeholders():
     app = Flask(__name__)
     app.config["DATABASE_PROVIDER"] = "postgres"
+    app.config["DATABASE_ADAPTER"] = _FakePostgresAdapter()
     conn = _FakePostgresConnection()
 
     with app.app_context():
@@ -138,9 +150,10 @@ def test_profile_helpers_use_postgres_placeholders():
         )
 
     select_sql, select_params = conn.calls[0]
-    assert "FROM users WHERE id = %s" in select_sql
+    assert "FROM users WHERE users.id = %s" in select_sql
     assert select_params == (1,)
     assert user["display_name"] == "Will"
+    assert user["email"] == "oauth@example.com"
     assert "display_name = %s" in update_sql
     assert "timezone = %s" in update_sql
     assert "WHERE id = %s" in update_sql
@@ -175,6 +188,10 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert data["writing_rhythm_progress_enabled"] == 0
     assert data["writing_rhythm_weekly_goal"] == 4
     assert data["chat_enabled"] == 1
+    assert data["password_auth_enabled"] == 1
+    assert data["onboarding_completed"] == 1
+    assert data["email"] is None
+    assert data["auth_provider"] is None
 
     conn = sqlite3.connect(db_path)
     columns = {
@@ -205,6 +222,8 @@ def test_runtime_migration_adds_user_settings_columns(client_with_legacy_user_sc
     assert "writing_rhythm_progress_enabled" in columns
     assert "writing_rhythm_weekly_goal" in columns
     assert "chat_enabled" in columns
+    assert "password_auth_enabled" in columns
+    assert "onboarding_completed" in columns
 
 
 def test_profile_picture_upload_normalises_replaces_and_deletes(
@@ -332,6 +351,39 @@ def test_account_delete_requires_confirmation_and_removes_user_data(
 
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+
+
+def test_oauth_only_account_deletion_does_not_require_password(client_with_legacy_user_schema):
+    client, db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE users SET password_auth_enabled = 0 WHERE id = 1")
+        conn.execute(
+            """
+            INSERT INTO auth_identities (
+                user_id, provider, provider_subject, email, email_verified
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (1, "google", "deleted-google-user", "deleted@example.com", 1),
+        )
+
+    delete_response = client.delete(
+        "/api/profile/account",
+        headers=headers,
+        data=json.dumps({
+            "password": "",
+            "confirmation": "DELETE MY ACCOUNT",
+        }),
+        content_type="application/json",
+    )
+
+    assert delete_response.status_code == 200
+    assert json.loads(delete_response.data)["message"] == "Account deleted"
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM auth_identities").fetchone()[0] == 0
 
 
 def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_schema):
@@ -588,7 +640,7 @@ def test_profile_update_rejects_invalid_display_name(client_with_legacy_user_sch
     response = client.put(
         "/api/profile",
         headers={"Authorization": f"Bearer {token}"},
-        data=json.dumps({"display_name": "Alex123"}),
+        data=json.dumps({"display_name": "Alex 123"}),
         content_type="application/json",
     )
 
@@ -596,7 +648,7 @@ def test_profile_update_rejects_invalid_display_name(client_with_legacy_user_sch
     data = json.loads(response.data)
     assert (
         data["error"]
-        == "Display name may only use letters, spaces, apostrophes, and hyphens"
+        == "Display name may only use letters, numbers, hyphens, and underscores"
     )
 
 
@@ -615,5 +667,5 @@ def test_profile_update_rejects_invalid_custom_guidance(client_with_legacy_user_
     data = json.loads(response.data)
     assert (
         data["error"]
-        == "Custom guidance may only use plain text, numbers, spaces, and basic punctuation"
+        == "Custom guidance must be plain text only; code or script-like text is not allowed"
     )

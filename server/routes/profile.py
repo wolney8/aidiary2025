@@ -26,7 +26,7 @@ from services.sql_compat import adapt_placeholders
 profile_bp = Blueprint('profile', __name__)
 
 MAX_SHORT_TEXT_LENGTH = 80
-MAX_DISPLAY_NAME_LENGTH = 8
+MAX_DISPLAY_NAME_LENGTH = 24
 MAX_CUSTOM_GUIDANCE_LENGTH = 100
 MAX_TIMEZONE_LENGTH = 64
 MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024
@@ -35,8 +35,9 @@ PROFILE_IMAGE_JPEG_QUALITY = 88
 MAX_PROFILE_IMAGE_PIXELS = 40_000_000
 HOLIDAY_COUNTRY_CODE_PATTERN = re.compile(r"^[A-Z]{2}$")
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-DISPLAY_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z '\-]{0,7}$")
-CUSTOM_GUIDANCE_PATTERN = re.compile(r"^[A-Za-z0-9 ,.?!'\"()&/\-:]{1,100}$")
+DISPLAY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$")
+CUSTOM_GUIDANCE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ,.?!'\"()&/\-:]{0,99}$")
+CODE_LIKE_PATTERN = re.compile(r"[<>{}\\[\\]`;]|javascript:|script|onerror|onclick", re.IGNORECASE)
 ALLOWED_REMINDER_DAYS = {
     'monday',
     'tuesday',
@@ -129,7 +130,9 @@ def _normalise_display_name(value):
     if len(text) > MAX_DISPLAY_NAME_LENGTH:
         raise ValueError(f'Display name must be {MAX_DISPLAY_NAME_LENGTH} characters or fewer')
     if not DISPLAY_NAME_PATTERN.fullmatch(text):
-        raise ValueError("Display name may only use letters, spaces, apostrophes, and hyphens")
+        raise ValueError(
+            'Display name may only use letters, numbers, hyphens, and underscores'
+        )
     return text
 
 
@@ -144,9 +147,9 @@ def _normalise_custom_guidance(value):
         raise ValueError(
             f'Custom guidance must be {MAX_CUSTOM_GUIDANCE_LENGTH} characters or fewer'
         )
-    if not CUSTOM_GUIDANCE_PATTERN.fullmatch(text):
+    if CODE_LIKE_PATTERN.search(text) or not CUSTOM_GUIDANCE_PATTERN.fullmatch(text):
         raise ValueError(
-            'Custom guidance may only use plain text, numbers, spaces, and basic punctuation'
+            'Custom guidance must be plain text only; code or script-like text is not allowed'
         )
     return text
 
@@ -272,6 +275,8 @@ def _normalise_profile_update(field: str, value):
         return 1 if bool(value) else 0
     if field == 'show_on_this_day':
         return 1 if bool(value) else 0
+    if field == 'onboarding_completed':
+        return 1 if bool(value) else 0
     if field == 'ai_tone':
         return _normalise_choice(value, allowed=ALLOWED_AI_TONES, field_label='AI tone')
     if field == 'ai_verbosity':
@@ -346,14 +351,36 @@ def _profile_payload(user) -> dict:
     payload = dict(user)
     storage_key = payload.pop('profile_picture_storage_key', None)
     payload['profile_picture_url'] = resolve_image_url(storage_key)
+    for field in (
+        'show_public_holidays',
+        'show_on_this_day',
+        'allow_ai_history',
+        'allow_ai_attachment_context',
+        'writing_reminders_enabled',
+        'writing_rhythm_progress_enabled',
+        'chat_enabled',
+        'password_auth_enabled',
+        'onboarding_completed',
+    ):
+        if field in payload and payload[field] is not None:
+            payload[field] = bool(payload[field])
     return payload
 
 
 def _select_profile(conn, user_id: int):
-    return conn.execute(_sql('''
+    auth_identity_selects = (
+        '''
+               (SELECT email FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1) AS email,
+               (SELECT provider FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1) AS auth_provider,
+        '''
+        if _database_adapter().table_exists(conn, 'auth_identities')
+        else "NULL AS email, NULL AS auth_provider,"
+    )
+    return conn.execute(_sql(f'''
         SELECT id, username, first_name, last_name, age, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
+               registered_at,
                display_name, pronouns, gender, custom_guidance, timezone,
                holiday_country_code, show_public_holidays, show_on_this_day,
                ai_tone, ai_verbosity,
@@ -361,9 +388,10 @@ def _select_profile(conn, user_id: int):
                writing_reminders_enabled, writing_reminder_days, writing_reminder_time,
                writing_reminder_silence_days, writing_reminder_entry_types,
                writing_rhythm_progress_enabled, writing_rhythm_weekly_goal,
-               chat_enabled,
+               chat_enabled, password_auth_enabled, onboarding_completed,
+               {auth_identity_selects}
                profile_picture_storage_key
-        FROM users WHERE id = ?
+        FROM users WHERE users.id = ?
     '''), (user_id,)).fetchone()
 
 @profile_bp.route('/profile', methods=['GET'])
@@ -399,7 +427,7 @@ def update_profile():
         'writing_reminders_enabled', 'writing_reminder_days', 'writing_reminder_time',
         'writing_reminder_silence_days', 'writing_reminder_entry_types',
         'writing_rhythm_progress_enabled', 'writing_rhythm_weekly_goal',
-        'chat_enabled'
+        'chat_enabled', 'onboarding_completed'
     ]
     
     updates = []
@@ -511,18 +539,19 @@ def delete_account():
         return jsonify({
             'error': f'Type {ACCOUNT_DELETE_CONFIRMATION} to confirm account deletion.'
         }), 400
-    if not password:
-        return jsonify({'error': 'Password is required to delete your account.'}), 400
 
     with get_db() as conn:
         user = conn.execute(
-            _sql('SELECT id, password FROM users WHERE id = ?'),
+            _sql('SELECT id, password, password_auth_enabled FROM users WHERE id = ?'),
             (user_id,),
         ).fetchone()
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        if not _password_matches(password, user['password']):
-            return jsonify({'error': 'Password did not match.'}), 400
+        if bool(user['password_auth_enabled']):
+            if not password:
+                return jsonify({'error': 'Password is required to delete your account.'}), 400
+            if not _password_matches(password, user['password']):
+                return jsonify({'error': 'Password did not match.'}), 400
 
         media_storage_keys = collect_user_media_storage_keys(conn, user_id)
         delete_user_account_data(conn, user_id)

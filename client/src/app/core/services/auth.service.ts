@@ -8,6 +8,8 @@ import {
   RegisterRequest,
   AuthResponse,
   User,
+  OAuthProvider,
+  OAuthProvidersResponse,
 } from "../models/user.model";
 import { environment } from "../../../environments/environment";
 
@@ -60,9 +62,38 @@ export class AuthService {
     );
   }
 
-  logout(): void {
+  getOAuthProviders(): Observable<OAuthProvidersResponse> {
+    return this.http.get<OAuthProvidersResponse>(`${this.apiUrl}/oauth/providers`);
+  }
+
+  completeOAuthLogin(response: AuthResponse): void {
+    this.sessionExpiredSinceLastCheck = false;
+    localStorage.setItem(this.tokenKey, response.token);
+    localStorage.setItem(this.userKey, JSON.stringify(response.user));
+    this.currentUserSubject.next(response.user);
+  }
+
+  clearLocalSession(): void {
+    this.sessionExpiredSinceLastCheck = false;
     this.clearSession();
-    this.router.navigate(["/login"]);
+  }
+
+  getOAuthStartUrl(provider: OAuthProvider, returnUrl = "/dashboard"): string {
+    if (!provider.start_url) {
+      return "";
+    }
+    const apiRoot = this.apiUrl.replace(/\/api\/?$/, "");
+    const url = new URL(provider.start_url, `${apiRoot}/`);
+    url.searchParams.set("returnUrl", returnUrl);
+    return url.toString();
+  }
+
+  logout(options: { reason?: string; replaceUrl?: boolean } = {}): void {
+    this.clearSession();
+    this.router.navigate(["/login"], {
+      queryParams: options.reason ? { reason: options.reason } : undefined,
+      replaceUrl: Boolean(options.replaceUrl),
+    });
   }
 
   handleSessionExpired(): void {
@@ -78,8 +109,25 @@ export class AuthService {
     this.router.navigate(["/login"], {
       queryParams: {
         reason: "session-expired",
-        returnUrl: currentUrl || "/entries",
+        returnUrl: currentUrl || "/dashboard",
       },
+      replaceUrl: true,
+    });
+  }
+
+  handleOnboardingRequired(returnUrl = this.router.url || "/dashboard"): void {
+    const safeReturnUrl =
+      returnUrl.startsWith("/") &&
+      !returnUrl.startsWith("//") &&
+      !returnUrl.includes("://") &&
+      !["/login", "/register", "/oauth/callback", "/onboarding"].includes(
+        returnUrl.split("?")[0],
+      )
+        ? returnUrl
+        : "/dashboard";
+
+    this.router.navigate(["/onboarding"], {
+      queryParams: { returnUrl: safeReturnUrl },
       replaceUrl: true,
     });
   }

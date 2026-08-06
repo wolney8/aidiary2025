@@ -4,7 +4,7 @@ import { authGuard, authMatchGuard } from "./auth/auth.guard";
 import { pendingChangesGuard } from "./entries/pending-changes.guard";
 
 export const routes: Routes = [
-  { path: "", redirectTo: "/login", pathMatch: "full" },
+  { path: "", redirectTo: "/dashboard", pathMatch: "full" },
   {
     path: "login",
     title: "Login | OpenMynd",
@@ -17,6 +17,22 @@ export const routes: Routes = [
     loadComponent: () =>
       import("./auth/register/register.component").then(
         (m) => m.RegisterComponent,
+      ),
+  },
+  {
+    path: "oauth/callback",
+    title: "Completing sign-in | OpenMynd",
+    loadComponent: () =>
+      import("./auth/oauth-callback/oauth-callback.component").then(
+        (m) => m.OAuthCallbackComponent,
+      ),
+  },
+  {
+    path: "onboarding",
+    title: "Account setup | OpenMynd",
+    loadComponent: () =>
+      import("./auth/onboarding/onboarding.component").then(
+        (m) => m.OnboardingComponent,
       ),
   },
   {
@@ -39,6 +55,16 @@ export const routes: Routes = [
     data: { legalPage: "cookies" },
     loadComponent: () =>
       import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
+  },
+  {
+    path: "dashboard",
+    title: "Dashboard | OpenMynd",
+    canActivate: [authGuard],
+    canMatch: [authMatchGuard],
+    loadComponent: () =>
+      import("./dashboard/dashboard.component").then(
+        (m) => m.DashboardComponent,
+      ),
   },
   {
     path: "entries",
@@ -122,13 +148,18 @@ export const routes: Routes = [
       ),
   },
   {
-    path: "profile",
-    title: "Profile | OpenMynd",
+    path: "account",
+    title: "Account | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
       import("./profile/profile.component").then((m) => m.ProfileComponent),
+  },
+  {
+    path: "profile",
+    pathMatch: "full",
+    redirectTo: "/account",
   },
   {
     path: "settings",
@@ -160,6 +191,11 @@ export const routes: Routes = [
           import("./settings/personalisation/personalisation.component").then(
             (m) => m.PersonalisationComponent,
           ),
+      },
+      {
+        path: "account",
+        pathMatch: "full",
+        redirectTo: "/account",
       },
       {
         path: "important-days",

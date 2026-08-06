@@ -5,6 +5,7 @@ import { NoopAnimationsModule } from "@angular/platform-browser/animations";
 import { Router, provideRouter } from "@angular/router";
 import { of } from "rxjs";
 import { AppDialogService } from "../core/services/app-dialog.service";
+import { AuthService } from "../core/services/auth.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 import { ProfileComponent } from "./profile.component";
@@ -15,17 +16,22 @@ import { ProfileComponent } from "./profile.component";
 })
 class DummyEntriesComponent {}
 
-describe("ProfileComponent", () => {
+describe("Account page", () => {
   let fixture: ComponentFixture<ProfileComponent>;
   let component: ProfileComponent;
   let location: Location;
   let router: Router;
   let appDialogServiceMock: jasmine.SpyObj<AppDialogService>;
+  let authServiceMock: jasmine.SpyObj<AuthService>;
   let updateProfileSpy: jasmine.Spy;
 
   const profileServiceStub: Pick<
     ProfileService,
-    "getProfile" | "updateProfile" | "uploadProfilePicture" | "deleteProfilePicture"
+    | "getProfile"
+    | "updateProfile"
+    | "uploadProfilePicture"
+    | "deleteProfilePicture"
+    | "deleteAccount"
   > = {
     getProfile: () =>
       of({
@@ -37,6 +43,10 @@ describe("ProfileComponent", () => {
         display_name: "Alex",
         pronouns: "they/them",
         gender: "non-binary",
+        email: "alex@example.com",
+        auth_provider: "google",
+        password_auth_enabled: false,
+        registered_at: "2026-08-06T09:00:00Z",
         ai_model: "gpt-4.1-mini",
         ai_focus: "reflective",
         custom_guidance: "Keep me grounded",
@@ -67,6 +77,7 @@ describe("ProfileComponent", () => {
           profile_picture_url: null,
         } satisfies User,
       }),
+    deleteAccount: () => of({ message: "Account deleted" }),
   };
 
   beforeEach(async () => {
@@ -75,6 +86,7 @@ describe("ProfileComponent", () => {
       ["confirm"],
     );
     appDialogServiceMock.confirm.and.resolveTo(true);
+    authServiceMock = jasmine.createSpyObj<AuthService>("AuthService", ["logout"]);
 
     await TestBed.configureTestingModule({
       imports: [ProfileComponent, NoopAnimationsModule],
@@ -86,6 +98,10 @@ describe("ProfileComponent", () => {
         {
           provide: AppDialogService,
           useValue: appDialogServiceMock,
+        },
+        {
+          provide: AuthService,
+          useValue: authServiceMock,
         },
         provideRouter([
           {
@@ -109,15 +125,19 @@ describe("ProfileComponent", () => {
     const backButton = host.querySelector("button.header-back");
 
     expect(backButton)
-      .withContext("profile page should render a top back button")
+      .withContext("account page should render a top back button")
       .not.toBeNull();
     expect(backButton?.textContent).toContain("Back");
   });
 
-  it("renders account and identity fields", () => {
+  it("renders account summary and identity fields", () => {
     const host = fixture.nativeElement as HTMLElement;
     const title = host.querySelector(".account-heading");
 
+    expect(host.textContent).toContain("Account");
+    expect(host.textContent).toContain("alex@example.com");
+    expect(host.textContent).toContain("Google");
+    expect(host.textContent).toContain("Registered");
     expect(title?.textContent).toContain("Account and identity");
     expect(host.textContent).toContain("Display Name");
     expect(host.textContent).toContain("Pronouns");
@@ -174,9 +194,34 @@ describe("ProfileComponent", () => {
     expect(result).toBeTrue();
     expect(appDialogServiceMock.confirm).toHaveBeenCalledWith(
       jasmine.objectContaining({
-        title: "Discard Profile changes?",
+        title: "Discard Account changes?",
       }),
     );
+  });
+
+  it("deletes a Google account without requiring a password", async () => {
+    const deleteAccountSpy = spyOn(
+      profileServiceStub,
+      "deleteAccount",
+    ).and.callThrough();
+    component.accountDeleteConfirmation = "DELETE MY ACCOUNT";
+
+    component.deleteAccount();
+    await fixture.whenStable();
+
+    expect(appDialogServiceMock.confirm).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        title: "Permanently delete account?",
+      }),
+    );
+    expect(deleteAccountSpy).toHaveBeenCalledWith({
+      password: "",
+      confirmation: "DELETE MY ACCOUNT",
+    });
+    expect(authServiceMock.logout).toHaveBeenCalledWith({
+      reason: "account-deleted",
+      replaceUrl: true,
+    });
   });
 
   it("submits only profile-owned fields", () => {

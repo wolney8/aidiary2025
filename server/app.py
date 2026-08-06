@@ -1,14 +1,15 @@
 import os
 import logging
-from flask import Flask, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, get_jwt_identity
+from flask_jwt_extended import JWTManager, get_jwt_identity, verify_jwt_in_request
 from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
 from services.database_adapter import DatabaseAdapter
 from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_database
 from services.runtime_migrations import (
+    ensure_auth_identities_table,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
     ensure_chat_observability_events_table,
@@ -163,6 +164,11 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
             app.logger.info('Runtime user settings migration check: no column changes needed')
     except Exception as migration_exc:
         app.logger.warning('Runtime user settings migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_auth_identities_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime auth identities migration skipped due to error: %s', migration_exc)
 
     try:
         ensure_export_history_table(database_path, app.logger.info)
@@ -352,6 +358,55 @@ def create_app():
             app.logger.debug('Authorization header present (prefix): %s', auth[:64])
         else:
             app.logger.debug('No Authorization header present on request to %s', request.path)
+
+    @app.before_request
+    def _enforce_onboarding_completion():
+        if request.method == 'OPTIONS':
+            return None
+        if not request.path.startswith('/api/'):
+            return None
+
+        allowed_prefixes = (
+            '/api/login',
+            '/api/register',
+            '/api/oauth/',
+            '/api/profile',
+        )
+        if request.path.startswith(allowed_prefixes):
+            return None
+
+        try:
+            verify_jwt_in_request(optional=True)
+            identity = get_jwt_identity()
+        except Exception:
+            # Let route-level jwt_required produce the canonical auth failure.
+            return None
+        if identity is None:
+            return None
+
+        try:
+            user_id = int(identity)
+        except (TypeError, ValueError):
+            return None
+
+        try:
+            adapter = app.config['DATABASE_ADAPTER']
+            with adapter.connect() as conn:
+                row = conn.execute(
+                    'SELECT onboarding_completed FROM users WHERE id = ?',
+                    (user_id,),
+                ).fetchone()
+        except Exception as exc:
+            app.logger.warning('Onboarding gate check failed: %s', exc)
+            return None
+
+        if row is not None and not bool(row['onboarding_completed']):
+            return jsonify({
+                'error': 'Account setup is required before using OpenMynd.',
+                'code': 'onboarding_required',
+            }), 403
+
+        return None
     
     # Register blueprints
     from routes.auth import auth_bp
@@ -365,6 +420,7 @@ def create_app():
     from routes.reflection_summaries import reflection_summaries_bp
     from routes.chat import chat_bp
     from routes.cbt import cbt_bp
+    from routes.dashboard import dashboard_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
@@ -377,6 +433,7 @@ def create_app():
     app.register_blueprint(reflection_summaries_bp, url_prefix='/api')
     app.register_blueprint(chat_bp, url_prefix='/api')
     app.register_blueprint(cbt_bp, url_prefix='/api')
+    app.register_blueprint(dashboard_bp, url_prefix='/api')
 
     try:
         recovered_jobs = recover_import_jobs(app)

@@ -10,6 +10,8 @@ describe("LoginComponent returnUrl navigation", () => {
   let queryParams: Record<string, string>;
   let authServiceMock: {
     login: (...args: unknown[]) => unknown;
+    getOAuthProviders: () => unknown;
+    clearLocalSession: () => void;
   };
   let routerMock: {
     navigateByUrl: (...args: unknown[]) => unknown;
@@ -34,6 +36,29 @@ describe("LoginComponent returnUrl navigation", () => {
           },
         }),
       ),
+      getOAuthProviders: jasmine.createSpy("getOAuthProviders").and.returnValue(
+        of({
+          providers: [
+            {
+              id: "google",
+              label: "Google",
+              enabled: false,
+              configured: false,
+              status: "not_configured",
+              start_url: null,
+            },
+            {
+              id: "microsoft",
+              label: "Microsoft",
+              enabled: false,
+              configured: false,
+              status: "not_configured",
+              start_url: null,
+            },
+          ],
+        }),
+      ),
+      clearLocalSession: jasmine.createSpy("clearLocalSession"),
     };
 
     routerMock = {
@@ -76,24 +101,24 @@ describe("LoginComponent returnUrl navigation", () => {
     });
   });
 
-  it("falls back to /entries for unsafe absolute returnUrl values", () => {
+  it("falls back to /dashboard for unsafe absolute returnUrl values", () => {
     queryParams = { returnUrl: "https://example.com/phishing" };
     component.credentials = { username: "user", password: "password" };
 
     component.onSubmit();
 
-    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/entries", {
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/dashboard", {
       replaceUrl: true,
     });
   });
 
-  it("falls back to /entries when returnUrl is missing", () => {
+  it("falls back to /dashboard when returnUrl is missing", () => {
     queryParams = {};
     component.credentials = { username: "user", password: "password" };
 
     component.onSubmit();
 
-    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/entries", {
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith("/dashboard", {
       replaceUrl: true,
     });
   });
@@ -116,6 +141,14 @@ describe("LoginComponent returnUrl navigation", () => {
     expect(component.sessionInfoMessage).toBe("");
   });
 
+  it("shows an account-deleted message after account deletion", () => {
+    queryParams = { reason: "account-deleted" };
+
+    fixture.detectChanges();
+
+    expect(component.sessionInfoMessage).toBe("Your account has been deleted.");
+  });
+
   it("exposes an accessible page heading and credential autocomplete hints", () => {
     fixture.detectChanges();
 
@@ -123,9 +156,25 @@ describe("LoginComponent returnUrl navigation", () => {
     const username = fixture.nativeElement.querySelector('input[name="username"]');
     const password = fixture.nativeElement.querySelector('input[name="password"]');
 
-    expect(heading?.textContent).toContain("Login to OpenMynd");
+    expect(heading?.textContent).toContain("Log in to OpenMynd");
     expect(username?.getAttribute("autocomplete")).toBe("username");
     expect(password?.getAttribute("autocomplete")).toBe("current-password");
+  });
+
+  it("renders the Google sign-in action and hides unsupported providers", () => {
+    fixture.detectChanges();
+
+    const googleButton = fixture.nativeElement.querySelector(
+      '[data-testid="login-google-oauth"]',
+    ) as HTMLButtonElement | null;
+    const microsoftButton = fixture.nativeElement.querySelector(
+      '[data-testid="login-microsoft-oauth"]',
+    ) as HTMLButtonElement | null;
+
+    expect(googleButton?.disabled).toBeTrue();
+    expect(microsoftButton).toBeNull();
+    expect(googleButton?.textContent).toContain("Continue with Google");
+    expect(googleButton?.querySelector("svg.oauth-mark--google")).not.toBeNull();
   });
 
   it("announces validation failures as alerts", () => {

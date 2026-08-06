@@ -3,6 +3,9 @@ export interface User {
   id: number;
   username: string;
   password?: string; // Not returned from API
+  email?: string | null;
+  auth_provider?: string | null;
+  registered_at?: string | null;
   first_name?: string;
   last_name?: string;
   age?: number;
@@ -31,6 +34,8 @@ export interface User {
   writing_rhythm_progress_enabled?: boolean;
   writing_rhythm_weekly_goal?: number;
   chat_enabled?: boolean;
+  password_auth_enabled?: boolean;
+  onboarding_completed?: boolean;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;
@@ -52,4 +57,19 @@ export interface RegisterRequest {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export type OAuthProviderId = "google" | "microsoft";
+
+export interface OAuthProvider {
+  id: OAuthProviderId;
+  label: string;
+  enabled: boolean;
+  configured: boolean;
+  status: "not_configured" | "enabled";
+  start_url: string | null;
+}
+
+export interface OAuthProvidersResponse {
+  providers: OAuthProvider[];
 }

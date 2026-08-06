@@ -164,9 +164,9 @@ def test_reflection_summary_source_queries_use_postgres_placeholders():
     daily_sql, daily_params = conn.calls[0]
     dream_sql, dream_params = conn.calls[1]
     thought_sql, thought_params = conn.calls[2]
-    assert 'WHERE user_id = $1 AND (entry_date)::date BETWEEN $2 AND $3' in daily_sql
-    assert 'WHERE user_id = $1 AND (entry_date)::date BETWEEN $2 AND $3' in dream_sql
-    assert 'WHERE w.user_id = $1 AND (w.record_date)::date BETWEEN $2 AND $3' in thought_sql
+    assert 'WHERE user_id = %s AND (entry_date)::date BETWEEN %s AND %s' in daily_sql
+    assert 'WHERE user_id = %s AND (entry_date)::date BETWEEN %s AND %s' in dream_sql
+    assert 'WHERE w.user_id = %s AND (w.record_date)::date BETWEEN %s AND %s' in thought_sql
     assert daily_params == (7, '2026-07-01', '2026-07-31')
     assert dream_params == daily_params
     assert thought_params == daily_params
