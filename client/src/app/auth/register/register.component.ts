@@ -135,13 +135,12 @@ import { OAuthProvider } from '../../core/models/user.model';
               [attr.data-testid]="'register-' + provider.id + '-oauth'"
               (click)="startOAuth(provider)"
             >
-              <span
-                class="oauth-mark"
-                [class.oauth-mark--microsoft]="provider.id === 'microsoft'"
-                aria-hidden="true"
-              >
-                {{ getProviderMark(provider) }}
-              </span>
+              <svg class="oauth-mark oauth-mark--google" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.58c2.09-1.93 3.27-4.78 3.27-8.09z" />
+                <path fill="#34a853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.58-2.77c-.98.66-2.24 1.06-3.7 1.06-2.84 0-5.25-1.92-6.12-4.5H2.18v2.84C3.99 20.53 7.68 23 12 23z" />
+                <path fill="#fbbc05" d="M5.88 14.13c-.22-.66-.35-1.36-.35-2.13s.13-1.47.35-2.13V7.03H2.18C1.43 8.53 1 10.22 1 12s.43 3.47 1.18 4.97l3.7-2.84z" />
+                <path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.68 1 3.99 3.47 2.18 7.03l3.7 2.84c.87-2.58 3.28-4.49 6.12-4.49z" />
+              </svg>
               <span>Continue with {{ provider.label }}</span>
             </button>
           </div>
@@ -299,11 +298,12 @@ import { OAuthProvider } from '../../core/models/user.model';
 
     .oauth-actions {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: minmax(0, 1fr);
       gap: 10px;
     }
 
     .oauth-button {
+      width: 100%;
       min-height: 44px;
       border-radius: var(--radius-pill);
       border-color: var(--colour-border);
@@ -311,21 +311,10 @@ import { OAuthProvider } from '../../core/models/user.model';
     }
 
     .oauth-mark {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       width: 24px;
       height: 24px;
-      margin-right: 8px;
-      border-radius: 50%;
-      background: var(--colour-surface-muted);
-      color: var(--colour-text-primary);
-      font-weight: 900;
-    }
-
-    .oauth-mark--microsoft {
-      background: linear-gradient(135deg, #f25022 0 50%, #7fba00 50% 100%);
-      color: #ffffff;
+      display: block;
+      flex: 0 0 24px;
     }
     
     .login-link {
@@ -406,7 +395,7 @@ export class RegisterComponent implements OnInit {
   ngOnInit(): void {
     this.authService.getOAuthProviders().subscribe({
       next: ({ providers }) => {
-        this.oauthProviders = providers.length ? providers : this.defaultOAuthProviders();
+        this.oauthProviders = this.supportedOAuthProviders(providers);
       },
       error: () => {
         this.oauthProviders = this.defaultOAuthProviders();
@@ -452,11 +441,8 @@ export class RegisterComponent implements OnInit {
       return;
     }
 
+    this.authService.clearLocalSession();
     window.location.assign(startUrl);
-  }
-
-  getProviderMark(provider: OAuthProvider): string {
-    return provider.id === 'microsoft' ? 'M' : 'G';
   }
 
   private defaultOAuthProviders(): OAuthProvider[] {
@@ -469,14 +455,11 @@ export class RegisterComponent implements OnInit {
         status: 'not_configured',
         start_url: null,
       },
-      {
-        id: 'microsoft',
-        label: 'Microsoft',
-        enabled: false,
-        configured: false,
-        status: 'not_configured',
-        start_url: null,
-      },
     ];
+  }
+
+  private supportedOAuthProviders(providers: OAuthProvider[]): OAuthProvider[] {
+    const supported = providers.filter((provider) => provider.id === 'google');
+    return supported.length ? supported : this.defaultOAuthProviders();
   }
 }

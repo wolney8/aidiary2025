@@ -8,8 +8,10 @@ import {
   UrlSegment,
   UrlTree,
 } from "@angular/router";
+import { firstValueFrom, isObservable, Observable, of } from "rxjs";
 import { authGuard, authMatchGuard } from "./auth.guard";
 import { AuthService } from "../core/services/auth.service";
+import { ProfileService } from "../core/services/profile.service";
 
 describe("authGuard", () => {
   let router: Router;
@@ -17,6 +19,11 @@ describe("authGuard", () => {
   let authServiceMock: {
     isAuthenticated: () => boolean;
     consumeSessionExpiredFlag: () => boolean;
+    getCurrentUser: () => { onboarding_completed?: boolean } | null;
+    clearLocalSession: () => void;
+  };
+  let profileServiceMock: {
+    getProfile: () => Observable<{ onboarding_completed: boolean }>;
   };
   let sessionExpired = false;
 
@@ -27,19 +34,33 @@ describe("authGuard", () => {
     authServiceMock = {
       isAuthenticated: () => isAuthenticated,
       consumeSessionExpiredFlag: () => sessionExpired,
+      getCurrentUser: () => ({ onboarding_completed: true }),
+      clearLocalSession: jasmine.createSpy("clearLocalSession"),
+    };
+
+    profileServiceMock = {
+      getProfile: () => of({ onboarding_completed: true }),
     };
 
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: authServiceMock },
+        { provide: ProfileService, useValue: profileServiceMock },
       ],
     });
 
     router = TestBed.inject(Router);
   });
 
-  it("allows navigation when authenticated", () => {
+  async function resolveGuardResult(result: unknown): Promise<unknown> {
+    if (isObservable(result)) {
+      return firstValueFrom(result);
+    }
+    return result;
+  }
+
+  it("allows navigation when authenticated", async () => {
     isAuthenticated = true;
 
     const result = TestBed.runInInjectionContext(() =>
@@ -49,10 +70,10 @@ describe("authGuard", () => {
       ),
     );
 
-    expect(result).toBeTrue();
+    await expectAsync(resolveGuardResult(result)).toBeResolvedTo(true);
   });
 
-  it("redirects to login with encoded returnUrl when logged out", () => {
+  it("redirects to login with encoded returnUrl when logged out", async () => {
     isAuthenticated = false;
 
     const result = TestBed.runInInjectionContext(() =>
@@ -62,12 +83,13 @@ describe("authGuard", () => {
       ),
     );
 
-    expect(result instanceof UrlTree).toBeTrue();
-    const redirectUrl = router.serializeUrl(result as UrlTree);
+    const resolved = await resolveGuardResult(result);
+    expect(resolved instanceof UrlTree).toBeTrue();
+    const redirectUrl = router.serializeUrl(resolved as UrlTree);
     expect(redirectUrl).toBe("/login?returnUrl=%2Fentries%3Ftype%3Ddaily");
   });
 
-  it("includes a friendly reason when the stored session expired", () => {
+  it("includes a friendly reason when the stored session expired", async () => {
     sessionExpired = true;
 
     const result = TestBed.runInInjectionContext(() =>
@@ -77,12 +99,13 @@ describe("authGuard", () => {
       ),
     );
 
-    const redirectUrl = router.serializeUrl(result as UrlTree);
+    const resolved = await resolveGuardResult(result);
+    const redirectUrl = router.serializeUrl(resolved as UrlTree);
     expect(redirectUrl).toContain("returnUrl=%2Fsettings%2Fpersonalisation");
     expect(redirectUrl).toContain("reason=session-expired");
   });
 
-  it("blocks route matching for protected lazy routes when logged out", () => {
+  it("blocks route matching for protected lazy routes when logged out", async () => {
     isAuthenticated = false;
 
     const result = TestBed.runInInjectionContext(() =>
@@ -92,24 +115,26 @@ describe("authGuard", () => {
       ),
     );
 
-    expect(result instanceof UrlTree).toBeTrue();
-    const redirectUrl = router.serializeUrl(result as UrlTree);
+    const resolved = await resolveGuardResult(result);
+    expect(resolved instanceof UrlTree).toBeTrue();
+    const redirectUrl = router.serializeUrl(resolved as UrlTree);
     expect(redirectUrl).toBe("/login?returnUrl=%2Fsettings%2Fimport");
   });
 
-  it("uses dashboard as the protected-route fallback return target", () => {
+  it("uses dashboard as the protected-route fallback return target", async () => {
     isAuthenticated = false;
 
     const result = TestBed.runInInjectionContext(() =>
       authMatchGuard({ path: "" } as Route, []),
     );
 
-    expect(result instanceof UrlTree).toBeTrue();
-    const redirectUrl = router.serializeUrl(result as UrlTree);
+    const resolved = await resolveGuardResult(result);
+    expect(resolved instanceof UrlTree).toBeTrue();
+    const redirectUrl = router.serializeUrl(resolved as UrlTree);
     expect(redirectUrl).toBe("/login?returnUrl=%2Fdashboard");
   });
 
-  it("allows route matching when authenticated", () => {
+  it("allows route matching when authenticated", async () => {
     isAuthenticated = true;
 
     const result = TestBed.runInInjectionContext(() =>
@@ -118,6 +143,24 @@ describe("authGuard", () => {
       ]),
     );
 
-    expect(result).toBeTrue();
+    await expectAsync(resolveGuardResult(result)).toBeResolvedTo(true);
+  });
+
+  it("redirects authenticated users with incomplete server onboarding to onboarding", async () => {
+    isAuthenticated = true;
+    profileServiceMock.getProfile = () => of({ onboarding_completed: false });
+
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard(
+        {} as ActivatedRouteSnapshot,
+        { url: "/dashboard" } as RouterStateSnapshot,
+      ),
+    );
+
+    const resolved = await resolveGuardResult(result);
+    expect(resolved instanceof UrlTree).toBeTrue();
+    expect(router.serializeUrl(resolved as UrlTree)).toBe(
+      "/onboarding?returnUrl=%2Fdashboard",
+    );
   });
 });

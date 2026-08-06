@@ -19,6 +19,11 @@ export interface DashboardSeriesPoint {
   sentiment_score: number | null;
 }
 
+export interface DashboardSeasonOption {
+  value: string;
+  label: string;
+}
+
 export type DashboardThemeKind =
   | "tag"
   | "person"
@@ -152,6 +157,7 @@ export interface DashboardOverview {
   range: DashboardRange;
   theme_filter: { label: string; kind: DashboardThemeKind } | null;
   generated_at: string;
+  available_seasons: DashboardSeasonOption[];
   streak: DashboardStreak;
   series: DashboardSeriesPoint[];
   themes: DashboardTheme[];

@@ -28,6 +28,14 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "onboarding",
+    title: "Account setup | OpenMynd",
+    loadComponent: () =>
+      import("./auth/onboarding/onboarding.component").then(
+        (m) => m.OnboardingComponent,
+      ),
+  },
+  {
     path: "privacy",
     title: "Privacy policy | OpenMynd",
     data: { legalPage: "privacy" },
@@ -140,13 +148,18 @@ export const routes: Routes = [
       ),
   },
   {
-    path: "profile",
-    title: "Profile | OpenMynd",
+    path: "account",
+    title: "Account | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     canDeactivate: [pendingChangesGuard],
     loadComponent: () =>
       import("./profile/profile.component").then((m) => m.ProfileComponent),
+  },
+  {
+    path: "profile",
+    pathMatch: "full",
+    redirectTo: "/account",
   },
   {
     path: "settings",
@@ -178,6 +191,11 @@ export const routes: Routes = [
           import("./settings/personalisation/personalisation.component").then(
             (m) => m.PersonalisationComponent,
           ),
+      },
+      {
+        path: "account",
+        pathMatch: "full",
+        redirectTo: "/account",
       },
       {
         path: "important-days",

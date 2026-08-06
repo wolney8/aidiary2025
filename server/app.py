@@ -1,8 +1,8 @@
 import os
 import logging
-from flask import Flask, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, get_jwt_identity
+from flask_jwt_extended import JWTManager, get_jwt_identity, verify_jwt_in_request
 from flask_limiter.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from extensions import limiter
@@ -358,6 +358,55 @@ def create_app():
             app.logger.debug('Authorization header present (prefix): %s', auth[:64])
         else:
             app.logger.debug('No Authorization header present on request to %s', request.path)
+
+    @app.before_request
+    def _enforce_onboarding_completion():
+        if request.method == 'OPTIONS':
+            return None
+        if not request.path.startswith('/api/'):
+            return None
+
+        allowed_prefixes = (
+            '/api/login',
+            '/api/register',
+            '/api/oauth/',
+            '/api/profile',
+        )
+        if request.path.startswith(allowed_prefixes):
+            return None
+
+        try:
+            verify_jwt_in_request(optional=True)
+            identity = get_jwt_identity()
+        except Exception:
+            # Let route-level jwt_required produce the canonical auth failure.
+            return None
+        if identity is None:
+            return None
+
+        try:
+            user_id = int(identity)
+        except (TypeError, ValueError):
+            return None
+
+        try:
+            adapter = app.config['DATABASE_ADAPTER']
+            with adapter.connect() as conn:
+                row = conn.execute(
+                    'SELECT onboarding_completed FROM users WHERE id = ?',
+                    (user_id,),
+                ).fetchone()
+        except Exception as exc:
+            app.logger.warning('Onboarding gate check failed: %s', exc)
+            return None
+
+        if row is not None and not bool(row['onboarding_completed']):
+            return jsonify({
+                'error': 'Account setup is required before using OpenMynd.',
+                'code': 'onboarding_required',
+            }), 403
+
+        return None
     
     # Register blueprints
     from routes.auth import auth_bp

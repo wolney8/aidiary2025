@@ -52,6 +52,7 @@ _ENTRY_LIST_INDEXES: dict[str, dict[str, str]] = {
 }
 
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
+    'registered_at': 'TEXT',
     'profile_picture_storage_key': 'TEXT',
     'display_name': 'TEXT',
     'pronouns': 'TEXT',
@@ -75,6 +76,8 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'writing_rhythm_progress_enabled': 'INTEGER DEFAULT 0',
     'writing_rhythm_weekly_goal': 'INTEGER DEFAULT 4',
     'chat_enabled': 'INTEGER DEFAULT 1',
+    'password_auth_enabled': 'INTEGER DEFAULT 1',
+    'onboarding_completed': 'INTEGER DEFAULT 1',
 }
 
 _AUTH_IDENTITIES_DDL = """
@@ -458,6 +461,32 @@ def ensure_user_settings_columns(
             added_columns += 1
             if log:
                 log('Runtime migration added column %s.%s', 'users', column_name)
+
+        refreshed_columns = table_columns | set(_USER_SETTINGS_COLUMNS)
+        if 'registered_at' in refreshed_columns:
+            cursor.execute(
+                """
+                UPDATE users
+                SET registered_at = CURRENT_TIMESTAMP
+                WHERE registered_at IS NULL OR registered_at = ''
+                """
+            )
+        auth_identities_exists = cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ('auth_identities',),
+        ).fetchone()
+        if (
+            auth_identities_exists
+            and 'password_auth_enabled' in refreshed_columns
+            and 'onboarding_completed' in refreshed_columns
+        ):
+            cursor.execute(
+                """
+                UPDATE users
+                SET password_auth_enabled = 0
+                WHERE id IN (SELECT DISTINCT user_id FROM auth_identities)
+                """
+            )
 
     return added_columns
 

@@ -1,4 +1,4 @@
-// Profile screen mapping to users table columns
+// Account screen mapping to users table columns
 import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { CommonModule, Location } from "@angular/common";
 import { FormsModule } from "@angular/forms";
@@ -28,7 +28,7 @@ import { User } from "../core/models/user.model";
     MatIconModule,
   ],
   template: `
-    <div class="profile-container" data-testid="profile-page" *ngIf="profile">
+    <div class="profile-container" data-testid="account-page" *ngIf="profile">
       <div class="header-actions">
         <button
           mat-stroked-button
@@ -44,10 +44,25 @@ import { User } from "../core/models/user.model";
 
       <mat-card>
         <mat-card-header>
-          <h1 mat-card-title>Profile</h1>
+          <h1 mat-card-title>Account</h1>
         </mat-card-header>
 
         <mat-card-content>
+          <section class="account-summary-grid" aria-label="Account summary">
+            <div class="account-summary-card">
+              <span class="summary-label">Email</span>
+              <strong>{{ profile.email || "Not connected" }}</strong>
+            </div>
+            <div class="account-summary-card">
+              <span class="summary-label">Sign-in method</span>
+              <strong>{{ getSignInMethodLabel() }}</strong>
+            </div>
+            <div class="account-summary-card">
+              <span class="summary-label">Registered</span>
+              <strong>{{ getRegisteredDateLabel() }}</strong>
+            </div>
+          </section>
+
           <section class="profile-picture-section" aria-labelledby="profile-picture-heading">
             <div class="profile-picture-preview">
               <img
@@ -136,13 +151,13 @@ import { User } from "../core/models/user.model";
               <mat-form-field appearance="outline">
                 <mat-label>Display Name</mat-label>
                 <input
-                  matInput
-                  [(ngModel)]="profile.display_name"
-                  name="display_name"
-                  maxlength="8"
-                />
-                <mat-hint align="start">Letters only, up to 8 characters.</mat-hint>
-                <mat-hint align="end">{{ getDisplayNameLength() }}/8</mat-hint>
+	                  matInput
+	                  [(ngModel)]="profile.display_name"
+	                  name="display_name"
+	                  maxlength="24"
+	                />
+	                <mat-hint align="start">Letters, numbers, hyphens, or underscores.</mat-hint>
+	                <mat-hint align="end">{{ getDisplayNameLength() }}/24</mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline">
@@ -192,22 +207,14 @@ import { User } from "../core/models/user.model";
           </p>
           <p class="status error" *ngIf="errorMessage">{{ errorMessage }}</p>
 
-          <section class="danger-zone" aria-labelledby="account-delete-heading">
-            <div class="danger-zone-copy">
-              <span class="danger-zone-icon" aria-hidden="true">
-                <mat-icon>delete_forever</mat-icon>
-              </span>
-              <div>
-                <h3 id="account-delete-heading">Delete account</h3>
-                <p>
-                  Permanently removes your account, entries, attachments, images,
-                  thought records, settings, and chat history.
-                </p>
-              </div>
+          <section class="danger-section" aria-labelledby="delete-account-heading">
+            <div class="danger-copy">
+              <h3 id="delete-account-heading">Delete account</h3>
+              <p>Permanently removes this account and app-owned data.</p>
             </div>
 
             <div class="delete-account-grid">
-              <mat-form-field appearance="outline">
+              <mat-form-field *ngIf="requiresPassword()" appearance="outline">
                 <mat-label>Password</mat-label>
                 <input
                   matInput
@@ -230,19 +237,21 @@ import { User } from "../core/models/user.model";
               </mat-form-field>
             </div>
 
-            <div class="danger-actions">
-              <button
-                mat-raised-button
-                color="warn"
-                type="button"
-                [disabled]="!canDeleteAccount()"
-                (click)="deleteAccount()"
-                data-testid="profile-delete-account-button"
-              >
-                <mat-icon>delete_forever</mat-icon>
-                {{ deletingAccount ? "Deleting..." : "Delete account" }}
-              </button>
-            </div>
+            <p class="delete-note" *ngIf="!requiresPassword()">
+              Google sign-in accounts are confirmed with the deletion phrase.
+            </p>
+
+            <button
+              mat-raised-button
+              color="warn"
+              type="button"
+              [disabled]="!canDeleteAccount()"
+              (click)="deleteAccount()"
+              data-testid="account-delete-account-button"
+            >
+              <mat-icon>delete_forever</mat-icon>
+              {{ deletingAccount ? "Deleting..." : "Delete account" }}
+            </button>
           </section>
         </mat-card-content>
       </mat-card>
@@ -266,6 +275,36 @@ import { User } from "../core/models/user.model";
 
       .header-back mat-icon {
         margin-right: var(--spacing-xs);
+      }
+
+      .account-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-lg);
+      }
+
+      .account-summary-card {
+        display: grid;
+        gap: 0.2rem;
+        min-height: 76px;
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-primary);
+      }
+
+      .summary-label {
+        color: var(--colour-text-secondary);
+        font-size: 0.78rem;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .account-summary-card strong {
+        overflow-wrap: anywhere;
       }
 
       .profile-picture-section {
@@ -354,60 +393,42 @@ import { User } from "../core/models/user.model";
         margin-top: var(--spacing-sm);
       }
 
+      .danger-section {
+        display: grid;
+        gap: var(--spacing-md);
+        margin-top: var(--spacing-xl);
+        padding: var(--spacing-md);
+        border: 1px solid color-mix(in srgb, var(--colour-danger-text) 56%, var(--colour-border));
+        border-radius: var(--radius-lg);
+        background:
+          radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--colour-danger-text) 12%, transparent), transparent 34%),
+          var(--colour-surface-muted);
+      }
+
+      .danger-copy h3,
+      .danger-copy p,
+      .delete-note {
+        margin: 0;
+      }
+
+      .danger-copy p,
+      .delete-note {
+        color: var(--colour-text-secondary);
+        font-weight: 750;
+      }
+
+      .delete-account-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: var(--spacing-md);
+      }
+
       .success {
         color: #2e7d32;
       }
 
       .error {
         color: #c62828;
-      }
-
-      .danger-zone {
-        display: grid;
-        gap: var(--spacing-md);
-        margin-top: var(--spacing-lg);
-        padding: var(--spacing-md);
-        border: 1px solid var(--colour-danger-text);
-        border-radius: var(--radius-lg);
-        background: var(--colour-danger-bg);
-      }
-
-      .danger-zone-copy {
-        display: flex;
-        gap: var(--spacing-sm);
-        align-items: flex-start;
-      }
-
-      .danger-zone-copy h3,
-      .danger-zone-copy p {
-        margin: 0;
-      }
-
-      .danger-zone-copy p {
-        margin-top: var(--spacing-xs);
-        color: var(--colour-danger-text);
-      }
-
-      .danger-zone-icon {
-        display: grid;
-        width: 3rem;
-        height: 3rem;
-        flex: 0 0 3rem;
-        place-items: center;
-        border-radius: var(--radius-pill);
-        background: var(--colour-danger-text);
-        color: var(--colour-danger-bg);
-      }
-
-      .delete-account-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: var(--spacing-sm);
-      }
-
-      .danger-actions {
-        display: flex;
-        justify-content: flex-end;
       }
 
       @media (max-width: 600px) {
@@ -485,10 +506,35 @@ export class ProfileComponent implements OnInit {
       },
       error: (error) => {
         this.errorMessage =
-          error?.error?.error || "Profile update failed. Please try again.";
+          error?.error?.error || "Account update failed. Please try again.";
         this.saving = false;
       },
     });
+  }
+
+  getSignInMethodLabel(): string {
+    if (!this.profile) {
+      return "Loading";
+    }
+    if (this.profile.auth_provider === "google" || this.profile.password_auth_enabled === false) {
+      return "Google";
+    }
+    return "Password";
+  }
+
+  getRegisteredDateLabel(): string {
+    const registeredAt = this.profile?.registered_at;
+    if (!registeredAt) {
+      return "Not recorded";
+    }
+    const date = new Date(registeredAt);
+    if (Number.isNaN(date.getTime())) {
+      return registeredAt;
+    }
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
   }
 
   getDisplayNameLength(): number {
@@ -566,12 +612,14 @@ export class ProfileComponent implements OnInit {
     });
   }
 
+  requiresPassword(): boolean {
+    return this.profile?.password_auth_enabled !== false;
+  }
+
   canDeleteAccount(): boolean {
-    return (
-      !this.deletingAccount &&
-      this.accountDeletePassword.length > 0 &&
-      this.accountDeleteConfirmation.trim() === "DELETE MY ACCOUNT"
-    );
+    if (this.deletingAccount) return false;
+    if (this.accountDeleteConfirmation.trim() !== "DELETE MY ACCOUNT") return false;
+    return !this.requiresPassword() || this.accountDeletePassword.length > 0;
   }
 
   deleteAccount(): void {
@@ -589,14 +637,16 @@ export class ProfileComponent implements OnInit {
 
       this.deletingAccount = true;
       this.errorMessage = "";
-      this.successMessage = "";
       this.profileService.deleteAccount({
-        password: this.accountDeletePassword,
+        password: this.requiresPassword() ? this.accountDeletePassword : "",
         confirmation: this.accountDeleteConfirmation.trim(),
       }).subscribe({
         next: () => {
           this.deletingAccount = false;
-          this.authService.logout();
+          this.authService.logout({
+            reason: "account-deleted",
+            replaceUrl: true,
+          });
         },
         error: (error) => {
           this.deletingAccount = false;
@@ -615,13 +665,13 @@ export class ProfileComponent implements OnInit {
   }
 
   canDeactivate(): boolean | Promise<boolean> {
-    if (!this.hasPendingChanges() || this.saving) {
+    if (!this.hasPendingChanges() || this.saving || this.deletingAccount) {
       return true;
     }
 
     return this.appDialog.confirm({
-      title: "Discard Profile changes?",
-      message: "You have unsaved Profile changes. Leaving now will discard them.",
+      title: "Discard Account changes?",
+      message: "You have unsaved Account changes. Leaving now will discard them.",
       confirmText: "Discard changes",
       cancelText: "Stay here",
       variant: "danger",
@@ -630,21 +680,21 @@ export class ProfileComponent implements OnInit {
 
   @HostListener("window:beforeunload", ["$event"])
   handleBeforeUnload(event: BeforeUnloadEvent): void {
-    if (!this.hasPendingChanges() || this.saving) {
+    if (!this.hasPendingChanges() || this.saving || this.deletingAccount) {
       return;
     }
     event.preventDefault();
     event.returnValue = "";
   }
 
-  private validateProfile(profile: User): string | null {
-    const displayName = String(profile.display_name || "").trim();
-    if (displayName && displayName.length > 8) {
-      return "Display name must be 8 characters or fewer.";
-    }
-    if (displayName && !/^[A-Za-z][A-Za-z '\-]{0,7}$/.test(displayName)) {
-      return "Display name may only use letters, spaces, apostrophes, and hyphens.";
-    }
+	  private validateProfile(profile: User): string | null {
+	    const displayName = String(profile.display_name || "").trim();
+	    if (displayName && displayName.length > 24) {
+	      return "Display name must be 24 characters or fewer.";
+	    }
+	    if (displayName && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/.test(displayName)) {
+	      return "Display name may only use letters, numbers, hyphens, and underscores.";
+	    }
 
     return null;
   }

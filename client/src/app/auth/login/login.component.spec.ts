@@ -11,6 +11,7 @@ describe("LoginComponent returnUrl navigation", () => {
   let authServiceMock: {
     login: (...args: unknown[]) => unknown;
     getOAuthProviders: () => unknown;
+    clearLocalSession: () => void;
   };
   let routerMock: {
     navigateByUrl: (...args: unknown[]) => unknown;
@@ -57,6 +58,7 @@ describe("LoginComponent returnUrl navigation", () => {
           ],
         }),
       ),
+      clearLocalSession: jasmine.createSpy("clearLocalSession"),
     };
 
     routerMock = {
@@ -139,6 +141,14 @@ describe("LoginComponent returnUrl navigation", () => {
     expect(component.sessionInfoMessage).toBe("");
   });
 
+  it("shows an account-deleted message after account deletion", () => {
+    queryParams = { reason: "account-deleted" };
+
+    fixture.detectChanges();
+
+    expect(component.sessionInfoMessage).toBe("Your account has been deleted.");
+  });
+
   it("exposes an accessible page heading and credential autocomplete hints", () => {
     fixture.detectChanges();
 
@@ -151,7 +161,7 @@ describe("LoginComponent returnUrl navigation", () => {
     expect(password?.getAttribute("autocomplete")).toBe("current-password");
   });
 
-  it("renders provider sign-in actions as disabled until OAuth is configured", () => {
+  it("renders the Google sign-in action and hides unsupported providers", () => {
     fixture.detectChanges();
 
     const googleButton = fixture.nativeElement.querySelector(
@@ -162,9 +172,9 @@ describe("LoginComponent returnUrl navigation", () => {
     ) as HTMLButtonElement | null;
 
     expect(googleButton?.disabled).toBeTrue();
-    expect(microsoftButton?.disabled).toBeTrue();
+    expect(microsoftButton).toBeNull();
     expect(googleButton?.textContent).toContain("Continue with Google");
-    expect(microsoftButton?.textContent).toContain("Continue with Microsoft");
+    expect(googleButton?.querySelector("svg.oauth-mark--google")).not.toBeNull();
   });
 
   it("announces validation failures as alerts", () => {

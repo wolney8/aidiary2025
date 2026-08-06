@@ -98,6 +98,7 @@ export class OAuthCallbackComponent implements OnInit {
     const token = fragment.get("token");
     const encodedUser = fragment.get("user");
     const returnUrl = this.getSafeReturnUrl(fragment.get("returnUrl"));
+    const onboardingRequired = fragment.get("onboardingRequired") === "true";
     if (!token || !encodedUser) {
       this.errorMessage = "The external provider did not return a valid OpenMynd session.";
       return;
@@ -107,7 +108,11 @@ export class OAuthCallbackComponent implements OnInit {
       const user = this.decodeUser(encodedUser);
       this.authService.completeOAuthLogin({ token, user } satisfies AuthResponse);
       window.history.replaceState({}, document.title, "/oauth/callback");
-      void this.router.navigateByUrl(returnUrl, { replaceUrl: true });
+      const destination =
+        onboardingRequired || user.onboarding_completed === false
+          ? "/onboarding?returnUrl=%2Fdashboard"
+          : returnUrl;
+      void this.router.navigateByUrl(destination, { replaceUrl: true });
     } catch {
       this.errorMessage = "The external sign-in response could not be read.";
     }

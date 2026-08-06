@@ -23,7 +23,7 @@ import {
     <section class="settings-shell" data-testid="settings-shell">
       <header class="settings-header" data-testid="settings-header">
         <h1>Settings</h1>
-        <p>Manage your account preferences, AI behaviour, and diary data tools.</p>
+        <p>Manage app preferences, AI behaviour, and diary data tools.</p>
       </header>
 
       <nav class="settings-nav" aria-label="Settings sections">

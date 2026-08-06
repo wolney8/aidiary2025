@@ -15,6 +15,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       if (error.status === 401 && !isAuthRequest) {
         authService.handleSessionExpired();
       }
+      if (
+        error.status === 403 &&
+        !isAuthRequest &&
+        error.error?.code === "onboarding_required"
+      ) {
+        authService.handleOnboardingRequired();
+      }
 
       return throwError(() => error);
     }),

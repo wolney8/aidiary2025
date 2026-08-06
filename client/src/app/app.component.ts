@@ -18,6 +18,7 @@ import {
 import { environment } from "../environments/environment";
 import { environment as environmentProd } from "../environments/environment.prod";
 import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-companion.component";
+import { CookieConsentComponent } from "./shared/components/cookie-consent/cookie-consent.component";
 import { APP_VERSION } from "./version";
 import { User } from "./core/models/user.model";
 
@@ -32,6 +33,7 @@ import { User } from "./core/models/user.model";
     SideNavComponent,
     MatSidenavModule,
     ChatCompanionComponent,
+    CookieConsentComponent,
   ],
   template: `
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -68,6 +70,7 @@ import { User } from "./core/models/user.model";
         <router-outlet></router-outlet>
       </main>
     </ng-template>
+    <app-cookie-consent></app-cookie-consent>
   `,
   styles: [
     `

@@ -11,11 +11,13 @@ import { AuthService } from "../services/auth.service";
 describe("authInterceptor", () => {
   let authServiceMock: {
     handleSessionExpired: () => void;
+    handleOnboardingRequired: () => void;
   };
 
   beforeEach(() => {
     authServiceMock = {
       handleSessionExpired: jasmine.createSpy("handleSessionExpired"),
+      handleOnboardingRequired: jasmine.createSpy("handleOnboardingRequired"),
     };
 
     TestBed.configureTestingModule({
@@ -59,6 +61,23 @@ describe("authInterceptor", () => {
       });
     });
 
+    expect(authServiceMock.handleSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it("routes incomplete users to onboarding when the API requires setup", () => {
+    const request = new HttpRequest("GET", "/api/dashboard/overview");
+    const onboardingRequired = new HttpErrorResponse({
+      status: 403,
+      error: { code: "onboarding_required" },
+    });
+
+    TestBed.runInInjectionContext(() => {
+      authInterceptor(request, () => throwError(() => onboardingRequired)).subscribe({
+        error: () => undefined,
+      });
+    });
+
+    expect(authServiceMock.handleOnboardingRequired).toHaveBeenCalled();
     expect(authServiceMock.handleSessionExpired).not.toHaveBeenCalled();
   });
 

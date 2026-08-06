@@ -9,6 +9,17 @@ import pytest
 from app import create_app
 
 
+def _season_value(day: date) -> str:
+    if day.month in (3, 4, 5):
+        return f"spring-{day.year}"
+    if day.month in (6, 7, 8):
+        return f"summer-{day.year}"
+    if day.month in (9, 10, 11):
+        return f"autumn-{day.year}"
+    year = day.year if day.month == 12 else day.year - 1
+    return f"winter-{year}"
+
+
 @pytest.fixture
 def client():
     db_fd, db_path = tempfile.mkstemp()
@@ -35,6 +46,7 @@ def _create_dashboard_schema(db_path: str) -> None:
                 password TEXT NOT NULL,
                 first_name TEXT,
                 last_name TEXT,
+                onboarding_completed INTEGER DEFAULT 1,
                 writing_rhythm_weekly_goal INTEGER DEFAULT 4,
                 writing_reminder_entry_types TEXT DEFAULT 'daily,dream'
             )
@@ -136,6 +148,24 @@ def test_dashboard_requires_auth(client):
     assert response.status_code == 401
 
 
+def test_dashboard_requires_completed_onboarding(client):
+    auth = _register(client)
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        conn.execute(
+            "UPDATE users SET onboarding_completed = 0 WHERE id = ?",
+            (auth["user"]["id"],),
+        )
+
+    response = client.get(
+        "/api/dashboard/overview",
+        headers=_headers(auth["token"]),
+    )
+
+    assert response.status_code == 403
+    payload = json.loads(response.data)
+    assert payload["code"] == "onboarding_required"
+
+
 def test_dashboard_empty_account_returns_zeroed_overview(client):
     auth = _register(client)
 
@@ -149,6 +179,7 @@ def test_dashboard_empty_account_returns_zeroed_overview(client):
     assert payload["streak"]["current_days"] == 0
     assert payload["streak"]["weekly_goal"] == 4
     assert payload["themes"] == []
+    assert payload["available_seasons"] == []
     assert payload["cbt"]["total_records"] == 0
     assert payload["recent_activity"] == []
     assert {action["type"] for action in payload["quick_actions"]} == {
@@ -296,6 +327,10 @@ def test_dashboard_overview_aggregates_entries_cbt_and_themes(client):
     assert payload["streak"]["current_days"] >= 1
     assert payload["streak"]["weekly_goal"] == 3
     assert payload["streak"]["week_count"] == 3
+    season_values = {option["value"] for option in payload["available_seasons"]}
+    assert _season_value(today) in season_values
+    assert _season_value(yesterday) in season_values
+    assert _season_value(previous_year) in season_values
     assert any(day["daily_words"] > 0 for day in payload["series"])
     assert any(day["dream_words"] > 0 for day in payload["series"])
     assert any(theme["label"] == "therapy" for theme in payload["themes"])

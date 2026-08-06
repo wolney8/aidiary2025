@@ -2,9 +2,12 @@
 # Authentication tests
 import pytest
 import json
+import base64
 from app import create_app
 import tempfile
 import os
+import shutil
+from urllib.parse import parse_qs, urlparse
 from flask import Flask
 from routes import auth
 
@@ -48,6 +51,8 @@ def test_auth_helpers_support_postgres_placeholders_and_optional_selects():
     assert "'19:00' AS writing_reminder_time" not in optional_selects
     assert "'daily,dream' AS writing_reminder_entry_types" in optional_selects
     assert '1 AS chat_enabled' in optional_selects
+    assert '1 AS password_auth_enabled' in optional_selects
+    assert '1 AS onboarding_completed' in optional_selects
     assert 'VALUES (%s, %s, %s, %s)' in insert_sql
     assert 'RETURNING id' in insert_sql
     assert 'WHERE username = %s' in login_sql
@@ -57,8 +62,10 @@ def test_auth_helpers_support_postgres_placeholders_and_optional_selects():
 def client():
     """Create test client with temporary database."""
     db_fd, db_path = tempfile.mkstemp()
+    media_root = tempfile.mkdtemp()
     os.environ['DB_PATH'] = db_path
     os.environ['JWT_SECRET'] = 'test-secret'
+    os.environ['MEDIA_ROOT'] = media_root
     
     app = create_app()
     app.config['TESTING'] = True
@@ -80,7 +87,20 @@ def client():
                 dailydiary_api_key TEXT,
                 dreamdiary_api_key TEXT,
                 chatgpt_daily_diary_coachname TEXT,
-                chatgpt_dream_diary_coachname TEXT
+                chatgpt_dream_diary_coachname TEXT,
+                display_name TEXT,
+                gender TEXT,
+                profile_picture_storage_key TEXT,
+                writing_reminders_enabled INTEGER DEFAULT 0,
+                writing_reminder_days TEXT,
+                writing_reminder_time TEXT DEFAULT '19:00',
+                writing_reminder_silence_days INTEGER DEFAULT 3,
+                writing_reminder_entry_types TEXT DEFAULT 'daily,dream',
+                writing_rhythm_progress_enabled INTEGER DEFAULT 0,
+                writing_rhythm_weekly_goal INTEGER DEFAULT 4,
+                chat_enabled INTEGER DEFAULT 1,
+                password_auth_enabled INTEGER DEFAULT 1,
+                onboarding_completed INTEGER DEFAULT 1
             )
         ''')
         conn.commit()
@@ -90,6 +110,7 @@ def client():
     
     os.close(db_fd)
     os.unlink(db_path)
+    shutil.rmtree(media_root, ignore_errors=True)
 
 def test_register_success(client):
     """Test successful user registration."""
@@ -300,10 +321,29 @@ def test_oauth_providers_enable_configured_provider_without_exposing_secret(clie
     assert providers["microsoft"]["configured"] is False
 
 
+def test_oauth_provider_discovery_ignores_placeholder_credentials(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.setenv("OAUTH_MICROSOFT_CLIENT_ID", "your-microsoft-application-client-id")
+    monkeypatch.setenv("OAUTH_MICROSOFT_CLIENT_SECRET", "your-microsoft-client-secret-value")
+    monkeypatch.setenv("OAUTH_MICROSOFT_REDIRECT_URI", "http://localhost:5001/api/oauth/microsoft/callback")
+
+    response = client.get("/api/oauth/providers")
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    providers = {provider["id"]: provider for provider in payload["providers"]}
+    assert providers["google"]["enabled"] is True
+    assert providers["microsoft"]["configured"] is False
+    assert providers["microsoft"]["enabled"] is False
+
+
 def test_oauth_start_redirects_to_provider_with_signed_state(client, monkeypatch):
     monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
     monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
     monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.delenv("OAUTH_GOOGLE_EXTENDED_PROFILE", raising=False)
 
     response = client.get("/api/oauth/google/start?returnUrl=/entries")
 
@@ -312,7 +352,25 @@ def test_oauth_start_redirects_to_provider_with_signed_state(client, monkeypatch
     assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
     assert "client_id=google-client" in location
     assert "scope=openid+email+profile" in location
+    assert "include_granted_scopes=true" in location
+    assert "prompt=" not in location
     assert "state=" in location
+
+
+def test_oauth_start_keeps_google_login_scopes_minimal_even_when_extended_profile_enabled(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.setenv("OAUTH_GOOGLE_EXTENDED_PROFILE", "true")
+
+    response = client.get("/api/oauth/google/start")
+
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert "scope=openid+email+profile" in location
+    assert "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuser.birthday.read" not in location
+    assert "https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuser.gender.read" not in location
+    assert "prompt=" not in location
 
 
 class _OAuthResponse:
@@ -324,6 +382,15 @@ class _OAuthResponse:
 
     def json(self):
         return self._payload
+
+
+class _OAuthBinaryResponse:
+    def __init__(self, content: bytes, content_type: str):
+        self.content = content
+        self.headers = {"content-type": content_type}
+
+    def raise_for_status(self):
+        return None
 
 
 def test_oauth_callback_creates_user_identity_and_redirects_to_frontend(client, monkeypatch):
@@ -360,17 +427,211 @@ def test_oauth_callback_creates_user_identity_and_redirects_to_frontend(client, 
     response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].startswith("http://localhost:4200/oauth/callback#")
+    assert response.headers["Location"].startswith("http://localhost:4200/onboarding#")
     assert "token=" in response.headers["Location"]
     assert "returnUrl=%2Fdashboard" in response.headers["Location"]
+    fragment = parse_qs(urlparse(response.headers["Location"]).fragment)
+    assert fragment["onboardingRequired"] == ["true"]
+    encoded_user = fragment["user"][0]
+    padded_user = encoded_user + "=" * (-len(encoded_user) % 4)
+    auth_user = json.loads(base64.urlsafe_b64decode(padded_user.encode()).decode())
+    assert auth_user["onboarding_completed"] is False
     import sqlite3
     with sqlite3.connect(os.environ["DB_PATH"]) as conn:
         identity = conn.execute(
             "SELECT provider, provider_subject, email, email_verified FROM auth_identities"
         ).fetchone()
-        user = conn.execute("SELECT username, first_name, last_name FROM users").fetchone()
+        user = conn.execute(
+            """
+            SELECT username, first_name, last_name, display_name,
+                   password_auth_enabled, onboarding_completed
+            FROM users
+            """
+        ).fetchone()
     assert identity == ("google", "google-user-123", "oauthuser@example.com", 1)
-    assert user == ("oauthuser", "OAuth", "User")
+    assert user == ("oauthuser", "OAuth", "User", "OAuth", 0, 0)
+
+
+def test_oauth_callback_existing_completed_user_does_not_require_onboarding(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:4200")
+    with client.application.app_context():
+        state = auth._sign_oauth_state({
+            "provider": "google",
+            "return_url": "/account",
+            "nonce": "test",
+        })
+
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, first_name, last_name,
+                password_auth_enabled, onboarding_completed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (42, "existing-google", "unused", "Existing", "User", 0, 1),
+        )
+        conn.execute(
+            """
+            INSERT INTO auth_identities (
+                user_id, provider, provider_subject, email, email_verified
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (42, "google", "google-existing-123", "existing@example.com", 1),
+        )
+
+    monkeypatch.setattr(
+        auth.httpx,
+        "post",
+        lambda *_args, **_kwargs: _OAuthResponse({"access_token": "provider-token"}),
+    )
+    monkeypatch.setattr(
+        auth.httpx,
+        "get",
+        lambda *_args, **_kwargs: _OAuthResponse({
+            "sub": "google-existing-123",
+            "email": "Existing@example.com",
+            "email_verified": True,
+            "name": "Existing User",
+            "given_name": "Existing",
+            "family_name": "User",
+        }),
+    )
+
+    response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("http://localhost:4200/oauth/callback#")
+    fragment = parse_qs(urlparse(response.headers["Location"]).fragment)
+    assert fragment["onboardingRequired"] == ["false"]
+    assert fragment["returnUrl"] == ["/account"]
+
+
+def test_oauth_callback_existing_incomplete_user_requires_onboarding(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:4200")
+    with client.application.app_context():
+        state = auth._sign_oauth_state({
+            "provider": "google",
+            "return_url": "/account",
+            "nonce": "test",
+        })
+
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, first_name, last_name,
+                password_auth_enabled, onboarding_completed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (43, "incomplete-google", "unused", "Incomplete", "User", 0, 0),
+        )
+        conn.execute(
+            """
+            INSERT INTO auth_identities (
+                user_id, provider, provider_subject, email, email_verified
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (43, "google", "google-incomplete-123", "incomplete@example.com", 1),
+        )
+
+    monkeypatch.setattr(
+        auth.httpx,
+        "post",
+        lambda *_args, **_kwargs: _OAuthResponse({"access_token": "provider-token"}),
+    )
+    monkeypatch.setattr(
+        auth.httpx,
+        "get",
+        lambda *_args, **_kwargs: _OAuthResponse({
+            "sub": "google-incomplete-123",
+            "email": "Incomplete@example.com",
+            "email_verified": True,
+            "name": "Incomplete User",
+            "given_name": "Incomplete",
+            "family_name": "User",
+        }),
+    )
+
+    response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("http://localhost:4200/onboarding#")
+    fragment = parse_qs(urlparse(response.headers["Location"]).fragment)
+    assert fragment["onboardingRequired"] == ["true"]
+    assert fragment["returnUrl"] == ["/dashboard"]
+
+
+def test_google_oauth_imports_profile_picture_and_extended_profile(client, monkeypatch):
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+    monkeypatch.setenv("OAUTH_GOOGLE_EXTENDED_PROFILE", "true")
+    with client.application.app_context():
+        state = auth._sign_oauth_state({
+            "provider": "google",
+            "return_url": "/dashboard",
+            "nonce": "test",
+            "extended_profile": True,
+        })
+
+    monkeypatch.setattr(
+        auth.httpx,
+        "post",
+        lambda *_args, **_kwargs: _OAuthResponse({"access_token": "provider-token"}),
+    )
+
+    from io import BytesIO
+    from PIL import Image
+
+    image = BytesIO()
+    Image.new("RGB", (80, 80), (66, 133, 244)).save(image, format="PNG")
+
+    def fake_get(url, *_args, **_kwargs):
+        url_text = str(url)
+        if "people.googleapis.com" in url_text:
+            return _OAuthResponse({
+                "birthdays": [{"date": {"year": 1990, "month": 2, "day": 3}}],
+                "genders": [{"value": "male"}],
+                "locales": [{"value": "en-GB"}],
+            })
+        if "openidconnect.googleapis.com" in url_text:
+            return _OAuthResponse({
+                "sub": "google-user-with-photo",
+                "email": "photo@example.com",
+                "email_verified": True,
+                "name": "Photo User",
+                "given_name": "Photo",
+                "family_name": "User",
+                "picture": "https://lh3.googleusercontent.com/a/photo",
+            })
+        return _OAuthBinaryResponse(image.getvalue(), "image/png")
+
+    monkeypatch.setattr(auth.httpx, "get", fake_get)
+
+    response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
+
+    assert response.status_code == 302
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        user = conn.execute(
+            """
+            SELECT profile_picture_storage_key, age, gender
+            FROM users
+            """
+        ).fetchone()
+    assert user[0].startswith("profiles/1/")
+    assert user[1] >= 35
+    assert user[2] == "man"
+    assert os.path.exists(os.path.join(os.environ["MEDIA_ROOT"], user[0]))
 
 
 def test_login_success(client):

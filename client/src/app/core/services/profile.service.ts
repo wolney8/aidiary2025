@@ -70,7 +70,7 @@ export class ProfileService {
   }
 
   deleteAccount(payload: {
-    password: string;
+    password?: string;
     confirmation: string;
   }): Observable<{ message: string }> {
     return this.http.delete<{ message: string }>(

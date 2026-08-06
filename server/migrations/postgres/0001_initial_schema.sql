@@ -38,7 +38,10 @@ CREATE TABLE IF NOT EXISTS users (
     writing_reminder_entry_types TEXT DEFAULT 'daily,dream',
     writing_rhythm_progress_enabled INTEGER DEFAULT 0,
     writing_rhythm_weekly_goal INTEGER DEFAULT 4,
-    chat_enabled INTEGER DEFAULT 1
+    chat_enabled INTEGER DEFAULT 1,
+    password_auth_enabled INTEGER DEFAULT 1,
+    onboarding_completed INTEGER DEFAULT 1,
+    registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS auth_identities (

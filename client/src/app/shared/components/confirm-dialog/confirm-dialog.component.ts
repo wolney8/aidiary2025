@@ -84,26 +84,30 @@ export interface ConfirmDialogData {
       }
 
       .dialog-header {
-        display: flex;
-        align-items: flex-start;
+        display: grid;
+        grid-template-columns: 3rem minmax(0, 1fr);
+        align-items: start;
         gap: 1rem;
-        padding: 1.35rem 1.35rem 0.35rem;
+        padding: 1.4rem 1.4rem 0.4rem;
       }
 
       .dialog-icon {
-        width: 2.6rem;
-        height: 2.6rem;
+        display: grid;
+        place-items: center;
+        width: 3rem;
+        height: 3rem;
         border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
+        line-height: 1;
       }
 
       .dialog-icon mat-icon {
-        width: 1.35rem;
-        height: 1.35rem;
-        font-size: 1.35rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.45rem;
+        height: 1.45rem;
+        font-size: 1.45rem;
+        line-height: 1;
       }
 
       .dialog-icon.warning {
@@ -143,8 +147,14 @@ export interface ConfirmDialogData {
       }
 
       mat-dialog-actions {
-        padding: 1rem 1.35rem 1.35rem;
+        padding: 1rem 1.4rem 1.4rem;
         gap: 0.75rem;
+      }
+
+      mat-dialog-actions button {
+        min-height: 44px;
+        border-radius: var(--radius-pill);
+        font-weight: 850;
       }
 
       .cancel-button {

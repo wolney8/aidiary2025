@@ -31,6 +31,7 @@ import {
   DashboardOverview,
   DashboardQuickAction,
   DashboardRange,
+  DashboardSeasonOption,
   DashboardSeriesPoint,
   DashboardTheme,
   DashboardThemeDriftItem,
@@ -234,7 +235,7 @@ interface DashboardChartTick {
                 >
                   {{ option.label }}
                 </button>
-                <label class="dashboard-season-select">
+                <label class="dashboard-season-select" *ngIf="availableSeasonOptions.length">
                   <span>Season</span>
                   <select
                     [value]="selectedSeason"
@@ -243,7 +244,7 @@ interface DashboardChartTick {
                     data-testid="dashboard-season-select"
                   >
                     <option value="">None</option>
-                    <option *ngFor="let option of seasonOptions" [value]="option.value">
+                    <option *ngFor="let option of availableSeasonOptions" [value]="option.value">
                       {{ option.label }}
                     </option>
                   </select>
@@ -972,11 +973,6 @@ interface DashboardChartTick {
       color: var(--colour-text-primary);
     }
 
-    .dashboard-primary-action mat-icon,
-    .dashboard-secondary-action mat-icon {
-      margin-right: 8px;
-    }
-
     .dashboard-grid {
       display: grid;
       grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.4fr);
@@ -1020,6 +1016,8 @@ interface DashboardChartTick {
     .dashboard-card-link {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
       min-height: 38px;
       padding: 0 0.85rem;
       border: 1px solid var(--colour-border);
@@ -1232,9 +1230,13 @@ interface DashboardChartTick {
     }
 
     .dashboard-chart-expand mat-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       width: 20px;
       height: 20px;
       font-size: 20px;
+      line-height: 1;
     }
 
     .dashboard-chart {
@@ -1824,9 +1826,8 @@ interface DashboardChartTick {
     }
 
     .dashboard-focus-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       width: 48px;
       height: 48px;
       flex: 0 0 48px;
@@ -2050,9 +2051,8 @@ interface DashboardChartTick {
     }
 
     .dashboard-activity-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       width: 44px;
       height: 44px;
       border-radius: 16px;
@@ -2150,7 +2150,11 @@ interface DashboardChartTick {
     }
 
     .dashboard-empty-state mat-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       color: var(--colour-primary);
+      line-height: 1;
     }
 
     .dashboard-quick-log {
@@ -2208,6 +2212,20 @@ interface DashboardChartTick {
       font-weight: 900;
       cursor: pointer;
       text-align: left;
+    }
+
+    .dashboard-focus-icon mat-icon,
+    .dashboard-activity-icon mat-icon,
+    .dashboard-quick-log-trigger mat-icon,
+    .dashboard-quick-action mat-icon,
+    .dashboard-back-to-top mat-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.25em;
+      height: 1.25em;
+      margin: 0;
+      line-height: 1;
     }
 
     .dashboard-quick-action:hover,
@@ -2335,7 +2353,6 @@ export class DashboardComponent implements OnInit {
     { value: "3m", label: "3M" },
     { value: "all", label: "All" },
   ];
-  readonly seasonOptions = this.buildSeasonOptions();
   readonly activityTypes: DashboardActivityType[] = [
     "daily",
     "dream",
@@ -2378,6 +2395,10 @@ export class DashboardComponent implements OnInit {
     return "Good evening";
   }
 
+  get availableSeasonOptions(): DashboardSeasonOption[] {
+    return this.overview?.available_seasons || [];
+  }
+
   ngOnInit(): void {
     this.restoreChartPreference();
     this.loadOverview();
@@ -2393,6 +2414,12 @@ export class DashboardComponent implements OnInit {
       .subscribe({
         next: (overview) => {
           this.overview = overview;
+          if (this.reconcileSelectedSeason()) {
+            this.isLoading = false;
+            this.isChartLoading = false;
+            this.loadOverview(scope);
+            return;
+          }
           this.refreshChartData();
           this.isLoading = false;
           this.isChartLoading = false;
@@ -2433,6 +2460,7 @@ export class DashboardComponent implements OnInit {
 
   selectSeason(event: Event): void {
     const value = (event.target as HTMLSelectElement | null)?.value || "";
+    if (value && !this.hasAvailableSeason(value)) return;
     if (this.selectedSeason === value) return;
     this.selectedSeason = value;
     if (value) {
@@ -2484,25 +2512,22 @@ export class DashboardComponent implements OnInit {
   private isDashboardSeason(value: unknown): value is string {
     return (
       typeof value === "string" &&
-      (value === "" || this.seasonOptions.some((option) => option.value === value))
+      (value === "" || /^(spring|summer|autumn|winter)-\d{4}$/.test(value))
     );
   }
 
-  private buildSeasonOptions(): Array<{ value: string; label: string }> {
-    const currentYear = new Date().getFullYear();
-    const seasons = ["spring", "summer", "autumn", "winter"];
-    const labels: Record<string, string> = {
-      spring: "Spring",
-      summer: "Summer",
-      autumn: "Autumn",
-      winter: "Winter",
-    };
-    return [currentYear, currentYear - 1, currentYear - 2].flatMap((year) =>
-      seasons.map((season) => ({
-        value: `${season}-${year}`,
-        label: `${labels[season]} ${year}`,
-      })),
-    );
+  private reconcileSelectedSeason(): boolean {
+    if (!this.selectedSeason || this.hasAvailableSeason(this.selectedSeason)) return false;
+    this.selectedSeason = "";
+    if (this.selectedRange === "all") {
+      this.selectedRange = "1m";
+    }
+    this.persistChartPreference();
+    return true;
+  }
+
+  private hasAvailableSeason(value: string): boolean {
+    return this.availableSeasonOptions.some((option) => option.value === value);
   }
 
   getRingOffset(progress: number): number {
@@ -2750,7 +2775,7 @@ export class DashboardComponent implements OnInit {
   }
 
   getSelectedSeasonLabel(): string {
-    return this.seasonOptions.find((option) => option.value === this.selectedSeason)?.label || "Season";
+    return this.availableSeasonOptions.find((option) => option.value === this.selectedSeason)?.label || "Season";
   }
 
   selectChartPoint(

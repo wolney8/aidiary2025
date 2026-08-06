@@ -22,6 +22,18 @@ RANGE_DAYS = {
     "1m": 30,
     "3m": 90,
 }
+SEASON_LABELS = {
+    "spring": "Spring",
+    "summer": "Summer",
+    "autumn": "Autumn",
+    "winter": "Winter",
+}
+SEASON_START_MONTHS = {
+    "spring": 3,
+    "summer": 6,
+    "autumn": 9,
+    "winter": 12,
+}
 WORD_RE = re.compile(r"\b[\w'-]+\b", re.UNICODE)
 
 MOOD_SCORES = {
@@ -92,6 +104,7 @@ def get_dashboard_overview():
         important_day_rows = _fetch_important_day_rows(conn, user_id)
         history_daily_rows = _fetch_daily_rows(conn, user_id, None)
         history_dream_rows = _fetch_dream_rows(conn, user_id, None)
+        history_cbt_rows = _fetch_cbt_rows(conn, user_id, None)
 
     themes = _build_themes(all_daily_rows, all_dream_rows)
     daily_rows, dream_rows = _filter_rows_by_theme(
@@ -117,6 +130,11 @@ def get_dashboard_overview():
         history_dream_rows,
         important_day_rows,
     )
+    available_seasons = _build_available_seasons(
+        history_daily_rows,
+        history_dream_rows,
+        history_cbt_rows,
+    )
 
     today_key = today.isoformat()
     return jsonify({
@@ -127,6 +145,7 @@ def get_dashboard_overview():
             else None
         ),
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "available_seasons": available_seasons,
         "streak": streak,
         "series": series,
         "themes": themes,
@@ -327,6 +346,56 @@ def _build_series(
         keys = [(start + timedelta(days=offset)).isoformat() for offset in range((today - start).days + 1)]
 
     return [_serialise_series_day(key, buckets[key]) for key in keys]
+
+
+def _build_available_seasons(
+    daily_rows: list[dict[str, Any]],
+    dream_rows: list[dict[str, Any]],
+    cbt_rows: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    seasons: dict[str, tuple[str, date]] = {}
+    date_sources = (
+        (daily_rows, "entry_date"),
+        (dream_rows, "entry_date"),
+        (cbt_rows, "record_date"),
+    )
+    for rows, field in date_sources:
+        for row in rows:
+            option = _season_option_for_date(row.get(field))
+            if option:
+                value, label, starts_on = option
+                seasons[value] = (label, starts_on)
+    return [
+        {"value": value, "label": label}
+        for value, (label, _starts_on) in sorted(
+            seasons.items(),
+            key=lambda item: item[1][1],
+            reverse=True,
+        )
+    ]
+
+
+def _season_option_for_date(raw: object) -> tuple[str, str, date] | None:
+    parsed = _parse_date(raw)
+    if not parsed:
+        return None
+    if parsed.month in (3, 4, 5):
+        season = "spring"
+        year = parsed.year
+    elif parsed.month in (6, 7, 8):
+        season = "summer"
+        year = parsed.year
+    elif parsed.month in (9, 10, 11):
+        season = "autumn"
+        year = parsed.year
+    else:
+        season = "winter"
+        year = parsed.year if parsed.month == 12 else parsed.year - 1
+    return (
+        f"{season}-{year}",
+        f"{SEASON_LABELS[season]} {year}",
+        date(year, SEASON_START_MONTHS[season], 1),
+    )
 
 
 def _serialise_series_day(key: str, bucket: dict[str, Any]) -> dict[str, Any]:

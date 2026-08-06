@@ -73,6 +73,11 @@ export class AuthService {
     this.currentUserSubject.next(response.user);
   }
 
+  clearLocalSession(): void {
+    this.sessionExpiredSinceLastCheck = false;
+    this.clearSession();
+  }
+
   getOAuthStartUrl(provider: OAuthProvider, returnUrl = "/dashboard"): string {
     if (!provider.start_url) {
       return "";
@@ -83,9 +88,12 @@ export class AuthService {
     return url.toString();
   }
 
-  logout(): void {
+  logout(options: { reason?: string; replaceUrl?: boolean } = {}): void {
     this.clearSession();
-    this.router.navigate(["/login"]);
+    this.router.navigate(["/login"], {
+      queryParams: options.reason ? { reason: options.reason } : undefined,
+      replaceUrl: Boolean(options.replaceUrl),
+    });
   }
 
   handleSessionExpired(): void {
@@ -103,6 +111,23 @@ export class AuthService {
         reason: "session-expired",
         returnUrl: currentUrl || "/dashboard",
       },
+      replaceUrl: true,
+    });
+  }
+
+  handleOnboardingRequired(returnUrl = this.router.url || "/dashboard"): void {
+    const safeReturnUrl =
+      returnUrl.startsWith("/") &&
+      !returnUrl.startsWith("//") &&
+      !returnUrl.includes("://") &&
+      !["/login", "/register", "/oauth/callback", "/onboarding"].includes(
+        returnUrl.split("?")[0],
+      )
+        ? returnUrl
+        : "/dashboard";
+
+    this.router.navigate(["/onboarding"], {
+      queryParams: { returnUrl: safeReturnUrl },
       replaceUrl: true,
     });
   }

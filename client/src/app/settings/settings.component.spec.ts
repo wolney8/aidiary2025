@@ -24,6 +24,7 @@ describe("SettingsComponent", () => {
     ).toBeTruthy();
     expect(compiled.querySelector("[data-testid='settings-nav-import']")).toBeTruthy();
     expect(compiled.querySelector("[data-testid='settings-nav-export']")).toBeTruthy();
+    expect(compiled.querySelector("[data-testid='settings-nav-account']")).toBeNull();
   });
 
   it("keeps Important Days outside the Settings section navigation", () => {
