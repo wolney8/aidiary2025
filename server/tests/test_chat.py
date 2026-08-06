@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import tempfile
 from unittest.mock import patch
 from uuid import uuid4
@@ -196,6 +197,32 @@ def test_chat_validation_errors(client):
         content_type='application/json',
     )
     assert too_long_message_response.status_code == 400
+
+
+def test_chat_message_rejects_when_account_chat_is_disabled(client, mocked_chat_services):
+    token = _register_and_get_token(client, 'chat_disabled_user')
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        try:
+            conn.execute('ALTER TABLE users ADD COLUMN chat_enabled INTEGER DEFAULT 1')
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            'UPDATE users SET chat_enabled = 0 WHERE username = ?',
+            ('chat_disabled_user',),
+        )
+
+    response = client.post(
+        '/api/chat/message',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'conversation_id': str(uuid4()), 'message': 'Can you reply?'}),
+        content_type='application/json',
+    )
+
+    assert response.status_code == 403
+    assert json.loads(response.data)['error'] == 'Chat is disabled for this account.'
+    context_service, openai_service = mocked_chat_services
+    context_service.return_value.build_system_prompt.assert_not_called()
+    openai_service.return_value.chat_companion.assert_not_called()
 
 
 def test_chat_send_history_clear_flow(client, mocked_chat_services):

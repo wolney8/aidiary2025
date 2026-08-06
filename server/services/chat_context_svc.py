@@ -71,7 +71,8 @@ class ChatContextService:
         """Build profile, theme, and recent-entry context for one user."""
         with self.adapter.connect(timeout=10) as conn:
             identity = self._load_identity(conn, user_id)
-            entries = self._load_recent_entries(conn, user_id)
+            allow_ai_history = self._load_ai_history_allowed(conn, user_id)
+            entries = self._load_recent_entries(conn, user_id) if allow_ai_history else []
 
         sections = [
             'Use this private diary context only when it is relevant. Do not invent '
@@ -80,9 +81,15 @@ class ChatContextService:
         if identity:
             sections.append(f'User context:\n{identity}')
 
-        themes = self._build_theme_summary(entries)
-        if themes:
-            sections.append(f'Recurring context:\n{themes}')
+        if allow_ai_history:
+            themes = self._build_theme_summary(entries)
+            if themes:
+                sections.append(f'Recurring context:\n{themes}')
+        else:
+            sections.append(
+                'Prior-entry memory is disabled for this user. Do not refer to, '
+                'summarise, or infer from earlier diary entries.'
+            )
 
         prefix = '\n\n'.join(sections)
         if estimate_tokens(prefix) >= self.token_budget:
@@ -110,10 +117,27 @@ class ChatContextService:
         prompt = (
             'You are a supportive OpenMynd diary companion. Respond with empathy, '
             'specificity, and practical perspective without diagnosing the user. '
-            'Use prior diary details selectively and acknowledge uncertainty.\n\n'
+            'Use prior diary details only when they are included in the context, '
+            'and acknowledge uncertainty.\n\n'
             f'{context}'
         )
         return self._fit_to_budget(prompt)
+
+    def _load_ai_history_allowed(self, conn, user_id: int) -> bool:
+        if not self._table_exists(conn, 'users'):
+            return True
+        if 'allow_ai_history' not in self._table_columns(conn, 'users'):
+            return True
+        row = conn.execute(
+            adapt_placeholders(
+                'SELECT allow_ai_history FROM users WHERE id = ?',
+                self.adapter.provider,
+            ),
+            (user_id,),
+        ).fetchone()
+        if not row or row['allow_ai_history'] is None:
+            return True
+        return bool(row['allow_ai_history'])
 
     def _load_identity(self, conn, user_id: int) -> str:
         if not self._table_exists(conn, 'users'):
