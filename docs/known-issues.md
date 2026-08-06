@@ -28,6 +28,11 @@ Immediate hardening completed:
 - Registration supports long passphrases up to 128 characters instead of imposing
   the previous 12-character ceiling.
 - Legacy plaintext passwords are upgraded to bcrypt after a successful login.
+- Chat is blocked at the backend when disabled and omits prior-entry context when
+  `allow_ai_history` is disabled.
+- Production preflight now checks frontend URL shape, Google OAuth callback safety,
+  legal/cookie route source presence, and explicit owner acknowledgement for known
+  session/password migration risks.
 
 Remaining risks requiring dedicated delivery work:
 
@@ -42,6 +47,10 @@ Remaining risks requiring dedicated delivery work:
   are not implemented. Define the account identity model before adding email recovery.
 - **Low:** duplicate registration confirms that a username exists. Decide whether that
   usability tradeoff is acceptable alongside rate limiting and monitoring.
+
+Current public-launch audit:
+
+- [Public Launch Security And Privacy Baseline](./operations/public-launch-security-privacy-baseline.md)
 
 ## To confirm
 

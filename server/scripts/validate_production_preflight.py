@@ -17,6 +17,11 @@ from services.database import SUPPORTED_DATABASE_PROVIDERS, resolve_database_set
 
 
 LOCAL_ORIGIN_MARKERS = ("localhost", "127.0.0.1", "0.0.0.0")
+PLACEHOLDER_MARKERS = ("your_", "your-", "replace-", "example", "changeme")
+PUBLIC_LEGAL_ROUTES = (
+    "client/src/app/legal/legal-page.component.ts",
+    "client/src/app/shared/components/cookie-consent/cookie-consent.component.ts",
+)
 
 
 def _add_gate(
@@ -65,6 +70,26 @@ def _postgres_url_has_pooler_signal(
         or "pool" in host
         or "pgbouncer" in query_keys
     )
+
+
+def _looks_like_https_url(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme == "https" and bool(parsed.netloc)
+
+
+def _is_local_url(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    return any(marker == host for marker in LOCAL_ORIGIN_MARKERS)
+
+
+def _looks_like_placeholder(value: str | None) -> bool:
+    normalised = (value or "").strip().lower()
+    return not normalised or any(marker in normalised for marker in PLACEHOLDER_MARKERS)
 
 
 def _env_flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
@@ -218,6 +243,105 @@ def build_production_preflight(
             message="CORS_ORIGINS must not use wildcard or localhost origins for production.",
         )
 
+    frontend_base_url = (env.get("FRONTEND_BASE_URL") or "").strip()
+    if app_env == "production":
+        if not _looks_like_https_url(frontend_base_url):
+            _add_gate(
+                blockers,
+                gate="frontend_base_url",
+                message="FRONTEND_BASE_URL must be an HTTPS production URL.",
+            )
+        elif _is_local_url(frontend_base_url):
+            _add_gate(
+                blockers,
+                gate="frontend_base_url",
+                message="FRONTEND_BASE_URL must not point at localhost for production.",
+            )
+    elif not frontend_base_url:
+        _add_gate(
+            warnings,
+            gate="frontend_base_url",
+            severity="warning",
+            message="FRONTEND_BASE_URL should be explicit before deployment rehearsal.",
+        )
+
+    oauth_google_client_id = (env.get("OAUTH_GOOGLE_CLIENT_ID") or "").strip()
+    oauth_google_client_secret = (env.get("OAUTH_GOOGLE_CLIENT_SECRET") or "").strip()
+    oauth_google_redirect_uri = (env.get("OAUTH_GOOGLE_REDIRECT_URI") or "").strip()
+    oauth_google_configured = any(
+        value
+        for value in (
+            oauth_google_client_id,
+            oauth_google_client_secret,
+            oauth_google_redirect_uri,
+        )
+    )
+    if app_env == "production" and oauth_google_configured:
+        if (
+            _looks_like_placeholder(oauth_google_client_id)
+            or _looks_like_placeholder(oauth_google_client_secret)
+            or _looks_like_placeholder(oauth_google_redirect_uri)
+        ):
+            _add_gate(
+                blockers,
+                gate="oauth_google_configuration",
+                message="Google OAuth production configuration must not be blank or placeholder values.",
+            )
+        elif not _looks_like_https_url(oauth_google_redirect_uri) or _is_local_url(oauth_google_redirect_uri):
+            _add_gate(
+                blockers,
+                gate="oauth_google_redirect_uri",
+                message="OAUTH_GOOGLE_REDIRECT_URI must be an HTTPS production callback URL.",
+            )
+
+    if app_env == "production" and not _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"):
+        _add_gate(
+            warnings,
+            gate="jwt_browser_storage_review",
+            severity="warning",
+            message=(
+                "Browser bearer tokens are currently stored in localStorage. "
+                "Set OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK=true only after the launch owner accepts this risk or ships a cookie/session redesign."
+            ),
+        )
+
+    if app_env == "production" and not _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"):
+        _add_gate(
+            warnings,
+            gate="legacy_password_fallback_review",
+            severity="warning",
+            message=(
+                "Legacy plaintext-password fallback remains enabled. "
+                "Set OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK=true only for a documented migration window."
+            ),
+        )
+
+    repo_root = root_path.parent
+    frontend_tree_available = (repo_root / "client").exists()
+    missing_legal_sources = []
+    if frontend_tree_available:
+        missing_legal_sources = [
+            path
+            for path in PUBLIC_LEGAL_ROUTES
+            if not (repo_root / path).exists()
+        ]
+    else:
+        _add_gate(
+            warnings,
+            gate="legal_privacy_routes",
+            severity="warning",
+            message="Frontend legal/cookie route sources were not available to this preflight run.",
+        )
+    if frontend_tree_available and missing_legal_sources:
+        _add_gate(
+            blockers,
+            gate="legal_privacy_routes",
+            message=(
+                "Public legal/cookie source files are missing: "
+                + ", ".join(missing_legal_sources)
+            ),
+        )
+
     media_root = (env.get("MEDIA_ROOT") or "").strip()
     media_base_url = (env.get("MEDIA_BASE_URL") or "").strip()
     if app_env == "production" and not media_root and not media_base_url:
@@ -272,6 +396,13 @@ def build_production_preflight(
             "sqlite_production_fallback_allowed": allow_sqlite_fallback,
             "runtime_migrations_allowed_in_production": allow_runtime_migrations,
             "cors_origins": cors_origins,
+            "frontend_base_url_configured": bool(frontend_base_url),
+            "frontend_base_url_https": _looks_like_https_url(frontend_base_url),
+            "oauth_google_configured": oauth_google_configured,
+            "oauth_google_redirect_https": _looks_like_https_url(oauth_google_redirect_uri),
+            "localstorage_jwt_risk_accepted": _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"),
+            "legacy_password_fallback_accepted": _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"),
+            "legal_privacy_routes_present": not missing_legal_sources,
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
