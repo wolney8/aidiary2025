@@ -17,6 +17,7 @@ def _create_context_database(path: str) -> None:
                 pronouns TEXT,
                 gender TEXT,
                 custom_guidance TEXT,
+                allow_ai_history INTEGER,
                 dailydiary_api_key TEXT
             );
             CREATE TABLE dailydiary_entries (
@@ -120,6 +121,36 @@ def test_chat_context_combines_modes_newest_first(tmp_path):
     assert 'Frequent themes: health' in context
 
 
+def test_chat_context_omits_prior_entries_when_history_is_disabled(tmp_path):
+    database_path = str(tmp_path / 'context.db')
+    _create_context_database(database_path)
+
+    with sqlite3.connect(database_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, display_name, allow_ai_history
+            ) VALUES (1, 'one', 'hash', 'Alex', 0)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO dailydiary_entries (
+                id, user_id, entry_date, entry_number, title, user_message, tags,
+                daily_people_names
+            ) VALUES (1, 1, '2026-07-20', 1, 'Private callback', 'This prior detail should stay out.', 'health', 'Jamie')
+            """
+        )
+
+    context = ChatContextService(database_path).build_context(1)
+
+    assert 'Name: Alex' in context
+    assert 'Prior-entry memory is disabled' in context
+    assert 'Private callback' not in context
+    assert 'This prior detail should stay out' not in context
+    assert 'Frequent themes' not in context
+
+
 def test_chat_context_trims_oldest_entries_to_respect_budget(tmp_path):
     database_path = str(tmp_path / 'context.db')
     _create_context_database(database_path)
@@ -200,6 +231,7 @@ class _FakePostgresConnection:
                     'pronouns',
                     'gender',
                     'custom_guidance',
+                    'allow_ai_history',
                 ],
                 'dailydiary_entries': [
                     'entry_date',
@@ -228,6 +260,7 @@ class _FakePostgresConnection:
                     'pronouns': 'they/them',
                     'gender': '',
                     'custom_guidance': 'Be practical',
+                    'allow_ai_history': 1,
                 }
             ])
         if 'FROM dailydiary_entries' in sql:

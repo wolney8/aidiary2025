@@ -101,6 +101,28 @@ def _chat_model() -> str:
     return os.getenv('CHAT_MODEL', DEFAULT_CHAT_MODEL)
 
 
+def _is_chat_enabled(conn: sqlite3.Connection, user_id: int) -> bool:
+    try:
+        row = conn.execute(
+            _sql('SELECT chat_enabled FROM users WHERE id = ?'),
+            (user_id,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if 'no such column' in str(exc).lower():
+            return True
+        raise
+    except Exception as exc:
+        if 'chat_enabled' in str(exc).lower() and 'column' in str(exc).lower():
+            return True
+        raise
+
+    if not row:
+        return False
+    if row['chat_enabled'] is None:
+        return True
+    return bool(row['chat_enabled'])
+
+
 def _chat_observer() -> ChatObservabilityService:
     return ChatObservabilityService(
         current_app.config['DATABASE_PATH'],
@@ -267,6 +289,18 @@ def send_message():
 
     try:
         with get_db() as conn:
+            if not _is_chat_enabled(conn, user_id):
+                _record_chat_event(
+                    event_type='validation_failed',
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                    error_code='chat_disabled',
+                    input_tokens=input_tokens,
+                    model=_chat_model(),
+                )
+                return jsonify({'error': 'Chat is disabled for this account.'}), 403
+
             existing_request = _load_request_messages(conn, user_id, request_id)
             if existing_request.get('user') not in (None, message):
                 _record_chat_event(
