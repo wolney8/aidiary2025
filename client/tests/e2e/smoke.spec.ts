@@ -5,7 +5,7 @@ test("login screen loads with core controls", async ({ page }) => {
 
   await expect(page).toHaveTitle("Login | OpenMynd");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Login to OpenMynd" }),
+    page.getByRole("heading", { level: 1, name: "Log in to OpenMynd" }),
   ).toBeVisible();
   await expect(page.getByLabel("Username")).toBeVisible();
   await expect(page.getByLabel("Password")).toBeVisible();

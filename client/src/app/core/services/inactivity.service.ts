@@ -5,9 +5,12 @@ import { BehaviorSubject, Subject } from "rxjs";
   providedIn: "root",
 })
 export class InactivityService implements OnDestroy {
-  private readonly authTokenStorageKey = "ai_diary_token";
-  private readonly authUserStorageKey = "ai_diary_user";
-  private readonly stayAliveSyncStorageKey = "ai_diary_inactivity_stay_alive";
+  private readonly authTokenStorageKey = "openmynd_token";
+  private readonly legacyAuthTokenStorageKey = "ai_diary_token";
+  private readonly authUserStorageKey = "openmynd_user";
+  private readonly legacyAuthUserStorageKey = "ai_diary_user";
+  private readonly stayAliveSyncStorageKey = "openmynd_inactivity_stay_alive";
+  private readonly legacyStayAliveSyncStorageKey = "ai_diary_inactivity_stay_alive";
 
   private readonly trackedEvents = [
     "mousemove",
@@ -168,14 +171,20 @@ export class InactivityService implements OnDestroy {
   private isRemoteLogoutEvent(event: StorageEvent): boolean {
     return (
       (event.key === this.authTokenStorageKey ||
-        event.key === this.authUserStorageKey) &&
+        event.key === this.legacyAuthTokenStorageKey ||
+        event.key === this.authUserStorageKey ||
+        event.key === this.legacyAuthUserStorageKey) &&
       event.newValue === null &&
       event.oldValue !== null
     );
   }
 
   private isStayAliveSyncEvent(event: StorageEvent): boolean {
-    return event.key === this.stayAliveSyncStorageKey && !!event.newValue;
+    return (
+      (event.key === this.stayAliveSyncStorageKey ||
+        event.key === this.legacyStayAliveSyncStorageKey) &&
+      !!event.newValue
+    );
   }
 
   private clearTimers(): void {

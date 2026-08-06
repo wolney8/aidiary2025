@@ -6,6 +6,8 @@ describe("ThemeService", () => {
   let changeListener: ((event: MediaQueryListEvent) => void) | undefined;
 
   beforeEach(() => {
+    localStorage.removeItem("openmynd_theme_mode");
+    localStorage.removeItem("openmynd_theme_preset");
     localStorage.removeItem("ai_diary_theme_mode");
     localStorage.removeItem("ai_diary_theme_preset");
     document.documentElement.removeAttribute("data-theme");
@@ -37,6 +39,8 @@ describe("ThemeService", () => {
   });
 
   afterEach(() => {
+    localStorage.removeItem("openmynd_theme_mode");
+    localStorage.removeItem("openmynd_theme_preset");
     localStorage.removeItem("ai_diary_theme_mode");
     localStorage.removeItem("ai_diary_theme_preset");
   });
@@ -61,16 +65,16 @@ describe("ThemeService", () => {
 
     expect(service.preference()).toBe("dark");
     expect(service.preset()).toBe("forest");
-    expect(localStorage.getItem("ai_diary_theme_mode")).toBe("dark");
-    expect(localStorage.getItem("ai_diary_theme_preset")).toBe("forest");
+    expect(localStorage.getItem("openmynd_theme_mode")).toBe("dark");
+    expect(localStorage.getItem("openmynd_theme_preset")).toBe("forest");
     expect(document.documentElement.getAttribute("data-theme-preset")).toBe(
       "forest",
     );
   });
 
   it("restores valid stored choices", () => {
-    localStorage.setItem("ai_diary_theme_mode", "dark");
-    localStorage.setItem("ai_diary_theme_preset", "ocean");
+    localStorage.setItem("openmynd_theme_mode", "dark");
+    localStorage.setItem("openmynd_theme_preset", "ocean");
 
     const service = TestBed.inject(ThemeService);
 

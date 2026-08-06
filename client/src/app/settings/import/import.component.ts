@@ -1633,7 +1633,7 @@ export class ImportComponent implements OnInit {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "ai_diary_import_template.xlsx";
+        link.download = "openmynd_import_template.xlsx";
         link.click();
         URL.revokeObjectURL(url);
         this.isDownloading = false;

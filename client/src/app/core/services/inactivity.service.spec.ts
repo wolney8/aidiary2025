@@ -102,7 +102,7 @@ describe("InactivityService", () => {
 
     window.dispatchEvent(
       new StorageEvent("storage", {
-        key: "ai_diary_token",
+        key: "openmynd_token",
         oldValue: "token",
         newValue: null,
       }),
@@ -123,7 +123,7 @@ describe("InactivityService", () => {
 
     window.dispatchEvent(
       new StorageEvent("storage", {
-        key: "ai_diary_inactivity_stay_alive",
+        key: "openmynd_inactivity_stay_alive",
         oldValue: null,
         newValue: "sync",
       }),

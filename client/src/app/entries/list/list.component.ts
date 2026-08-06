@@ -1535,7 +1535,8 @@ export class ListComponent implements OnInit, OnDestroy {
   selectedDay: string | null = null;
   calendarDays: CalendarDay[] = [];
   readonly weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  private readonly displayModeStorageKey = "aidiary.entries.displayMode";
+  private readonly displayModeStorageKey = "openmynd.entries.displayMode";
+  private readonly legacyDisplayModeStorageKey = "aidiary.entries.displayMode";
 
   // Current data
   readonly contentFilterOptions: Array<{
@@ -2161,10 +2162,15 @@ export class ListComponent implements OnInit, OnDestroy {
 
   private getPersistedDisplayMode(): "cards" | "calendar" {
     try {
-      const savedMode = window.localStorage.getItem(this.displayModeStorageKey);
-      return savedMode === "cards" || savedMode === "calendar"
-        ? savedMode
-        : "calendar";
+      const savedMode =
+        window.localStorage.getItem(this.displayModeStorageKey) ??
+        window.localStorage.getItem(this.legacyDisplayModeStorageKey);
+      if (savedMode === "cards" || savedMode === "calendar") {
+        this.persistDisplayMode(savedMode);
+        window.localStorage.removeItem(this.legacyDisplayModeStorageKey);
+        return savedMode;
+      }
+      return "calendar";
     } catch {
       return "calendar";
     }
