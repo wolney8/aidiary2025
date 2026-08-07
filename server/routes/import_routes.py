@@ -17,6 +17,8 @@ from services.database_adapter import DatabaseAdapter
 from services.import_service import (
     DAILY_IMPORT_HEADERS,
     DREAM_IMPORT_HEADERS,
+    IMPORTANT_DAY_IMPORT_HEADERS,
+    THOUGHT_RECORD_IMPORT_HEADERS,
     PACKAGE_TYPE,
     PACKAGE_FORMAT_VERSION,
     PORTABILITY_CONTRACT,
@@ -121,6 +123,8 @@ def _build_commit_response(
             'skipped_daily': result['skipped_daily'],
             'inserted_dreams': result['inserted_dreams'],
             'skipped_dreams': result['skipped_dreams'],
+            'inserted_important_days': result.get('inserted_important_days', 0),
+            'inserted_thought_records': result.get('inserted_thought_records', 0),
             'duplicate_dates_daily': result['duplicate_dates_daily'],
             'duplicate_dates_dreams': result['duplicate_dates_dreams'],
         },
@@ -130,6 +134,15 @@ def _build_commit_response(
         'import_id': import_id,
         'import_session_id': None,
     }
+
+
+def _import_inserted_total(result: dict) -> int:
+    return (
+        int(result.get('inserted_daily', 0) or 0)
+        + int(result.get('inserted_dreams', 0) or 0)
+        + int(result.get('inserted_important_days', 0) or 0)
+        + int(result.get('inserted_thought_records', 0) or 0)
+    )
 
 
 @import_bp.route('/import/session/<session_id>', methods=['DELETE'])
@@ -163,6 +176,11 @@ def _database_provider() -> str:
 def _build_entry_asset_ref(entry_type: str, row: sqlite3.Row) -> str:
     safe_date = str(row['entry_date'] or '').replace('-', '')
     return f"{entry_type}_{safe_date}_{row['entry_number']}_{row['id']}"
+
+
+def _build_important_day_asset_ref(row: sqlite3.Row) -> str:
+    safe_date = str(row['starts_on'] or '').replace('-', '')
+    return f"important_day_{safe_date}_{row['id']}"
 
 
 def _image_filename_for_storage_key(storage_key: str | None) -> str:
@@ -285,7 +303,12 @@ def upload_import():
     parse_warnings: list[str] = parsed.get('warnings', [])
 
     # Reject if nothing parseable was found
-    if not parsed.get('daily') and not parsed.get('dreams'):
+    if (
+        not parsed.get('daily')
+        and not parsed.get('dreams')
+        and not parsed.get('important_days')
+        and not parsed.get('thought_records')
+    ):
         all_warnings = parse_warnings + ['No valid entries found in the uploaded file.']
         conn = get_db()
         ensure_history_table(conn)
@@ -303,6 +326,8 @@ def upload_import():
                 'skipped_daily': 0,
                 'inserted_dreams': 0,
                 'skipped_dreams': 0,
+                'inserted_important_days': 0,
+                'inserted_thought_records': 0,
                 'duplicate_dates_daily': [],
                 'duplicate_dates_dreams': [],
             },
@@ -364,6 +389,32 @@ def upload_import():
         for row in preview.get('ready_dream_rows', [])
     ] + [
         {
+            'row_id': row['_review_row_id'],
+            'entry_type': 'important_day',
+            'entry_date': row['starts_on'],
+            'title': row['label'],
+            'content_preview': row.get('note', '')[:160],
+            'mood': '',
+            'is_duplicate': False,
+            'attachment_count': 1 if row.get('import_image_path') else 0,
+            'source_record_kind': 'important_day',
+        }
+        for row in preview.get('ready_important_day_rows', [])
+    ] + [
+        {
+            'row_id': row['_review_row_id'],
+            'entry_type': 'thought_record',
+            'entry_date': row['record_date'],
+            'title': row['title'],
+            'content_preview': (row.get('situation') or row.get('balanced_thought') or '')[:160],
+            'mood': '',
+            'is_duplicate': False,
+            'attachment_count': 0,
+            'source_record_kind': 'thought_record',
+        }
+        for row in preview.get('ready_thought_record_rows', [])
+    ] + [
+        {
             'row_id': row['row_id'],
             'entry_type': row['entry_type'],
             'entry_date': row['entry_date'],
@@ -377,7 +428,7 @@ def upload_import():
         for row in duplicate_rows
     ]
 
-    if duplicate_rows or source != 'aidiary':
+    if duplicate_rows or source != 'aidiary' or parsed.get('important_days') or parsed.get('thought_records'):
         payload = {
             'parse_warnings': parse_warnings,
             **preview,
@@ -414,7 +465,7 @@ def upload_import():
     )
     result = commit_import_preview(conn, user_id, preview, import_id, set())
     all_warnings = parse_warnings[:]
-    any_inserted = result['inserted_daily'] + result['inserted_dreams'] > 0
+    any_inserted = _import_inserted_total(result) > 0
     status_str = 'success' if any_inserted else 'skipped'
     finalise_import_history(
         conn,
@@ -433,6 +484,8 @@ def upload_import():
             'skipped_daily': result['skipped_daily'],
             'inserted_dreams': result['inserted_dreams'],
             'skipped_dreams': result['skipped_dreams'],
+            'inserted_important_days': result.get('inserted_important_days', 0),
+            'inserted_thought_records': result.get('inserted_thought_records', 0),
             'duplicate_dates_daily': result['duplicate_dates_daily'],
             'duplicate_dates_dreams': result['duplicate_dates_dreams'],
         },
@@ -508,7 +561,7 @@ def commit_import():
         )
         status_str = 'success'
         if result['skipped_daily'] or result['skipped_dreams']:
-            status_str = 'partial' if (result['inserted_daily'] + result['inserted_dreams']) > 0 else 'skipped'
+            status_str = 'partial' if _import_inserted_total(result) > 0 else 'skipped'
 
         final_warnings = list(parse_warnings)
         omitted_duplicates = result['skipped_daily'] + result['skipped_dreams']
@@ -540,6 +593,8 @@ def commit_import():
             'skipped_daily': result['skipped_daily'],
             'inserted_dreams': result['inserted_dreams'],
             'skipped_dreams': result['skipped_dreams'],
+            'inserted_important_days': result.get('inserted_important_days', 0),
+            'inserted_thought_records': result.get('inserted_thought_records', 0),
             'duplicate_dates_daily': result['duplicate_dates_daily'],
             'duplicate_dates_dreams': result['duplicate_dates_dreams'],
         },
@@ -613,6 +668,8 @@ def _run_import_job(
                     recovered_total = (
                         recovered_result['inserted_daily']
                         + recovered_result['inserted_dreams']
+                        + recovered_result.get('inserted_important_days', 0)
+                        + recovered_result.get('inserted_thought_records', 0)
                     )
                     _persist_import_job(
                         conn,
@@ -680,7 +737,7 @@ def _run_import_job(
             if result['skipped_daily'] or result['skipped_dreams']:
                 status_str = (
                     'partial'
-                    if result['inserted_daily'] + result['inserted_dreams'] > 0
+                    if _import_inserted_total(result) > 0
                     else 'skipped'
                 )
 
@@ -711,8 +768,7 @@ def _run_import_job(
                 status='completed',
                 percent=100,
                 message=(
-                    f'Import complete: {result["inserted_daily"] + result["inserted_dreams"]} '
-                    'entries imported.'
+                    f'Import complete: {_import_inserted_total(result)} records imported.'
                 ),
                 result=response,
             )
@@ -726,8 +782,7 @@ def _run_import_job(
                 ).fetchone()[0],
                 percent=100,
                 message=(
-                    f'Import complete: {result["inserted_daily"] + result["inserted_dreams"]} '
-                    'entries imported.'
+                    f'Import complete: {_import_inserted_total(result)} records imported.'
                 ),
                 result_json=json.dumps(response),
                 error=None,
@@ -1111,6 +1166,12 @@ def download_template():
     ws_dreams = wb.create_sheet(title='Dreams')
     ws_dreams.append(list(DREAM_IMPORT_HEADERS))
 
+    ws_important_days = wb.create_sheet(title='Important Days')
+    ws_important_days.append(list(IMPORTANT_DAY_IMPORT_HEADERS))
+
+    ws_thought_records = wb.create_sheet(title='Thought Records')
+    ws_thought_records.append(list(THOUGHT_RECORD_IMPORT_HEADERS))
+
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -1138,11 +1199,24 @@ def export_entries():
 
     include_daily_raw = request.args.get('include_daily', 'true')
     include_dreams_raw = request.args.get('include_dreams', 'true')
+    include_important_days_raw = request.args.get('include_important_days', 'false')
+    include_thought_records_raw = request.args.get('include_thought_records', 'false')
+    export_all = str(request.args.get('export_all', 'false')).strip().lower() == 'true'
 
     include_daily = str(include_daily_raw).strip().lower() != 'false'
     include_dreams = str(include_dreams_raw).strip().lower() != 'false'
+    include_important_days = str(include_important_days_raw).strip().lower() == 'true'
+    include_thought_records = str(include_thought_records_raw).strip().lower() == 'true'
 
-    if not include_daily and not include_dreams:
+    if export_all:
+        include_daily = True
+        include_dreams = True
+        include_important_days = True
+        include_thought_records = True
+        from_date_raw = None
+        to_date_raw = None
+
+    if not include_daily and not include_dreams and not include_important_days and not include_thought_records:
         return jsonify({
             'status': 'error',
             'errors': ['At least one export type must be selected.'],
@@ -1187,6 +1261,8 @@ def export_entries():
 
     daily_rows = []
     dream_rows = []
+    important_day_rows = []
+    thought_record_rows = []
 
     first_daily = conn.execute(
         'SELECT MIN(entry_date) AS min_date, COUNT(*) AS total_count FROM dailydiary_entries WHERE user_id = ?',
@@ -1257,6 +1333,45 @@ def export_entries():
         dream_query += " ORDER BY entry_date ASC, COALESCE(entry_time, '08:00') ASC, entry_number ASC"
         dream_rows = conn.execute(dream_query, tuple(dream_params)).fetchall()
 
+    if include_important_days:
+        important_day_query = '''
+            SELECT id, starts_on, label, category, recurrence, icon_name, accent_color,
+                   note, image_storage_key
+            FROM important_days
+            WHERE user_id = ?
+        '''
+        important_day_params = [user_id]
+        if from_date:
+            important_day_query += ' AND starts_on >= ?'
+            important_day_params.append(from_date.isoformat())
+        if to_date:
+            important_day_query += ' AND starts_on <= ?'
+            important_day_params.append(to_date.isoformat())
+        important_day_query += ' ORDER BY starts_on ASC, lower(label) ASC, id ASC'
+        important_day_rows = conn.execute(important_day_query, tuple(important_day_params)).fetchall()
+
+    if include_thought_records:
+        thought_record_query = '''
+            SELECT w.id, w.record_date, w.title, w.status, w.current_step,
+                   w.linked_entry_type, w.linked_entry_id,
+                   d.situation, d.feelings_before_json, d.unhelpful_thoughts,
+                   d.evidence_for, d.evidence_against, d.balanced_thought,
+                   d.feelings_after_json, d.next_step, d.ai_response,
+                   d.ai_responded_at, d.ai_response_outdated
+            FROM cbt_worksheets w
+            JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
+            WHERE w.user_id = ?
+        '''
+        thought_record_params = [user_id]
+        if from_date:
+            thought_record_query += ' AND w.record_date >= ?'
+            thought_record_params.append(from_date.isoformat())
+        if to_date:
+            thought_record_query += ' AND w.record_date <= ?'
+            thought_record_params.append(to_date.isoformat())
+        thought_record_query += ' ORDER BY w.record_date ASC, w.id ASC'
+        thought_record_rows = conn.execute(thought_record_query, tuple(thought_record_params)).fetchall()
+
     wb = openpyxl.Workbook()
     daily_attachment_rows = _load_attachment_export_rows(
         conn,
@@ -1271,8 +1386,23 @@ def export_entries():
         entry_ids=[int(row['id']) for row in dream_rows],
     ) if include_dreams else {}
 
+    workbook_has_sheet = False
+
+    def next_sheet(title: str):
+        nonlocal workbook_has_sheet
+        if not workbook_has_sheet:
+            sheet = wb.active
+            sheet.title = title
+            workbook_has_sheet = True
+            return sheet
+        return wb.create_sheet(title=title)
+
+    ws_daily = None
+    ws_dreams = None
+    ws_important_days = None
+
     if include_daily:
-        ws_daily = wb.active
+        ws_daily = next_sheet('Daily')
         ws_daily.title = 'Daily'
         ws_daily.append(list(DAILY_IMPORT_HEADERS))
         for row in daily_rows:
@@ -1285,29 +1415,8 @@ def export_entries():
                 '',
             ])
 
-        if include_dreams:
-            ws_dreams = wb.create_sheet(title='Dreams')
-            ws_dreams.append(list(DREAM_IMPORT_HEADERS))
-            for row in dream_rows:
-                ws_dreams.append([
-                    row['entry_date'] or '',
-                    row['entry_time'] or '',
-                    row['title'] or '',
-                    row['plot'] or '',
-                    row['cast'] or '',
-                    row['location'] or '',
-                    row['period'] or '',
-                    row['emotion'] or '',
-                    row['symbols_and_imagery'] or '',
-                    row['insight'] or '',
-                    row['action'] or '',
-                    row['other'] or '',
-                    row['tags'] or '',
-                    '',
-                ])
-    else:
-        ws_dreams = wb.active
-        ws_dreams.title = 'Dreams'
+    if include_dreams:
+        ws_dreams = next_sheet('Dreams')
         ws_dreams.append(list(DREAM_IMPORT_HEADERS))
         for row in dream_rows:
             ws_dreams.append([
@@ -1327,12 +1436,56 @@ def export_entries():
                 '',
             ])
 
+    if include_important_days:
+        ws_important_days = next_sheet('Important Days')
+        ws_important_days.append(list(IMPORTANT_DAY_IMPORT_HEADERS))
+        for row in important_day_rows:
+            ws_important_days.append([
+                row['starts_on'] or '',
+                row['label'] or '',
+                row['category'] or '',
+                row['recurrence'] or '',
+                row['icon_name'] or '',
+                row['accent_color'] or '',
+                row['note'] or '',
+                '',
+            ])
+
+    if include_thought_records:
+        ws_thought_records = next_sheet('Thought Records')
+        ws_thought_records.append(list(THOUGHT_RECORD_IMPORT_HEADERS))
+        for row in thought_record_rows:
+            ws_thought_records.append([
+                row['record_date'] or '',
+                row['title'] or '',
+                row['status'] or '',
+                row['current_step'] or '',
+                row['linked_entry_type'] or '',
+                row['linked_entry_id'] or '',
+                row['situation'] or '',
+                row['feelings_before_json'] or '[]',
+                row['unhelpful_thoughts'] or '',
+                row['evidence_for'] or '',
+                row['evidence_against'] or '',
+                row['balanced_thought'] or '',
+                row['feelings_after_json'] or '[]',
+                row['next_step'] or '',
+                row['ai_response'] or '',
+                row['ai_responded_at'] or '',
+                row['ai_response_outdated'] or 0,
+            ])
+
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     has_filters = (
-        from_date is not None
-        or to_date is not None
-        or not include_daily
-        or not include_dreams
+        not export_all
+        and (
+            from_date is not None
+            or to_date is not None
+            or not include_daily
+            or not include_dreams
+            or include_important_days
+            or include_thought_records
+        )
     )
     filename = f'openmynd_export_{stamp}.zip'
     if has_filters:
@@ -1400,7 +1553,7 @@ def export_entries():
             }
 
     if include_dreams:
-        ws_target = wb['Dreams']
+        ws_target = ws_dreams
         for row_index, row in enumerate(dream_rows, start=2):
             storage_key = row['image_storage_key']
             entry_attachments = dream_attachment_rows.get(int(row['id']), [])
@@ -1434,6 +1587,27 @@ def export_entries():
                 ],
             }
 
+    if include_important_days and ws_important_days:
+        for row_index, row in enumerate(important_day_rows, start=2):
+            storage_key = row['image_storage_key']
+            if not storage_key:
+                continue
+            image_bytes = read_media_bytes(storage_key)
+            if not image_bytes:
+                continue
+            asset_ref = _build_important_day_asset_ref(row)
+            ws_important_days.cell(row=row_index, column=len(IMPORTANT_DAY_IMPORT_HEADERS)).value = asset_ref
+            manifest_assets[asset_ref] = {
+                'entry_type': 'important_day',
+                'image_filename': _image_filename_for_storage_key(storage_key),
+                'image_source': 'upload',
+                'image_position_x': None,
+                'image_position_y': None,
+                'image_prompt': None,
+                'recycled_image_prompt': None,
+                'attachments': [],
+            }
+
     final_workbook_buffer = io.BytesIO()
     wb.save(final_workbook_buffer)
     final_workbook_buffer.seek(0)
@@ -1443,15 +1617,26 @@ def export_entries():
         package_zip.writestr('entries.xlsx', final_workbook_buffer.getvalue())
         for asset_ref, asset_meta in manifest_assets.items():
             image_filename = asset_meta['image_filename']
-            source_rows = daily_rows if asset_meta['entry_type'] == 'daily' else dream_rows
-            source_row = next(
-                (
-                    row
-                    for row in source_rows
-                    if _build_entry_asset_ref(asset_meta['entry_type'], row) == asset_ref
-                ),
-                None,
-            )
+            if asset_meta['entry_type'] == 'important_day':
+                source_rows = important_day_rows
+                source_row = next(
+                    (
+                        row
+                        for row in source_rows
+                        if _build_important_day_asset_ref(row) == asset_ref
+                    ),
+                    None,
+                )
+            else:
+                source_rows = daily_rows if asset_meta['entry_type'] == 'daily' else dream_rows
+                source_row = next(
+                    (
+                        row
+                        for row in source_rows
+                        if _build_entry_asset_ref(asset_meta['entry_type'], row) == asset_ref
+                    ),
+                    None,
+                )
             if source_row is None:
                 continue
 

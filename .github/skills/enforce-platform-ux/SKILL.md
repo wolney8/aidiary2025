@@ -87,6 +87,9 @@ Apply this skill before editing user-facing UI and repeat the review before hand
   edges.
 - For every icon-plus-text control, verify the icon and label share the same visual
   centreline. Prefer shared button label alignment rules over component-local margins.
+- For Angular Material buttons, verify both DOM shapes: icons inside `.mdc-button__label`
+  and icons projected as direct siblings before/after `.mdc-button__label`. Neither may
+  render as `<icon>Label` or `Label<icon>` without visible token spacing.
 - Do not rely on Angular Material's generated DOM classes as the only alignment fix. If
   a generated wrapper must be targeted, keep the selector broad enough to protect the
   shared Material primitive across Login, Register, dialogs, cards, tables, and settings.
