@@ -12,6 +12,10 @@ def _base_env() -> dict[str, str]:
         "OPENAI_API_KEY": "sk-test",
         "MEDIA_ROOT": "/var/lib/openmynd/media",
         "RATELIMIT_STORAGE_URI": "redis://localhost:6379/0",
+        "AUTH_LOGIN_RATE_LIMIT": "10 per minute",
+        "AUTH_REGISTER_RATE_LIMIT": "5 per hour",
+        "AUTH_OAUTH_START_RATE_LIMIT": "20 per minute",
+        "AUTH_OAUTH_CALLBACK_RATE_LIMIT": "20 per minute",
     }
 
 
@@ -204,3 +208,32 @@ def test_preflight_records_accepted_session_and_password_risks(tmp_path):
     assert "legacy_password_fallback_review" not in warning_gates
     assert report["summary"]["localstorage_jwt_risk_accepted"] is True
     assert report["summary"]["legacy_password_fallback_accepted"] is True
+
+
+def test_preflight_warns_when_auth_rate_limits_are_not_explicit(tmp_path):
+    env = _base_env()
+    for key in (
+        "AUTH_LOGIN_RATE_LIMIT",
+        "AUTH_REGISTER_RATE_LIMIT",
+        "AUTH_OAUTH_START_RATE_LIMIT",
+        "AUTH_OAUTH_CALLBACK_RATE_LIMIT",
+    ):
+        env.pop(key)
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "auth_rate_limits" in warning_gates
+    assert report["summary"]["auth_rate_limits_configured"] == {
+        "AUTH_LOGIN_RATE_LIMIT": False,
+        "AUTH_REGISTER_RATE_LIMIT": False,
+        "AUTH_OAUTH_START_RATE_LIMIT": False,
+        "AUTH_OAUTH_CALLBACK_RATE_LIMIT": False,
+    }

@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import httpx
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from PIL import Image, ImageOps, UnidentifiedImageError
+from extensions import limiter
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.media_storage import resolve_image_url, store_profile_image
@@ -55,6 +56,26 @@ GOOGLE_PEOPLE_PROFILE_SCOPES = (
     'https://www.googleapis.com/auth/profile.language.read',
 )
 GOOGLE_SIGN_IN_SCOPES = ('openid', 'email', 'profile')
+
+
+def _configured_rate_limit(env_name: str, default: str) -> str:
+    return os.getenv(env_name, default).strip() or default
+
+
+def _login_rate_limit() -> str:
+    return _configured_rate_limit('AUTH_LOGIN_RATE_LIMIT', '10 per minute')
+
+
+def _register_rate_limit() -> str:
+    return _configured_rate_limit('AUTH_REGISTER_RATE_LIMIT', '5 per hour')
+
+
+def _oauth_start_rate_limit() -> str:
+    return _configured_rate_limit('AUTH_OAUTH_START_RATE_LIMIT', '20 per minute')
+
+
+def _oauth_callback_rate_limit() -> str:
+    return _configured_rate_limit('AUTH_OAUTH_CALLBACK_RATE_LIMIT', '20 per minute')
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -188,6 +209,7 @@ def oauth_providers():
 
 
 @auth_bp.route('/oauth/<provider_id>/start', methods=['GET'])
+@limiter.limit(_oauth_start_rate_limit)
 def oauth_start(provider_id: str):
     config = _oauth_config(provider_id)
     if not config:
@@ -214,6 +236,7 @@ def oauth_start(provider_id: str):
 
 
 @auth_bp.route('/oauth/<provider_id>/callback', methods=['GET'])
+@limiter.limit(_oauth_callback_rate_limit)
 def oauth_callback(provider_id: str):
     config = _oauth_config(provider_id)
     if not config:
@@ -271,6 +294,7 @@ def oauth_callback(provider_id: str):
 
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit(_register_rate_limit)
 def register():
     """Register new user with bcrypt password hashing."""
     data = request.get_json() or {}
@@ -353,6 +377,7 @@ def register():
         raise
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit(_login_rate_limit)
 def login():
     """Authenticate user and return JWT token."""
     data = request.get_json() or {}

@@ -20,6 +20,8 @@ Current automated evidence:
 - The preflight now also checks production frontend URL shape, Google OAuth callback
   safety, public legal/cookie route presence when the frontend tree is available, and
   explicit owner acceptance for known session/password migration risks.
+- Login, registration, and OAuth start/callback routes have explicit rate limits, with
+  preflight visibility for production configuration.
 - Backend auth/profile/chat/import/database tests cover user scoping, account deletion,
   import/revert ownership, chat storage, and database provider compatibility.
 
@@ -27,7 +29,7 @@ Current automated evidence:
 
 | Severity | Area | Risk | Current status | Tracking |
 | --- | --- | --- | --- | --- |
-| Blocking | Auth rate limiting | Login/register abuse is not protected by a distributed limiter across app instances. | Chat uses limiter controls; general auth needs production-grade limiting. | `#113` or new auth-hardening issue |
+| Blocking | Auth rate limiting | Login/register/OAuth abuse needs limiter controls that work across app instances. | Route-level auth limits are in place; production still requires shared limiter storage such as Redis. | `#113` or new auth-hardening issue |
 | Blocking | Session storage | Browser bearer tokens are stored in localStorage, increasing exposure if XSS occurs. | Preflight warns unless the owner explicitly accepts this risk. | `#113`; later auth redesign |
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Cutover tooling exists; production maintenance remains open. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
@@ -98,7 +100,8 @@ cookie categorisation, or external-provider contractual readiness.
 - Owner decision recorded for localStorage JWT risk, or a secure cookie/session redesign
   shipped.
 - Distributed rate limiting applied to login, register, OAuth callback, Chat, AI
-  analysis, import, export, and account-delete sensitive paths as appropriate.
+  analysis, import, export, and account-delete sensitive paths as appropriate, backed
+  by shared production limiter storage.
 - Backups and restore rehearsal completed against the target database.
 - OAuth redirect URIs, CORS origins, frontend base URL, media storage, and OpenAI keys
   configured only through production secrets.

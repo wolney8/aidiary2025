@@ -66,6 +66,10 @@ def client():
     os.environ['DB_PATH'] = db_path
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['MEDIA_ROOT'] = media_root
+    os.environ['AUTH_LOGIN_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_REGISTER_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_OAUTH_START_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_OAUTH_CALLBACK_RATE_LIMIT'] = '1000 per minute'
     
     app = create_app()
     app.config['TESTING'] = True
@@ -355,6 +359,20 @@ def test_oauth_start_redirects_to_provider_with_signed_state(client, monkeypatch
     assert "include_granted_scopes=true" in location
     assert "prompt=" not in location
     assert "state=" in location
+
+
+def test_oauth_start_rate_limit_is_enforced(client, monkeypatch):
+    monkeypatch.setenv("AUTH_OAUTH_START_RATE_LIMIT", "1 per minute")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
+    monkeypatch.setenv("OAUTH_GOOGLE_REDIRECT_URI", "http://localhost:5001/api/oauth/google/callback")
+
+    first = client.get("/api/oauth/google/start")
+    second = client.get("/api/oauth/google/start")
+
+    assert first.status_code == 302
+    assert second.status_code == 429
+    assert json.loads(second.data)["error"] == "Too many attempts. Try again shortly."
 
 
 def test_oauth_start_keeps_google_login_scopes_minimal_even_when_extended_profile_enabled(client, monkeypatch):
@@ -672,6 +690,37 @@ def test_login_invalid_credentials(client):
     assert response.status_code == 401
     data = json.loads(response.data)
     assert 'error' in data
+
+
+def test_login_rate_limit_is_enforced(client, monkeypatch):
+    monkeypatch.setenv("AUTH_LOGIN_RATE_LIMIT", "2 per minute")
+
+    first = client.post('/api/login',
+        data=json.dumps({
+            'username': 'nonexistent',
+            'password': 'wrongpass'
+        }),
+        content_type='application/json'
+    )
+    second = client.post('/api/login',
+        data=json.dumps({
+            'username': 'nonexistent',
+            'password': 'wrongpass'
+        }),
+        content_type='application/json'
+    )
+    third = client.post('/api/login',
+        data=json.dumps({
+            'username': 'nonexistent',
+            'password': 'wrongpass'
+        }),
+        content_type='application/json'
+    )
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert third.status_code == 429
+    assert json.loads(third.data)["error"] == "Too many attempts. Try again shortly."
 
 def test_login_migrates_legacy_plaintext_password_to_bcrypt(client):
     import sqlite3

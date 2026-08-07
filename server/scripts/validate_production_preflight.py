@@ -22,6 +22,12 @@ PUBLIC_LEGAL_ROUTES = (
     "client/src/app/legal/legal-page.component.ts",
     "client/src/app/shared/components/cookie-consent/cookie-consent.component.ts",
 )
+AUTH_RATE_LIMIT_ENV_KEYS = (
+    "AUTH_LOGIN_RATE_LIMIT",
+    "AUTH_REGISTER_RATE_LIMIT",
+    "AUTH_OAUTH_START_RATE_LIMIT",
+    "AUTH_OAUTH_CALLBACK_RATE_LIMIT",
+)
 
 
 def _add_gate(
@@ -370,6 +376,24 @@ def build_production_preflight(
             ),
         )
 
+    configured_auth_rate_limits = {
+        key: bool((env.get(key) or "").strip())
+        for key in AUTH_RATE_LIMIT_ENV_KEYS
+    }
+    missing_auth_rate_limits = [
+        key for key, configured in configured_auth_rate_limits.items() if not configured
+    ]
+    if app_env == "production" and missing_auth_rate_limits:
+        _add_gate(
+            warnings,
+            gate="auth_rate_limits",
+            severity="warning",
+            message=(
+                "Auth endpoint rate limits should be explicit before public launch: "
+                + ", ".join(missing_auth_rate_limits)
+            ),
+        )
+
     openai_key = (env.get("OPENAI_API_KEY") or "").strip()
     if not openai_key:
         _add_gate(
@@ -406,6 +430,7 @@ def build_production_preflight(
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
+            "auth_rate_limits_configured": configured_auth_rate_limits,
             "openai_api_key_configured": bool(openai_key),
         },
     }
