@@ -23,6 +23,7 @@ from services.media_storage import (
     resolve_image_url,
     store_profile_image,
 )
+from services.security_audit import record_security_event
 from services.sql_compat import adapt_placeholders
 
 profile_bp = Blueprint('profile', __name__)
@@ -99,6 +100,48 @@ def _database_provider() -> str:
 
 def _sql(statement: str) -> str:
     return adapt_placeholders(statement, _database_provider())
+
+
+def _audit_security_event(
+    conn,
+    event_type: str,
+    *,
+    user_id: int | None = None,
+    outcome: str = 'success',
+    metadata: dict[str, object] | None = None,
+) -> bool:
+    return record_security_event(
+        conn,
+        database_provider=_database_provider(),
+        secret=current_app.config.get('JWT_SECRET_KEY', ''),
+        user_id=user_id,
+        event_type=event_type,
+        outcome=outcome,
+        request_obj=request,
+        metadata=metadata,
+        logger=current_app.logger,
+    )
+
+
+def _audit_security_event_for_request(
+    event_type: str,
+    *,
+    user_id: int | None = None,
+    outcome: str = 'success',
+    metadata: dict[str, object] | None = None,
+) -> bool:
+    try:
+        with get_db() as conn:
+            return _audit_security_event(
+                conn,
+                event_type,
+                user_id=user_id,
+                outcome=outcome,
+                metadata=metadata,
+            )
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning('Security audit connection could not be opened: %s', exc)
+        return False
 
 
 def get_db():
@@ -547,6 +590,12 @@ def delete_account():
     confirmation = str(data.get('confirmation') or '').strip()
 
     if confirmation != ACCOUNT_DELETE_CONFIRMATION:
+        _audit_security_event_for_request(
+            'account_delete_failed',
+            user_id=user_id,
+            outcome='rejected',
+            metadata={'reason': 'confirmation'},
+        )
         return jsonify({
             'error': f'Type {ACCOUNT_DELETE_CONFIRMATION} to confirm account deletion.'
         }), 400
@@ -560,12 +609,32 @@ def delete_account():
             return jsonify({'error': 'User not found'}), 404
         if bool(user['password_auth_enabled']):
             if not password:
+                _audit_security_event(
+                    conn,
+                    'account_delete_failed',
+                    user_id=user_id,
+                    outcome='rejected',
+                    metadata={'reason': 'password_required'},
+                )
                 return jsonify({'error': 'Password is required to delete your account.'}), 400
             if not _password_matches(password, user['password']):
+                _audit_security_event(
+                    conn,
+                    'account_delete_failed',
+                    user_id=user_id,
+                    outcome='rejected',
+                    metadata={'reason': 'bad_password'},
+                )
                 return jsonify({'error': 'Password did not match.'}), 400
 
+        _audit_security_event(conn, 'account_delete_requested', user_id=user_id)
         media_storage_keys = collect_user_media_storage_keys(conn, user_id)
         delete_user_account_data(conn, user_id)
+        _audit_security_event(
+            conn,
+            'account_delete_success',
+            metadata={'user_rows_removed': True},
+        )
 
     delete_user_media(media_storage_keys)
     return jsonify({'message': 'Account deleted'}), 200

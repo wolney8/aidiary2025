@@ -337,6 +337,18 @@ def test_account_delete_requires_confirmation_and_removes_user_data(
     assert wrong_password_response.status_code == 400
     assert json.loads(wrong_password_response.data)["error"] == "Password did not match."
     assert media_path.exists()
+    with sqlite3.connect(db_path) as conn:
+        failed_event = conn.execute(
+            """
+            SELECT event_type, outcome, user_id, metadata_json
+            FROM security_audit_events
+            WHERE event_type = 'account_delete_failed'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert failed_event[0:3] == ("account_delete_failed", "rejected", 1)
+    assert json.loads(failed_event[3]) == {"reason": "bad_password"}
 
     delete_response = client.delete(
         "/api/profile/account",
@@ -354,6 +366,21 @@ def test_account_delete_requires_confirmation_and_removes_user_data(
 
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+        events = conn.execute(
+            """
+            SELECT event_type, outcome, user_id, metadata_json
+            FROM security_audit_events
+            ORDER BY id
+            """
+        ).fetchall()
+    assert events == [
+        (
+            "account_delete_success",
+            "success",
+            None,
+            '{"user_rows_removed": true}',
+        )
+    ]
 
 
 def test_oauth_only_account_deletion_does_not_require_password(client_with_legacy_user_schema):

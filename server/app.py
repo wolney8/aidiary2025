@@ -25,6 +25,7 @@ from services.runtime_migrations import (
     ensure_important_days_table,
     ensure_public_holiday_cache_table,
     ensure_reflection_summaries_table,
+    ensure_security_audit_events_table,
     ensure_user_settings_columns,
 )
 from services.media_storage import DEFAULT_MEDIA_URL_PREFIX, ensure_media_root
@@ -224,6 +225,11 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
             'Runtime chat observability migration skipped due to error: %s',
             migration_exc,
         )
+
+    try:
+        ensure_security_audit_events_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime security audit migration skipped due to error: %s', migration_exc)
 
     try:
         ensure_cbt_worksheet_tables(database_path, app.logger.info)

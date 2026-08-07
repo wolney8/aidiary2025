@@ -132,6 +132,16 @@ def test_register_success(client):
     data = json.loads(response.data)
     assert 'token' in data
     assert data['user']['username'] == 'testuser'
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        event = conn.execute(
+            """
+            SELECT event_type, outcome, user_id
+            FROM security_audit_events
+            WHERE event_type = 'register_success'
+            """
+        ).fetchone()
+    assert event == ("register_success", "success", 1)
 
 def test_register_missing_credentials(client):
     """Test registration with missing credentials."""
@@ -676,6 +686,20 @@ def test_login_success(client):
     data = json.loads(response.data)
     assert 'token' in data
     assert 'user' in data
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        events = conn.execute(
+            """
+            SELECT event_type, outcome, user_id
+            FROM security_audit_events
+            WHERE event_type IN ('register_success', 'login_success')
+            ORDER BY id
+            """
+        ).fetchall()
+    assert events == [
+        ("register_success", "success", 1),
+        ("login_success", "success", 1),
+    ]
 
 def test_login_invalid_credentials(client):
     """Test login with invalid credentials."""
@@ -690,6 +714,17 @@ def test_login_invalid_credentials(client):
     assert response.status_code == 401
     data = json.loads(response.data)
     assert 'error' in data
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        event = conn.execute(
+            """
+            SELECT event_type, outcome, user_id, metadata_json
+            FROM security_audit_events
+            WHERE event_type = 'login_failed'
+            """
+        ).fetchone()
+    assert event[0:3] == ("login_failed", "rejected", None)
+    assert json.loads(event[3]) == {"reason": "unknown_user"}
 
 
 def test_login_rate_limit_is_enforced(client, monkeypatch):

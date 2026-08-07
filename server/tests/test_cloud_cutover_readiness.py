@@ -63,6 +63,7 @@ def _write_export(export_dir):
         "reflection_summaries",
         "chat_messages",
         "chat_observability_events",
+        "security_audit_events",
         "cbt_worksheets",
         "cbt_thought_record_data",
     ]:

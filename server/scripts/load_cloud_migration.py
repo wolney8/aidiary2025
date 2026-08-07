@@ -36,6 +36,7 @@ IDENTITY_ID_TABLES = {
     "reflection_summaries",
     "chat_messages",
     "chat_observability_events",
+    "security_audit_events",
     "cbt_worksheets",
     "entry_ai_metadata",
 }
