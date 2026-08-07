@@ -29,25 +29,25 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
     <mat-card class="export-card" data-testid="export-settings-card">
       <mat-card-header>
         <mat-icon mat-card-avatar>download</mat-icon>
-        <mat-card-title>Export Entries</mat-card-title>
+        <mat-card-title>Export Data</mat-card-title>
         <mat-card-subtitle>
-          Download all your daily and dream entries as a package containing the workbook and any bundled hero images.
+          Download a portable OpenMynd package for selected journal data.
         </mat-card-subtitle>
       </mat-card-header>
 
       <mat-card-content>
         <p class="hint">
           The export package contains an <strong>entries.xlsx</strong> workbook
-          plus bundled Daily and Dream hero images and entry attachments.
+          plus bundled media files where supported.
         </p>
 
         <div class="portability-note" role="note">
           <strong>Portability limits</strong>
           <p>
-            Entry content, supported AI fields, times, hero images, framing, and
-            attachments can be restored from the package. Account settings,
-            important days, chat history, and attachment-derived text or
-            transcripts are not currently included.
+            Daily, Dream, Important Day, and Thought Record content can be
+            restored from the package. Account settings, public-holiday
+            preferences, chat history, and attachment-derived text or transcripts
+            are not included.
           </p>
         </div>
 
@@ -92,6 +92,22 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             >
               Include Dreams
             </mat-checkbox>
+
+            <mat-checkbox
+              [checked]="includeImportantDays"
+              [disabled]="isDownloading"
+              (change)="onIncludeImportantDaysChange($event.checked)"
+            >
+              Include Important Days
+            </mat-checkbox>
+
+            <mat-checkbox
+              [checked]="includeThoughtRecords"
+              [disabled]="isDownloading"
+              (change)="onIncludeThoughtRecordsChange($event.checked)"
+            >
+              Include Thought Records
+            </mat-checkbox>
           </div>
         </div>
 
@@ -113,6 +129,15 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         >
           <mat-icon>download</mat-icon>
           {{ isDownloading ? "Preparing export..." : "Download Export" }}
+        </button>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="downloadAllData()"
+          [disabled]="isDownloading"
+        >
+          <mat-icon>inventory_2</mat-icon>
+          Export all data
         </button>
       </mat-card-actions>
     </mat-card>
@@ -205,13 +230,17 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         background: var(--colour-surface);
       }
 
+      mat-card-content {
+        display: grid;
+        gap: var(--spacing-md);
+      }
+
       .hint {
         margin: 0;
         color: var(--colour-text-secondary);
       }
 
       .portability-note {
-        margin-top: var(--spacing-md);
         padding: var(--spacing-sm) var(--spacing-md);
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
@@ -228,9 +257,8 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .filters {
-        margin-top: var(--spacing-md);
         display: grid;
-        gap: var(--spacing-sm);
+        gap: var(--spacing-md);
       }
 
       .date-row {
@@ -268,7 +296,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .feedback {
-        margin: var(--spacing-sm) 0 0;
+        margin: 0;
         padding: var(--spacing-sm) var(--spacing-md);
         border-radius: var(--radius-lg);
         font-weight: 700;
@@ -323,7 +351,10 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       mat-card-actions {
-        padding: 0 var(--spacing-md) var(--spacing-md);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
       }
 
       mat-card-actions button,
@@ -352,6 +383,8 @@ export class ExportComponent implements OnInit {
   toDate = "";
   includeDaily = true;
   includeDreams = true;
+  includeImportantDays = false;
+  includeThoughtRecords = false;
   readiness: BulkDeleteReadiness | null = null;
   bulkDeleteConfirmation = "";
   private bulkDeleteGuardToken = "";
@@ -382,6 +415,16 @@ export class ExportComponent implements OnInit {
     this.clearFeedback();
   }
 
+  onIncludeImportantDaysChange(checked: boolean): void {
+    this.includeImportantDays = checked;
+    this.clearFeedback();
+  }
+
+  onIncludeThoughtRecordsChange(checked: boolean): void {
+    this.includeThoughtRecords = checked;
+    this.clearFeedback();
+  }
+
   downloadExport(): void {
     this.clearFeedback();
 
@@ -401,6 +444,23 @@ export class ExportComponent implements OnInit {
         this.isDownloading = false;
         this.successMessage = "Export downloaded successfully.";
         this.refreshBulkDeleteReadiness();
+      },
+      error: (err: Error) => {
+        this.isDownloading = false;
+        this.errorMessage = err.message || "Export failed. Please try again.";
+      },
+    });
+  }
+
+  downloadAllData(): void {
+    this.clearFeedback();
+    this.isDownloading = true;
+
+    this.importService.downloadExport({ exportAll: true }).subscribe({
+      next: (result) => {
+        this.handleDownloadSuccess(result.blob, result.filename);
+        this.isDownloading = false;
+        this.successMessage = "Full data export downloaded successfully.";
       },
       error: (err: Error) => {
         this.isDownloading = false;
@@ -487,8 +547,13 @@ export class ExportComponent implements OnInit {
   }
 
   private validateFilters(): string | null {
-    if (!this.includeDaily && !this.includeDreams) {
-      return "Select at least one entry type to export (Daily or Dreams).";
+    if (
+      !this.includeDaily &&
+      !this.includeDreams &&
+      !this.includeImportantDays &&
+      !this.includeThoughtRecords
+    ) {
+      return "Select at least one data type to export.";
     }
 
     if (this.fromDate && this.toDate && this.fromDate > this.toDate) {
@@ -500,7 +565,11 @@ export class ExportComponent implements OnInit {
 
   private getExportFilters(): ExportFilters | undefined {
     const hasDateFilter = Boolean(this.fromDate || this.toDate);
-    const usesDefaultTypeFilter = this.includeDaily && this.includeDreams;
+    const usesDefaultTypeFilter =
+      this.includeDaily &&
+      this.includeDreams &&
+      !this.includeImportantDays &&
+      !this.includeThoughtRecords;
 
     if (!hasDateFilter && usesDefaultTypeFilter) {
       return undefined;
@@ -511,6 +580,8 @@ export class ExportComponent implements OnInit {
       toDate: this.toDate || undefined,
       includeDaily: this.includeDaily,
       includeDreams: this.includeDreams,
+      includeImportantDays: this.includeImportantDays,
+      includeThoughtRecords: this.includeThoughtRecords,
     };
   }
 

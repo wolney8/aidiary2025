@@ -67,6 +67,35 @@ DREAM_IMPORT_HEADERS = (
     'tags',
     'entry_asset_ref',
 )
+IMPORTANT_DAY_IMPORT_HEADERS = (
+    'starts_on',
+    'label',
+    'category',
+    'recurrence',
+    'icon_name',
+    'accent_color',
+    'note',
+    'entry_asset_ref',
+)
+THOUGHT_RECORD_IMPORT_HEADERS = (
+    'record_date',
+    'title',
+    'status',
+    'current_step',
+    'linked_entry_type',
+    'linked_entry_id',
+    'situation',
+    'feelings_before',
+    'unhelpful_thoughts',
+    'evidence_for',
+    'evidence_against',
+    'balanced_thought',
+    'feelings_after',
+    'next_step',
+    'ai_response',
+    'ai_responded_at',
+    'ai_response_outdated',
+)
 _DREAM_REQUIRED_HEADERS = tuple(
     header for header in DREAM_IMPORT_HEADERS if header not in {'entry_time', 'entry_asset_ref'}
 )
@@ -89,10 +118,14 @@ PORTABILITY_CONTRACT = {
     'workbook_fields': {
         'daily': list(DAILY_IMPORT_HEADERS),
         'dream': list(DREAM_IMPORT_HEADERS),
+        'important_days': list(IMPORTANT_DAY_IMPORT_HEADERS),
+        'thought_records': list(THOUGHT_RECORD_IMPORT_HEADERS),
     },
     'preserved_assets': [
         'hero images and framing metadata',
         'entry attachments and their filenames, MIME types, and ordering',
+        'important days and their images',
+        'thought records and their AI responses',
     ],
     'normalised_on_import': [
         'blank Daily entry times default to 19:00',
@@ -101,7 +134,7 @@ PORTABILITY_CONTRACT = {
     ],
     'omitted_data': [
         'account and Customisation settings',
-        'important days and public-holiday preferences',
+        'public-holiday preferences',
         'chat history',
         'attachment-derived text and transcripts',
         'Daily mood and derived tags, people, and places',
@@ -216,6 +249,58 @@ def _truncate_preview(value: str, limit: int = 96) -> str:
 
 def _normalise_headers(columns) -> list[str]:
     return [str(column).strip().lower() for column in columns]
+
+
+def _parse_json_array(value, *, fallback=None):
+    if fallback is None:
+        fallback = []
+    if _is_blankish(value):
+        return fallback
+    if isinstance(value, list):
+        return value
+    text = str(value).strip()
+    try:
+        parsed = json.loads(text)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if isinstance(parsed, list) else fallback
+
+
+def _json_cell(value) -> str:
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value or [], ensure_ascii=True)
+    except (TypeError, ValueError):
+        return '[]'
+
+
+def _coerce_int_cell(
+    value,
+    *,
+    default: int,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
+
+
+def _coerce_allowed_cell(value, allowed: set[str], default: str) -> str:
+    text = _sanitise(value).strip().lower()
+    return text if text in allowed else default
+
+
+def _parse_boolish_cell(value) -> int:
+    text = str(value or '').strip().lower()
+    return 1 if text in {'1', 'true', 'yes', 'y'} else 0
 
 
 def _normalise_header_set(columns: list[str]) -> set[str]:
@@ -533,6 +618,14 @@ def parse_import_package(file_bytes: bytes) -> dict:
                 staging_root=staging_root,
                 warnings=manifest_warnings,
             )
+            _attach_package_asset_metadata(
+                parsed.get('important_days', []),
+                entry_type='important day',
+                manifest_assets=manifest_assets,
+                zip_file=zip_file,
+                staging_root=staging_root,
+                warnings=manifest_warnings,
+            )
 
             parsed['package_staging_root'] = staging_root
             return parsed
@@ -554,6 +647,8 @@ def parse_excel_workbook(file_bytes: bytes) -> dict:
     errors: list[str] = []
     daily_rows: list[dict] = []
     dream_rows: list[dict] = []
+    important_day_rows: list[dict] = []
+    thought_record_rows: list[dict] = []
 
     try:
         xls = pd.ExcelFile(io.BytesIO(file_bytes), engine='openpyxl')
@@ -664,7 +759,126 @@ def parse_excel_workbook(file_bytes: bytes) -> dict:
     else:
         warnings.append("No 'Dreams' sheet found; dream entries not imported.")
 
-    return {'daily': daily_rows, 'dreams': dream_rows, 'errors': errors, 'warnings': warnings}
+    important_day_sheet_key = next(
+        (k for k in sheet_map if k in ('important days', 'important_days')), None
+    )
+    if important_day_sheet_key:
+        df = pd.read_excel(xls, sheet_name=sheet_map[important_day_sheet_key], dtype=str)
+        df.columns = _normalise_headers(df.columns)
+        warnings.extend(
+            _validate_sheet_headers(
+                'Important Days',
+                df.columns.tolist(),
+                ('starts_on', 'label'),
+                tuple(header for header in IMPORTANT_DAY_IMPORT_HEADERS if header not in {'starts_on', 'label'}),
+            )
+        )
+        for idx, row in df.iterrows():
+            row_num = idx + 2
+            starts_on = _parse_date(row.get('starts_on', ''))
+            if not starts_on:
+                warnings.append(
+                    f'Important Days sheet row {row_num}: skipped — invalid or missing starts_on '
+                    f'("{row.get("starts_on", "")}").'
+                )
+                continue
+            label = _sanitise(row.get('label', ''))[:60].strip()
+            if not label:
+                warnings.append(f'Important Days sheet row {row_num}: skipped — missing label.')
+                continue
+            parsed_date = datetime.strptime(starts_on, '%Y-%m-%d')
+            important_day_rows.append({
+                'starts_on': starts_on,
+                'month': parsed_date.month,
+                'day': parsed_date.day,
+                'original_year': parsed_date.year,
+                'label': label,
+                'category': _coerce_allowed_cell(
+                    row.get('category', ''),
+                    {'birthday', 'anniversary', 'milestone', 'other'},
+                    'other',
+                ),
+                'recurrence': _coerce_allowed_cell(row.get('recurrence', ''), {'once', 'yearly'}, 'yearly'),
+                'icon_name': _coerce_allowed_cell(
+                    row.get('icon_name', ''),
+                    {
+                        'cake',
+                        'favorite',
+                        'flag',
+                        'event',
+                        'celebration',
+                        'star',
+                        'sentiment_neutral',
+                        'sentiment_dissatisfied',
+                        'mood_bad',
+                    },
+                    'event',
+                ),
+                'accent_color': _coerce_allowed_cell(
+                    row.get('accent_color', ''),
+                    {'amber', 'rose', 'blue', 'violet', 'emerald', 'slate'},
+                    'amber',
+                ),
+                'note': _sanitise(row.get('note', ''))[:160],
+                'entry_asset_ref': _sanitise(row.get('entry_asset_ref', '')),
+            })
+
+    thought_record_sheet_key = next(
+        (k for k in sheet_map if k in ('thought records', 'thought_records')), None
+    )
+    if thought_record_sheet_key:
+        df = pd.read_excel(xls, sheet_name=sheet_map[thought_record_sheet_key], dtype=str)
+        df.columns = _normalise_headers(df.columns)
+        warnings.extend(
+            _validate_sheet_headers(
+                'Thought Records',
+                df.columns.tolist(),
+                ('record_date', 'title'),
+                tuple(header for header in THOUGHT_RECORD_IMPORT_HEADERS if header not in {'record_date', 'title'}),
+            )
+        )
+        for idx, row in df.iterrows():
+            row_num = idx + 2
+            record_date = _parse_date(row.get('record_date', ''))
+            if not record_date:
+                warnings.append(
+                    f'Thought Records sheet row {row_num}: skipped — invalid or missing record_date '
+                    f'("{row.get("record_date", "")}").'
+                )
+                continue
+            title = _sanitise(row.get('title', ''))[:100].strip()
+            if not title:
+                title = 'Thought record'
+            status = _coerce_allowed_cell(row.get('status', ''), {'draft', 'completed'}, 'draft')
+            current_step = _coerce_int_cell(row.get('current_step', ''), default=7 if status == 'completed' else 1, minimum=1, maximum=7)
+            thought_record_rows.append({
+                'record_date': record_date,
+                'title': title,
+                'status': status,
+                'current_step': current_step,
+                'linked_entry_type': _coerce_allowed_cell(row.get('linked_entry_type', ''), {'daily', 'dream'}, ''),
+                'linked_entry_id': _coerce_int_cell(row.get('linked_entry_id', ''), default=0, minimum=0),
+                'situation': _sanitise(row.get('situation', ''))[:6000],
+                'feelings_before_json': _json_cell(_parse_json_array(row.get('feelings_before', ''))),
+                'unhelpful_thoughts': _sanitise(row.get('unhelpful_thoughts', ''))[:6000],
+                'evidence_for': _sanitise(row.get('evidence_for', ''))[:6000],
+                'evidence_against': _sanitise(row.get('evidence_against', ''))[:6000],
+                'balanced_thought': _sanitise(row.get('balanced_thought', ''))[:6000],
+                'feelings_after_json': _json_cell(_parse_json_array(row.get('feelings_after', ''))),
+                'next_step': _sanitise(row.get('next_step', ''))[:6000],
+                'ai_response': _sanitise(row.get('ai_response', ''))[:6000],
+                'ai_responded_at': _sanitise(row.get('ai_responded_at', '')),
+                'ai_response_outdated': _parse_boolish_cell(row.get('ai_response_outdated', '')),
+            })
+
+    return {
+        'daily': daily_rows,
+        'dreams': dream_rows,
+        'important_days': important_day_rows,
+        'thought_records': thought_record_rows,
+        'errors': errors,
+        'warnings': warnings,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -922,6 +1136,8 @@ def preview_import_entries(conn: sqlite3.Connection, user_id: int, parsed: dict)
 
     ready_daily_rows: list[dict[str, str]] = []
     ready_dream_rows: list[dict[str, str]] = []
+    ready_important_day_rows: list[dict[str, str]] = []
+    ready_thought_record_rows: list[dict[str, str]] = []
     duplicate_rows: list[dict[str, object]] = []
     duplicate_dates_daily: list[str] = []
     duplicate_dates_dreams: list[str] = []
@@ -988,13 +1204,27 @@ def preview_import_entries(conn: sqlite3.Connection, user_id: int, parsed: dict)
         if title_key and content_key:
             existing_dreams.add(duplicate_key)
 
+    for source_index, row in enumerate(parsed.get('important_days', []), start=1):
+        ready_row = dict(row)
+        ready_row['_review_row_id'] = f'important-day-{source_index}'
+        ready_important_day_rows.append(ready_row)
+
+    for source_index, row in enumerate(parsed.get('thought_records', []), start=1):
+        ready_row = dict(row)
+        ready_row['_review_row_id'] = f'thought-record-{source_index}'
+        ready_thought_record_rows.append(ready_row)
+
     preview = {
         'ready_daily_rows': ready_daily_rows,
         'ready_dream_rows': ready_dream_rows,
+        'ready_important_day_rows': ready_important_day_rows,
+        'ready_thought_record_rows': ready_thought_record_rows,
         'duplicate_rows': duplicate_rows,
         'summary': {
             'ready_daily': len(ready_daily_rows),
             'ready_dreams': len(ready_dream_rows),
+            'ready_important_days': len(ready_important_day_rows),
+            'ready_thought_records': len(ready_thought_record_rows),
             'duplicate_daily': duplicate_daily_count,
             'duplicate_dreams': duplicate_dream_count,
             'duplicate_dates_daily': duplicate_dates_daily,
@@ -1087,6 +1317,32 @@ def _attach_imported_media_to_entry(
     )
 
 
+def _attach_imported_media_to_important_day(
+    cursor: sqlite3.Cursor,
+    *,
+    important_day_id: int,
+    user_id: int,
+    row: dict[str, str],
+) -> None:
+    import_image_path = str(row.get('import_image_path') or '').strip()
+    if not import_image_path:
+        return
+
+    image_bytes = Path(import_image_path).read_bytes()
+    storage_key = store_imported_image(
+        image_bytes,
+        user_id=user_id,
+        entry_kind='important-day',
+        filename=Path(import_image_path).name,
+    )
+    cursor.execute(
+        '''UPDATE important_days
+           SET image_storage_key = ?, image_url = NULL, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?''',
+        (storage_key, important_day_id, user_id),
+    )
+
+
 def _attach_imported_entry_assets_to_entry(
     cursor: sqlite3.Cursor,
     *,
@@ -1132,7 +1388,91 @@ def _attach_imported_entry_assets_to_entry(
                 int(attachment_meta.get('sort_order', 0) or 0),
                 datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
             ),
-        )
+    )
+
+
+def _insert_important_day_import_row(
+    cursor: sqlite3.Cursor,
+    user_id: int,
+    row: dict[str, str],
+) -> None:
+    cursor.execute(
+        append_returning_id(
+            '''INSERT INTO important_days (
+               user_id, label, starts_on, month, day, original_year, category,
+               recurrence, icon_name, accent_color, note
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            _cursor_provider(cursor),
+        ),
+        (
+            user_id,
+            row['label'],
+            row['starts_on'],
+            row['month'],
+            row['day'],
+            row['original_year'],
+            row['category'],
+            row['recurrence'],
+            row['icon_name'],
+            row['accent_color'],
+            row.get('note', ''),
+        ),
+    )
+    important_day_id = inserted_id(cursor, _cursor_provider(cursor))
+    _attach_imported_media_to_important_day(
+        cursor,
+        important_day_id=important_day_id,
+        user_id=user_id,
+        row=row,
+    )
+
+
+def _insert_thought_record_import_row(
+    cursor: sqlite3.Cursor,
+    user_id: int,
+    row: dict[str, str],
+) -> None:
+    status = row.get('status') or 'draft'
+    completed_at = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ') if status == 'completed' else None
+    cursor.execute(
+        append_returning_id(
+            '''INSERT INTO cbt_worksheets (
+               user_id, worksheet_type, title, status, current_step, record_date,
+               linked_entry_type, linked_entry_id, completed_at
+            ) VALUES (?, 'thought_record', ?, ?, ?, ?, NULL, NULL, ?)''',
+            _cursor_provider(cursor),
+        ),
+        (
+            user_id,
+            row['title'],
+            status,
+            row.get('current_step', 7 if status == 'completed' else 1),
+            row['record_date'],
+            completed_at,
+        ),
+    )
+    worksheet_id = inserted_id(cursor, _cursor_provider(cursor))
+    cursor.execute(
+        '''INSERT INTO cbt_thought_record_data (
+           worksheet_id, situation, feelings_before_json, unhelpful_thoughts,
+           evidence_for, evidence_against, balanced_thought, feelings_after_json,
+           next_step, ai_response, ai_responded_at, ai_response_outdated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        (
+            worksheet_id,
+            row.get('situation', ''),
+            row.get('feelings_before_json', '[]'),
+            row.get('unhelpful_thoughts', ''),
+            row.get('evidence_for', ''),
+            row.get('evidence_against', ''),
+            row.get('balanced_thought', ''),
+            row.get('feelings_after_json', '[]'),
+            row.get('next_step', ''),
+            row.get('ai_response', ''),
+            row.get('ai_responded_at') or None,
+            int(row.get('ai_response_outdated', 0) or 0),
+        ),
+    )
 
 
 def _insert_daily_import_row(
@@ -1282,6 +1622,8 @@ def commit_import_preview(
 
     inserted_daily = 0
     inserted_dreams = 0
+    inserted_important_days = 0
+    inserted_thought_records = 0
     accepted_duplicate_daily = 0
     accepted_duplicate_dreams = 0
     ready_daily_rows = [
@@ -1292,6 +1634,14 @@ def commit_import_preview(
         row for row in preview_payload.get('ready_dream_rows', [])
         if selected_row_ids is None or row.get('_review_row_id') in selected_row_ids
     ]
+    ready_important_day_rows = [
+        row for row in preview_payload.get('ready_important_day_rows', [])
+        if selected_row_ids is None or row.get('_review_row_id') in selected_row_ids
+    ]
+    ready_thought_record_rows = [
+        row for row in preview_payload.get('ready_thought_record_rows', [])
+        if selected_row_ids is None or row.get('_review_row_id') in selected_row_ids
+    ]
     duplicate_rows = [
         row for row in preview_payload.get('duplicate_rows', [])
         if (
@@ -1300,7 +1650,13 @@ def commit_import_preview(
             else row.get('row_id') in accepted_duplicate_row_ids
         )
     ]
-    total_rows = len(ready_daily_rows) + len(ready_dream_rows) + len(duplicate_rows)
+    total_rows = (
+        len(ready_daily_rows)
+        + len(ready_dream_rows)
+        + len(ready_important_day_rows)
+        + len(ready_thought_record_rows)
+        + len(duplicate_rows)
+    )
     processed_rows = 0
 
     def report_progress() -> None:
@@ -1326,6 +1682,18 @@ def commit_import_preview(
             else:
                 _insert_dream_import_row(cursor, user_id, row, import_id=import_id)
                 inserted_dreams += 1
+            processed_rows += 1
+            report_progress()
+
+        for row in ready_important_day_rows:
+            _insert_important_day_import_row(cursor, user_id, row)
+            inserted_important_days += 1
+            processed_rows += 1
+            report_progress()
+
+        for row in ready_thought_record_rows:
+            _insert_thought_record_import_row(cursor, user_id, row)
+            inserted_thought_records += 1
             processed_rows += 1
             report_progress()
 
@@ -1373,6 +1741,8 @@ def commit_import_preview(
             'skipped_daily': max(0, skipped_daily),
             'inserted_dreams': inserted_dreams,
             'skipped_dreams': max(0, skipped_dreams),
+            'inserted_important_days': inserted_important_days,
+            'inserted_thought_records': inserted_thought_records,
             'duplicate_dates_daily': preview_payload.get('summary', {}).get('duplicate_dates_daily', []),
             'duplicate_dates_dreams': preview_payload.get('summary', {}).get('duplicate_dates_dreams', []),
             'duplicate_entries': [],

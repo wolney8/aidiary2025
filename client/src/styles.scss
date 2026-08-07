@@ -803,6 +803,41 @@ a:focus-visible,
   vertical-align: middle;
 }
 
+// Global icon-plus-text spacing for pill actions. Angular Material sometimes
+// projects icons outside the label span, so keep both wrapper and direct-child
+// cases protected instead of relying on one component-local margin.
+.mat-mdc-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:first-child:not(:last-child),
+.mat-mdc-raised-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:first-child:not(:last-child),
+.mat-mdc-unelevated-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:first-child:not(:last-child),
+.mat-mdc-outlined-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:first-child:not(:last-child),
+.mat-mdc-menu-item .mat-icon:first-child:not(:last-child),
+.mat-button-toggle .mat-icon:first-child:not(:last-child) {
+  margin-inline-end: 0.5rem !important;
+}
+
+.mat-mdc-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:last-child:not(:first-child),
+.mat-mdc-raised-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:last-child:not(:first-child),
+.mat-mdc-unelevated-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:last-child:not(:first-child),
+.mat-mdc-outlined-button:not(.mat-mdc-icon-button) .mdc-button__label > .mat-icon:last-child:not(:first-child),
+.mat-mdc-menu-item .mat-icon:last-child:not(:first-child),
+.mat-button-toggle .mat-icon:last-child:not(:first-child) {
+  margin-inline-start: 0.5rem !important;
+}
+
+.mat-mdc-button:not(.mat-mdc-icon-button) > .mat-icon + .mdc-button__label,
+.mat-mdc-raised-button:not(.mat-mdc-icon-button) > .mat-icon + .mdc-button__label,
+.mat-mdc-unelevated-button:not(.mat-mdc-icon-button) > .mat-icon + .mdc-button__label,
+.mat-mdc-outlined-button:not(.mat-mdc-icon-button) > .mat-icon + .mdc-button__label {
+  margin-inline-start: 0.5rem !important;
+}
+
+.mat-mdc-button:not(.mat-mdc-icon-button) > .mdc-button__label + .mat-icon,
+.mat-mdc-raised-button:not(.mat-mdc-icon-button) > .mdc-button__label + .mat-icon,
+.mat-mdc-unelevated-button:not(.mat-mdc-icon-button) > .mdc-button__label + .mat-icon,
+.mat-mdc-outlined-button:not(.mat-mdc-icon-button) > .mdc-button__label + .mat-icon {
+  margin-inline-start: 0.5rem !important;
+}
+
 .mat-mdc-icon-button {
   display: inline-flex !important;
   align-items: center;
