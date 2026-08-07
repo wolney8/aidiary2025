@@ -85,6 +85,9 @@ def client_with_legacy_user_schema():
     os.environ["DB_PATH"] = db_path
     os.environ["JWT_SECRET"] = "test-secret"
     os.environ["MEDIA_ROOT"] = media_root
+    os.environ["AUTH_LOGIN_RATE_LIMIT"] = "1000 per minute"
+    os.environ["AUTH_REGISTER_RATE_LIMIT"] = "1000 per minute"
+    os.environ["ACCOUNT_DELETE_RATE_LIMIT"] = "1000 per minute"
 
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -384,6 +387,34 @@ def test_oauth_only_account_deletion_does_not_require_password(client_with_legac
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM auth_identities").fetchone()[0] == 0
+
+
+def test_account_delete_rate_limit_is_enforced(client_with_legacy_user_schema, monkeypatch):
+    monkeypatch.setenv("ACCOUNT_DELETE_RATE_LIMIT", "1 per minute")
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "password": "wrongpass123",
+        "confirmation": "DELETE MY ACCOUNT",
+    }
+
+    first = client.delete(
+        "/api/profile/account",
+        headers=headers,
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    second = client.delete(
+        "/api/profile/account",
+        headers=headers,
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+
+    assert first.status_code == 400
+    assert second.status_code == 429
+    assert json.loads(second.data)["error"] == "Too many attempts. Try again shortly."
 
 
 def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_schema):

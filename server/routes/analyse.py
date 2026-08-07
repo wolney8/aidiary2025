@@ -4,8 +4,10 @@ from flask import Blueprint, current_app, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, timezone
 import difflib
+import os
 import re
 import sqlite3
+from extensions import limiter
 from services.attachment_text import (
     extract_pdf_attachment_content,
     looks_like_low_quality_ocr_text,
@@ -202,6 +204,14 @@ DEFAULT_ANALYSIS_SETTINGS = {
     'allow_ai_history': True,
     'personal_context': None,
 }
+
+
+def _configured_rate_limit(env_name: str, default: str) -> str:
+    return os.getenv(env_name, default).strip() or default
+
+
+def _analyse_rate_limit() -> str:
+    return _configured_rate_limit('ANALYSE_RATE_LIMIT', '30 per hour')
 
 
 def get_db():
@@ -830,6 +840,7 @@ def _merge_analysis_context(
     return "\n\n".join(parts)
 
 @analyse_bp.route('/analyse', methods=['POST'])
+@limiter.limit(_analyse_rate_limit)
 @jwt_required()
 def analyse_text():
     """Analyse text using OpenAI and return structured insights."""

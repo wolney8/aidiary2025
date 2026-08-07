@@ -5,9 +5,11 @@ from io import BytesIO
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import bcrypt
+import os
 import re
 from PIL import Image, ImageOps, UnidentifiedImageError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from extensions import limiter
 from services.account_deletion import (
     collect_user_media_storage_keys,
     delete_user_account_data,
@@ -77,6 +79,14 @@ ALLOWED_AI_FOCUS = {
 }
 ALLOWED_AI_MODELS = set(ALLOWED_ANALYSIS_MODELS)
 ACCOUNT_DELETE_CONFIRMATION = 'DELETE MY ACCOUNT'
+
+
+def _configured_rate_limit(env_name: str, default: str) -> str:
+    return os.getenv(env_name, default).strip() or default
+
+
+def _account_delete_rate_limit() -> str:
+    return _configured_rate_limit('ACCOUNT_DELETE_RATE_LIMIT', '5 per hour')
 
 
 def _database_adapter() -> DatabaseAdapter:
@@ -527,6 +537,7 @@ def delete_profile_picture():
 
 
 @profile_bp.route('/profile/account', methods=['DELETE'])
+@limiter.limit(_account_delete_rate_limit)
 @jwt_required()
 def delete_account():
     """Permanently delete the authenticated user's account and app-owned data."""

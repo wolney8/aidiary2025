@@ -30,17 +30,18 @@ Immediate hardening completed:
 - Legacy plaintext passwords are upgraded to bcrypt after a successful login.
 - Chat is blocked at the backend when disabled and omits prior-entry context when
   `allow_ai_history` is disabled.
-- Login, registration, and OAuth start/callback routes now have explicit configurable
-  rate limits.
+- Login, registration, OAuth start/callback, AI analysis, import/export, import
+  revert, and account deletion routes now have explicit configurable rate limits.
 - Production preflight now checks frontend URL shape, Google OAuth callback safety,
   legal/cookie route source presence, and explicit owner acknowledgement for known
   session/password migration risks. It also reports whether auth rate limits were
-  explicitly configured for production.
+  explicitly configured for production-sensitive routes.
 
 Remaining risks requiring dedicated delivery work:
 
-- **High:** auth route limits depend on the configured Flask-Limiter backend. Use
-  datastore-backed/shared limiter storage before exposing multiple public instances.
+- **High:** sensitive route limits depend on the configured Flask-Limiter backend.
+  Use datastore-backed/shared limiter storage before exposing multiple public
+  instances.
 - **High:** browser sessions use local-storage bearer tokens. A production auth redesign
   should evaluate secure HttpOnly cookies, CSRF protection, refresh/rotation, and
   server-side revocation.

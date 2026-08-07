@@ -16,6 +16,13 @@ def _base_env() -> dict[str, str]:
         "AUTH_REGISTER_RATE_LIMIT": "5 per hour",
         "AUTH_OAUTH_START_RATE_LIMIT": "20 per minute",
         "AUTH_OAUTH_CALLBACK_RATE_LIMIT": "20 per minute",
+        "ANALYSE_RATE_LIMIT": "30 per hour",
+        "IMPORT_UPLOAD_RATE_LIMIT": "20 per hour",
+        "IMPORT_COMMIT_RATE_LIMIT": "30 per hour",
+        "IMPORT_JOB_RATE_LIMIT": "30 per hour",
+        "IMPORT_REVERT_RATE_LIMIT": "10 per hour",
+        "EXPORT_RATE_LIMIT": "20 per hour",
+        "ACCOUNT_DELETE_RATE_LIMIT": "5 per hour",
     }
 
 
@@ -210,13 +217,20 @@ def test_preflight_records_accepted_session_and_password_risks(tmp_path):
     assert report["summary"]["legacy_password_fallback_accepted"] is True
 
 
-def test_preflight_warns_when_auth_rate_limits_are_not_explicit(tmp_path):
+def test_preflight_warns_when_sensitive_rate_limits_are_not_explicit(tmp_path):
     env = _base_env()
     for key in (
         "AUTH_LOGIN_RATE_LIMIT",
         "AUTH_REGISTER_RATE_LIMIT",
         "AUTH_OAUTH_START_RATE_LIMIT",
         "AUTH_OAUTH_CALLBACK_RATE_LIMIT",
+        "ANALYSE_RATE_LIMIT",
+        "IMPORT_UPLOAD_RATE_LIMIT",
+        "IMPORT_COMMIT_RATE_LIMIT",
+        "IMPORT_JOB_RATE_LIMIT",
+        "IMPORT_REVERT_RATE_LIMIT",
+        "EXPORT_RATE_LIMIT",
+        "ACCOUNT_DELETE_RATE_LIMIT",
     ):
         env.pop(key)
     env["DATABASE_PROVIDER"] = "postgres"
@@ -230,10 +244,17 @@ def test_preflight_warns_when_auth_rate_limits_are_not_explicit(tmp_path):
 
     warning_gates = {warning["gate"] for warning in report["warnings"]}
     assert report["ready_for_production"] is True
-    assert "auth_rate_limits" in warning_gates
-    assert report["summary"]["auth_rate_limits_configured"] == {
+    assert "sensitive_route_rate_limits" in warning_gates
+    assert report["summary"]["sensitive_rate_limits_configured"] == {
         "AUTH_LOGIN_RATE_LIMIT": False,
         "AUTH_REGISTER_RATE_LIMIT": False,
         "AUTH_OAUTH_START_RATE_LIMIT": False,
         "AUTH_OAUTH_CALLBACK_RATE_LIMIT": False,
+        "ANALYSE_RATE_LIMIT": False,
+        "IMPORT_UPLOAD_RATE_LIMIT": False,
+        "IMPORT_COMMIT_RATE_LIMIT": False,
+        "IMPORT_JOB_RATE_LIMIT": False,
+        "IMPORT_REVERT_RATE_LIMIT": False,
+        "EXPORT_RATE_LIMIT": False,
+        "ACCOUNT_DELETE_RATE_LIMIT": False,
     }
