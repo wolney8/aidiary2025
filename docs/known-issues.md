@@ -28,6 +28,9 @@ Immediate hardening completed:
 - Registration supports long passphrases up to 128 characters instead of imposing
   the previous 12-character ceiling.
 - Legacy plaintext passwords are upgraded to bcrypt after a successful login.
+- Legacy plaintext-password fallback can now be disabled with
+  `OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK=true` once old local accounts have been
+  migrated or intentionally abandoned.
 - Chat is blocked at the backend when disabled and omits prior-entry context when
   `allow_ai_history` is disabled.
 - Login, registration, OAuth start/callback, AI analysis, import/export, import
@@ -45,8 +48,9 @@ Remaining risks requiring dedicated delivery work:
 - **High:** browser sessions use local-storage bearer tokens. A production auth redesign
   should evaluate secure HttpOnly cookies, CSRF protection, refresh/rotation, and
   server-side revocation.
-- **Medium:** legacy plaintext-password fallback remains active. Provide an audited
-  migration command and remove the fallback after all deployed databases are migrated.
+- **Medium:** legacy plaintext-password fallback remains available unless explicitly
+  disabled. Provide an audited migration/report command before permanently removing
+  the fallback from code.
 - **Medium:** account recovery, verification, security-event audit, and consent policy
   are not implemented. Define the account identity model before adding email recovery.
 - **Low:** duplicate registration confirms that a username exists. Decide whether that
