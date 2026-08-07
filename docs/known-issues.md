@@ -35,6 +35,8 @@ Immediate hardening completed:
   `allow_ai_history` is disabled.
 - Login, registration, OAuth start/callback, AI analysis, import/export, import
   revert, and account deletion routes now have explicit configurable rate limits.
+- Registration, login, OAuth callback, and account-deletion outcomes now write
+  privacy-aware security audit events with hashed request metadata.
 - Production preflight now checks frontend URL shape, Google OAuth callback safety,
   legal/cookie route source presence, and explicit owner acknowledgement for known
   session/password migration risks. It also reports whether auth rate limits were
@@ -51,8 +53,9 @@ Remaining risks requiring dedicated delivery work:
 - **Medium:** legacy plaintext-password fallback remains available unless explicitly
   disabled. Provide an audited migration/report command before permanently removing
   the fallback from code.
-- **Medium:** account recovery, verification, security-event audit, and consent policy
-  are not implemented. Define the account identity model before adding email recovery.
+- **Medium:** account recovery, verification, audit review/reporting surfaces, and
+  consent policy are not implemented. Define the account identity model before adding
+  email recovery.
 - **Low:** duplicate registration confirms that a username exists. Decide whether that
   usability tradeoff is acceptable alongside rate limiting and monitoring.
 

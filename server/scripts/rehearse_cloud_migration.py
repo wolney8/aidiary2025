@@ -38,6 +38,7 @@ TABLE_ORDER = [
     "reflection_summaries",
     "chat_messages",
     "chat_observability_events",
+    "security_audit_events",
     "cbt_worksheets",
     "cbt_thought_record_data",
 ]
@@ -54,6 +55,7 @@ FOREIGN_KEY_CHECKS = [
     ("reflection_summaries", "user_id", "users", "id"),
     ("chat_messages", "user_id", "users", "id"),
     ("chat_observability_events", "user_id", "users", "id"),
+    ("security_audit_events", "user_id", "users", "id"),
     ("cbt_worksheets", "user_id", "users", "id"),
     ("cbt_thought_record_data", "worksheet_id", "cbt_worksheets", "id"),
 ]

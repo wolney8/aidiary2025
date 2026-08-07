@@ -19,6 +19,7 @@ from extensions import limiter
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.media_storage import resolve_image_url, store_profile_image
+from services.security_audit import record_security_event
 from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
 
 auth_bp = Blueprint('auth', __name__)
@@ -153,6 +154,48 @@ def _sql(statement: str) -> str:
     return adapt_placeholders(statement, _database_provider())
 
 
+def _audit_security_event(
+    conn,
+    event_type: str,
+    *,
+    user_id: int | None = None,
+    outcome: str = 'success',
+    metadata: dict[str, object] | None = None,
+) -> bool:
+    return record_security_event(
+        conn,
+        database_provider=_database_provider(),
+        secret=current_app.config.get('JWT_SECRET_KEY', ''),
+        user_id=user_id,
+        event_type=event_type,
+        outcome=outcome,
+        request_obj=request,
+        metadata=metadata,
+        logger=current_app.logger,
+    )
+
+
+def _audit_security_event_for_request(
+    event_type: str,
+    *,
+    user_id: int | None = None,
+    outcome: str = 'success',
+    metadata: dict[str, object] | None = None,
+) -> bool:
+    try:
+        with get_db() as conn:
+            return _audit_security_event(
+                conn,
+                event_type,
+                user_id=user_id,
+                outcome=outcome,
+                metadata=metadata,
+            )
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning('Security audit connection could not be opened: %s', exc)
+        return False
+
+
 def _optional_user_selects(conn) -> str:
     columns = _database_adapter().table_columns(conn, 'users')
     optional_columns = {
@@ -271,12 +314,23 @@ def oauth_callback(provider_id: str):
         user_id, created_user = _get_or_create_oauth_user(provider_id, provider_profile)
     except Exception as exc:
         current_app.logger.warning('OAuth callback failed for %s: %s', provider_id, exc)
+        _audit_security_event_for_request(
+            'oauth_callback_failed',
+            outcome='rejected',
+            metadata={'provider': provider_id, 'reason': 'provider_exchange'},
+        )
         return _redirect_oauth_error('External sign-in failed. Please try again.')
 
     access_token = create_access_token(identity=str(user_id))
     with get_db() as conn:
         user = _load_user_for_auth(conn, user_id)
     if not user:
+        _audit_security_event_for_request(
+            'oauth_callback_failed',
+            user_id=int(user_id),
+            outcome='rejected',
+            metadata={'provider': provider_id, 'reason': 'user_load'},
+        )
         return _redirect_oauth_error('OpenMynd account could not be loaded.')
     auth_user = _serialise_auth_user(user)
     onboarding_required = created_user or auth_user.get('onboarding_completed') is False
@@ -289,6 +343,17 @@ def oauth_callback(provider_id: str):
         created_user,
         onboarding_required,
     )
+    with get_db() as conn:
+        _audit_security_event(
+            conn,
+            'oauth_callback_success',
+            user_id=int(user_id),
+            metadata={
+                'provider': provider_id,
+                'created_user': bool(created_user),
+                'onboarding_required': bool(onboarding_required),
+            },
+        )
     return _redirect_oauth_success(
         access_token,
         auth_user,
@@ -311,6 +376,11 @@ def register():
         username, password, first_name, last_name
     )
     if validation_error:
+        _audit_security_event_for_request(
+            'register_failed',
+            outcome='rejected',
+            metadata={'reason': 'validation'},
+        )
         return jsonify({'error': validation_error}), 400
     
     # Hash password with bcrypt
@@ -323,6 +393,12 @@ def register():
                 (username,),
             ).fetchone()
             if existing_user:
+                _audit_security_event(
+                    conn,
+                    'register_failed',
+                    outcome='rejected',
+                    metadata={'reason': 'duplicate_username'},
+                )
                 return jsonify({'error': 'Username already exists'}), 409
 
             user_columns = _database_adapter().table_columns(conn, 'users')
@@ -349,6 +425,7 @@ def register():
                 tuple(insert_values),
             )
             user_id = inserted_id(cursor, _database_provider())
+            _audit_security_event(conn, 'register_success', user_id=int(user_id))
         
         # Create JWT token
         access_token = create_access_token(identity=str(user_id))
@@ -377,6 +454,11 @@ def register():
         
     except Exception as exc:
         if _is_duplicate_username_error(exc):
+            _audit_security_event_for_request(
+                'register_failed',
+                outcome='rejected',
+                metadata={'reason': 'duplicate_username'},
+            )
             return jsonify({'error': 'Username already exists'}), 409
         raise
 
@@ -389,6 +471,11 @@ def login():
     password = str(data.get('password') or '')
 
     if not username or not password:
+        _audit_security_event_for_request(
+            'login_failed',
+            outcome='rejected',
+            metadata={'reason': 'missing_credentials'},
+        )
         return jsonify({'error': 'Username and password required'}), 400
     
     with get_db() as conn:
@@ -400,6 +487,11 @@ def login():
         ).fetchone()
     
     if not user:
+        _audit_security_event_for_request(
+            'login_failed',
+            outcome='rejected',
+            metadata={'reason': 'unknown_user'},
+        )
         return jsonify({'error': 'Invalid credentials'}), 401
     
     # Check password (handle both bcrypt and legacy plaintext)
@@ -413,6 +505,12 @@ def login():
         except ValueError:
             password_matches = False
         if not password_matches:
+            _audit_security_event_for_request(
+                'login_failed',
+                user_id=int(user['id']),
+                outcome='rejected',
+                metadata={'reason': 'bad_password'},
+            )
             return jsonify({'error': 'Invalid credentials'}), 401
     else:  # Legacy plaintext (should be migrated)
         if _legacy_password_fallback_disabled():
@@ -420,8 +518,20 @@ def login():
                 'Legacy password fallback blocked for user_id=%s',
                 user['id'],
             )
+            _audit_security_event_for_request(
+                'login_failed',
+                user_id=int(user['id']),
+                outcome='rejected',
+                metadata={'reason': 'legacy_password_disabled'},
+            )
             return jsonify({'error': 'Invalid credentials'}), 401
         if password != stored_password:
+            _audit_security_event_for_request(
+                'login_failed',
+                user_id=int(user['id']),
+                outcome='rejected',
+                metadata={'reason': 'bad_password'},
+            )
             return jsonify({'error': 'Invalid credentials'}), 401
         # Migrate legacy plaintext password to bcrypt on successful login.
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -430,9 +540,15 @@ def login():
                 _sql('UPDATE users SET password = ? WHERE id = ?'),
                 (password_hash.decode('utf-8'), user['id']),
             )
+            _audit_security_event(
+                conn,
+                'legacy_password_migrated',
+                user_id=int(user['id']),
+            )
     
     # Create JWT token
     access_token = create_access_token(identity=str(user['id']))
+    _audit_security_event_for_request('login_success', user_id=int(user['id']))
     
     return jsonify({
         'token': access_token,

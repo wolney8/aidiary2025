@@ -287,6 +287,20 @@ CREATE TABLE IF NOT EXISTS chat_observability_events (
 )
 """
 
+_SECURITY_AUDIT_EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS security_audit_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER,
+    event_type      TEXT NOT NULL,
+    outcome         TEXT NOT NULL DEFAULT 'success',
+    ip_hash         TEXT,
+    user_agent_hash TEXT,
+    metadata_json   TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+"""
+
 _CBT_WORKSHEETS_DDL = """
 CREATE TABLE IF NOT EXISTS cbt_worksheets (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -751,6 +765,32 @@ def ensure_chat_observability_events_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'chat_observability_events')
+
+    return True
+
+
+def ensure_security_audit_events_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure durable security-event audit storage exists."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_SECURITY_AUDIT_EVENTS_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_security_audit_user_created
+            ON security_audit_events(user_id, created_at DESC, id DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_security_audit_event_created
+            ON security_audit_events(event_type, created_at DESC)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'security_audit_events')
 
     return True
 

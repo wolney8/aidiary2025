@@ -23,6 +23,9 @@ Current automated evidence:
 - Login, registration, OAuth start/callback, AI analysis, import/export, import
   revert, and account deletion routes have explicit rate limits, with preflight
   visibility for production configuration.
+- Registration, login, OAuth callback, and account deletion now write low-sensitivity
+  security audit events. Request IP and user-agent values are stored as keyed hashes,
+  and event metadata is categorical only.
 - Backend auth/profile/chat/import/database tests cover user scoping, account deletion,
   import/revert ownership, chat storage, and database provider compatibility.
 
@@ -35,7 +38,7 @@ Current automated evidence:
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Cutover tooling exists; production maintenance remains open. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth; removal needs a migration window. | `#113` or auth-hardening issue |
-| Major | Account recovery and verification | Email verification, recovery, and security-event audit flows are not complete. | Google OAuth exists; local recovery is not production-grade. | `#113` or auth-hardening issue |
+| Major | Account recovery and verification | Email verification, recovery, and security-event review flows are not complete. | Google OAuth exists; local recovery is not production-grade; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
 | Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists but should be expanded for OAuth, import, chat, account deletion, dashboard, and settings. | testing issue |
@@ -111,3 +114,5 @@ cookie categorisation, or external-provider contractual readiness.
   import/revert, export, Chat, AI analysis, and data deletion.
 - Browser E2E gates cover the critical public journeys or the owner explicitly accepts
   the residual manual-testing risk.
+- Security audit event retention and review expectations are documented before external
+  users are onboarded.

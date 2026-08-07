@@ -22,6 +22,7 @@ from services.runtime_migrations import (
     ensure_important_days_table,
     ensure_public_holiday_cache_table,
     ensure_reflection_summaries_table,
+    ensure_security_audit_events_table,
     ensure_user_settings_columns,
 )
 
@@ -113,6 +114,7 @@ def _build_runtime_sqlite_schema(db_path):
     ensure_reflection_summaries_table(str(db_path))
     ensure_chat_messages_table(str(db_path))
     ensure_chat_observability_events_table(str(db_path))
+    ensure_security_audit_events_table(str(db_path))
     ensure_cbt_worksheet_tables(str(db_path))
 
 
@@ -145,6 +147,7 @@ def test_runtime_sqlite_managed_columns_exist_in_postgres_schema(tmp_path):
         "reflection_summaries",
         "chat_messages",
         "chat_observability_events",
+        "security_audit_events",
         "cbt_worksheets",
         "cbt_thought_record_data",
     }
