@@ -37,6 +37,8 @@ SENSITIVE_RATE_LIMIT_ENV_KEYS = AUTH_RATE_LIMIT_ENV_KEYS + (
     "EXPORT_RATE_LIMIT",
     "ACCOUNT_DELETE_RATE_LIMIT",
 )
+MIN_SECURITY_AUDIT_RETENTION_DAYS = 30
+MAX_SECURITY_AUDIT_RETENTION_DAYS = 730
 
 
 def _add_gate(
@@ -112,6 +114,14 @@ def _env_flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_positive_int(value: str | None) -> int | None:
+    try:
+        parsed = int(str(value or "").strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def build_production_preflight(
@@ -411,6 +421,36 @@ def build_production_preflight(
             ),
         )
 
+    security_audit_retention_days = _parse_positive_int(
+        env.get("SECURITY_AUDIT_RETENTION_DAYS")
+    )
+    if app_env == "production":
+        if security_audit_retention_days is None:
+            _add_gate(
+                warnings,
+                gate="security_audit_retention",
+                severity="warning",
+                message=(
+                    "SECURITY_AUDIT_RETENTION_DAYS should be set before public launch "
+                    "so audit evidence retention is explicit."
+                ),
+            )
+        elif not (
+            MIN_SECURITY_AUDIT_RETENTION_DAYS
+            <= security_audit_retention_days
+            <= MAX_SECURITY_AUDIT_RETENTION_DAYS
+        ):
+            _add_gate(
+                warnings,
+                gate="security_audit_retention",
+                severity="warning",
+                message=(
+                    "SECURITY_AUDIT_RETENTION_DAYS should be between "
+                    f"{MIN_SECURITY_AUDIT_RETENTION_DAYS} and "
+                    f"{MAX_SECURITY_AUDIT_RETENTION_DAYS} days."
+                ),
+            )
+
     openai_key = (env.get("OPENAI_API_KEY") or "").strip()
     if not openai_key:
         _add_gate(
@@ -449,6 +489,7 @@ def build_production_preflight(
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
             "sensitive_rate_limits_configured": configured_sensitive_rate_limits,
+            "security_audit_retention_days": security_audit_retention_days,
             "openai_api_key_configured": bool(openai_key),
         },
     }

@@ -23,6 +23,7 @@ def _base_env() -> dict[str, str]:
         "IMPORT_REVERT_RATE_LIMIT": "10 per hour",
         "EXPORT_RATE_LIMIT": "20 per hour",
         "ACCOUNT_DELETE_RATE_LIMIT": "5 per hour",
+        "SECURITY_AUDIT_RETENTION_DAYS": "180",
     }
 
 
@@ -275,3 +276,39 @@ def test_preflight_warns_when_sensitive_rate_limits_are_not_explicit(tmp_path):
         "EXPORT_RATE_LIMIT": False,
         "ACCOUNT_DELETE_RATE_LIMIT": False,
     }
+
+
+def test_preflight_warns_when_security_audit_retention_is_missing(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env.pop("SECURITY_AUDIT_RETENTION_DAYS")
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "security_audit_retention" in warning_gates
+    assert report["summary"]["security_audit_retention_days"] is None
+
+
+def test_preflight_warns_when_security_audit_retention_is_outside_review_range(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["SECURITY_AUDIT_RETENTION_DAYS"] = "7"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "security_audit_retention" in warning_gates
+    assert report["summary"]["security_audit_retention_days"] == 7

@@ -131,6 +131,17 @@ diary text, prompts, attachment filenames, or OAuth payloads. IP and user-agent 
 are stored as keyed hashes so repeated suspicious activity can be correlated without
 turning the audit table into a sensitive-content dump.
 
+Production configuration should set:
+
+```bash
+SECURITY_AUDIT_RETENTION_DAYS=180
+```
+
+The preflight accepts this as an explicit owner decision and warns when the value is
+missing or outside the current review range of 30 to 730 days. This setting is an
+operational retention policy marker; automatic purging should be added only after the
+owner confirms the public-beta retention rule.
+
 ## Minimum Public-Beta Exit Criteria
 
 - No blocking preflight gates.
