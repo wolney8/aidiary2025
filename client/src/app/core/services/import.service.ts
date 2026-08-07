@@ -31,10 +31,14 @@ export interface ImportResult {
   error_count: number;
   inserted_daily?: number;
   inserted_dreams?: number;
+  inserted_important_days?: number;
+  inserted_thought_records?: number;
   skipped_daily?: number;
   skipped_dreams?: number;
   ready_daily?: number;
   ready_dreams?: number;
+  ready_important_days?: number;
+  ready_thought_records?: number;
   duplicate_daily?: number;
   duplicate_dreams?: number;
   errors?: string[];
@@ -55,7 +59,7 @@ export interface ImportDuplicateEntry {
 
 export interface ImportReviewEntry {
   row_id: string;
-  entry_type: "daily" | "dream";
+  entry_type: "daily" | "dream" | "important_day" | "thought_record";
   entry_date: string;
   title: string;
   content_preview?: string;
@@ -92,6 +96,9 @@ export interface ExportFilters {
   toDate?: string;
   includeDaily?: boolean;
   includeDreams?: boolean;
+  includeImportantDays?: boolean;
+  includeThoughtRecords?: boolean;
+  exportAll?: boolean;
 }
 
 export interface ExportDownloadResult {
@@ -122,10 +129,14 @@ export interface BulkDeleteResult {
 interface UploadSummaryPayload {
   inserted_daily?: unknown;
   inserted_dreams?: unknown;
+  inserted_important_days?: unknown;
+  inserted_thought_records?: unknown;
   skipped_daily?: unknown;
   skipped_dreams?: unknown;
   ready_daily?: unknown;
   ready_dreams?: unknown;
+  ready_important_days?: unknown;
+  ready_thought_records?: unknown;
   duplicate_daily?: unknown;
   duplicate_dreams?: unknown;
 }
@@ -308,6 +319,8 @@ export class ImportService {
 
               const insertedDaily = Number(summary.inserted_daily ?? 0);
               const insertedDreams = Number(summary.inserted_dreams ?? 0);
+              const insertedImportantDays = Number(summary.inserted_important_days ?? 0);
+              const insertedThoughtRecords = Number(summary.inserted_thought_records ?? 0);
               const skippedDaily = Number(summary.skipped_daily ?? 0);
               const skippedDreams = Number(summary.skipped_dreams ?? 0);
 
@@ -337,7 +350,11 @@ export class ImportService {
                 status,
                 message,
                 imported_count: Number(
-                  body.imported_count ?? insertedDaily + insertedDreams,
+                  body.imported_count ??
+                    insertedDaily +
+                      insertedDreams +
+                      insertedImportantDays +
+                      insertedThoughtRecords,
                 ),
                 skipped_count: Number(
                   body.skipped_count ?? skippedDaily + skippedDreams,
@@ -345,10 +362,14 @@ export class ImportService {
                 error_count: Number(body.error_count ?? errors.length),
                 inserted_daily: optionalNumber(summary.inserted_daily),
                 inserted_dreams: optionalNumber(summary.inserted_dreams),
+                inserted_important_days: optionalNumber(summary.inserted_important_days),
+                inserted_thought_records: optionalNumber(summary.inserted_thought_records),
                 skipped_daily: optionalNumber(summary.skipped_daily),
                 skipped_dreams: optionalNumber(summary.skipped_dreams),
                 ready_daily: optionalNumber(summary.ready_daily),
                 ready_dreams: optionalNumber(summary.ready_dreams),
+                ready_important_days: optionalNumber(summary.ready_important_days),
+                ready_thought_records: optionalNumber(summary.ready_thought_records),
                 duplicate_daily: optionalNumber(summary.duplicate_daily),
                 duplicate_dreams: optionalNumber(summary.duplicate_dreams),
                 errors,
@@ -545,6 +566,10 @@ export class ImportService {
       return params;
     }
 
+    if (filters.exportAll) {
+      return params.set("export_all", "true");
+    }
+
     if (filters.fromDate) {
       params = params.set("from_date", filters.fromDate);
     }
@@ -555,11 +580,19 @@ export class ImportService {
 
     const includeDaily = filters.includeDaily ?? true;
     const includeDreams = filters.includeDreams ?? true;
+    const includeImportantDays = filters.includeImportantDays ?? false;
+    const includeThoughtRecords = filters.includeThoughtRecords ?? false;
 
     // Keep defaults compact: when both are true, omit both params.
     if (!(includeDaily && includeDreams)) {
       params = params.set("include_daily", String(includeDaily));
       params = params.set("include_dreams", String(includeDreams));
+    }
+    if (includeImportantDays) {
+      params = params.set("include_important_days", "true");
+    }
+    if (includeThoughtRecords) {
+      params = params.set("include_thought_records", "true");
     }
 
     return params;
@@ -691,6 +724,8 @@ export class ImportService {
 
     const insertedDaily = Number(summary.inserted_daily ?? 0);
     const insertedDreams = Number(summary.inserted_dreams ?? 0);
+    const insertedImportantDays = Number(summary.inserted_important_days ?? 0);
+    const insertedThoughtRecords = Number(summary.inserted_thought_records ?? 0);
     const skippedDaily = Number(summary.skipped_daily ?? 0);
     const skippedDreams = Number(summary.skipped_dreams ?? 0);
     const rawStatus = String(body.status ?? "failed");
@@ -710,15 +745,22 @@ export class ImportService {
               : rawStatus === "empty"
                 ? "No valid entries were found in the uploaded file."
                 : "Upload complete.",
-      imported_count: Number(body.imported_count ?? insertedDaily + insertedDreams),
+      imported_count: Number(
+        body.imported_count ??
+          insertedDaily + insertedDreams + insertedImportantDays + insertedThoughtRecords,
+      ),
       skipped_count: Number(body.skipped_count ?? skippedDaily + skippedDreams),
       error_count: Number(body.error_count ?? errors.length),
       inserted_daily: optionalNumber(summary.inserted_daily),
       inserted_dreams: optionalNumber(summary.inserted_dreams),
+      inserted_important_days: optionalNumber(summary.inserted_important_days),
+      inserted_thought_records: optionalNumber(summary.inserted_thought_records),
       skipped_daily: optionalNumber(summary.skipped_daily),
       skipped_dreams: optionalNumber(summary.skipped_dreams),
       ready_daily: optionalNumber(summary.ready_daily),
       ready_dreams: optionalNumber(summary.ready_dreams),
+      ready_important_days: optionalNumber(summary.ready_important_days),
+      ready_thought_records: optionalNumber(summary.ready_thought_records),
       duplicate_daily: optionalNumber(summary.duplicate_daily),
       duplicate_dreams: optionalNumber(summary.duplicate_dreams),
       errors,
@@ -791,7 +833,7 @@ export class ImportService {
       const raw = item as Record<string, unknown>;
       if (
         typeof raw["row_id"] !== "string" ||
-        (raw["entry_type"] !== "daily" && raw["entry_type"] !== "dream") ||
+        !this.isImportReviewEntryType(raw["entry_type"]) ||
         typeof raw["entry_date"] !== "string" ||
         typeof raw["title"] !== "string"
       ) return [];
@@ -807,5 +849,16 @@ export class ImportService {
         source_record_kind: raw["source_record_kind"] === "mood_checkin" ? "mood_checkin" : "authored",
       }];
     });
+  }
+
+  private isImportReviewEntryType(
+    value: unknown,
+  ): value is ImportReviewEntry["entry_type"] {
+    return (
+      value === "daily" ||
+      value === "dream" ||
+      value === "important_day" ||
+      value === "thought_record"
+    );
   }
 }

@@ -567,6 +567,7 @@ type UploadState =
                   <td>{{ formatDuplicateDate(duplicate.entry_date) }}</td>
                   <td>
                     <mat-select
+                      *ngIf="canChangeReviewEntryType(duplicate); else fixedReviewType"
                       class="review-type-select"
                       [value]="getReviewEntryType(duplicate)"
                       (selectionChange)="setReviewEntryType(duplicate.row_id, $event.value)"
@@ -575,6 +576,9 @@ type UploadState =
                       <mat-option value="daily">Daily entry</mat-option>
                       <mat-option value="dream">Dream entry</mat-option>
                     </mat-select>
+                    <ng-template #fixedReviewType>
+                      <span class="fixed-review-type">{{ formatReviewEntryType(duplicate.entry_type) }}</span>
+                    </ng-template>
                     <span *ngIf="duplicate.is_duplicate" class="duplicate-label">Duplicate</span>
                     <span *ngIf="duplicate.source_record_kind === 'mood_checkin'" class="mood-checkin-label">Mood check-in</span>
                   </td>
@@ -619,7 +623,7 @@ type UploadState =
               {{
                 isCommittingReview
                   ? "Importing…"
-                  : "Import " + selectedReviewRowIds.size + " selected entries"
+                  : "Import " + selectedReviewRowIds.size + " selected records"
               }}
             </button>
           </div>
@@ -1149,6 +1153,18 @@ type UploadState =
         min-width: 8.5rem;
       }
 
+      .fixed-review-type {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 0.75rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-primary);
+        font-weight: 700;
+      }
+
       .review-title {
         display: inline-flex;
         align-items: flex-start;
@@ -1600,9 +1616,7 @@ export class ImportComponent implements OnInit {
                 .filter((entry) => !entry.is_duplicate && entry.source_record_kind !== "mood_checkin")
                 .map((entry) => entry.row_id),
             );
-            this.reviewEntryTypes = new Map(
-              (event.result.review_entries ?? []).map((entry) => [entry.row_id, entry.entry_type]),
-            );
+            this.reviewEntryTypes.clear();
             // Map backend 'failed' status to local 'error' UI state
             if (resultStatus === "failed") {
               this.uploadState = "error";
@@ -1883,12 +1897,32 @@ export class ImportComponent implements OnInit {
     this.reviewTableWrapper?.nativeElement.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  canChangeReviewEntryType(entry: ImportReviewEntry): boolean {
+    return entry.entry_type === "daily" || entry.entry_type === "dream";
+  }
+
   getReviewEntryType(entry: ImportReviewEntry): "daily" | "dream" {
+    if (entry.entry_type !== "daily" && entry.entry_type !== "dream") {
+      return "daily";
+    }
     return this.reviewEntryTypes.get(entry.row_id) ?? entry.entry_type;
   }
 
   setReviewEntryType(rowId: string, entryType: "daily" | "dream"): void {
     this.reviewEntryTypes.set(rowId, entryType);
+  }
+
+  formatReviewEntryType(entryType: ImportReviewEntry["entry_type"]): string {
+    switch (entryType) {
+      case "important_day":
+        return "Important day";
+      case "thought_record":
+        return "Thought record";
+      case "dream":
+        return "Dream entry";
+      default:
+        return "Daily entry";
+    }
   }
 
   getMoodIcon(mood = ""): string {

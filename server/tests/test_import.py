@@ -14,7 +14,12 @@ import openpyxl
 import pytest
 
 from app import create_app
-from services.import_service import DAILY_IMPORT_HEADERS, DREAM_IMPORT_HEADERS
+from services.import_service import (
+    DAILY_IMPORT_HEADERS,
+    DREAM_IMPORT_HEADERS,
+    IMPORTANT_DAY_IMPORT_HEADERS,
+    THOUGHT_RECORD_IMPORT_HEADERS,
+)
 from services.nltk_enrichment import derive_daily_nltk_fields
 
 
@@ -247,6 +252,48 @@ def _make_zip_package(
         for path, content in (media_files or {}).items():
             zf.writestr(path, content)
     return buf.getvalue()
+
+
+def _make_all_data_zip_package(
+    *,
+    important_day_rows=None,
+    thought_record_rows=None,
+    manifest_assets=None,
+    media_files=None,
+) -> bytes:
+    wb = openpyxl.Workbook()
+    ws_daily = wb.active
+    ws_daily.title = 'Daily'
+    ws_daily.append(list(DAILY_IMPORT_HEADERS))
+    ws_dreams = wb.create_sheet('Dreams')
+    ws_dreams.append(list(DREAM_IMPORT_HEADERS))
+    ws_important_days = wb.create_sheet('Important Days')
+    ws_important_days.append(list(IMPORTANT_DAY_IMPORT_HEADERS))
+    for row in important_day_rows or []:
+        ws_important_days.append(row)
+    ws_thought_records = wb.create_sheet('Thought Records')
+    ws_thought_records.append(list(THOUGHT_RECORD_IMPORT_HEADERS))
+    for row in thought_record_rows or []:
+        ws_thought_records.append(row)
+
+    workbook_buffer = io.BytesIO()
+    wb.save(workbook_buffer)
+
+    package_buffer = io.BytesIO()
+    with zipfile.ZipFile(package_buffer, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('entries.xlsx', workbook_buffer.getvalue())
+        zf.writestr(
+            'manifest.json',
+            json.dumps({
+                'package_type': 'openmynd_export',
+                'version': 1,
+                'generated_at': '2026-08-06T00:00:00Z',
+                'assets': manifest_assets or {},
+            }),
+        )
+        for path, content in (media_files or {}).items():
+            zf.writestr(path, content)
+    return package_buffer.getvalue()
 
 
 def _tiny_png_bytes() -> bytes:
@@ -2372,3 +2419,141 @@ class TestExportDownload:
         data = json.loads(resp.data)
         assert data['status'] == 'error'
         assert 'At least one export type' in data['errors'][0]
+
+    def test_export_all_includes_important_days_and_thought_records(self, client):
+        token = _register_and_login(client)
+        self._seed_export_rows(os.environ['DB_PATH'])
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        user_id = conn.execute("SELECT id FROM users WHERE username = 'importer'").fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO important_days (
+                user_id, label, starts_on, month, day, original_year, category,
+                recurrence, icon_name, accent_color, note
+            ) VALUES (?, 'Mum letter', '2026-07-20', 7, 20, 2026, 'milestone',
+                      'yearly', 'event', 'blue', 'CBT task')
+            """,
+            (user_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO cbt_worksheets
+            (user_id, worksheet_type, title, status, current_step, record_date)
+            VALUES (?, 'thought_record', 'Balanced view', 'completed', 7, '2026-07-21')
+            """,
+            (user_id,),
+        )
+        worksheet_id = conn.execute('SELECT MAX(id) FROM cbt_worksheets').fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO cbt_thought_record_data (
+                worksheet_id, situation, feelings_before_json, unhelpful_thoughts,
+                evidence_for, evidence_against, balanced_thought,
+                feelings_after_json, next_step, ai_response
+            ) VALUES (?, 'Situation text', '[]', 'Unhelpful', 'For', 'Against',
+                      'Balanced', '[]', 'Next', 'AI note')
+            """,
+            (worksheet_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.get(
+            '/api/import/export?export_all=true',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert resp.status_code == 200
+        workbook, manifest, _ = _load_export_package(resp.data)
+        assert workbook['Important Days'].cell(1, 1).value == IMPORTANT_DAY_IMPORT_HEADERS[0]
+        assert workbook['Important Days'].cell(2, 2).value == 'Mum letter'
+        assert workbook['Thought Records'].cell(1, 1).value == THOUGHT_RECORD_IMPORT_HEADERS[0]
+        assert workbook['Thought Records'].cell(2, 2).value == 'Balanced view'
+        assert 'important_days' in manifest['portability']['workbook_fields']
+
+
+def test_zip_package_import_restores_important_days_and_thought_records(client):
+    token = _register_and_login(client)
+    asset_ref = 'important_day_20260720_1'
+    package_bytes = _make_all_data_zip_package(
+        important_day_rows=[[
+            '2026-07-20',
+            'Mum letter',
+            'milestone',
+            'yearly',
+            'event',
+            'blue',
+            'CBT task',
+            asset_ref,
+        ]],
+        thought_record_rows=[[
+            '2026-07-21',
+            'Balanced view',
+            'completed',
+            7,
+            '',
+            '',
+            'Situation text',
+            '[]',
+            'Unhelpful thought',
+            'Evidence for',
+            'Evidence against',
+            'Balanced thought',
+            '[]',
+            'Next step',
+            'AI response',
+            '',
+            0,
+        ]],
+        manifest_assets={
+            asset_ref: {
+                'entry_type': 'important_day',
+                'image_filename': 'important.jpg',
+            },
+        },
+        media_files={
+            f'media/{asset_ref}/important.jpg': _tiny_jpeg_bytes(),
+        },
+    )
+
+    upload_resp = _upload(client, token, package_bytes, filename='openmynd.zip', content_type='application/zip')
+    assert upload_resp.status_code == 200
+    upload_data = json.loads(upload_resp.data)
+    assert upload_data['status'] == 'review_required'
+    assert upload_data['summary']['ready_important_days'] == 1
+    assert upload_data['summary']['ready_thought_records'] == 1
+    selected_row_ids = [row['row_id'] for row in upload_data['review_entries']]
+
+    commit_resp = client.post(
+        '/api/import/commit',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'import_session_id': upload_data['import_session_id'],
+            'accepted_duplicate_row_ids': [],
+            'selected_row_ids': selected_row_ids,
+            'entry_type_overrides': {},
+        },
+    )
+    assert commit_resp.status_code == 200
+    commit_data = json.loads(commit_resp.data)
+    assert commit_data['summary']['inserted_important_days'] == 1
+    assert commit_data['summary']['inserted_thought_records'] == 1
+
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    conn.row_factory = sqlite3.Row
+    important_day = conn.execute(
+        "SELECT label, image_storage_key FROM important_days WHERE label = 'Mum letter'"
+    ).fetchone()
+    thought_record = conn.execute(
+        """
+        SELECT w.title, d.balanced_thought, d.ai_response
+        FROM cbt_worksheets w
+        JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
+        WHERE w.title = 'Balanced view'
+        """
+    ).fetchone()
+    conn.close()
+
+    assert important_day['image_storage_key']
+    assert thought_record['balanced_thought'] == 'Balanced thought'
+    assert thought_record['ai_response'] == 'AI response'
