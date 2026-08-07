@@ -752,6 +752,37 @@ def test_login_migrates_legacy_plaintext_password_to_bcrypt(client):
     assert updated_password.startswith('$2b$')
 
 
+def test_login_blocks_legacy_plaintext_password_when_fallback_disabled(client, monkeypatch):
+    monkeypatch.setenv('OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK', 'true')
+    import sqlite3
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    conn.execute("""
+        INSERT INTO users (id, username, password, first_name, last_name)
+        VALUES (?, ?, ?, ?, ?)
+    """, (101, 'blockedlegacy', 'legacy-pass-123', 'Legacy', 'Blocked'))
+    conn.commit()
+    conn.close()
+
+    response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'blockedlegacy',
+            'password': 'legacy-pass-123'
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 401
+
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    stored_password = conn.execute(
+        'SELECT password FROM users WHERE id = ?',
+        (101,)
+    ).fetchone()[0]
+    conn.close()
+
+    assert stored_password == 'legacy-pass-123'
+
+
 def test_login_rejects_unusable_password_hash_without_crashing(client):
     import sqlite3
     conn = sqlite3.connect(os.environ['DB_PATH'])

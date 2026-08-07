@@ -217,6 +217,23 @@ def test_preflight_records_accepted_session_and_password_risks(tmp_path):
     assert report["summary"]["legacy_password_fallback_accepted"] is True
 
 
+def test_preflight_accepts_disabled_legacy_password_fallback(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK"] = "true"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert "legacy_password_fallback_review" not in warning_gates
+    assert report["summary"]["legacy_password_fallback_disabled"] is True
+
+
 def test_preflight_warns_when_sensitive_rate_limits_are_not_explicit(tmp_path):
     env = _base_env()
     for key in (

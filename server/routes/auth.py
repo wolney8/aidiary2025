@@ -85,6 +85,10 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _legacy_password_fallback_disabled() -> bool:
+    return _env_flag('OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK', default=False)
+
+
 def _oauth_scope(provider_id: str) -> str:
     # Keep the sign-in grant minimal. Additional Google People API access should
     # be requested later as an explicit account/profile enrichment action, not on
@@ -411,6 +415,12 @@ def login():
         if not password_matches:
             return jsonify({'error': 'Invalid credentials'}), 401
     else:  # Legacy plaintext (should be migrated)
+        if _legacy_password_fallback_disabled():
+            current_app.logger.warning(
+                'Legacy password fallback blocked for user_id=%s',
+                user['id'],
+            )
+            return jsonify({'error': 'Invalid credentials'}), 401
         if password != stored_password:
             return jsonify({'error': 'Invalid credentials'}), 401
         # Migrate legacy plaintext password to bcrypt on successful login.

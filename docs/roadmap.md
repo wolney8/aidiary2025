@@ -33,6 +33,8 @@ new broad product surfaces.
    - Finish public-launch security review before any real public onboarding.
    - Harden auth rate limiting, browser session storage, legacy password migration,
      account recovery, audit logging, and consent/privacy evidence.
+   - Session migration target is documented in
+     [session-auth-hardening-plan.md](./operations/session-auth-hardening-plan.md).
 2. Database operations and cloud readiness
    - Keep SQLite as the current local fallback while rehearsing Neon/Postgres cutover.
    - Complete backup, restore, maintenance, rollback, integrity, and performance

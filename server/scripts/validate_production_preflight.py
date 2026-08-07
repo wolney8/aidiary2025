@@ -320,7 +320,15 @@ def build_production_preflight(
             ),
         )
 
-    if app_env == "production" and not _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"):
+    legacy_password_fallback_disabled = _env_flag(
+        env,
+        "OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK",
+    )
+    if (
+        app_env == "production"
+        and not legacy_password_fallback_disabled
+        and not _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK")
+    ):
         _add_gate(
             warnings,
             gate="legacy_password_fallback_review",
@@ -435,6 +443,7 @@ def build_production_preflight(
             "oauth_google_redirect_https": _looks_like_https_url(oauth_google_redirect_uri),
             "localstorage_jwt_risk_accepted": _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"),
             "legacy_password_fallback_accepted": _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"),
+            "legacy_password_fallback_disabled": legacy_password_fallback_disabled,
             "legal_privacy_routes_present": not missing_legal_sources,
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),
