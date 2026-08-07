@@ -28,11 +28,20 @@ Immediate hardening completed:
 - Registration supports long passphrases up to 128 characters instead of imposing
   the previous 12-character ceiling.
 - Legacy plaintext passwords are upgraded to bcrypt after a successful login.
+- Chat is blocked at the backend when disabled and omits prior-entry context when
+  `allow_ai_history` is disabled.
+- Login, registration, OAuth start/callback, AI analysis, import/export, import
+  revert, and account deletion routes now have explicit configurable rate limits.
+- Production preflight now checks frontend URL shape, Google OAuth callback safety,
+  legal/cookie route source presence, and explicit owner acknowledgement for known
+  session/password migration risks. It also reports whether auth rate limits were
+  explicitly configured for production-sensitive routes.
 
 Remaining risks requiring dedicated delivery work:
 
-- **High:** login and registration have no distributed rate limiting. Add a
-  datastore-backed limiter before exposing the service publicly.
+- **High:** sensitive route limits depend on the configured Flask-Limiter backend.
+  Use datastore-backed/shared limiter storage before exposing multiple public
+  instances.
 - **High:** browser sessions use local-storage bearer tokens. A production auth redesign
   should evaluate secure HttpOnly cookies, CSRF protection, refresh/rotation, and
   server-side revocation.
@@ -42,6 +51,10 @@ Remaining risks requiring dedicated delivery work:
   are not implemented. Define the account identity model before adding email recovery.
 - **Low:** duplicate registration confirms that a username exists. Decide whether that
   usability tradeoff is acceptable alongside rate limiting and monitoring.
+
+Current public-launch audit:
+
+- [Public Launch Security And Privacy Baseline](./operations/public-launch-security-privacy-baseline.md)
 
 ## To confirm
 

@@ -127,6 +127,13 @@ def client():
     os.environ['DB_PATH'] = db_path
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['MEDIA_ROOT'] = media_root
+    os.environ['AUTH_LOGIN_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_REGISTER_RATE_LIMIT'] = '1000 per minute'
+    os.environ['IMPORT_UPLOAD_RATE_LIMIT'] = '1000 per minute'
+    os.environ['IMPORT_COMMIT_RATE_LIMIT'] = '1000 per minute'
+    os.environ['IMPORT_JOB_RATE_LIMIT'] = '1000 per minute'
+    os.environ['IMPORT_REVERT_RATE_LIMIT'] = '1000 per minute'
+    os.environ['EXPORT_RATE_LIMIT'] = '1000 per minute'
 
     app = create_app()
     app.config['TESTING'] = True
@@ -155,6 +162,20 @@ def _register_and_login(client) -> str:
         content_type='application/json',
     )
     return json.loads(resp.data)['token']
+
+
+def test_export_rate_limit_is_enforced(client, monkeypatch):
+    monkeypatch.setenv('EXPORT_RATE_LIMIT', '1 per minute')
+    token = _register_and_login(client)
+    headers = {'Authorization': f'Bearer {token}'}
+    url = '/api/import/export?include_daily=false&include_dreams=false'
+
+    first = client.get(url, headers=headers)
+    second = client.get(url, headers=headers)
+
+    assert first.status_code == 400
+    assert second.status_code == 429
+    assert json.loads(second.data)['error'] == 'Too many attempts. Try again shortly.'
 
 
 # ---------------------------------------------------------------------------

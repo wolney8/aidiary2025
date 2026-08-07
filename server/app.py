@@ -349,7 +349,7 @@ def create_app():
         return {'msg': 'Internal Server Error'}, 500
 
     @app.errorhandler(RateLimitExceeded)
-    def _handle_chat_rate_limit(_err):
+    def _handle_rate_limit(_err):
         if request.path.startswith('/api/chat/'):
             try:
                 from services.chat_observability import ChatObservabilityService
@@ -368,7 +368,8 @@ def create_app():
                 )
             except Exception:
                 app.logger.exception('Chat rate-limit event could not be recorded')
-        return {'error': 'Rate limit exceeded. Try again in 60 minutes.'}, 429
+            return {'error': 'Rate limit exceeded. Try again in 60 minutes.'}, 429
+        return {'error': 'Too many attempts. Try again shortly.'}, 429
 
     @app.before_request
     def _log_jwt_presence():

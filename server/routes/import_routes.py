@@ -2,6 +2,7 @@
 # Import blueprint: file upload, history, template download, and data export
 import io
 import json
+import os
 import secrets
 import sqlite3
 import threading
@@ -12,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
+from extensions import limiter
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.import_service import (
@@ -48,6 +50,30 @@ import_bp = Blueprint('import', __name__)
 _IMPORT_JOB_PROGRESS: dict[str, dict] = {}
 _ACTIVE_IMPORT_JOB_THREADS: set[str] = set()
 _IMPORT_JOBS_LOCK = threading.Lock()
+
+
+def _configured_rate_limit(env_name: str, default: str) -> str:
+    return os.getenv(env_name, default).strip() or default
+
+
+def _import_upload_rate_limit() -> str:
+    return _configured_rate_limit('IMPORT_UPLOAD_RATE_LIMIT', '20 per hour')
+
+
+def _import_commit_rate_limit() -> str:
+    return _configured_rate_limit('IMPORT_COMMIT_RATE_LIMIT', '30 per hour')
+
+
+def _import_job_rate_limit() -> str:
+    return _configured_rate_limit('IMPORT_JOB_RATE_LIMIT', '30 per hour')
+
+
+def _import_revert_rate_limit() -> str:
+    return _configured_rate_limit('IMPORT_REVERT_RATE_LIMIT', '10 per hour')
+
+
+def _export_rate_limit() -> str:
+    return _configured_rate_limit('EXPORT_RATE_LIMIT', '20 per hour')
 
 
 def _update_import_job(job_id: str, **changes) -> None:
@@ -232,6 +258,7 @@ def _load_attachment_export_rows(
 # ---------------------------------------------------------------------------
 
 @import_bp.route('/import/upload', methods=['POST'])
+@limiter.limit(_import_upload_rate_limit)
 @jwt_required()
 def upload_import():
     """
@@ -498,6 +525,7 @@ def upload_import():
 
 
 @import_bp.route('/import/commit', methods=['POST'])
+@limiter.limit(_import_commit_rate_limit)
 @jwt_required()
 def commit_import():
     """Commit a staged import session after duplicate review."""
@@ -930,6 +958,7 @@ def recover_import_jobs(app) -> int:
 
 
 @import_bp.route('/import/jobs', methods=['POST'])
+@limiter.limit(_import_job_rate_limit)
 @jwt_required()
 def start_import_job():
     """Start a reviewed import and return immediately so the UI can navigate away."""
@@ -1059,6 +1088,7 @@ def get_history():
 
 
 @import_bp.route('/import/history/<int:import_id>/revert', methods=['POST'])
+@limiter.limit(_import_revert_rate_limit)
 @jwt_required()
 def revert_import(import_id: int):
     """Remove entries and stored media created by one completed import."""
@@ -1189,6 +1219,7 @@ def download_template():
 # ---------------------------------------------------------------------------
 
 @import_bp.route('/import/export', methods=['GET'])
+@limiter.limit(_export_rate_limit)
 @jwt_required()
 def export_entries():
     """Export the authenticated user's entries into an Excel workbook."""

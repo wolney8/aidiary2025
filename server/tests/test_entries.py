@@ -22,6 +22,9 @@ def client():
     os.environ['MEDIA_ROOT'] = media_root
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['OPENAI_API_KEY'] = 'test-key'
+    os.environ['AUTH_LOGIN_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_REGISTER_RATE_LIMIT'] = '1000 per minute'
+    os.environ['ANALYSE_RATE_LIMIT'] = '1000 per minute'
     
     app = create_app()
     app.config['TESTING'] = True
@@ -132,6 +135,9 @@ def client_schema_without_mood_columns():
     os.environ['MEDIA_ROOT'] = media_root
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['OPENAI_API_KEY'] = 'test-key'
+    os.environ['AUTH_LOGIN_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_REGISTER_RATE_LIMIT'] = '1000 per minute'
+    os.environ['ANALYSE_RATE_LIMIT'] = '1000 per minute'
 
     import sqlite3
     conn = sqlite3.connect(db_path)
@@ -221,6 +227,9 @@ def client_schema_without_analysis_columns():
     os.environ['MEDIA_ROOT'] = media_root
     os.environ['JWT_SECRET'] = 'test-secret'
     os.environ['OPENAI_API_KEY'] = 'test-key'
+    os.environ['AUTH_LOGIN_RATE_LIMIT'] = '1000 per minute'
+    os.environ['AUTH_REGISTER_RATE_LIMIT'] = '1000 per minute'
+    os.environ['ANALYSE_RATE_LIMIT'] = '1000 per minute'
 
     import sqlite3
     conn = sqlite3.connect(db_path)
@@ -1445,6 +1454,30 @@ def test_analyse_rejects_invalid_mode(client):
     assert response.status_code == 400
     data = json.loads(response.data)
     assert data['error'] == 'Invalid mode. Use "daily" or "dream"'
+
+
+def test_analyse_rate_limit_is_enforced(client, monkeypatch):
+    monkeypatch.setenv('ANALYSE_RATE_LIMIT', '1 per minute')
+    token = get_auth_token(client)
+    headers = {'Authorization': f'Bearer {token}'}
+    payload = {'mode': 'weekly', 'text': 'Some text'}
+
+    first = client.post(
+        '/api/analyse',
+        headers=headers,
+        data=json.dumps(payload),
+        content_type='application/json',
+    )
+    second = client.post(
+        '/api/analyse',
+        headers=headers,
+        data=json.dumps(payload),
+        content_type='application/json',
+    )
+
+    assert first.status_code == 400
+    assert second.status_code == 429
+    assert json.loads(second.data)['error'] == 'Too many attempts. Try again shortly.'
 
 
 def test_analyse_rejects_invalid_reference_date(client):
