@@ -98,6 +98,39 @@ The preflight must not be used as a substitute for manual security review. It ca
 unsafe configuration shape; it does not prove legal compliance, absence of XSS, correct
 cookie categorisation, or external-provider contractual readiness.
 
+## Security Audit Review
+
+Security audit capture is intentionally backend/operator-only until OpenMynd has
+admin roles and an authorization model for support tooling.
+
+Run a recent audit summary:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/report_security_audit.py --days 30
+```
+
+Generate machine-readable evidence:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/report_security_audit.py --days 30 --json
+```
+
+Useful focused checks:
+
+```bash
+PYTHONPATH=. python scripts/report_security_audit.py --event-type login_failed --days 7
+PYTHONPATH=. python scripts/report_security_audit.py --user-id 123 --days 30 --json
+```
+
+Audit rows do not contain raw IP addresses, user-agent strings, passwords, tokens,
+diary text, prompts, attachment filenames, or OAuth payloads. IP and user-agent values
+are stored as keyed hashes so repeated suspicious activity can be correlated without
+turning the audit table into a sensitive-content dump.
+
 ## Minimum Public-Beta Exit Criteria
 
 - No blocking preflight gates.
@@ -114,5 +147,5 @@ cookie categorisation, or external-provider contractual readiness.
   import/revert, export, Chat, AI analysis, and data deletion.
 - Browser E2E gates cover the critical public journeys or the owner explicitly accepts
   the residual manual-testing risk.
-- Security audit event retention and review expectations are documented before external
-  users are onboarded.
+- Security audit event retention expectations are documented before external users are
+  onboarded.
