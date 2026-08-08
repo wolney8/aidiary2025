@@ -53,7 +53,7 @@ SaaS path.
 | Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and browser smoke coverage. | Local account token flows exist; preflight blocks console email in production; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
-| Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Planned with Stripe Billing/Checkout/Customer Portal and OpenMynd-owned entitlement state; not implemented. | `M19` SaaS issues |
+| Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Entitlement tables, Stripe Checkout, and Customer Portal session creation exist. Verified webhook synchronisation, plan gates, and billing disclosures remain. | `#129`, `#130`, `#131` |
 | Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists but should be expanded for OAuth, import, chat, account deletion, dashboard, and settings. | testing issue |
 
 ## Privacy Boundary Review

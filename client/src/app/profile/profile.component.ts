@@ -11,6 +11,11 @@ import { MatIconModule } from "@angular/material/icon";
 import { Router } from "@angular/router";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
+import {
+  BillingService,
+  BillingStatus,
+  CheckoutTier,
+} from "../core/services/billing.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 
@@ -227,6 +232,75 @@ import { User } from "../core/models/user.model";
           </p>
           <p class="status error" *ngIf="errorMessage">{{ errorMessage }}</p>
 
+          <section
+            class="billing-section"
+            aria-labelledby="billing-heading"
+            data-testid="account-billing-section"
+          >
+            <div class="billing-copy">
+              <span class="section-eyebrow">Billing</span>
+              <h3 id="billing-heading">Plan and subscription</h3>
+              <p>
+                Current plan:
+                <strong>{{ getBillingTierLabel() }}</strong>
+                <span class="billing-status-pill" *ngIf="billingStatus">
+                  {{ getBillingStatusLabel() }}
+                </span>
+              </p>
+            </div>
+
+            <div class="billing-actions">
+              <button
+                mat-raised-button
+                color="primary"
+                type="button"
+                class="billing-action"
+                [disabled]="!canStartCheckout('personal')"
+                (click)="startCheckout('personal')"
+                data-testid="account-billing-personal"
+              >
+                <mat-icon aria-hidden="true">
+                  {{ billingBusyTier === "personal" ? "hourglass_top" : "workspace_premium" }}
+                </mat-icon>
+                <span>{{ billingBusyTier === "personal" ? "Opening..." : "Personal" }}</span>
+              </button>
+              <button
+                mat-raised-button
+                color="primary"
+                type="button"
+                class="billing-action"
+                [disabled]="!canStartCheckout('plus')"
+                (click)="startCheckout('plus')"
+                data-testid="account-billing-plus"
+              >
+                <mat-icon aria-hidden="true">
+                  {{ billingBusyTier === "plus" ? "hourglass_top" : "auto_awesome" }}
+                </mat-icon>
+                <span>{{ billingBusyTier === "plus" ? "Opening..." : "Plus" }}</span>
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                class="billing-action"
+                [disabled]="!canOpenBillingPortal()"
+                (click)="openBillingPortal()"
+                data-testid="account-billing-portal"
+              >
+                <mat-icon aria-hidden="true">
+                  {{ billingPortalBusy ? "hourglass_top" : "receipt_long" }}
+                </mat-icon>
+                <span>{{ billingPortalBusy ? "Opening..." : "Manage billing" }}</span>
+              </button>
+            </div>
+
+            <p class="billing-note" *ngIf="billingStatus && !billingStatus.stripe_configured">
+              Billing is unavailable in this environment.
+            </p>
+            <p class="billing-note" *ngIf="billingStatus && !billingStatus.has_billing_customer">
+              Billing management appears after checkout starts.
+            </p>
+          </section>
+
           <section class="danger-section" aria-labelledby="delete-account-heading">
             <div class="danger-copy">
               <h3 id="delete-account-heading">Delete account</h3>
@@ -441,6 +515,14 @@ import { User } from "../core/models/user.model";
         margin: 0 0 var(--spacing-md);
       }
 
+      .section-eyebrow {
+        color: var(--colour-text-secondary);
+        font-size: 0.78rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
       .actions {
         display: flex;
         gap: var(--spacing-sm);
@@ -450,6 +532,64 @@ import { User } from "../core/models/user.model";
 
       .status {
         margin-top: var(--spacing-sm);
+      }
+
+      .billing-section {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--spacing-md);
+        margin-top: var(--spacing-lg);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
+      }
+
+      .billing-copy {
+        display: grid;
+        gap: var(--spacing-xs);
+      }
+
+      .billing-copy h3,
+      .billing-copy p,
+      .billing-note {
+        margin: 0;
+      }
+
+      .billing-copy p,
+      .billing-note {
+        color: var(--colour-text-secondary);
+        font-weight: 750;
+      }
+
+      .billing-status-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        margin-left: var(--spacing-xs);
+        padding: 0.18rem 0.58rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        color: var(--colour-text-secondary);
+        font-size: 0.82rem;
+        font-weight: 850;
+      }
+
+      .billing-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: var(--spacing-sm);
+      }
+
+      .billing-action {
+        border-radius: var(--radius-pill);
+      }
+
+      .billing-action mat-icon {
+        margin-right: var(--spacing-xs);
       }
 
       .danger-section {
@@ -491,6 +631,14 @@ import { User } from "../core/models/user.model";
       }
 
       @media (max-width: 600px) {
+        .billing-section {
+          grid-template-columns: 1fr;
+        }
+
+        .billing-actions {
+          justify-content: flex-start;
+        }
+
         .profile-picture-section {
           align-items: flex-start;
           flex-direction: column;
@@ -502,6 +650,7 @@ import { User } from "../core/models/user.model";
 export class ProfileComponent implements OnInit {
   private appDialog = inject(AppDialogService);
   private authService = inject(AuthService);
+  private billingService = inject(BillingService);
   private profileService = inject(ProfileService);
   private location = inject(Location);
   private router = inject(Router);
@@ -515,6 +664,9 @@ export class ProfileComponent implements OnInit {
   accountDeleteConfirmation = "";
   successMessage = "";
   errorMessage = "";
+  billingStatus: BillingStatus | null = null;
+  billingBusyTier: CheckoutTier | null = null;
+  billingPortalBusy = false;
   private initialProfileSnapshot = "";
 
   goBack(): void {
@@ -536,6 +688,7 @@ export class ProfileComponent implements OnInit {
         this.errorMessage = "Unable to load profile details.";
       },
     });
+    this.loadBillingStatus();
   }
 
   onSubmit(): void {
@@ -599,6 +752,70 @@ export class ProfileComponent implements OnInit {
 
   getDisplayNameLength(): number {
     return String(this.profile?.display_name || "").trim().length;
+  }
+
+  getBillingTierLabel(): string {
+    const tier = this.billingStatus?.entitlement?.tier || "free";
+    return this.toTitleCase(tier);
+  }
+
+  getBillingStatusLabel(): string {
+    const status = this.billingStatus?.entitlement?.status || "active";
+    return this.toTitleCase(status.replace(/_/g, " "));
+  }
+
+  canStartCheckout(tier: CheckoutTier): boolean {
+    return Boolean(
+      this.billingStatus?.stripe_configured &&
+        this.billingStatus.checkout_tiers.includes(tier) &&
+        !this.billingBusyTier &&
+        !this.billingPortalBusy,
+    );
+  }
+
+  canOpenBillingPortal(): boolean {
+    return Boolean(
+      this.billingStatus?.stripe_configured &&
+        this.billingStatus.has_billing_customer &&
+        !this.billingBusyTier &&
+        !this.billingPortalBusy,
+    );
+  }
+
+  startCheckout(tier: CheckoutTier): void {
+    if (!this.canStartCheckout(tier)) return;
+
+    this.billingBusyTier = tier;
+    this.errorMessage = "";
+    this.successMessage = "";
+    this.billingService.startCheckout(tier).subscribe({
+      next: (response) => {
+        window.location.href = response.url;
+      },
+      error: (error) => {
+        this.billingBusyTier = null;
+        this.errorMessage =
+          error?.error?.error || "Billing checkout could not be started.";
+      },
+    });
+  }
+
+  openBillingPortal(): void {
+    if (!this.canOpenBillingPortal()) return;
+
+    this.billingPortalBusy = true;
+    this.errorMessage = "";
+    this.successMessage = "";
+    this.billingService.openCustomerPortal().subscribe({
+      next: (response) => {
+        window.location.href = response.url;
+      },
+      error: (error) => {
+        this.billingPortalBusy = false;
+        this.errorMessage =
+          error?.error?.error || "Billing management could not be opened.";
+      },
+    });
   }
 
   resendVerificationEmail(): void {
@@ -800,6 +1017,21 @@ export class ProfileComponent implements OnInit {
       pronouns: String(profile.pronouns || "").trim(),
       gender: String(profile.gender || "").trim(),
     };
+  }
+
+  private loadBillingStatus(): void {
+    this.billingService.getStatus().subscribe({
+      next: (status) => {
+        this.billingStatus = status;
+      },
+      error: () => {
+        this.billingStatus = null;
+      },
+    });
+  }
+
+  private toTitleCase(value: string): string {
+    return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
   private canGoBack(): boolean {
