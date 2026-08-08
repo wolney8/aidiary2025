@@ -6,6 +6,7 @@ import { Router, provideRouter } from "@angular/router";
 import { of } from "rxjs";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
+import { BillingService } from "../core/services/billing.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 import { ProfileComponent } from "./profile.component";
@@ -23,6 +24,7 @@ describe("Account page", () => {
   let router: Router;
   let appDialogServiceMock: jasmine.SpyObj<AppDialogService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
+  let billingServiceMock: jasmine.SpyObj<BillingService>;
   let updateProfileSpy: jasmine.Spy;
 
   const profileServiceStub: Pick<
@@ -87,6 +89,26 @@ describe("Account page", () => {
     );
     appDialogServiceMock.confirm.and.resolveTo(true);
     authServiceMock = jasmine.createSpyObj<AuthService>("AuthService", ["logout"]);
+    billingServiceMock = jasmine.createSpyObj<BillingService>("BillingService", [
+      "getStatus",
+      "startCheckout",
+      "openCustomerPortal",
+    ]);
+    billingServiceMock.getStatus.and.returnValue(
+      of({
+        entitlement: {
+          tier: "free",
+          source: "system",
+          status: "active",
+          is_default: true,
+          is_active: true,
+        },
+        provider: "stripe",
+        stripe_configured: true,
+        checkout_tiers: ["personal", "plus"],
+        has_billing_customer: false,
+      }),
+    );
 
     await TestBed.configureTestingModule({
       imports: [ProfileComponent, NoopAnimationsModule],
@@ -102,6 +124,10 @@ describe("Account page", () => {
         {
           provide: AuthService,
           useValue: authServiceMock,
+        },
+        {
+          provide: BillingService,
+          useValue: billingServiceMock,
         },
         provideRouter([
           {
@@ -142,6 +168,16 @@ describe("Account page", () => {
     expect(host.textContent).toContain("Display Name");
     expect(host.textContent).toContain("Pronouns");
     expect(host.textContent).toContain("Gender");
+  });
+
+  it("renders billing status and available checkout plans", () => {
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.textContent).toContain("Plan and subscription");
+    expect(host.textContent).toContain("Current plan:");
+    expect(host.textContent).toContain("Free");
+    expect(host.textContent).toContain("Personal");
+    expect(host.textContent).toContain("Plus");
   });
 
   it("shows the display name counter", () => {

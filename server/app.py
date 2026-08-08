@@ -490,6 +490,7 @@ def create_app():
     from routes.chat import chat_bp
     from routes.cbt import cbt_bp
     from routes.dashboard import dashboard_bp
+    from routes.billing import billing_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
@@ -503,6 +504,7 @@ def create_app():
     app.register_blueprint(chat_bp, url_prefix='/api')
     app.register_blueprint(cbt_bp, url_prefix='/api')
     app.register_blueprint(dashboard_bp, url_prefix='/api')
+    app.register_blueprint(billing_bp, url_prefix='/api')
 
     try:
         recovered_jobs = recover_import_jobs(app)

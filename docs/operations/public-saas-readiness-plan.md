@@ -305,6 +305,21 @@ Acceptance criteria:
 - Cancel/upgrade/downgrade actions are handled through Stripe-hosted UI.
 - Feature access still comes from local entitlement state.
 
+Implementation note:
+
+- `feat/128-stripe-checkout-portal` adds `/api/billing/status`,
+  `/api/billing/checkout-session`, and `/api/billing/customer-portal-session`.
+- Account now shows the current OpenMynd entitlement and Stripe-hosted billing actions.
+- Required environment variables:
+  - `STRIPE_SECRET_KEY`
+  - `STRIPE_PRICE_PERSONAL`
+  - `STRIPE_PRICE_PLUS`
+  - optional `STRIPE_CHECKOUT_SUCCESS_URL`
+  - optional `STRIPE_CHECKOUT_CANCEL_URL`
+  - optional `STRIPE_CUSTOMER_PORTAL_RETURN_URL`
+- Entitlement changes still require the separate webhook issue. Checkout success alone
+  must not be treated as the source of truth for paid access.
+
 ### Issue 4
 
 Title:
