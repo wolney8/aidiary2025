@@ -47,6 +47,8 @@ Codex must stop and request a ruling before:
 - destructive or irreversible data/database operations
 - changing privacy defaults, authentication policy, or security boundaries
 - introducing a paid service, new external data processor, or materially higher AI cost
+- deciding subscription plan names, plan prices, trial periods, free-tier allowances,
+  feature placement by plan, quota values, or upgrade/downgrade rules
 - making a breaking API, export/import, storage, or schema decision not required by scope
 - changing acceptance criteria or expanding into an unrelated product feature
 - overwriting, reverting, or resolving a direct conflict with unexpected user changes
@@ -55,6 +57,11 @@ Codex must stop and request a ruling before:
 
 When escalation is required, ask one concise question, state the recommended default,
 and continue with any independent safe work.
+
+For pricing and entitlement decisions, do not treat placeholder docs, provisional code
+limits, Stripe price IDs, or previous branch defaults as owner approval. Ask explicitly
+and record the decision before changing user-facing pricing, plan labels, or feature
+availability.
 
 ## Delivery cadence
 

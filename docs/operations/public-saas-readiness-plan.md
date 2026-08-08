@@ -108,7 +108,10 @@ Recommended internal tiers:
 | `complimentary` | Family/friends/testers | Time-limited or owner-granted. |
 | `administrator` | Owner/support controls | Must not grant casual diary browsing access. |
 
-Pricing, final public names, and limits are product decisions requiring owner approval.
+Pricing, final public names, trial rules, quota values, and feature placement by plan are
+product decisions requiring explicit owner approval before implementation or user-facing
+copy changes. Provisional internal tier names and test limits are engineering scaffolding,
+not commercial approval.
 
 ## Billing Data Shape
 
