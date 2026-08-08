@@ -39,6 +39,9 @@ new broad product surfaces.
    - Keep SQLite as the current local fallback while rehearsing Neon/Postgres cutover.
    - Complete backup, restore, maintenance, rollback, integrity, and performance
      evidence before switching production data stores.
+   - Backup, snapshot, media archive, restore fallback, and maintenance validation
+     tooling now exists; `#120` should close only after a scheduled run and restore
+     rehearsal are captured against the intended provider/data set.
 3. Public SaaS hosting, billing, and entitlements
    - Follow the standard managed SaaS path documented in
      [public-saas-readiness-plan.md](./operations/public-saas-readiness-plan.md):

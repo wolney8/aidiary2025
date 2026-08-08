@@ -79,6 +79,56 @@ PYTHONPATH=. python scripts/run_database_backup_bundle.py \
 redacts Postgres connection strings from task errors and notification errors, but the
 webhook URL itself is still a secret and must stay out of committed files.
 
+## Validate Maintenance Evidence
+
+Use the maintenance validator after scheduled backups, before a public launch rehearsal,
+and before any database cutover decision. It is read-only and validates the evidence
+files written by the backup, snapshot, media archive, and restore tooling.
+
+Local SQLite-first check:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/validate_database_maintenance.py \
+  --backup-summary-dir ~/OpenMyndBackups \
+  --sqlite-backup-dir ~/OpenMyndBackups \
+  --max-age-hours 30
+```
+
+Cloud-ready check with Postgres snapshot, media archive, and restore rehearsal evidence:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/validate_database_maintenance.py \
+  --backup-summary-dir ~/OpenMyndBackups \
+  --sqlite-backup-dir ~/OpenMyndBackups \
+  --postgres-snapshot-dir ~/OpenMyndBackups/postgres-snapshots \
+  --media-backup-dir ~/OpenMyndBackups/media \
+  --restore-report ~/OpenMyndBackups/restored-sqlite/latest-restore-report.json \
+  --require-postgres-snapshot \
+  --require-media-archive \
+  --require-restore-rehearsal \
+  --max-age-hours 30
+```
+
+Optional capacity warning thresholds can be added without turning the check into a hard
+blocker:
+
+```bash
+PYTHONPATH=. python scripts/validate_database_maintenance.py \
+  --backup-summary-dir ~/OpenMyndBackups \
+  --sqlite-backup-dir ~/OpenMyndBackups \
+  --postgres-snapshot-dir ~/OpenMyndBackups/postgres-snapshots \
+  --require-postgres-snapshot \
+  --warn-total-rows 1000000 \
+  --warn-backup-bytes 1073741824
+```
+
+Treat blockers as release blockers. Treat warnings as owner/operator decisions that need
+recording before public onboarding.
+
 ## Postgres Snapshot After Cutover
 
 After cloud cutover is accepted, local SQLite backups no longer capture new cloud writes.
