@@ -23,6 +23,12 @@ from services.nltk_enrichment import (
     merge_csv_values,
 )
 from services.sql_compat import adapt_placeholders
+from services.usage_limits import (
+    AI_ANALYSIS_EVENT,
+    UsageLimitExceeded,
+    enforce_usage_limit,
+    record_usage_event,
+)
 
 
 def _normalise_people_names(raw: str) -> str:
@@ -839,6 +845,27 @@ def _merge_analysis_context(
         return None
     return "\n\n".join(parts)
 
+
+def _quota_exceeded_response(exc: UsageLimitExceeded):
+    return jsonify({
+        'error': 'This plan has reached its monthly AI analysis limit.',
+        'code': 'upgrade_required',
+        'usage': exc.summary,
+    }), 402
+
+
+def _record_successful_analysis_usage(user_id: int, mode: str) -> None:
+    try:
+        with get_db() as conn:
+            record_usage_event(
+                conn,
+                user_id=user_id,
+                event_type=AI_ANALYSIS_EVENT,
+                metadata={'mode': mode},
+            )
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning('AI analysis usage event could not be recorded: %s', exc)
+
 @analyse_bp.route('/analyse', methods=['POST'])
 @limiter.limit(_analyse_rate_limit)
 @jwt_required()
@@ -868,6 +895,16 @@ def analyse_text():
     if len(text) > ANALYSE_TEXT_MAX_LENGTH:
         return jsonify({'error': f'Text exceeds maximum length of {ANALYSE_TEXT_MAX_LENGTH} characters'}), 400
 
+    user_id = int(get_jwt_identity())
+    try:
+        with get_db() as conn:
+            enforce_usage_limit(conn, user_id=user_id, event_type=AI_ANALYSIS_EVENT)
+    except UsageLimitExceeded as exc:
+        return _quota_exceeded_response(exc)
+    except Exception:
+        current_app.logger.exception('AI analysis usage check failed')
+        return jsonify({'error': 'AI usage could not be checked. Please try again.'}), 503
+
     try:
         reference_date = _validate_reference_date(reference_date_raw)
     except ValueError:
@@ -891,10 +928,8 @@ def analyse_text():
     related_context = None
     attachment_context = None
     attachment_context_refs: list[str] = []
-    user_id = None
     analysis_settings = dict(DEFAULT_ANALYSIS_SETTINGS)
     try:
-        user_id = int(get_jwt_identity())
         with get_db() as conn:
             analysis_settings = _load_user_analysis_settings(conn, user_id)
             if bool(analysis_settings.get('allow_ai_history')):
@@ -935,16 +970,16 @@ def analyse_text():
                 analysis_options=analysis_options,
             )
             merged_result = _merge_daily_analysis_with_nltk(text, result)
-            if user_id is not None:
-                _persist_analysis_metadata(
-                    user_id=user_id,
-                    mode=mode,
-                    reference_date=reference_date,
-                    summary_header=_build_metadata_summary_header(mode, text, merged_result),
-                    tags=str(merged_result.get('tags', '')),
-                    people_names=_normalise_people_names(merged_result.get('people_names', '')),
-                    places=str(merged_result.get('places', '')),
-                )
+            _persist_analysis_metadata(
+                user_id=user_id,
+                mode=mode,
+                reference_date=reference_date,
+                summary_header=_build_metadata_summary_header(mode, text, merged_result),
+                tags=str(merged_result.get('tags', '')),
+                people_names=_normalise_people_names(merged_result.get('people_names', '')),
+                places=str(merged_result.get('places', '')),
+            )
+            _record_successful_analysis_usage(user_id, mode)
             return jsonify({
                 'ai_response': merged_result['ai_response'],
                 'tags': merged_result['tags'],
@@ -965,16 +1000,16 @@ def analyse_text():
                 analysis_options=analysis_options,
             )
             merged_result = _merge_dream_analysis_with_nltk(text, result)
-            if user_id is not None:
-                _persist_analysis_metadata(
-                    user_id=user_id,
-                    mode=mode,
-                    reference_date=reference_date,
-                    summary_header=_build_metadata_summary_header(mode, text, merged_result),
-                    tags=str(merged_result.get('tags', '')),
-                    people_names=_normalise_people_names(merged_result.get('people_names', '')),
-                    places=str(merged_result.get('places', '')),
-                )
+            _persist_analysis_metadata(
+                user_id=user_id,
+                mode=mode,
+                reference_date=reference_date,
+                summary_header=_build_metadata_summary_header(mode, text, merged_result),
+                tags=str(merged_result.get('tags', '')),
+                people_names=_normalise_people_names(merged_result.get('people_names', '')),
+                places=str(merged_result.get('places', '')),
+            )
+            _record_successful_analysis_usage(user_id, mode)
             return jsonify({
                 'summary': merged_result['summary'],
                 'interpretation': merged_result['interpretation'],

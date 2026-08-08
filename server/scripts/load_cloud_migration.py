@@ -29,6 +29,7 @@ IDENTITY_ID_TABLES = {
     "subscriptions",
     "entitlements",
     "billing_events",
+    "usage_events",
     "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",

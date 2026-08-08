@@ -52,6 +52,7 @@ def _write_export(export_dir):
     (export_dir / "subscriptions.jsonl").write_text("", encoding="utf-8")
     (export_dir / "entitlements.jsonl").write_text("", encoding="utf-8")
     (export_dir / "billing_events.jsonl").write_text("", encoding="utf-8")
+    (export_dir / "usage_events.jsonl").write_text("", encoding="utf-8")
     (export_dir / "configurations.jsonl").write_text("", encoding="utf-8")
     (export_dir / "dailydiary_entries.jsonl").write_text('{"id": 10}\n', encoding="utf-8")
     for table_name in [

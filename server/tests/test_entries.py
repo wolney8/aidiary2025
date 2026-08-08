@@ -2,6 +2,7 @@
 # Entries CRUD tests
 import pytest
 import json
+import sqlite3
 from app import create_app
 import tempfile
 import os
@@ -726,6 +727,74 @@ def test_analyse_daily_entry(mock_openai, client):
     assert 'daily_people_names' in data
     assert 'daily_places' in data
     assert data['daily_people_names'] == 'John,Sarah'
+
+
+@patch('routes.analyse.derive_daily_nltk_fields')
+@patch('routes.analyse.OpenAIService')
+def test_analyse_records_ai_usage_after_success(
+    mock_service_cls,
+    mock_daily_nltk,
+    client,
+):
+    token = get_auth_token(client)
+    mock_service = MagicMock()
+    mock_service.analyse_daily_entry.return_value = {
+        'ai_response': 'A useful reflection.',
+        'tags': 'reflection',
+        'people_names': '',
+        'places': '',
+    }
+    mock_service_cls.return_value = mock_service
+    mock_daily_nltk.return_value = {
+        'tags': '',
+        'daily_people_names': '',
+        'daily_places': '',
+    }
+
+    response = client.post(
+        '/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'A detailed entry for analysis'}),
+        content_type='application/json',
+    )
+
+    assert response.status_code == 200
+    db_path = client.application.config['DATABASE_PATH']
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM usage_events WHERE user_id = 1 AND event_type = 'ai_analysis'"
+        ).fetchone()[0]
+    assert count == 1
+
+
+@patch('routes.analyse.OpenAIService')
+def test_analyse_returns_upgrade_required_when_ai_limit_reached(
+    mock_service_cls,
+    client,
+):
+    token = get_auth_token(client)
+    db_path = client.application.config['DATABASE_PATH']
+    with sqlite3.connect(db_path) as conn:
+        for _index in range(20):
+            conn.execute(
+                """
+                INSERT INTO usage_events (user_id, event_type, units, metadata_json)
+                VALUES (1, 'ai_analysis', 1, '{}')
+                """
+            )
+
+    response = client.post(
+        '/api/analyse',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({'mode': 'daily', 'text': 'A detailed entry for analysis'}),
+        content_type='application/json',
+    )
+
+    assert response.status_code == 402
+    body = response.get_json()
+    assert body['code'] == 'upgrade_required'
+    assert body['usage']['ai_analysis']['remaining'] == 0
+    mock_service_cls.assert_not_called()
 
 
 @patch('services.openai_svc.OpenAI')

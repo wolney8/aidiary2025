@@ -25,6 +25,17 @@ export interface BillingStatus {
   stripe_configured: boolean;
   checkout_tiers: CheckoutTier[];
   has_billing_customer: boolean;
+  usage?: {
+    plan: BillingTier;
+    window: "month";
+    window_start: string;
+    ai_analysis: {
+      used: number;
+      limit: number | null;
+      remaining: number | null;
+      unlimited: boolean;
+    };
+  };
 }
 
 export interface BillingSessionResponse {

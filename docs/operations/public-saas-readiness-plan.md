@@ -395,6 +395,20 @@ Acceptance criteria:
 - UI uses Material 3/WCAG patterns.
 - Backend enforces the same limit as the frontend.
 
+Implementation note:
+
+- `feat/130-plan-gated-limits` adds `usage_events`, plan-aware usage helpers, Account
+  usage visibility, and server-enforced AI analysis limits.
+- Current monthly AI analysis limits:
+  - `free`: 20
+  - `personal`: 250
+  - `plus`: 1000
+  - `therapeutic`, `lifetime`, and `complimentary`: 1000
+  - `administrator`: unlimited
+- Daily, Dream, and Thought Record AI analysis are gated server-side.
+- Ordinary entry saves still complete if the user has reached the AI analysis limit;
+  only the AI response is skipped with an upgrade-required warning.
+
 ### Issue 6
 
 Title:

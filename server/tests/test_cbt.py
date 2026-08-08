@@ -414,7 +414,7 @@ def test_completed_thought_record_is_read_only_but_can_be_revised(cbt_client):
 @patch('routes.cbt.OpenAIService')
 def test_completed_thought_record_can_store_ai_response(mock_service_cls, cbt_client):
     client, db_path = cbt_client
-    token, _user_id = _register(client, 'cbt-ai-response')
+    token, user_id = _register(client, 'cbt-ai-response')
     created = client.post(
         '/api/cbt/worksheets',
         headers=_headers(token),
@@ -447,8 +447,53 @@ def test_completed_thought_record_can_store_ai_response(mock_service_cls, cbt_cl
         'SELECT ai_response FROM cbt_thought_record_data WHERE worksheet_id = ?',
         (created['id'],),
     ).fetchone()[0]
+    usage_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM usage_events
+        WHERE user_id = ? AND event_type = 'ai_analysis'
+        """,
+        (user_id,),
+    ).fetchone()[0]
     conn.close()
     assert stored == payload['ai_response']
+    assert usage_count == 1
+
+
+@patch('routes.cbt.OpenAIService')
+def test_thought_record_ai_response_returns_upgrade_required_when_limit_reached(
+    mock_service_cls,
+    cbt_client,
+):
+    client, db_path = cbt_client
+    token, user_id = _register(client, 'cbt-ai-limit')
+    created = client.post(
+        '/api/cbt/worksheets',
+        headers=_headers(token),
+        json=_complete_payload(),
+    ).get_json()
+    conn = sqlite3.connect(db_path)
+    for _index in range(20):
+        conn.execute(
+            """
+            INSERT INTO usage_events (user_id, event_type, units, metadata_json)
+            VALUES (?, 'ai_analysis', 1, '{}')
+            """,
+            (user_id,),
+        )
+    conn.commit()
+    conn.close()
+
+    response = client.post(
+        f"/api/cbt/worksheets/{created['id']}/analyse",
+        headers=_headers(token),
+    )
+
+    assert response.status_code == 402
+    body = response.get_json()
+    assert body['code'] == 'upgrade_required'
+    assert body['usage']['ai_analysis']['remaining'] == 0
+    mock_service_cls.assert_not_called()
 
 
 @patch('routes.cbt.OpenAIService')

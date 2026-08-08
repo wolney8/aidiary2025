@@ -143,6 +143,7 @@ def test_runtime_sqlite_managed_columns_exist_in_postgres_schema(tmp_path):
         "subscriptions",
         "entitlements",
         "billing_events",
+        "usage_events",
         "dailydiary_entries",
         "dreamdiary_entries",
         "entry_ai_metadata",

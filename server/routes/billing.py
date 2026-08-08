@@ -26,6 +26,7 @@ from services.stripe_billing import (
     load_stripe_billing_config,
     verify_stripe_webhook_event,
 )
+from services.usage_limits import get_user_usage_summary
 
 
 billing_bp = Blueprint("billing", __name__)
@@ -458,6 +459,7 @@ def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
         "stripe_configured": config.configured,
         "checkout_tiers": configured_checkout_tiers(config),
         "has_billing_customer": customer is not None,
+        "usage": get_user_usage_summary(conn, user_id),
     }
 
 
