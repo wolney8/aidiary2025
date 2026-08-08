@@ -113,6 +113,74 @@ CREATE TABLE IF NOT EXISTS account_security_tokens (
 )
 """
 
+_BILLING_CUSTOMERS_DDL = """
+CREATE TABLE IF NOT EXISTS billing_customers (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL,
+    provider            TEXT NOT NULL DEFAULT 'stripe'
+                        CHECK(provider IN ('stripe')),
+    provider_customer_id TEXT NOT NULL,
+    created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(provider, provider_customer_id),
+    UNIQUE(user_id, provider)
+)
+"""
+
+_SUBSCRIPTIONS_DDL = """
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                  INTEGER NOT NULL,
+    provider                 TEXT NOT NULL DEFAULT 'stripe'
+                             CHECK(provider IN ('stripe', 'manual')),
+    provider_subscription_id TEXT,
+    tier                     TEXT NOT NULL DEFAULT 'free',
+    status                   TEXT NOT NULL DEFAULT 'inactive',
+    current_period_start     TEXT,
+    current_period_end       TEXT,
+    cancel_at_period_end     INTEGER NOT NULL DEFAULT 0
+                             CHECK(cancel_at_period_end IN (0, 1)),
+    created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(provider, provider_subscription_id)
+)
+"""
+
+_ENTITLEMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS entitlements (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    tier        TEXT NOT NULL DEFAULT 'free'
+                CHECK(tier IN ('free', 'personal', 'plus', 'therapeutic', 'lifetime', 'complimentary', 'administrator')),
+    source      TEXT NOT NULL DEFAULT 'system'
+                CHECK(source IN ('system', 'stripe', 'manual')),
+    status      TEXT NOT NULL DEFAULT 'active'
+                CHECK(status IN ('active', 'inactive', 'past_due', 'cancelled', 'expired')),
+    valid_until TEXT,
+    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id)
+)
+"""
+
+_BILLING_EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS billing_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider          TEXT NOT NULL DEFAULT 'stripe'
+                      CHECK(provider IN ('stripe', 'manual')),
+    provider_event_id TEXT NOT NULL,
+    event_type        TEXT NOT NULL,
+    user_id           INTEGER,
+    processed_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json     TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(provider, provider_event_id)
+)
+"""
+
 _EXPORT_HISTORY_DDL = """
 CREATE TABLE IF NOT EXISTS export_history (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -563,6 +631,41 @@ def ensure_account_security_tokens_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'account_security_tokens')
+
+    return True
+
+
+def ensure_billing_tables(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure billing and entitlement tables exist for SaaS feature gates."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_BILLING_CUSTOMERS_DDL)
+        conn.execute(_SUBSCRIPTIONS_DDL)
+        conn.execute(_ENTITLEMENTS_DDL)
+        conn.execute(_BILLING_EVENTS_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status
+            ON subscriptions(user_id, status, updated_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_entitlements_tier_status
+            ON entitlements(tier, status)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_billing_events_user_processed
+            ON billing_events(user_id, processed_at DESC)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured billing tables exist')
 
     return True
 
