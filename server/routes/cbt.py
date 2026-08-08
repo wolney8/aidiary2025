@@ -12,6 +12,12 @@ from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.openai_svc import AnalysisRateLimitError, OpenAIService
 from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
+from services.usage_limits import (
+    AI_ANALYSIS_EVENT,
+    UsageLimitExceeded,
+    enforce_usage_limit,
+    record_usage_event,
+)
 
 cbt_bp = Blueprint('cbt', __name__)
 
@@ -656,6 +662,17 @@ def analyse_worksheet(worksheet_id: int):
         existing = _get_owned_worksheet(conn, worksheet_id, user_id)
         if existing:
             analysis_options = _load_thought_record_analysis_options(conn, user_id)
+            try:
+                enforce_usage_limit(conn, user_id=user_id, event_type=AI_ANALYSIS_EVENT)
+            except UsageLimitExceeded as exc:
+                return jsonify({
+                    'error': 'This plan has reached its monthly AI analysis limit.',
+                    'code': 'upgrade_required',
+                    'usage': exc.summary,
+                }), 402
+            except Exception:
+                current_app.logger.exception('Thought record AI usage check failed')
+                return jsonify({'error': 'AI usage could not be checked. Please try again.'}), 503
     if not existing:
         return jsonify({'error': 'Worksheet not found'}), 404
     analysis_source = ' '.join(
@@ -709,6 +726,18 @@ def analyse_worksheet(worksheet_id: int):
             ),
             (worksheet_id, user_id),
         )
+        try:
+            record_usage_event(
+                conn,
+                user_id=user_id,
+                event_type=AI_ANALYSIS_EVENT,
+                metadata={'mode': 'thought_record'},
+            )
+        except Exception as exc:  # noqa: BLE001
+            current_app.logger.warning(
+                'Thought record AI usage event could not be recorded: %s',
+                exc,
+            )
         row = _get_owned_worksheet(conn, worksheet_id, user_id)
     return jsonify(_serialise_worksheet(row)), 200
 

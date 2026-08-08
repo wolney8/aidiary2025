@@ -181,6 +181,12 @@ def test_account_deletion_removes_billing_rows(tmp_path):
             event_type="customer.subscription.created",
             user_id=1,
         )
+        conn.execute(
+            """
+            INSERT INTO usage_events (user_id, event_type, units, metadata_json)
+            VALUES (1, 'ai_analysis', 1, '{"mode": "daily"}')
+            """
+        )
 
         delete_user_account_data(conn, 1)
 
@@ -188,3 +194,4 @@ def test_account_deletion_removes_billing_rows(tmp_path):
         assert conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM entitlements").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM billing_events").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0] == 0

@@ -247,6 +247,28 @@ import { User } from "../core/models/user.model";
                   {{ getBillingStatusLabel() }}
                 </span>
               </p>
+              <div
+                class="billing-usage"
+                *ngIf="billingStatus?.usage?.ai_analysis as aiUsage"
+                aria-label="Monthly AI analysis usage"
+              >
+                <div class="billing-usage-row">
+                  <span>AI analysis</span>
+                  <strong>{{ getAiUsageLabel() }}</strong>
+                </div>
+                <div
+                  class="billing-meter"
+                  role="meter"
+                  aria-label="AI analysis usage this month"
+                  aria-valuemin="0"
+                  [attr.aria-valuemax]="aiUsage.limit ?? null"
+                  [attr.aria-valuenow]="aiUsage.used"
+                  [attr.aria-valuetext]="getAiUsageLabel()"
+                >
+                  <span [style.width.%]="getAiUsagePercent()"></span>
+                </div>
+                <p>Detailed AI responses and attachment context may use more provider capacity.</p>
+              </div>
             </div>
 
             <div class="billing-actions">
@@ -577,6 +599,48 @@ import { User } from "../core/models/user.model";
         font-weight: 850;
       }
 
+      .billing-usage {
+        display: grid;
+        gap: var(--spacing-xs);
+        max-width: 420px;
+        margin-top: var(--spacing-sm);
+      }
+
+      .billing-usage-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+        color: var(--colour-text-primary);
+        font-weight: 850;
+      }
+
+      .billing-meter {
+        height: 10px;
+        overflow: hidden;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+      }
+
+      .billing-meter span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          var(--colour-primary),
+          var(--colour-accent)
+        );
+      }
+
+      .billing-usage p {
+        margin: 0;
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
       .billing-actions {
         display: flex;
         flex-wrap: wrap;
@@ -762,6 +826,25 @@ export class ProfileComponent implements OnInit {
   getBillingStatusLabel(): string {
     const status = this.billingStatus?.entitlement?.status || "active";
     return this.toTitleCase(status.replace(/_/g, " "));
+  }
+
+  getAiUsageLabel(): string {
+    const usage = this.billingStatus?.usage?.ai_analysis;
+    if (!usage) {
+      return "Not available";
+    }
+    if (usage.unlimited || usage.limit === null) {
+      return `${usage.used} used`;
+    }
+    return `${usage.used} / ${usage.limit}`;
+  }
+
+  getAiUsagePercent(): number {
+    const usage = this.billingStatus?.usage?.ai_analysis;
+    if (!usage || usage.unlimited || !usage.limit) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, (usage.used / usage.limit) * 100));
   }
 
   canStartCheckout(tier: CheckoutTier): boolean {

@@ -15,6 +15,7 @@ _USER_TABLES: tuple[str, ...] = (
     "chat_messages",
     "chat_observability_events",
     "security_audit_events",
+    "usage_events",
     "billing_events",
     "entitlements",
     "subscriptions",

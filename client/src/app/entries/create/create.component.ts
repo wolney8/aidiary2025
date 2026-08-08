@@ -2360,6 +2360,10 @@ export class CreateComponent implements OnInit, OnDestroy {
         return "ai-save-failed";
       }
     } catch (error) {
+      if (this.isUpgradeRequiredAnalysisError(error)) {
+        return "ai-upgrade-required";
+      }
+
       if (this.isRateLimitAnalysisError(error)) {
         return "ai-rate-limit";
       }
@@ -2415,6 +2419,10 @@ export class CreateComponent implements OnInit, OnDestroy {
         return "ai-save-failed";
       }
     } catch (error) {
+      if (this.isUpgradeRequiredAnalysisError(error)) {
+        return "ai-upgrade-required";
+      }
+
       if (this.isRateLimitAnalysisError(error)) {
         return "ai-rate-limit";
       }
@@ -2568,6 +2576,10 @@ export class CreateComponent implements OnInit, OnDestroy {
     const messages = attachmentWarning ? [attachmentWarning] : [];
     if (analysisWarning === "ai-save-failed") {
       messages.push("The AI response could not be saved.");
+    } else if (analysisWarning === "ai-upgrade-required") {
+      messages.push(
+        "AI analysis did not run because this plan has reached its monthly limit. Upgrade from Account to continue this month.",
+      );
     } else if (analysisWarning === "ai-rate-limit") {
       messages.push("AI analysis could not run because its usage limit was reached.");
     }
@@ -2589,6 +2601,14 @@ export class CreateComponent implements OnInit, OnDestroy {
       serialised.includes("rate limit") ||
       serialised.includes("too many requests") ||
       serialised.includes("insufficient_quota")
+    );
+  }
+
+  private isUpgradeRequiredAnalysisError(error: unknown): boolean {
+    return (
+      error instanceof HttpErrorResponse &&
+      error.status === 402 &&
+      error.error?.code === "upgrade_required"
     );
   }
 

@@ -181,6 +181,18 @@ CREATE TABLE IF NOT EXISTS billing_events (
 )
 """
 
+_USAGE_EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS usage_events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    event_type    TEXT NOT NULL,
+    units         INTEGER NOT NULL DEFAULT 1,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)
+"""
+
 _EXPORT_HISTORY_DDL = """
 CREATE TABLE IF NOT EXISTS export_history (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -645,6 +657,7 @@ def ensure_billing_tables(
         conn.execute(_SUBSCRIPTIONS_DDL)
         conn.execute(_ENTITLEMENTS_DDL)
         conn.execute(_BILLING_EVENTS_DDL)
+        conn.execute(_USAGE_EVENTS_DDL)
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status
@@ -663,9 +676,15 @@ def ensure_billing_tables(
             ON billing_events(user_id, processed_at DESC)
             """
         )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_usage_events_user_type_created
+            ON usage_events(user_id, event_type, created_at DESC)
+            """
+        )
 
     if log:
-        log('Runtime migration ensured billing tables exist')
+        log('Runtime migration ensured billing and usage tables exist')
 
     return True
 
