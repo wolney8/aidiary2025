@@ -23,6 +23,11 @@ OpenMynd should follow the standard managed SaaS path:
   Stripe Customer Portal for self-service billing.
 - Internal entitlement model owned by OpenMynd, updated from verified Stripe webhooks.
 
+The first concrete provider decision is captured in
+[ADR 0005](../adr/0005-production-saas-hosting-architecture.md): Cloudflare DNS,
+Vercel frontend, Render Flask API, Neon Postgres, Cloudflare R2 media storage, SMTP
+email, and Stripe Billing later.
+
 Stripe is the recommended first payment provider because it supports subscriptions,
 Checkout-hosted payment pages, webhooks, coupons/discounts, and a Customer Portal. Stripe
 documentation describes Checkout as a hosted payment page for subscriptions, Billing as
@@ -229,6 +234,13 @@ Acceptance criteria:
 - Required env vars are listed for staging and production.
 - Deployment path is reproducible from a clean checkout.
 - Production preflight can run in CI/deployment before release.
+
+Status note:
+
+- Initial decision is documented in
+  [ADR 0005](../adr/0005-production-saas-hosting-architecture.md). Keep this issue open
+  only until the owner confirms the providers/domain and a staging deployment has been
+  rehearsed.
 
 ### Issue 2
 
