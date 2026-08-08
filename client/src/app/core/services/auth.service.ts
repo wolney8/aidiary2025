@@ -7,6 +7,7 @@ import {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
+  AuthMessageResponse,
   User,
   OAuthProvider,
   OAuthProvidersResponse,
@@ -60,6 +61,34 @@ export class AuthService {
         this.storeSession(response);
         this.currentUserSubject.next(response.user);
       }),
+    );
+  }
+
+  requestEmailVerification(): Observable<AuthMessageResponse> {
+    return this.http.post<AuthMessageResponse>(
+      `${this.apiUrl}/auth/email/verification/request`,
+      {},
+    );
+  }
+
+  confirmEmailVerification(token: string): Observable<AuthMessageResponse> {
+    return this.http.post<AuthMessageResponse>(
+      `${this.apiUrl}/auth/email/verification/confirm`,
+      { token },
+    );
+  }
+
+  requestPasswordReset(email: string): Observable<AuthMessageResponse> {
+    return this.http.post<AuthMessageResponse>(
+      `${this.apiUrl}/auth/password-reset/request`,
+      { email },
+    );
+  }
+
+  confirmPasswordReset(token: string, password: string): Observable<AuthMessageResponse> {
+    return this.http.post<AuthMessageResponse>(
+      `${this.apiUrl}/auth/password-reset/confirm`,
+      { token, password },
     );
   }
 

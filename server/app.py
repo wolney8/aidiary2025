@@ -11,6 +11,7 @@ from services.database_adapter import DatabaseAdapter
 from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_database
 from services.database_resilience import classify_database_exception
 from services.runtime_migrations import (
+    ensure_account_security_tokens_table,
     ensure_auth_identities_table,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
@@ -96,6 +97,9 @@ def _production_runtime_blockers(
     media_base_url_configured: bool,
     cors_origins: list[str],
     rate_limit_storage_uri: str,
+    email_provider: str,
+    email_from_configured: bool,
+    smtp_host_configured: bool,
 ) -> list[str]:
     blockers: list[str] = []
 
@@ -144,6 +148,20 @@ def _production_runtime_blockers(
             'CORS_ORIGINS must contain only production frontend origins when APP_ENV=production.'
         )
 
+    if email_provider == 'console':
+        blockers.append(
+            'EMAIL_PROVIDER=console is blocked when APP_ENV=production. '
+            'Use EMAIL_PROVIDER=smtp for verification and password recovery.'
+        )
+    elif email_provider != 'smtp':
+        blockers.append('EMAIL_PROVIDER must be smtp when APP_ENV=production.')
+
+    if not email_from_configured:
+        blockers.append('EMAIL_FROM_ADDRESS must be configured when APP_ENV=production.')
+
+    if email_provider == 'smtp' and not smtp_host_configured:
+        blockers.append('SMTP_HOST must be configured when EMAIL_PROVIDER=smtp.')
+
     return blockers
 
 
@@ -172,6 +190,14 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
         ensure_auth_identities_table(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime auth identities migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_account_security_tokens_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning(
+            'Runtime account security token migration skipped due to error: %s',
+            migration_exc,
+        )
 
     try:
         ensure_export_history_table(database_path, app.logger.info)
@@ -282,6 +308,7 @@ def create_app():
         for origin in os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
         if origin.strip()
     ]
+    email_provider = (os.getenv('EMAIL_PROVIDER') or 'console').strip().lower()
     if app_environment == 'production':
         production_blockers = _production_runtime_blockers(
             database_provider=database_settings.provider,
@@ -290,6 +317,9 @@ def create_app():
             media_base_url_configured=bool(app.config['MEDIA_BASE_URL']),
             cors_origins=cors_origins,
             rate_limit_storage_uri=app.config['RATELIMIT_STORAGE_URI'],
+            email_provider=email_provider,
+            email_from_configured=bool((os.getenv('EMAIL_FROM_ADDRESS') or '').strip()),
+            smtp_host_configured=bool((os.getenv('SMTP_HOST') or '').strip()),
         )
         if production_blockers:
             raise RuntimeError(

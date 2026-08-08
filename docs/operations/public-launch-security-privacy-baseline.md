@@ -1,6 +1,6 @@
 # Public Launch Security And Privacy Baseline
 
-Updated: 6 August 2026  
+Updated: 8 August 2026  
 Scope: GitHub issue `#113`, public beta / SaaS readiness for OpenMynd.
 
 This is a public-safe audit record. Do not add real database URLs, API keys, user
@@ -20,14 +20,23 @@ Current automated evidence:
 - The preflight now also checks production frontend URL shape, Google OAuth callback
   safety, public legal/cookie route presence when the frontend tree is available, and
   explicit owner acceptance for known session/password migration risks.
-- Login, registration, OAuth start/callback, AI analysis, import/export, import
-  revert, and account deletion routes have explicit rate limits, with preflight
-  visibility for production configuration.
+- Login, registration, email verification, password reset, OAuth start/callback,
+  AI analysis, import/export, import revert, and account deletion routes have
+  explicit rate limits, with preflight visibility for production configuration.
+- Local account email verification and password reset now use provider-neutral
+  transactional email. `EMAIL_PROVIDER=console` is development-only; production
+  must configure SMTP.
 - Registration, login, OAuth callback, and account deletion now write low-sensitivity
   security audit events. Request IP and user-agent values are stored as keyed hashes,
   and event metadata is categorical only.
 - Backend auth/profile/chat/import/database tests cover user scoping, account deletion,
   import/revert ownership, chat storage, and database provider compatibility.
+
+The standard public SaaS path is tracked separately in
+[public-saas-readiness-plan.md](./public-saas-readiness-plan.md). That plan covers
+hosting, domain/DNS, Stripe billing, subscription entitlements, pricing/legal pages, and
+launch preflight extensions. This baseline remains the security/privacy gate for that
+SaaS path.
 
 ## Launch Blockers
 
@@ -38,9 +47,10 @@ Current automated evidence:
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Cutover tooling exists; production maintenance remains open. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth; removal needs a migration window. | `#113` or auth-hardening issue |
-| Major | Account recovery and verification | Email verification, recovery, and security-event review flows are not complete. | Google OAuth exists; local recovery is not production-grade; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
+| Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and browser smoke coverage. | Local account token flows exist; preflight blocks console email in production; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
+| Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Planned with Stripe Billing/Checkout/Customer Portal and OpenMynd-owned entitlement state; not implemented. | `M19` SaaS issues |
 | Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists but should be expanded for OAuth, import, chat, account deletion, dashboard, and settings. | testing issue |
 
 ## Privacy Boundary Review
@@ -141,6 +151,33 @@ The preflight accepts this as an explicit owner decision and warns when the valu
 missing or outside the current review range of 30 to 730 days. This setting is an
 operational retention policy marker; automatic purging should be added only after the
 owner confirms the public-beta retention rule.
+
+## Transactional Email Configuration
+
+Local development can use console delivery:
+
+```bash
+EMAIL_PROVIDER=console
+```
+
+Production account recovery requires SMTP:
+
+```bash
+EMAIL_PROVIDER=smtp
+EMAIL_FROM_ADDRESS="OpenMynd <no-reply@example.com>"
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_USE_TLS=true
+OPENMYND_REQUIRE_REGISTRATION_EMAIL=true
+AUTH_PASSWORD_RESET_RATE_LIMIT="5 per hour"
+AUTH_EMAIL_VERIFICATION_RATE_LIMIT="5 per hour"
+```
+
+Verification and reset links use `FRONTEND_BASE_URL`. The preflight blocks
+console email in production and warns if local registration does not require an
+email address.
 
 ## Minimum Public-Beta Exit Criteria
 

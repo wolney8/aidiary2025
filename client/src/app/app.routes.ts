@@ -20,6 +20,30 @@ export const routes: Routes = [
       ),
   },
   {
+    path: "forgot-password",
+    title: "Forgot password | OpenMynd",
+    loadComponent: () =>
+      import("./auth/forgot-password.component").then(
+        (m) => m.ForgotPasswordComponent,
+      ),
+  },
+  {
+    path: "reset-password",
+    title: "Reset password | OpenMynd",
+    loadComponent: () =>
+      import("./auth/reset-password.component").then(
+        (m) => m.ResetPasswordComponent,
+      ),
+  },
+  {
+    path: "verify-email",
+    title: "Verify email | OpenMynd",
+    loadComponent: () =>
+      import("./auth/verify-email.component").then(
+        (m) => m.VerifyEmailComponent,
+      ),
+  },
+  {
     path: "oauth/callback",
     title: "Completing sign-in | OpenMynd",
     loadComponent: () =>

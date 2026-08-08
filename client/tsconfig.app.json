@@ -8,6 +8,7 @@
     "src/**/*.spec.ts",
     "src/test.ts",
     "src/testing-globals.d.ts",
+    "src/app/core/services/autosave.service.ts",
     "tests/**/*",
     "playwright.config.ts"
   ]

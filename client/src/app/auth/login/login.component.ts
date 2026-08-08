@@ -97,6 +97,10 @@ import { OAuthProvider } from "../../core/models/user.model";
             </button>
           </form>
 
+          <p class="forgot-password-link">
+            <a routerLink="/forgot-password">Forgot password?</a>
+          </p>
+
           <div class="oauth-divider" aria-hidden="true">
             <span></span>
             <small>or</small>
@@ -299,6 +303,12 @@ import { OAuthProvider } from "../../core/models/user.model";
         margin-top: var(--spacing-md);
       }
 
+      .forgot-password-link {
+        margin: 0 0 var(--spacing-sm);
+        text-align: right;
+      }
+
+      .forgot-password-link a,
       .register-link a {
         color: var(--colour-primary);
         font-weight: 800;
@@ -404,6 +414,8 @@ export class LoginComponent implements OnInit {
     } else if (reason === "account-deleted") {
       this.authService.clearLocalSession();
       this.sessionInfoMessage = "Your account has been deleted.";
+    } else if (reason === "password-reset") {
+      this.sessionInfoMessage = "Password reset. Sign in with your new password.";
     }
 
     this.authService.getOAuthProviders().subscribe({

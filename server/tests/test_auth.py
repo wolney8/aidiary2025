@@ -83,6 +83,8 @@ def client():
                 id INTEGER PRIMARY KEY,
                 username TEXT NOT NULL,
                 password TEXT NOT NULL,
+                email TEXT,
+                email_verified INTEGER DEFAULT 0,
                 first_name TEXT,
                 last_name TEXT,
                 age INTEGER,
@@ -142,6 +144,56 @@ def test_register_success(client):
             """
         ).fetchone()
     assert event == ("register_success", "success", 1)
+
+
+def test_register_with_email_creates_verification_token(client, monkeypatch):
+    sent_messages = []
+
+    def fake_send(**kwargs):
+        sent_messages.append(kwargs)
+
+    monkeypatch.setattr(auth, "send_transactional_email", fake_send)
+
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'emailuser',
+            'password': 'testpass123',
+            'email': 'EmailUser@example.com',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 201
+    data = json.loads(response.data)
+    assert data['user']['email'] == 'emailuser@example.com'
+    assert data['user']['email_verified'] is False
+    assert sent_messages
+    assert 'verify-email?token=' in sent_messages[0]['text_body']
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        token_row = conn.execute(
+            """
+            SELECT purpose, consumed_at
+            FROM account_security_tokens
+            WHERE user_id = 1
+            """
+        ).fetchone()
+    assert token_row == ("email_verification", None)
+
+
+def test_register_can_require_email_when_public_flag_enabled(client, monkeypatch):
+    monkeypatch.setenv("OPENMYND_REQUIRE_REGISTRATION_EMAIL", "true")
+
+    response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'needs-email',
+            'password': 'testpass123',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == "A valid email address is required"
 
 def test_register_missing_credentials(client):
     """Test registration with missing credentials."""
@@ -837,3 +889,88 @@ def test_login_rejects_unusable_password_hash_without_crashing(client):
     )
 
     assert response.status_code == 401
+
+
+def test_email_verification_confirm_marks_user_verified(client, monkeypatch):
+    sent_messages = []
+
+    def fake_send(**kwargs):
+        sent_messages.append(kwargs)
+
+    monkeypatch.setattr(auth, "send_transactional_email", fake_send)
+    register_response = client.post('/api/register',
+        data=json.dumps({
+            'username': 'verifyuser',
+            'password': 'testpass123',
+            'email': 'verify@example.com',
+        }),
+        content_type='application/json'
+    )
+    token = sent_messages[0]['text_body'].split('token=', maxsplit=1)[1].split()[0]
+
+    response = client.post('/api/auth/email/verification/confirm',
+        data=json.dumps({'token': token}),
+        content_type='application/json'
+    )
+
+    assert register_response.status_code == 201
+    assert response.status_code == 200
+    import sqlite3
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        verified = conn.execute(
+            'SELECT email_verified FROM users WHERE username = ?',
+            ('verifyuser',),
+        ).fetchone()[0]
+        consumed_at = conn.execute(
+            'SELECT consumed_at FROM account_security_tokens'
+        ).fetchone()[0]
+    assert verified == 1
+    assert consumed_at
+
+
+def test_password_reset_request_and_confirm_changes_password(client, monkeypatch):
+    sent_messages = []
+
+    def fake_send(**kwargs):
+        sent_messages.append(kwargs)
+
+    monkeypatch.setattr(auth, "send_transactional_email", fake_send)
+    client.post('/api/register',
+        data=json.dumps({
+            'username': 'resetuser',
+            'password': 'oldpass123',
+            'email': 'reset@example.com',
+        }),
+        content_type='application/json'
+    )
+    sent_messages.clear()
+
+    request_response = client.post('/api/auth/password-reset/request',
+        data=json.dumps({'email': 'reset@example.com'}),
+        content_type='application/json'
+    )
+    token = sent_messages[0]['text_body'].split('token=', maxsplit=1)[1].split()[0]
+    confirm_response = client.post('/api/auth/password-reset/confirm',
+        data=json.dumps({'token': token, 'password': 'newpass123'}),
+        content_type='application/json'
+    )
+    login_response = client.post('/api/login',
+        data=json.dumps({'username': 'resetuser', 'password': 'newpass123'}),
+        content_type='application/json'
+    )
+
+    assert request_response.status_code == 202
+    assert confirm_response.status_code == 200
+    assert login_response.status_code == 200
+
+
+def test_password_reset_request_does_not_reveal_unknown_email(client):
+    response = client.post('/api/auth/password-reset/request',
+        data=json.dumps({'email': 'unknown@example.com'}),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 202
+    assert json.loads(response.data) == {
+        'message': 'If an account exists for that email, a reset link has been sent.'
+    }
