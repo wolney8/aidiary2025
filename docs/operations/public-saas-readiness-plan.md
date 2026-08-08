@@ -435,6 +435,15 @@ Acceptance criteria:
 - Links are reachable from footer/login/register/account.
 - Copy passes product-owner review before public launch.
 
+Implementation note:
+
+- `feat/132-pricing-legal-disclosures` adds `/pricing` with Free, Personal, and Plus
+  plan structure copy without hardcoding final public prices.
+- Footer, Login, Register, and Account/Billing link to pricing/legal pages.
+- Terms, Privacy, and Cookie copy now mention AI provider use, supported exports,
+  account deletion boundaries, Stripe-hosted billing, subscription limits, and cookie
+  consent behavior.
+
 ### Issue 7
 
 Title:

@@ -81,6 +81,14 @@ export const routes: Routes = [
       import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
   },
   {
+    path: "pricing",
+    title: "Pricing | OpenMynd",
+    loadComponent: () =>
+      import("./public/pricing/pricing.component").then(
+        (m) => m.PricingComponent,
+      ),
+  },
+  {
     path: "dashboard",
     title: "Dashboard | OpenMynd",
     canActivate: [authGuard],

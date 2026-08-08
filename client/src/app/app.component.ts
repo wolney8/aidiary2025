@@ -53,6 +53,7 @@ import { User } from "./core/models/user.model";
           </main>
           <footer class="app-footer" aria-label="OpenMynd information">
             <span>OpenMynd {{ versionLabel }}</span>
+            <a routerLink="/pricing">Pricing</a>
             <a routerLink="/privacy">Privacy policy</a>
             <a routerLink="/terms">Terms</a>
             <a routerLink="/cookies">Cookie policy</a>

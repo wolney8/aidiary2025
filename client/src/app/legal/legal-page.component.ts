@@ -34,12 +34,17 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
       {
         heading: "How AI features use your data",
         body:
-          "AI analysis uses the entry content and only the context you enable, such as previous entries or attachment-derived text. AI-generated images use saved image prompts and do not require public sharing of your diary.",
+          "AI analysis uses the entry content and only the context you enable, such as previous entries or attachment-derived text. AI-generated images use saved prompts. AI features may send selected content to the configured AI provider.",
       },
       {
         heading: "Data portability",
         body:
-          "Export tools are intended to let you keep a local copy of your diary data and media. Database and backup hardening remains part of production-readiness work.",
+          "Export tools let you keep a local copy of supported diary data and media. Current portability includes diary, dream, thought record, important day, and supported media package data.",
+      },
+      {
+        heading: "Deletion",
+        body:
+          "Account deletion removes app-owned account data, entries, attachments, generated media, imports, chat history, and billing references held by OpenMynd. External providers may retain records under their own policies.",
       },
     ],
   },
@@ -65,6 +70,16 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
         body:
           "AI responses may be incomplete or inaccurate. Treat them as reflective assistance rather than professional advice or a definitive record of events.",
       },
+      {
+        heading: "Subscriptions",
+        body:
+          "Paid plans, when enabled, use Stripe-hosted checkout and billing management. Plan access is controlled by OpenMynd entitlements and may include monthly AI or storage limits.",
+      },
+      {
+        heading: "Cancellation and refunds",
+        body:
+          "Subscription changes are handled through the billing portal. Final cancellation, refund, and pricing terms must match the public pricing page before launch.",
+      },
     ],
   },
   cookies: {
@@ -77,17 +92,17 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
       {
         heading: "Essential storage",
         body:
-          "The app may use browser storage for authentication state, theme choice, view preferences, and other settings needed for normal operation.",
+          "The app uses essential browser storage for sign-in, security, theme choice, view preferences, and normal operation.",
       },
       {
-        heading: "Preference storage",
+        heading: "Optional cookies",
         body:
-          "Display mode, colour theme, and similar preferences can be stored locally so the interface stays consistent when you return.",
+          "Optional cookies are only used when accepted through the cookie banner. You can decline optional cookies and still use the core app.",
       },
       {
         heading: "Analytics and marketing",
         body:
-          "No marketing or analytics cookie controls are active in this local build. If those services are introduced later, this page and the settings flow must be updated first.",
+          "No advertising cookies are required for the core app. If analytics or marketing tools are introduced, this page and consent controls must describe them before launch.",
       },
     ],
   },
