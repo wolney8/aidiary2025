@@ -8,7 +8,7 @@ import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
-import { Router } from "@angular/router";
+import { Router, RouterLink } from "@angular/router";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
 import {
@@ -31,6 +31,7 @@ import { User } from "../core/models/user.model";
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
+    RouterLink,
   ],
   template: `
     <div class="profile-container" data-testid="account-page" *ngIf="profile">
@@ -313,6 +314,15 @@ import { User } from "../core/models/user.model";
                 </mat-icon>
                 <span>{{ billingPortalBusy ? "Opening..." : "Manage billing" }}</span>
               </button>
+              <a
+                mat-stroked-button
+                routerLink="/pricing"
+                class="billing-action"
+                data-testid="account-billing-pricing"
+              >
+                <mat-icon aria-hidden="true">sell</mat-icon>
+                <span>Pricing</span>
+              </a>
             </div>
 
             <p class="billing-note" *ngIf="billingStatus && !billingStatus.stripe_configured">

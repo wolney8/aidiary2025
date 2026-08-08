@@ -130,6 +130,12 @@ import { OAuthProvider } from "../../core/models/user.model";
           <p class="register-link">
             Don't have an account? <a routerLink="/register">Register here</a>
           </p>
+
+          <nav class="auth-public-links" aria-label="OpenMynd public links">
+            <a routerLink="/pricing">Pricing</a>
+            <a routerLink="/privacy">Privacy</a>
+            <a routerLink="/terms">Terms</a>
+          </nav>
         </mat-card-content>
       </mat-card>
     </div>
@@ -312,6 +318,39 @@ import { OAuthProvider } from "../../core/models/user.model";
       .register-link a {
         color: var(--colour-primary);
         font-weight: 800;
+      }
+
+      .auth-public-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: var(--spacing-xs);
+        margin-top: var(--spacing-sm);
+      }
+
+      .auth-public-links a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        padding: 0 0.75rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .auth-public-links a:hover {
+        background: var(--colour-control-hover);
+        color: var(--colour-text-primary);
+      }
+
+      .auth-public-links a:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: 3px;
       }
 
       .error-message {
