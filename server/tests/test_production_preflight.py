@@ -30,7 +30,34 @@ def _base_env() -> dict[str, str]:
         "EMAIL_PROVIDER": "smtp",
         "EMAIL_FROM_ADDRESS": "OpenMynd <no-reply@openmynd.app>",
         "SMTP_HOST": "smtp.openmynd.app",
+        "STRIPE_SECRET_KEY": "sk_test_public_preflight",
+        "STRIPE_WEBHOOK_SECRET": "whsec_public_preflight",
+        "STRIPE_PRICE_PERSONAL": "price_personal",
+        "STRIPE_PRICE_PLUS": "price_plus",
     }
+
+
+def _write_frontend_sources(root, *, include_pricing: bool = True) -> None:
+    client_root = root / "client"
+    routes = [
+        'path: "privacy"',
+        'path: "terms"',
+        'path: "cookies"',
+    ]
+    if include_pricing:
+        routes.append('path: "pricing"')
+    (client_root / "src/app").mkdir(parents=True)
+    (client_root / "src/app/app.routes.ts").write_text("\n".join(routes), encoding="utf-8")
+    (client_root / "src/app/legal").mkdir(parents=True)
+    (client_root / "src/app/legal/legal-page.component.ts").write_text(
+        "export class LegalPageComponent {}",
+        encoding="utf-8",
+    )
+    (client_root / "src/app/shared/components/cookie-consent").mkdir(parents=True)
+    (
+        client_root
+        / "src/app/shared/components/cookie-consent/cookie-consent.component.ts"
+    ).write_text("export class CookieConsentComponent {}", encoding="utf-8")
 
 
 def test_preflight_blocks_unsafe_production_defaults(tmp_path):
@@ -162,6 +189,45 @@ def test_preflight_accepts_explicit_pooler_confirmation(tmp_path):
     assert report["ready_for_production"] is True
     assert "database_pooling" not in warning_gates
     assert report["summary"]["database_pooler_configured"] is True
+
+
+def test_preflight_blocks_incomplete_stripe_configuration(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env.pop("STRIPE_WEBHOOK_SECRET")
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "stripe_configuration" in gates
+    assert report["summary"]["stripe_webhook_secret_configured"] is False
+
+
+def test_preflight_blocks_malformed_stripe_values(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["STRIPE_SECRET_KEY"] = "not-a-stripe-secret"
+    env["STRIPE_WEBHOOK_SECRET"] = "not-a-webhook-secret"
+    env["STRIPE_PRICE_PLUS"] = "plus-tier"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "stripe_secret_key" in gates
+    assert "stripe_webhook_secret" in gates
+    assert "stripe_price_plus" in gates
 
 
 def test_preflight_blocks_local_google_oauth_redirect_in_production(tmp_path):
@@ -376,3 +442,39 @@ def test_preflight_warns_when_registration_email_is_not_required(tmp_path):
     assert report["ready_for_production"] is True
     assert "registration_email_required" in warning_gates
     assert report["summary"]["registration_email_required"] is False
+
+
+def test_preflight_blocks_missing_public_pricing_route_when_frontend_is_available(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_pricing=False)
+    env = _base_env()
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "public_frontend_routes" in gates
+    assert report["summary"]["public_frontend_routes_present"] is False
+
+
+def test_preflight_accepts_public_routes_when_frontend_sources_are_complete(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_pricing=True)
+    env = _base_env()
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    assert report["ready_for_production"] is True
+    assert report["summary"]["public_frontend_routes_present"] is True
