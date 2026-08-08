@@ -22,6 +22,7 @@ PUBLIC_LEGAL_ROUTES = (
     "client/src/app/legal/legal-page.component.ts",
     "client/src/app/shared/components/cookie-consent/cookie-consent.component.ts",
 )
+PUBLIC_FRONTEND_ROUTES = ("privacy", "terms", "cookies", "pricing")
 AUTH_RATE_LIMIT_ENV_KEYS = (
     "AUTH_LOGIN_RATE_LIMIT",
     "AUTH_REGISTER_RATE_LIMIT",
@@ -109,6 +110,11 @@ def _is_local_url(value: str | None) -> bool:
 def _looks_like_placeholder(value: str | None) -> bool:
     normalised = (value or "").strip().lower()
     return not normalised or any(marker in normalised for marker in PLACEHOLDER_MARKERS)
+
+
+def _looks_like_prefixed_secret(value: str | None, prefix: str) -> bool:
+    normalised = (value or "").strip()
+    return normalised.startswith(prefix) and not _looks_like_placeholder(normalised)
 
 
 def _email_provider(env: Mapping[str, str]) -> str:
@@ -423,6 +429,78 @@ def build_production_preflight(
             ),
         )
 
+    missing_frontend_routes: list[str] = []
+    app_routes_path = repo_root / "client/src/app/app.routes.ts"
+    if frontend_tree_available and app_routes_path.exists():
+        route_source = app_routes_path.read_text(encoding="utf-8")
+        missing_frontend_routes = [
+            route
+            for route in PUBLIC_FRONTEND_ROUTES
+            if f'path: "{route}"' not in route_source and f"path: '{route}'" not in route_source
+        ]
+        if missing_frontend_routes:
+            _add_gate(
+                blockers,
+                gate="public_frontend_routes",
+                message=(
+                    "Public frontend routes are missing from app.routes.ts: "
+                    + ", ".join(missing_frontend_routes)
+                ),
+            )
+    elif frontend_tree_available:
+        _add_gate(
+            blockers,
+            gate="public_frontend_routes",
+            message="client/src/app/app.routes.ts is missing, so public route readiness cannot be checked.",
+        )
+
+    stripe_secret_key = (env.get("STRIPE_SECRET_KEY") or "").strip()
+    stripe_webhook_secret = (env.get("STRIPE_WEBHOOK_SECRET") or "").strip()
+    stripe_price_personal = (env.get("STRIPE_PRICE_PERSONAL") or "").strip()
+    stripe_price_plus = (env.get("STRIPE_PRICE_PLUS") or "").strip()
+    stripe_values = {
+        "STRIPE_SECRET_KEY": stripe_secret_key,
+        "STRIPE_WEBHOOK_SECRET": stripe_webhook_secret,
+        "STRIPE_PRICE_PERSONAL": stripe_price_personal,
+        "STRIPE_PRICE_PLUS": stripe_price_plus,
+    }
+    stripe_partially_configured = any(stripe_values.values())
+    if app_env == "production":
+        missing_stripe_values = [
+            key for key, value in stripe_values.items() if _looks_like_placeholder(value)
+        ]
+        if stripe_partially_configured and missing_stripe_values:
+            _add_gate(
+                blockers,
+                gate="stripe_configuration",
+                message=(
+                    "Stripe billing configuration is incomplete: "
+                    + ", ".join(missing_stripe_values)
+                ),
+            )
+        if stripe_secret_key and not _looks_like_prefixed_secret(stripe_secret_key, "sk_"):
+            _add_gate(
+                blockers,
+                gate="stripe_secret_key",
+                message="STRIPE_SECRET_KEY must look like a Stripe secret key.",
+            )
+        if stripe_webhook_secret and not _looks_like_prefixed_secret(stripe_webhook_secret, "whsec_"):
+            _add_gate(
+                blockers,
+                gate="stripe_webhook_secret",
+                message="STRIPE_WEBHOOK_SECRET must look like a Stripe webhook signing secret.",
+            )
+        for tier_key, price_value in (
+            ("stripe_price_personal", stripe_price_personal),
+            ("stripe_price_plus", stripe_price_plus),
+        ):
+            if price_value and not _looks_like_prefixed_secret(price_value, "price_"):
+                _add_gate(
+                    blockers,
+                    gate=tier_key,
+                    message=f"{tier_key.upper()} must look like a Stripe Price ID.",
+                )
+
     media_root = (env.get("MEDIA_ROOT") or "").strip()
     media_base_url = (env.get("MEDIA_BASE_URL") or "").strip()
     if app_env == "production" and not media_root and not media_base_url:
@@ -537,6 +615,14 @@ def build_production_preflight(
             "legacy_password_fallback_accepted": _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"),
             "legacy_password_fallback_disabled": legacy_password_fallback_disabled,
             "legal_privacy_routes_present": not missing_legal_sources,
+            "public_frontend_routes_present": not missing_frontend_routes,
+            "stripe_configured": all(
+                not _looks_like_placeholder(value) for value in stripe_values.values()
+            ),
+            "stripe_secret_configured": bool(stripe_secret_key),
+            "stripe_webhook_secret_configured": bool(stripe_webhook_secret),
+            "stripe_price_personal_configured": bool(stripe_price_personal),
+            "stripe_price_plus_configured": bool(stripe_price_plus),
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",

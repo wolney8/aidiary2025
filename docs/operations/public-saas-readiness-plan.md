@@ -463,6 +463,18 @@ Acceptance criteria:
 - Preflight reports billing/legal readiness status.
 - Launch cannot be marked ready while blockers remain.
 
+Implementation note:
+
+- `feat/131-public-launch-preflight` extends production preflight with Stripe
+  configuration checks for `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+  `STRIPE_PRICE_PERSONAL`, and `STRIPE_PRICE_PLUS`.
+- The preflight now reports Stripe readiness in the summary and blocks partial or
+  malformed Stripe configuration.
+- Frontend source checks now include public route presence for `/privacy`, `/terms`,
+  `/cookies`, and `/pricing`.
+- `/pricing` remains an expected blocker until the public pricing/legal disclosure issue
+  is implemented.
+
 ## Sequencing
 
 Recommended order after the current account-recovery branch:
