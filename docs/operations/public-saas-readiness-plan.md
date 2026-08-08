@@ -314,6 +314,7 @@ Implementation note:
   - `STRIPE_SECRET_KEY`
   - `STRIPE_PRICE_PERSONAL`
   - `STRIPE_PRICE_PLUS`
+  - `STRIPE_WEBHOOK_SECRET` for the follow-on webhook endpoint
   - optional `STRIPE_CHECKOUT_SUCCESS_URL`
   - optional `STRIPE_CHECKOUT_CANCEL_URL`
   - optional `STRIPE_CUSTOMER_PORTAL_RETURN_URL`
@@ -340,6 +341,8 @@ Requirements:
   - `customer.subscription.created`
   - `customer.subscription.updated`
   - `customer.subscription.deleted`
+  - `invoice.payment_failed`
+  - `invoice.payment_succeeded`
   - invoice/payment failure or success events needed for access state
 - Audit billing state changes without logging sensitive payment data.
 - Add tests for duplicate events, out-of-order events where practical, invalid
@@ -351,6 +354,20 @@ Acceptance criteria:
 - Invalid signatures are rejected.
 - Subscription status changes update local entitlement status.
 - Billing event logs contain no card/payment method details.
+
+Implementation note:
+
+- `feat/129-stripe-webhook-entitlements` adds `/api/billing/stripe/webhook`.
+- Webhook delivery verifies the raw `Stripe-Signature` HMAC using
+  `STRIPE_WEBHOOK_SECRET`.
+- Supported events in the first pass:
+  - `checkout.session.completed`
+  - `customer.subscription.created`
+  - `customer.subscription.updated`
+  - `customer.subscription.deleted`
+- Events are recorded idempotently in `billing_events`; duplicate deliveries return
+  success without reprocessing.
+- Subscription and entitlement rows are updated from verified Stripe events only.
 
 ### Issue 5
 

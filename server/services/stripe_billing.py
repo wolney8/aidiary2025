@@ -1,12 +1,12 @@
-"""Stripe Checkout and Customer Portal integration.
-
-This module deliberately only creates Stripe-hosted sessions. Webhook processing remains
-the source of truth for paid entitlement synchronisation in the follow-on billing issue.
-"""
+"""Stripe Checkout, Customer Portal, and webhook verification helpers."""
 
 from __future__ import annotations
 
 import os
+import json
+import hmac
+import hashlib
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin
@@ -17,6 +17,7 @@ import httpx
 STRIPE_API_BASE = "https://api.stripe.com/v1"
 REQUEST_TIMEOUT_SECONDS = 20
 CHECKOUT_TIERS = ("personal", "plus")
+WEBHOOK_TOLERANCE_SECONDS = 300
 
 
 class BillingConfigurationError(RuntimeError):
@@ -27,9 +28,14 @@ class BillingProviderError(RuntimeError):
     """Raised when Stripe rejects or fails a session request."""
 
 
+class BillingSignatureError(ValueError):
+    """Raised when a Stripe webhook signature cannot be verified."""
+
+
 @dataclass(frozen=True)
 class StripeBillingConfig:
     secret_key: str
+    webhook_secret: str
     price_ids: dict[str, str]
     success_url: str
     cancel_url: str
@@ -48,6 +54,7 @@ def load_stripe_billing_config() -> StripeBillingConfig:
     }
     return StripeBillingConfig(
         secret_key=os.getenv("STRIPE_SECRET_KEY", "").strip(),
+        webhook_secret=os.getenv("STRIPE_WEBHOOK_SECRET", "").strip(),
         price_ids=price_ids,
         success_url=(
             os.getenv("STRIPE_CHECKOUT_SUCCESS_URL", "").strip()
@@ -62,6 +69,64 @@ def load_stripe_billing_config() -> StripeBillingConfig:
             or urljoin(f"{frontend_base}/", "profile")
         ),
     )
+
+
+def verify_stripe_webhook_event(
+    *,
+    payload: bytes,
+    signature_header: str,
+    webhook_secret: str,
+    tolerance_seconds: int = WEBHOOK_TOLERANCE_SECONDS,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """Verify a Stripe webhook signature and return the decoded event payload."""
+    if not webhook_secret:
+        raise BillingConfigurationError("Stripe webhook signing secret is not configured.")
+    if not payload:
+        raise BillingSignatureError("Webhook payload is empty.")
+
+    timestamp, signatures = _parse_signature_header(signature_header)
+    current_time = int(now if now is not None else time.time())
+    if abs(current_time - timestamp) > tolerance_seconds:
+        raise BillingSignatureError("Webhook signature timestamp is outside tolerance.")
+
+    signed_payload = f"{timestamp}.".encode("utf-8") + payload
+    expected_signature = hmac.new(
+        webhook_secret.encode("utf-8"),
+        signed_payload,
+        hashlib.sha256,
+    ).hexdigest()
+    if not any(hmac.compare_digest(expected_signature, signature) for signature in signatures):
+        raise BillingSignatureError("Webhook signature verification failed.")
+
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BillingSignatureError("Webhook payload is not valid JSON.") from exc
+    if not isinstance(decoded, dict):
+        raise BillingSignatureError("Webhook payload must be an object.")
+    return decoded
+
+
+def _parse_signature_header(signature_header: str) -> tuple[int, list[str]]:
+    if not signature_header:
+        raise BillingSignatureError("Stripe-Signature header is missing.")
+
+    values: dict[str, list[str]] = {}
+    for item in signature_header.split(","):
+        key, separator, value = item.partition("=")
+        if not separator:
+            continue
+        values.setdefault(key.strip(), []).append(value.strip())
+
+    try:
+        timestamp = int(values.get("t", [""])[0])
+    except ValueError as exc:
+        raise BillingSignatureError("Stripe-Signature timestamp is invalid.") from exc
+    signatures = [signature for signature in values.get("v1", []) if signature]
+    if not signatures:
+        raise BillingSignatureError("Stripe-Signature header has no v1 signatures.")
+    return timestamp, signatures
 
 
 def configured_checkout_tiers(config: StripeBillingConfig | None = None) -> list[str]:
