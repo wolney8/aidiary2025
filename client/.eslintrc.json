@@ -4,7 +4,8 @@
     "dist/**/*",
     "coverage/**/*",
     "test-results/**/*",
-    "node_modules/**/*"
+    "node_modules/**/*",
+    "src/app/core/services/autosave.service.ts"
   ],
   "overrides": [
     {

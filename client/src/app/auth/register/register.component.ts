@@ -57,6 +57,21 @@ import { OAuthProvider } from '../../core/models/user.model';
               >
               <mat-hint>Use 3-32 letters, numbers, dots, underscores, or hyphens.</mat-hint>
             </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Email</mat-label>
+              <input
+                matInput
+                type="email"
+                [(ngModel)]="formData.email"
+                name="email"
+                maxlength="254"
+                autocomplete="email"
+                required
+                data-testid="register-email"
+              >
+              <mat-hint>Used for verification and account recovery.</mat-hint>
+            </mat-form-field>
             
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Password</mat-label>
@@ -383,6 +398,7 @@ export class RegisterComponent implements OnInit {
   
   formData = {
     username: '',
+    email: '',
     password: '',
     first_name: '',
     last_name: ''
@@ -421,8 +437,18 @@ export class RegisterComponent implements OnInit {
       return;
     }
 
+    const email = this.formData.email.trim();
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      this.errorMessage = 'Enter a valid email address.';
+      return;
+    }
+
     this.submitting = true;
-    this.authService.register(this.formData).subscribe({
+    this.authService.register({
+      ...this.formData,
+      email,
+      username: this.formData.username.trim(),
+    }).subscribe({
       next: () => this.router.navigate(['/dashboard']),
       error: err => {
         this.errorMessage =

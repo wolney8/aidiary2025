@@ -23,6 +23,7 @@ DEFAULT_DB_PATH = SERVER_ROOT / "db" / "app.db"
 TABLE_ORDER = [
     "users",
     "auth_identities",
+    "account_security_tokens",
     "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",
@@ -45,6 +46,7 @@ TABLE_ORDER = [
 
 FOREIGN_KEY_CHECKS = [
     ("auth_identities", "user_id", "users", "id"),
+    ("account_security_tokens", "user_id", "users", "id"),
     ("dailydiary_entries", "user_id", "users", "id"),
     ("dreamdiary_entries", "user_id", "users", "id"),
     ("entry_ai_metadata", "user_id", "users", "id"),

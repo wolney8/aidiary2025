@@ -52,6 +52,8 @@ _ENTRY_LIST_INDEXES: dict[str, dict[str, str]] = {
 }
 
 _USER_SETTINGS_COLUMNS: dict[str, str] = {
+    'email': 'TEXT',
+    'email_verified': 'INTEGER DEFAULT 0',
     'registered_at': 'TEXT',
     'profile_picture_storage_key': 'TEXT',
     'display_name': 'TEXT',
@@ -94,6 +96,20 @@ CREATE TABLE IF NOT EXISTS auth_identities (
     updated_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(provider, provider_subject)
+)
+"""
+
+_ACCOUNT_SECURITY_TOKENS_DDL = """
+CREATE TABLE IF NOT EXISTS account_security_tokens (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    purpose     TEXT NOT NULL CHECK(purpose IN ('email_verification', 'password_reset')),
+    token_hash  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    consumed_at TEXT,
+    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(purpose, token_hash)
 )
 """
 
@@ -521,6 +537,32 @@ def ensure_auth_identities_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'auth_identities')
+
+    return True
+
+
+def ensure_account_security_tokens_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure email verification and password-reset tokens can be stored."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_ACCOUNT_SECURITY_TOKENS_DDL)
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_account_security_tokens_user_purpose
+            ON account_security_tokens(user_id, purpose, created_at DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_account_security_tokens_lookup
+            ON account_security_tokens(purpose, token_hash, expires_at)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'account_security_tokens')
 
     return True
 

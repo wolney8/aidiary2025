@@ -1,14 +1,16 @@
 # Authentication routes with JWT
 from flask import Blueprint, request, jsonify, current_app, redirect
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 import bcrypt
 import base64
+import hashlib
+import hmac
 from io import BytesIO
 import sqlite3
 import re
 import os
 import secrets
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 from urllib.parse import urlparse
 
@@ -18,6 +20,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from extensions import limiter
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
+from services.email_delivery import send_transactional_email
 from services.media_storage import resolve_image_url, store_profile_image
 from services.security_audit import record_security_event
 from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
@@ -31,8 +34,11 @@ MAX_NAME_LENGTH = 12
 MAX_OAUTH_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024
 PROFILE_IMAGE_SIZE = (400, 400)
 PROFILE_IMAGE_JPEG_QUALITY = 88
+EMAIL_VERIFICATION_EXPIRY_HOURS = 24
+PASSWORD_RESET_EXPIRY_MINUTES = 60
 USERNAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+$')
 NAME_PATTERN = re.compile(r"^[A-Za-z]+(?:[ '-][A-Za-z]+)*$")
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 OAUTH_PROVIDERS = {
     'google': {
         'label': 'Google',
@@ -71,6 +77,14 @@ def _register_rate_limit() -> str:
     return _configured_rate_limit('AUTH_REGISTER_RATE_LIMIT', '5 per hour')
 
 
+def _password_reset_rate_limit() -> str:
+    return _configured_rate_limit('AUTH_PASSWORD_RESET_RATE_LIMIT', '5 per hour')
+
+
+def _email_verification_rate_limit() -> str:
+    return _configured_rate_limit('AUTH_EMAIL_VERIFICATION_RATE_LIMIT', '5 per hour')
+
+
 def _oauth_start_rate_limit() -> str:
     return _configured_rate_limit('AUTH_OAUTH_START_RATE_LIMIT', '20 per minute')
 
@@ -90,6 +104,10 @@ def _legacy_password_fallback_disabled() -> bool:
     return _env_flag('OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK', default=False)
 
 
+def _registration_email_required() -> bool:
+    return _env_flag('OPENMYND_REQUIRE_REGISTRATION_EMAIL', default=False)
+
+
 def _oauth_scope(provider_id: str) -> str:
     # Keep the sign-in grant minimal. Additional Google People API access should
     # be requested later as an explicit account/profile enrichment action, not on
@@ -107,14 +125,26 @@ def _normalise_optional_name(raw: object) -> str:
     return str(raw or '').strip()
 
 
+def _normalise_email(raw: object) -> str:
+    email = str(raw or '').strip().lower()
+    if not email:
+        return ''
+    if len(email) > 254 or not EMAIL_PATTERN.fullmatch(email):
+        return ''
+    return email
+
+
 def _validate_registration_payload(
     username: str,
     password: str,
     first_name: str,
     last_name: str,
+    email: str,
 ) -> str | None:
     if not username or not password:
         return 'Username and password required'
+    if _registration_email_required() and not email:
+        return 'A valid email address is required'
     if len(username) < 3:
         return 'Username must be at least 3 characters'
     if len(username) > MAX_USERNAME_LENGTH:
@@ -123,18 +153,27 @@ def _validate_registration_payload(
         return 'Username may only contain letters, numbers, dots, underscores, and hyphens'
     if len(password) < MIN_PASSWORD_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
         return 'Password must be between 8 and 128 characters'
-    if password.isdigit():
-        return 'Password cannot be only numbers'
-    if not any(char.isalpha() for char in password):
-        return 'Password must include at least one letter'
-    if not any(char.isdigit() for char in password):
-        return 'Password must include at least one number'
+    password_error = _validate_password(password)
+    if password_error:
+        return password_error
     if len(first_name) > MAX_NAME_LENGTH or len(last_name) > MAX_NAME_LENGTH:
         return 'First and last name must be 12 characters or fewer'
     if first_name and not NAME_PATTERN.fullmatch(first_name):
         return 'First name contains unsupported characters'
     if last_name and not NAME_PATTERN.fullmatch(last_name):
         return 'Last name contains unsupported characters'
+    return None
+
+
+def _validate_password(password: str) -> str | None:
+    if len(password) < MIN_PASSWORD_LENGTH or len(password) > MAX_PASSWORD_LENGTH:
+        return 'Password must be between 8 and 128 characters'
+    if password.isdigit():
+        return 'Password cannot be only numbers'
+    if not any(char.isalpha() for char in password):
+        return 'Password must include at least one letter'
+    if not any(char.isdigit() for char in password):
+        return 'Password must include at least one number'
     return None
 
 def get_db():
@@ -200,6 +239,8 @@ def _optional_user_selects(conn) -> str:
     columns = _database_adapter().table_columns(conn, 'users')
     optional_columns = {
         'profile_picture_storage_key': 'NULL',
+        'email': 'NULL',
+        'email_verified': '0',
         'writing_reminders_enabled': '0',
         'writing_reminder_days': "''",
         'writing_reminder_time': "'19:00'",
@@ -369,11 +410,12 @@ def register():
     data = request.get_json() or {}
     username = _normalise_username(data.get('username'))
     password = str(data.get('password') or '')
+    email = _normalise_email(data.get('email'))
     first_name = _normalise_optional_name(data.get('first_name'))
     last_name = _normalise_optional_name(data.get('last_name'))
 
     validation_error = _validate_registration_payload(
-        username, password, first_name, last_name
+        username, password, first_name, last_name, email
     )
     if validation_error:
         _audit_security_event_for_request(
@@ -400,6 +442,20 @@ def register():
                     metadata={'reason': 'duplicate_username'},
                 )
                 return jsonify({'error': 'Username already exists'}), 409
+            email_columns = _database_adapter().table_columns(conn, 'users')
+            if email and 'email' in email_columns:
+                existing_email = conn.execute(
+                    _sql('SELECT id FROM users WHERE lower(email) = lower(?)'),
+                    (email,),
+                ).fetchone()
+                if existing_email:
+                    _audit_security_event(
+                        conn,
+                        'register_failed',
+                        outcome='rejected',
+                        metadata={'reason': 'duplicate_email'},
+                    )
+                    return jsonify({'error': 'Email is already registered'}), 409
 
             user_columns = _database_adapter().table_columns(conn, 'users')
             insert_columns = ['username', 'password', 'first_name', 'last_name']
@@ -409,6 +465,12 @@ def register():
                 first_name,
                 last_name,
             ]
+            if 'email' in user_columns:
+                insert_columns.append('email')
+                insert_values.append(email)
+            if 'email_verified' in user_columns:
+                insert_columns.append('email_verified')
+                insert_values.append(0)
             registered_at = _utc_timestamp()
             if 'registered_at' in user_columns:
                 insert_columns.append('registered_at')
@@ -426,6 +488,7 @@ def register():
             )
             user_id = inserted_id(cursor, _database_provider())
             _audit_security_event(conn, 'register_success', user_id=int(user_id))
+            _send_email_verification(conn, int(user_id), email)
         
         # Create JWT token
         access_token = create_access_token(identity=str(user_id))
@@ -435,6 +498,8 @@ def register():
             'user': {
                 'id': user_id,
                 'username': username,
+                'email': email,
+                'email_verified': False,
                 'first_name': first_name,
                 'last_name': last_name,
                 'profile_picture_url': None,
@@ -556,6 +621,134 @@ def login():
     }), 200
 
 
+@auth_bp.route('/auth/email/verification/request', methods=['POST'])
+@limiter.limit(_email_verification_rate_limit)
+@jwt_required()
+def request_email_verification():
+    """Send a verification email for the authenticated password account."""
+    user_id = int(get_jwt_identity())
+    with get_db() as conn:
+        user = conn.execute(
+            _sql('SELECT id, email, email_verified FROM users WHERE id = ?'),
+            (user_id,),
+        ).fetchone()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        if not user['email']:
+            return jsonify({'error': 'No email address is saved for this account'}), 400
+        if bool(user['email_verified']):
+            return jsonify({'message': 'Email is already verified'}), 200
+        _send_email_verification(conn, user_id, str(user['email']))
+
+    return jsonify({'message': 'Verification email sent if delivery is configured'}), 202
+
+
+@auth_bp.route('/auth/email/verification/confirm', methods=['POST'])
+def confirm_email_verification():
+    """Verify an email address using a one-time token."""
+    data = request.get_json() or {}
+    token = str(data.get('token') or '').strip()
+    with get_db() as conn:
+        token_row = _consume_account_security_token(
+            conn,
+            purpose='email_verification',
+            token=token,
+        )
+        if not token_row:
+            _audit_security_event(
+                conn,
+                'email_verification_failed',
+                outcome='rejected',
+                metadata={'reason': 'invalid_token'},
+            )
+            return jsonify({'error': 'Verification link is invalid or expired'}), 400
+        user_id = int(token_row['user_id'])
+        conn.execute(
+            _sql('UPDATE users SET email_verified = 1 WHERE id = ?'),
+            (user_id,),
+        )
+        _audit_security_event(conn, 'email_verified', user_id=user_id)
+
+    return jsonify({'message': 'Email verified'}), 200
+
+
+@auth_bp.route('/auth/password-reset/request', methods=['POST'])
+@limiter.limit(_password_reset_rate_limit)
+def request_password_reset():
+    """Request a password reset email without disclosing account existence."""
+    data = request.get_json() or {}
+    email = _normalise_email(data.get('email'))
+    generic_response = {
+        'message': 'If an account exists for that email, a reset link has been sent.'
+    }
+    if not email:
+        return jsonify(generic_response), 202
+
+    with get_db() as conn:
+        user = conn.execute(
+            _sql(
+                '''
+                SELECT id, email, password_auth_enabled
+                FROM users
+                WHERE lower(email) = lower(?)
+                '''
+            ),
+            (email,),
+        ).fetchone()
+        if user and bool(user['password_auth_enabled']):
+            _send_password_reset(conn, int(user['id']), str(user['email']))
+        else:
+            _audit_security_event(
+                conn,
+                'password_reset_failed',
+                outcome='rejected',
+                metadata={'reason': 'unknown_or_oauth_only'},
+            )
+
+    return jsonify(generic_response), 202
+
+
+@auth_bp.route('/auth/password-reset/confirm', methods=['POST'])
+def confirm_password_reset():
+    """Set a new password using a valid reset token."""
+    data = request.get_json() or {}
+    token = str(data.get('token') or '').strip()
+    new_password = str(data.get('password') or '')
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({'error': password_error}), 400
+
+    with get_db() as conn:
+        token_row = _consume_account_security_token(
+            conn,
+            purpose='password_reset',
+            token=token,
+        )
+        if not token_row:
+            _audit_security_event(
+                conn,
+                'password_reset_failed',
+                outcome='rejected',
+                metadata={'reason': 'invalid_token'},
+            )
+            return jsonify({'error': 'Reset link is invalid or expired'}), 400
+        user_id = int(token_row['user_id'])
+        password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        conn.execute(
+            _sql(
+                '''
+                UPDATE users
+                SET password = ?, password_auth_enabled = 1
+                WHERE id = ?
+                '''
+            ),
+            (password_hash.decode('utf-8'), user_id),
+        )
+        _audit_security_event(conn, 'password_reset_success', user_id=user_id)
+
+    return jsonify({'message': 'Password reset'}), 200
+
+
 def _oauth_provider_is_configured(config: dict[str, str]) -> bool:
     prefix = config['env_prefix']
     required_env = [
@@ -616,6 +809,158 @@ def _frontend_base_url() -> str:
 
 def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def _token_hash(token: str) -> str:
+    secret = current_app.config.get('JWT_SECRET_KEY', '')
+    return hmac.new(
+        str(secret or 'openmynd-token').encode('utf-8'),
+        token.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _create_account_security_token(
+    conn,
+    *,
+    user_id: int,
+    purpose: str,
+    expires_at: datetime,
+) -> str:
+    token = secrets.token_urlsafe(32)
+    conn.execute(
+        _sql(
+            '''
+            INSERT INTO account_security_tokens (
+                user_id, purpose, token_hash, expires_at
+            ) VALUES (?, ?, ?, ?)
+            '''
+        ),
+        (
+            user_id,
+            purpose,
+            _token_hash(token),
+            expires_at.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        ),
+    )
+    return token
+
+
+def _consume_account_security_token(conn, *, purpose: str, token: str):
+    token = str(token or '').strip()
+    if not token:
+        return None
+    row = conn.execute(
+        _sql(
+            '''
+            SELECT id, user_id, expires_at, consumed_at
+            FROM account_security_tokens
+            WHERE purpose = ? AND token_hash = ?
+            '''
+        ),
+        (purpose, _token_hash(token)),
+    ).fetchone()
+    if not row or row['consumed_at']:
+        return None
+    try:
+        expires_at = datetime.strptime(str(row['expires_at']), '%Y-%m-%dT%H:%M:%SZ').replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+    if expires_at < datetime.now(timezone.utc):
+        return None
+    conn.execute(
+        _sql('UPDATE account_security_tokens SET consumed_at = ? WHERE id = ?'),
+        (_utc_timestamp(), row['id']),
+    )
+    return row
+
+
+def _verification_url(token: str) -> str:
+    return f'{_frontend_base_url()}/verify-email?token={token}'
+
+
+def _password_reset_url(token: str) -> str:
+    return f'{_frontend_base_url()}/reset-password?token={token}'
+
+
+def _send_email_verification(conn, user_id: int, email: str) -> bool:
+    if not email:
+        return False
+    try:
+        token = _create_account_security_token(
+            conn,
+            user_id=user_id,
+            purpose='email_verification',
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_EXPIRY_HOURS),
+        )
+        send_transactional_email(
+            to_address=email,
+            subject='Verify your OpenMynd email',
+            text_body=(
+                'Verify your OpenMynd email address using this link:\n\n'
+                f'{_verification_url(token)}\n\n'
+                f'This link expires in {EMAIL_VERIFICATION_EXPIRY_HOURS} hours.'
+            ),
+            logger=current_app.logger,
+        )
+        _audit_security_event(
+            conn,
+            'email_verification_requested',
+            user_id=user_id,
+            metadata={'delivery_provider': os.getenv('EMAIL_PROVIDER') or 'console'},
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning('Email verification send failed: %s', exc)
+        _audit_security_event(
+            conn,
+            'email_verification_failed',
+            user_id=user_id,
+            outcome='rejected',
+            metadata={'reason': 'delivery_failed'},
+        )
+        return False
+
+
+def _send_password_reset(conn, user_id: int, email: str) -> bool:
+    if not email:
+        return False
+    try:
+        token = _create_account_security_token(
+            conn,
+            user_id=user_id,
+            purpose='password_reset',
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_EXPIRY_MINUTES),
+        )
+        send_transactional_email(
+            to_address=email,
+            subject='Reset your OpenMynd password',
+            text_body=(
+                'Reset your OpenMynd password using this link:\n\n'
+                f'{_password_reset_url(token)}\n\n'
+                f'This link expires in {PASSWORD_RESET_EXPIRY_MINUTES} minutes.'
+            ),
+            logger=current_app.logger,
+        )
+        _audit_security_event(
+            conn,
+            'password_reset_requested',
+            user_id=user_id,
+            metadata={'delivery_provider': os.getenv('EMAIL_PROVIDER') or 'console'},
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning('Password reset send failed: %s', exc)
+        _audit_security_event(
+            conn,
+            'password_reset_failed',
+            user_id=user_id,
+            outcome='rejected',
+            metadata={'reason': 'delivery_failed'},
+        )
+        return False
 
 
 def _redirect_oauth_error(message: str):
@@ -805,6 +1150,12 @@ def _get_or_create_oauth_user(provider_id: str, profile: dict[str, object]) -> t
         user_columns = _database_adapter().table_columns(conn, 'users')
         insert_columns = ['username', 'password', 'first_name', 'last_name']
         insert_values = [username, password_hash, first_name, last_name]
+        if 'email' in user_columns:
+            insert_columns.append('email')
+            insert_values.append(email)
+        if 'email_verified' in user_columns:
+            insert_columns.append('email_verified')
+            insert_values.append(1 if email_verified else 0)
         if 'display_name' in user_columns:
             insert_columns.append('display_name')
             insert_values.append(_safe_display_name(first_name or display_name))
@@ -857,6 +1208,8 @@ def _sync_oauth_user_profile(conn, user_id: int, profile: dict[str, object]) -> 
     candidate_columns = {
         'first_name',
         'last_name',
+        'email',
+        'email_verified',
         'display_name',
         'age',
         'gender',
@@ -889,6 +1242,8 @@ def _sync_oauth_user_profile(conn, user_id: int, profile: dict[str, object]) -> 
     proposed_values = {
         'first_name': first_name,
         'last_name': last_name,
+        'email': str(profile.get('email') or profile.get('preferred_username') or '').strip().lower(),
+        'email_verified': 1 if bool(profile.get('email_verified')) else None,
         'display_name': display_name,
         'age': age,
         'gender': gender,
@@ -1024,6 +1379,8 @@ def _serialise_auth_user(user) -> dict[str, object]:
     return {
         'id': user['id'],
         'username': user['username'],
+        'email': user['email'],
+        'email_verified': bool(user['email_verified']),
         'first_name': user['first_name'],
         'last_name': user['last_name'],
         'display_name': user['display_name'],

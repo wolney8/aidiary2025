@@ -404,6 +404,8 @@ def _profile_payload(user) -> dict:
     payload = dict(user)
     storage_key = payload.pop('profile_picture_storage_key', None)
     payload['profile_picture_url'] = resolve_image_url(storage_key)
+    if payload.get('email') == '':
+        payload['email'] = None
     for field in (
         'show_public_holidays',
         'show_on_this_day',
@@ -412,6 +414,7 @@ def _profile_payload(user) -> dict:
         'writing_reminders_enabled',
         'writing_rhythm_progress_enabled',
         'chat_enabled',
+        'email_verified',
         'password_auth_enabled',
         'onboarding_completed',
     ):
@@ -421,16 +424,31 @@ def _profile_payload(user) -> dict:
 
 
 def _select_profile(conn, user_id: int):
-    auth_identity_selects = (
-        '''
-               (SELECT email FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1) AS email,
-               (SELECT provider FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1) AS auth_provider,
-        '''
-        if _database_adapter().table_exists(conn, 'auth_identities')
-        else "NULL AS email, NULL AS auth_provider,"
+    auth_table_exists = _database_adapter().table_exists(conn, 'auth_identities')
+    oauth_email_select = (
+        "(SELECT email FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1)"
+        if auth_table_exists
+        else "NULL"
+    )
+    oauth_email_verified_select = (
+        "(SELECT email_verified FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1)"
+        if auth_table_exists
+        else "NULL"
+    )
+    auth_provider_select = (
+        "(SELECT provider FROM auth_identities WHERE user_id = users.id ORDER BY id LIMIT 1)"
+        if auth_table_exists
+        else "NULL"
     )
     return conn.execute(_sql(f'''
-        SELECT id, username, first_name, last_name, age, sex, goals,
+        SELECT id, username,
+               COALESCE(users.email, {oauth_email_select}) AS email,
+               CASE
+                   WHEN users.email_verified = 1 THEN 1
+                   WHEN {oauth_email_verified_select} = 1 THEN 1
+                   ELSE 0
+               END AS email_verified,
+               first_name, last_name, age, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
                registered_at,
@@ -442,7 +460,7 @@ def _select_profile(conn, user_id: int):
                writing_reminder_silence_days, writing_reminder_entry_types,
                writing_rhythm_progress_enabled, writing_rhythm_weekly_goal,
                chat_enabled, password_auth_enabled, onboarding_completed,
-               {auth_identity_selects}
+               {auth_provider_select} AS auth_provider,
                profile_picture_storage_key
         FROM users WHERE users.id = ?
     '''), (user_id,)).fetchone()

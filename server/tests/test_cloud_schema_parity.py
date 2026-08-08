@@ -8,6 +8,7 @@ from scripts.load_cloud_migration import (
 )
 from scripts.rehearse_cloud_migration import TABLE_ORDER
 from services.runtime_migrations import (
+    ensure_account_security_tokens_table,
     ensure_auth_identities_table,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
@@ -104,6 +105,7 @@ def _build_runtime_sqlite_schema(db_path):
     ensure_entry_ai_metadata_table(str(db_path))
     ensure_user_settings_columns(str(db_path))
     ensure_auth_identities_table(str(db_path))
+    ensure_account_security_tokens_table(str(db_path))
     ensure_export_history_table(str(db_path))
     ensure_import_sessions_table(str(db_path))
     ensure_import_jobs_table(str(db_path))
@@ -134,6 +136,7 @@ def test_runtime_sqlite_managed_columns_exist_in_postgres_schema(tmp_path):
     managed_tables = {
         "users",
         "auth_identities",
+        "account_security_tokens",
         "dailydiary_entries",
         "dreamdiary_entries",
         "entry_ai_metadata",

@@ -7,13 +7,15 @@ def _base_env() -> dict[str, str]:
         "JWT_SECRET": "x" * 40,
         "DATABASE_PROVIDER": "sqlite",
         "DB_PATH": "db/app.db",
-        "CORS_ORIGINS": "https://diary.example.com",
-        "FRONTEND_BASE_URL": "https://diary.example.com",
+        "CORS_ORIGINS": "https://openmynd.app",
+        "FRONTEND_BASE_URL": "https://openmynd.app",
         "OPENAI_API_KEY": "sk-test",
         "MEDIA_ROOT": "/var/lib/openmynd/media",
         "RATELIMIT_STORAGE_URI": "redis://localhost:6379/0",
         "AUTH_LOGIN_RATE_LIMIT": "10 per minute",
         "AUTH_REGISTER_RATE_LIMIT": "5 per hour",
+        "AUTH_PASSWORD_RESET_RATE_LIMIT": "5 per hour",
+        "AUTH_EMAIL_VERIFICATION_RATE_LIMIT": "5 per hour",
         "AUTH_OAUTH_START_RATE_LIMIT": "20 per minute",
         "AUTH_OAUTH_CALLBACK_RATE_LIMIT": "20 per minute",
         "ANALYSE_RATE_LIMIT": "30 per hour",
@@ -24,6 +26,10 @@ def _base_env() -> dict[str, str]:
         "EXPORT_RATE_LIMIT": "20 per hour",
         "ACCOUNT_DELETE_RATE_LIMIT": "5 per hour",
         "SECURITY_AUDIT_RETENTION_DAYS": "180",
+        "OPENMYND_REQUIRE_REGISTRATION_EMAIL": "true",
+        "EMAIL_PROVIDER": "smtp",
+        "EMAIL_FROM_ADDRESS": "OpenMynd <no-reply@openmynd.app>",
+        "SMTP_HOST": "smtp.openmynd.app",
     }
 
 
@@ -240,6 +246,8 @@ def test_preflight_warns_when_sensitive_rate_limits_are_not_explicit(tmp_path):
     for key in (
         "AUTH_LOGIN_RATE_LIMIT",
         "AUTH_REGISTER_RATE_LIMIT",
+        "AUTH_PASSWORD_RESET_RATE_LIMIT",
+        "AUTH_EMAIL_VERIFICATION_RATE_LIMIT",
         "AUTH_OAUTH_START_RATE_LIMIT",
         "AUTH_OAUTH_CALLBACK_RATE_LIMIT",
         "ANALYSE_RATE_LIMIT",
@@ -266,6 +274,8 @@ def test_preflight_warns_when_sensitive_rate_limits_are_not_explicit(tmp_path):
     assert report["summary"]["sensitive_rate_limits_configured"] == {
         "AUTH_LOGIN_RATE_LIMIT": False,
         "AUTH_REGISTER_RATE_LIMIT": False,
+        "AUTH_PASSWORD_RESET_RATE_LIMIT": False,
+        "AUTH_EMAIL_VERIFICATION_RATE_LIMIT": False,
         "AUTH_OAUTH_START_RATE_LIMIT": False,
         "AUTH_OAUTH_CALLBACK_RATE_LIMIT": False,
         "ANALYSE_RATE_LIMIT": False,
@@ -312,3 +322,57 @@ def test_preflight_warns_when_security_audit_retention_is_outside_review_range(t
     assert report["ready_for_production"] is True
     assert "security_audit_retention" in warning_gates
     assert report["summary"]["security_audit_retention_days"] == 7
+
+
+def test_preflight_blocks_console_email_in_production(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["EMAIL_PROVIDER"] = "console"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "transactional_email_provider" in gates
+    assert report["summary"]["email_provider"] == "console"
+
+
+def test_preflight_blocks_missing_smtp_host_in_production(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env.pop("SMTP_HOST")
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "transactional_email_smtp_host" in gates
+    assert report["summary"]["smtp_host_configured"] is False
+
+
+def test_preflight_warns_when_registration_email_is_not_required(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env.pop("OPENMYND_REQUIRE_REGISTRATION_EMAIL")
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "registration_email_required" in warning_gates
+    assert report["summary"]["registration_email_required"] is False

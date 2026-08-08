@@ -24,6 +24,7 @@ QUOTED_IDENTIFIER_RE = re.compile(r'^"(?P<name>[A-Za-z_][A-Za-z0-9_]*)"$')
 IDENTITY_ID_TABLES = {
     "users",
     "auth_identities",
+    "account_security_tokens",
     "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",

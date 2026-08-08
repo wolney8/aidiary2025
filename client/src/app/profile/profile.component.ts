@@ -52,6 +52,26 @@ import { User } from "../core/models/user.model";
             <div class="account-summary-card">
               <span class="summary-label">Email</span>
               <strong>{{ profile.email || "Not connected" }}</strong>
+              <span
+                *ngIf="profile.email"
+                class="verification-pill"
+                [class.is-verified]="profile.email_verified"
+              >
+                <mat-icon aria-hidden="true">{{ profile.email_verified ? "verified" : "mark_email_unread" }}</mat-icon>
+                <span>{{ profile.email_verified ? "Verified" : "Unverified" }}</span>
+              </span>
+              <button
+                *ngIf="profile.email && !profile.email_verified"
+                mat-stroked-button
+                type="button"
+                class="summary-action"
+                [disabled]="resendingVerification"
+                (click)="resendVerificationEmail()"
+                data-testid="account-resend-verification"
+              >
+                <mat-icon aria-hidden="true">{{ resendingVerification ? "hourglass_top" : "outgoing_mail" }}</mat-icon>
+                <span>{{ resendingVerification ? "Sending..." : "Resend verification" }}</span>
+              </button>
             </div>
             <div class="account-summary-card">
               <span class="summary-label">Sign-in method</span>
@@ -307,6 +327,45 @@ import { User } from "../core/models/user.model";
         overflow-wrap: anywhere;
       }
 
+      .verification-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        width: fit-content;
+        margin-top: var(--spacing-xs);
+        padding: 0.28rem 0.62rem;
+        border: 1px solid var(--colour-warning-text);
+        border-radius: var(--radius-pill);
+        background: var(--colour-warning-bg);
+        color: var(--colour-warning-text);
+        font-size: 0.82rem;
+        font-weight: 850;
+      }
+
+      .verification-pill.is-verified {
+        border-color: var(--colour-success-text);
+        background: var(--colour-success-bg);
+        color: var(--colour-success-text);
+      }
+
+      .verification-pill mat-icon {
+        width: 18px;
+        height: 18px;
+        font-size: 18px;
+      }
+
+      .summary-action {
+        justify-self: start;
+        width: fit-content;
+        min-height: 40px;
+        margin-top: var(--spacing-sm);
+        border-radius: var(--radius-pill);
+      }
+
+      .summary-action mat-icon {
+        margin-right: var(--spacing-xs);
+      }
+
       .profile-picture-section {
         display: flex;
         align-items: center;
@@ -451,6 +510,7 @@ export class ProfileComponent implements OnInit {
   saving = false;
   pictureSaving = false;
   deletingAccount = false;
+  resendingVerification = false;
   accountDeletePassword = "";
   accountDeleteConfirmation = "";
   successMessage = "";
@@ -539,6 +599,27 @@ export class ProfileComponent implements OnInit {
 
   getDisplayNameLength(): number {
     return String(this.profile?.display_name || "").trim().length;
+  }
+
+  resendVerificationEmail(): void {
+    if (!this.profile?.email || this.profile.email_verified || this.resendingVerification) {
+      return;
+    }
+
+    this.resendingVerification = true;
+    this.errorMessage = "";
+    this.successMessage = "";
+    this.authService.requestEmailVerification().subscribe({
+      next: (response) => {
+        this.successMessage = response.message;
+        this.resendingVerification = false;
+      },
+      error: (error) => {
+        this.errorMessage =
+          error?.error?.error || "Verification email could not be sent.";
+        this.resendingVerification = false;
+      },
+    });
   }
 
   getProfilePictureAlt(): string {

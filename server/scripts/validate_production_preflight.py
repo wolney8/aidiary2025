@@ -25,6 +25,8 @@ PUBLIC_LEGAL_ROUTES = (
 AUTH_RATE_LIMIT_ENV_KEYS = (
     "AUTH_LOGIN_RATE_LIMIT",
     "AUTH_REGISTER_RATE_LIMIT",
+    "AUTH_PASSWORD_RESET_RATE_LIMIT",
+    "AUTH_EMAIL_VERIFICATION_RATE_LIMIT",
     "AUTH_OAUTH_START_RATE_LIMIT",
     "AUTH_OAUTH_CALLBACK_RATE_LIMIT",
 )
@@ -107,6 +109,10 @@ def _is_local_url(value: str | None) -> bool:
 def _looks_like_placeholder(value: str | None) -> bool:
     normalised = (value or "").strip().lower()
     return not normalised or any(marker in normalised for marker in PLACEHOLDER_MARKERS)
+
+
+def _email_provider(env: Mapping[str, str]) -> str:
+    return (env.get("EMAIL_PROVIDER") or "console").strip().lower()
 
 
 def _env_flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
@@ -319,6 +325,48 @@ def build_production_preflight(
                 message="OAUTH_GOOGLE_REDIRECT_URI must be an HTTPS production callback URL.",
             )
 
+    email_provider = _email_provider(env)
+    email_from_address = (env.get("EMAIL_FROM_ADDRESS") or "").strip()
+    smtp_host = (env.get("SMTP_HOST") or "").strip()
+    if app_env == "production":
+        if email_provider == "console":
+            _add_gate(
+                blockers,
+                gate="transactional_email_provider",
+                message=(
+                    "EMAIL_PROVIDER=console is blocked in production. "
+                    "Configure EMAIL_PROVIDER=smtp and SMTP delivery settings."
+                ),
+            )
+        elif email_provider != "smtp":
+            _add_gate(
+                blockers,
+                gate="transactional_email_provider",
+                message="EMAIL_PROVIDER must be smtp for production account recovery.",
+            )
+        if _looks_like_placeholder(email_from_address):
+            _add_gate(
+                blockers,
+                gate="transactional_email_from",
+                message="EMAIL_FROM_ADDRESS must be a real sender before production deployment.",
+            )
+        if email_provider == "smtp" and _looks_like_placeholder(smtp_host):
+            _add_gate(
+                blockers,
+                gate="transactional_email_smtp_host",
+                message="SMTP_HOST must be configured when EMAIL_PROVIDER=smtp.",
+            )
+        if not _env_flag(env, "OPENMYND_REQUIRE_REGISTRATION_EMAIL"):
+            _add_gate(
+                warnings,
+                gate="registration_email_required",
+                severity="warning",
+                message=(
+                    "OPENMYND_REQUIRE_REGISTRATION_EMAIL should be true before public launch "
+                    "so local accounts can verify email and recover passwords."
+                ),
+            )
+
     if app_env == "production" and not _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"):
         _add_gate(
             warnings,
@@ -481,6 +529,10 @@ def build_production_preflight(
             "frontend_base_url_https": _looks_like_https_url(frontend_base_url),
             "oauth_google_configured": oauth_google_configured,
             "oauth_google_redirect_https": _looks_like_https_url(oauth_google_redirect_uri),
+            "email_provider": email_provider,
+            "email_from_configured": bool(email_from_address),
+            "smtp_host_configured": bool(smtp_host),
+            "registration_email_required": _env_flag(env, "OPENMYND_REQUIRE_REGISTRATION_EMAIL"),
             "localstorage_jwt_risk_accepted": _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"),
             "legacy_password_fallback_accepted": _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"),
             "legacy_password_fallback_disabled": legacy_password_fallback_disabled,

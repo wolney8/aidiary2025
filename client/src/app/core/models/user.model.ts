@@ -4,6 +4,7 @@ export interface User {
   username: string;
   password?: string; // Not returned from API
   email?: string | null;
+  email_verified?: boolean;
   auth_provider?: string | null;
   registered_at?: string | null;
   first_name?: string;
@@ -49,6 +50,7 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
   username: string;
+  email?: string;
   password: string;
   first_name?: string;
   last_name?: string;
@@ -57,6 +59,10 @@ export interface RegisterRequest {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface AuthMessageResponse {
+  message: string;
 }
 
 export type OAuthProviderId = "google" | "microsoft";

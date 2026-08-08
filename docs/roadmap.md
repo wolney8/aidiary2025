@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: 6 August 2026. GitHub issues remain the delivery source of truth; this file
+Updated: 8 August 2026. GitHub issues remain the delivery source of truth; this file
 records the intended sequence and the major readiness gaps that should not be lost
 between delivery sessions.
 
@@ -39,19 +39,27 @@ new broad product surfaces.
    - Keep SQLite as the current local fallback while rehearsing Neon/Postgres cutover.
    - Complete backup, restore, maintenance, rollback, integrity, and performance
      evidence before switching production data stores.
-3. Chat and AI context validation
+3. Public SaaS hosting, billing, and entitlements
+   - Follow the standard managed SaaS path documented in
+     [public-saas-readiness-plan.md](./operations/public-saas-readiness-plan.md):
+     hosted frontend, hosted Flask API, managed PostgreSQL, object/media storage,
+     Google OAuth/local email auth, Stripe Billing/Checkout/Customer Portal, and an
+     internal entitlement model.
+   - Do not wire paid plans directly to Stripe product names. Stripe should update
+     OpenMynd-owned entitlements through verified webhooks.
+4. Chat and AI context validation
    - Chat already has bounded user-scoped Daily/Dream context. It still needs a product
      pass to respect AI-history privacy settings explicitly and to decide whether Chat
      should include Thought Records, Important Days, attachment-derived text, and
      reflection summaries.
    - Entry AI analysis already uses related-entry memory and optional attachment
      context. Keep making source use visible and bounded.
-4. Import and portability validation
+5. Import and portability validation
    - The current import path supports OpenMynd `.xlsx`/`.zip` and Daylio `.csv`/`.daylio`.
    - No ChatGPT import adapter is planned. The remaining personal-data task is to fill
      the OpenMynd import workbook with real diary entries, run the staged review, and
      confirm import, revert, duplicate handling, and media/attachment expectations.
-5. Testing and release gates
+6. Testing and release gates
    - Backend unit/integration coverage is strong. Browser workflow coverage should be
      expanded for the highest-risk paths: OAuth onboarding, Chat context, import
      review/commit/revert, dashboard, account deletion, and dark/light accessibility.
@@ -72,7 +80,8 @@ new broad product surfaces.
 - Legal/compliance: privacy policy, terms, cookie consent, data deletion, export, and
   AI data-processing disclosures need production review.
 - Payments/entitlements: billing, subscription state, free-tier limits, and AI-cost
-  controls are not yet implemented.
+  controls are not yet implemented. The initial delivery lane is captured in
+  [public-saas-readiness-plan.md](./operations/public-saas-readiness-plan.md).
 - Operations: production monitoring, backup alerts, database capacity alerts, and
   incident runbooks remain required.
 

@@ -15,6 +15,7 @@ _USER_TABLES: tuple[str, ...] = (
     "chat_messages",
     "chat_observability_events",
     "security_audit_events",
+    "account_security_tokens",
     "entry_ai_metadata",
     "entry_resurfacing_preferences",
     "reflection_summaries",
