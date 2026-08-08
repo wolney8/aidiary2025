@@ -26,6 +26,9 @@ Current automated evidence:
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.
+- Database maintenance validation now checks recent backup bundle, SQLite fallback,
+  Postgres snapshot, media archive, and restore rehearsal evidence before public
+  cutover/launch decisions.
 - Registration, login, OAuth callback, and account deletion now write low-sensitivity
   security audit events. Request IP and user-agent values are stored as keyed hashes,
   and event metadata is categorical only.
@@ -44,7 +47,7 @@ SaaS path.
 | --- | --- | --- | --- | --- |
 | Blocking | Sensitive route rate limiting | Login/register/OAuth, AI, import/export, and destructive actions need limiter controls that work across app instances. | Route-level limits are in place; production still requires shared limiter storage such as Redis. | `#113` or new auth-hardening issue |
 | Blocking | Session storage | Browser bearer tokens are stored in localStorage, increasing exposure if XSS occurs. | Preflight warns unless the owner explicitly accepts this risk. | `#113`; later auth redesign |
-| Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Cutover tooling exists; production maintenance remains open. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
+| Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Backup/snapshot/restore tooling exists and maintenance evidence can now be validated; production scheduling and real-provider evidence still need owner sign-off. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth; removal needs a migration window. | `#113` or auth-hardening issue |
 | Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and browser smoke coverage. | Local account token flows exist; preflight blocks console email in production; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
@@ -107,6 +110,28 @@ APP_ENV=production PYTHONPATH=. python scripts/validate_production_preflight.py 
 The preflight must not be used as a substitute for manual security review. It catches
 unsafe configuration shape; it does not prove legal compliance, absence of XSS, correct
 cookie categorisation, or external-provider contractual readiness.
+
+## Database Maintenance Validation
+
+Run this after scheduled database backups and before any public launch rehearsal:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/validate_database_maintenance.py \
+  --backup-summary-dir ~/OpenMyndBackups \
+  --sqlite-backup-dir ~/OpenMyndBackups \
+  --postgres-snapshot-dir ~/OpenMyndBackups/postgres-snapshots \
+  --media-backup-dir ~/OpenMyndBackups/media \
+  --restore-report ~/OpenMyndBackups/restored-sqlite/latest-restore-report.json \
+  --require-postgres-snapshot \
+  --require-media-archive \
+  --require-restore-rehearsal \
+  --max-age-hours 30
+```
+
+The command is read-only. It fails on missing/stale/failed required evidence and can
+emit non-blocking capacity warnings when thresholds are supplied.
 
 ## Security Audit Review
 
