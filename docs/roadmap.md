@@ -48,6 +48,10 @@ new broad product surfaces.
      hosted frontend, hosted Flask API, managed PostgreSQL, object/media storage,
      Google OAuth/local email auth, Stripe Billing/Checkout/Customer Portal, and an
      internal entitlement model.
+   - Initial provider architecture is captured in
+     [ADR 0005](./adr/0005-production-saas-hosting-architecture.md): Cloudflare DNS,
+     Vercel frontend, Render API, Neon Postgres, Cloudflare R2 media storage, SMTP, and
+     Stripe Billing later.
    - Do not wire paid plans directly to Stripe product names. Stripe should update
      OpenMynd-owned entitlements through verified webhooks.
 4. Chat and AI context validation
