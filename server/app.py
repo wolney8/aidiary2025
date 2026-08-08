@@ -13,6 +13,7 @@ from services.database_resilience import classify_database_exception
 from services.runtime_migrations import (
     ensure_account_security_tokens_table,
     ensure_auth_identities_table,
+    ensure_billing_tables,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
     ensure_chat_observability_events_table,
@@ -198,6 +199,11 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
             'Runtime account security token migration skipped due to error: %s',
             migration_exc,
         )
+
+    try:
+        ensure_billing_tables(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime billing table migration skipped due to error: %s', migration_exc)
 
     try:
         ensure_export_history_table(database_path, app.logger.info)

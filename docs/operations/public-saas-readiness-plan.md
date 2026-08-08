@@ -272,6 +272,13 @@ Acceptance criteria:
 - Account deletion removes or anonymises billing references according to the documented
   retention rule.
 
+Status note:
+
+- Initial local billing tables, entitlement helper service, migration/export parity, and
+  account-deletion cleanup are implemented. Keep this issue open only until the owner
+  confirms the internal tier names and this baseline is validated in the intended staging
+  environment.
+
 ### Issue 3
 
 Title:
