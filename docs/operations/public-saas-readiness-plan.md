@@ -58,7 +58,9 @@ References:
   - `/privacy`
   - `/terms`
   - `/cookies`
-  - future `/pricing`
+- Authenticated plan comparison:
+  - `/plans`
+  - `/admin/plans`
 - Authenticated routes remain route-guarded and backend-authorized.
 
 ### Backend
@@ -112,6 +114,28 @@ Pricing, final public names, trial rules, quota values, and feature placement by
 product decisions requiring explicit owner approval before implementation or user-facing
 copy changes. Provisional internal tier names and test limits are engineering scaffolding,
 not commercial approval.
+
+Approved public launch naming and starting prices:
+
+| Internal tier | Public plan | Monthly | Annual | Notes |
+| --- | --- | --- | --- | --- |
+| `free` | Free | £0 | £0 | Core app access with limited AI preview. |
+| `personal` | Plus | £4.99 | £47.90 | 20% annual discount; normal paid AI/media usage. |
+| `plus` | Premier | £11.99 | £115.10 | 20% annual discount; higher AI/media usage. |
+
+Plan names, prices, feature copy, and quota values are stored in OpenMynd's
+`billing_plans` catalogue and can be edited by an `administrator` entitlement without a
+code deploy. Stripe price IDs still map to internal tier keys.
+
+First-owner setup uses:
+
+```bash
+cd server && source venv/bin/activate
+PYTHONPATH=. python scripts/grant_admin_entitlement.py --email owner@example.com
+```
+
+After promotion, the admin user can open Account -> Plan matrix and update the live
+catalogue.
 
 ## Billing Data Shape
 
@@ -402,10 +426,11 @@ Implementation note:
 
 - `feat/130-plan-gated-limits` adds `usage_events`, plan-aware usage helpers, Account
   usage visibility, and server-enforced AI analysis limits.
-- Current monthly AI analysis limits:
-  - `free`: 20
-  - `personal`: 250
-  - `plus`: 1000
+- `feat/133-admin-plan-catalogue` moves plan names, prices, feature copy, and quotas into
+  the `billing_plans` catalogue. Current seeded monthly AI analysis limits are:
+  - `free`: 10
+  - `personal` / public `Plus`: 250
+  - `plus` / public `Premier`: 1000
   - `therapeutic`, `lifetime`, and `complimentary`: 1000
   - `administrator`: unlimited
 - Daily, Dream, and Thought Record AI analysis are gated server-side.
@@ -416,15 +441,17 @@ Implementation note:
 
 Title:
 
-`[M19] Public pricing, legal, and billing disclosure pages`
+`[M19] Authenticated plan selection, legal, and billing disclosure pages`
 
 Body:
 
-Add public-facing SaaS pages and copy aligned with actual OpenMynd behavior.
+Add authenticated SaaS plan surfaces and copy aligned with actual OpenMynd behavior.
 
 Requirements:
 
-- Add `/pricing`.
+- Add authenticated `/plans`; do not expose a public pricing route for v1.
+- Add onboarding plan selection at the end of first-run setup.
+- Add admin-only `/admin/plans` for editing the plan matrix.
 - Review and update Terms, Privacy, and Cookie pages for paid SaaS behavior.
 - Explain AI data processing, exports, account deletion, refunds/cancellation, and
   subscription management.
@@ -433,16 +460,20 @@ Requirements:
 
 Acceptance criteria:
 
-- Public pricing page exists.
+- Authenticated plan page exists.
+- Admin plan matrix can edit public names, prices, features, and quotas.
 - Legal pages reflect real auth, AI, billing, export, and deletion behavior.
-- Links are reachable from footer/login/register/account.
+- Public legal links are reachable from footer/login/register/account.
+- Plan links are reachable from onboarding/account/gated upgrade prompts only.
 - Copy passes product-owner review before public launch.
 
 Implementation note:
 
-- `feat/132-pricing-legal-disclosures` adds `/pricing` with Free, Personal, and Plus
-  plan structure copy without hardcoding final public prices.
-- Footer, Login, Register, and Account/Billing link to pricing/legal pages.
+- `feat/132-pricing-legal-disclosures` originally added `/pricing`; owner direction later
+  moved plan visibility behind authentication.
+- `feat/133-admin-plan-catalogue` replaces the public pricing route with authenticated
+  `/plans`, onboarding plan selection, and admin catalogue editing.
+- Footer, Login, and Register link to legal pages only. Account/Billing links to Plans.
 - Terms, Privacy, and Cookie copy now mention AI provider use, supported exports,
   account deletion boundaries, Stripe-hosted billing, subscription limits, and cookie
   consent behavior.
@@ -462,7 +493,7 @@ Requirements:
 - Add checks for Stripe secret/public/webhook configuration.
 - Add checks for SMTP production mode.
 - Add checks for production frontend/API URLs.
-- Add checks for public pricing/legal routes.
+- Add checks for public legal and cookie routes.
 - Add checks for shared rate limit storage.
 - Add checks for Postgres provider and migration mode.
 - Add checklist output suitable for launch evidence.
@@ -482,10 +513,8 @@ Implementation note:
   `STRIPE_PRICE_PERSONAL`, and `STRIPE_PRICE_PLUS`.
 - The preflight now reports Stripe readiness in the summary and blocks partial or
   malformed Stripe configuration.
-- Frontend source checks now include public route presence for `/privacy`, `/terms`,
-  `/cookies`, and `/pricing`.
-- `/pricing` remains an expected blocker until the public pricing/legal disclosure issue
-  is implemented.
+- Frontend source checks now include public route presence for `/privacy`, `/terms`, and
+  `/cookies`. `/plans` is authenticated and intentionally not public.
 
 ## Sequencing
 

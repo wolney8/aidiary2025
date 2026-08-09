@@ -193,6 +193,29 @@ CREATE TABLE IF NOT EXISTS usage_events (
 )
 """
 
+_BILLING_PLANS_DDL = """
+CREATE TABLE IF NOT EXISTS billing_plans (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    tier                     TEXT NOT NULL UNIQUE
+                             CHECK(tier IN ('free', 'personal', 'plus', 'therapeutic', 'lifetime', 'complimentary', 'administrator')),
+    public_name              TEXT NOT NULL,
+    strapline                TEXT NOT NULL DEFAULT '',
+    description              TEXT NOT NULL DEFAULT '',
+    monthly_price_gbp_pence  INTEGER NOT NULL DEFAULT 0,
+    annual_price_gbp_pence   INTEGER NOT NULL DEFAULT 0,
+    annual_discount_percent  INTEGER NOT NULL DEFAULT 0,
+    quotas_json              TEXT NOT NULL DEFAULT '{}',
+    features_json            TEXT NOT NULL DEFAULT '[]',
+    gated_features_json      TEXT NOT NULL DEFAULT '[]',
+    is_paid                  INTEGER NOT NULL DEFAULT 0 CHECK(is_paid IN (0, 1)),
+    is_public                INTEGER NOT NULL DEFAULT 1 CHECK(is_public IN (0, 1)),
+    sort_order               INTEGER NOT NULL DEFAULT 0,
+    catalogue_version        INTEGER NOT NULL DEFAULT 1,
+    created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 _EXPORT_HISTORY_DDL = """
 CREATE TABLE IF NOT EXISTS export_history (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -658,6 +681,7 @@ def ensure_billing_tables(
         conn.execute(_ENTITLEMENTS_DDL)
         conn.execute(_BILLING_EVENTS_DDL)
         conn.execute(_USAGE_EVENTS_DDL)
+        conn.execute(_BILLING_PLANS_DDL)
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status
@@ -682,9 +706,18 @@ def ensure_billing_tables(
             ON usage_events(user_id, event_type, created_at DESC)
             """
         )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_billing_plans_public_order
+            ON billing_plans(is_public, sort_order)
+            """
+        )
+        from services.plan_catalogue import seed_default_plan_catalogue
+
+        seed_default_plan_catalogue(conn)
 
     if log:
-        log('Runtime migration ensured billing and usage tables exist')
+        log('Runtime migration ensured billing, plan, and usage tables exist')
 
     return True
 

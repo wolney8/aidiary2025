@@ -23,6 +23,10 @@ def client(monkeypatch):
     monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
     monkeypatch.delenv("STRIPE_PRICE_PERSONAL", raising=False)
     monkeypatch.delenv("STRIPE_PRICE_PLUS", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_PERSONAL_MONTHLY", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_PERSONAL_ANNUAL", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_PLUS_MONTHLY", raising=False)
+    monkeypatch.delenv("STRIPE_PRICE_PLUS_ANNUAL", raising=False)
 
     app = create_app()
     app.config["TESTING"] = True
@@ -94,7 +98,70 @@ def test_billing_status_defaults_to_free_when_stripe_not_configured(client):
     assert body["entitlement"]["tier"] == "free"
     assert body["stripe_configured"] is False
     assert body["checkout_tiers"] == []
+    assert body["checkout_periods"] == {}
     assert body["has_billing_customer"] is False
+    assert body["usage"]["ai_analysis"]["limit"] == 10
+    assert [plan["public_name"] for plan in body["plans"]] == ["Free", "Plus", "Premier"]
+    assert body["is_admin"] is False
+
+
+def test_public_plan_catalogue_requires_auth(client):
+    response = client.get("/api/billing/plans")
+
+    assert response.status_code == 401
+
+
+def test_public_plan_catalogue_returns_public_plans(client):
+    response = client.get("/api/billing/plans", headers=_headers(client.application))
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [plan["tier"] for plan in body["plans"]] == ["free", "personal", "plus"]
+    assert body["plans"][1]["public_name"] == "Plus"
+    assert body["plans"][2]["public_name"] == "Premier"
+    assert body["checkout_periods"] == {}
+
+
+def test_admin_plan_routes_require_administrator_entitlement(client):
+    response = client.get("/api/billing/admin/plans", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
+def test_administrator_can_update_plan_matrix(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.put(
+        "/api/billing/admin/plans/personal",
+        headers=_headers(client.application),
+        json={
+            "public_name": "Plus",
+            "monthly_price_gbp_pence": 599,
+            "quotas": {"ai_analysis_monthly": 333, "storage_mb": 3072},
+            "features": ["333 AI responses per month"],
+            "is_public": True,
+            "is_paid": True,
+            "sort_order": 20,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["plan"]["monthly_price_gbp_pence"] == 599
+
+    usage_response = client.get("/api/billing/status", headers=_headers(client.application))
+    usage_body = usage_response.get_json()
+    assert usage_body["is_admin"] is True
+    updated_plan = next(plan for plan in usage_body["plans"] if plan["tier"] == "personal")
+    assert updated_plan["quotas"]["ai_analysis_monthly"] == 333
 
 
 def test_checkout_requires_auth(client):
@@ -142,6 +209,7 @@ def test_checkout_creates_customer_and_session(client, monkeypatch):
     assert created_customers[0]["email"] == "tester@example.com"
     assert created_customers[0]["name"] == "Test User"
     assert created_sessions[0]["tier"] == "personal"
+    assert created_sessions[0]["billing_period"] == "monthly"
     assert created_sessions[0]["customer_id"] == "cus_123"
 
     db_path = client.application.config["DATABASE_PATH"]
@@ -150,6 +218,33 @@ def test_checkout_creates_customer_and_session(client, monkeypatch):
             "SELECT provider_customer_id FROM billing_customers WHERE user_id = 1"
         ).fetchone()
     assert row[0] == "cus_123"
+
+
+def test_checkout_can_request_annual_price(client, monkeypatch):
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_123")
+    monkeypatch.setenv("STRIPE_PRICE_PERSONAL_ANNUAL", "price_personal_annual")
+    created_sessions = []
+
+    def fake_create_customer(**kwargs):
+        return {"id": "cus_annual"}
+
+    def fake_create_checkout_session(**kwargs):
+        created_sessions.append(kwargs)
+        return {"url": "https://checkout.stripe.test/annual"}
+
+    monkeypatch.setattr("routes.billing.create_stripe_customer", fake_create_customer)
+    monkeypatch.setattr("routes.billing.create_checkout_session", fake_create_checkout_session)
+
+    response = client.post(
+        "/api/billing/checkout-session",
+        headers=_headers(client.application),
+        json={"tier": "personal", "billing_period": "annual"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["url"] == "https://checkout.stripe.test/annual"
+    assert created_sessions[0]["tier"] == "personal"
+    assert created_sessions[0]["billing_period"] == "annual"
 
 
 def test_checkout_reuses_existing_customer(client, monkeypatch):

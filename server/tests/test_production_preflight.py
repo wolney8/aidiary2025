@@ -37,15 +37,14 @@ def _base_env() -> dict[str, str]:
     }
 
 
-def _write_frontend_sources(root, *, include_pricing: bool = True) -> None:
+def _write_frontend_sources(root, *, include_cookies: bool = True) -> None:
     client_root = root / "client"
     routes = [
         'path: "privacy"',
         'path: "terms"',
-        'path: "cookies"',
     ]
-    if include_pricing:
-        routes.append('path: "pricing"')
+    if include_cookies:
+        routes.append('path: "cookies"')
     (client_root / "src/app").mkdir(parents=True)
     (client_root / "src/app/app.routes.ts").write_text("\n".join(routes), encoding="utf-8")
     (client_root / "src/app/legal").mkdir(parents=True)
@@ -444,10 +443,10 @@ def test_preflight_warns_when_registration_email_is_not_required(tmp_path):
     assert report["summary"]["registration_email_required"] is False
 
 
-def test_preflight_blocks_missing_public_pricing_route_when_frontend_is_available(tmp_path):
+def test_preflight_blocks_missing_public_cookie_route_when_frontend_is_available(tmp_path):
     server_root = tmp_path / "server"
     server_root.mkdir()
-    _write_frontend_sources(tmp_path, include_pricing=False)
+    _write_frontend_sources(tmp_path, include_cookies=False)
     env = _base_env()
     env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
     env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
@@ -466,7 +465,7 @@ def test_preflight_blocks_missing_public_pricing_route_when_frontend_is_availabl
 def test_preflight_accepts_public_routes_when_frontend_sources_are_complete(tmp_path):
     server_root = tmp_path / "server"
     server_root.mkdir()
-    _write_frontend_sources(tmp_path, include_pricing=True)
+    _write_frontend_sources(tmp_path, include_cookies=True)
     env = _base_env()
     env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
     env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"

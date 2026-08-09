@@ -48,9 +48,17 @@ class StripeBillingConfig:
 
 def load_stripe_billing_config() -> StripeBillingConfig:
     frontend_base = (os.getenv("FRONTEND_BASE_URL") or "http://localhost:4200").rstrip("/")
+    legacy_personal_price = os.getenv("STRIPE_PRICE_PERSONAL", "").strip()
+    legacy_plus_price = os.getenv("STRIPE_PRICE_PLUS", "").strip()
     price_ids = {
-        "personal": os.getenv("STRIPE_PRICE_PERSONAL", "").strip(),
-        "plus": os.getenv("STRIPE_PRICE_PLUS", "").strip(),
+        "personal": legacy_personal_price,
+        "plus": legacy_plus_price,
+        "personal_monthly": os.getenv("STRIPE_PRICE_PERSONAL_MONTHLY", "").strip()
+        or legacy_personal_price,
+        "personal_annual": os.getenv("STRIPE_PRICE_PERSONAL_ANNUAL", "").strip(),
+        "plus_monthly": os.getenv("STRIPE_PRICE_PLUS_MONTHLY", "").strip()
+        or legacy_plus_price,
+        "plus_annual": os.getenv("STRIPE_PRICE_PLUS_ANNUAL", "").strip(),
     }
     return StripeBillingConfig(
         secret_key=os.getenv("STRIPE_SECRET_KEY", "").strip(),
@@ -131,7 +139,29 @@ def _parse_signature_header(signature_header: str) -> tuple[int, list[str]]:
 
 def configured_checkout_tiers(config: StripeBillingConfig | None = None) -> list[str]:
     active_config = config or load_stripe_billing_config()
-    return [tier for tier in CHECKOUT_TIERS if active_config.price_ids.get(tier)]
+    return [
+        tier
+        for tier in CHECKOUT_TIERS
+        if (
+            active_config.price_ids.get(tier)
+            or active_config.price_ids.get(f"{tier}_monthly")
+            or active_config.price_ids.get(f"{tier}_annual")
+        )
+    ]
+
+
+def configured_checkout_periods(config: StripeBillingConfig | None = None) -> dict[str, list[str]]:
+    active_config = config or load_stripe_billing_config()
+    periods: dict[str, list[str]] = {}
+    for tier in CHECKOUT_TIERS:
+        configured_periods: list[str] = []
+        if active_config.price_ids.get(f"{tier}_monthly") or active_config.price_ids.get(tier):
+            configured_periods.append("monthly")
+        if active_config.price_ids.get(f"{tier}_annual"):
+            configured_periods.append("annual")
+        if configured_periods:
+            periods[tier] = configured_periods
+    return periods
 
 
 def create_stripe_customer(
@@ -155,13 +185,23 @@ def create_stripe_customer(
 def create_checkout_session(
     *,
     tier: str,
+    billing_period: str = "monthly",
     customer_id: str,
     user_id: int,
     config: StripeBillingConfig | None = None,
 ) -> dict[str, Any]:
     active_config = _require_secret_key(config)
     normalized_tier = (tier or "").strip().lower()
-    price_id = active_config.price_ids.get(normalized_tier)
+    normalized_period = (billing_period or "monthly").strip().lower()
+    if normalized_period not in {"monthly", "annual"}:
+        raise BillingConfigurationError("Choose monthly or annual billing.")
+    if normalized_period == "annual":
+        price_id = active_config.price_ids.get(f"{normalized_tier}_annual")
+    else:
+        price_id = (
+            active_config.price_ids.get(f"{normalized_tier}_monthly")
+            or active_config.price_ids.get(normalized_tier)
+        )
     if normalized_tier not in CHECKOUT_TIERS or not price_id:
         raise BillingConfigurationError("This billing plan is not configured.")
 
@@ -177,6 +217,7 @@ def create_checkout_session(
             "cancel_url": active_config.cancel_url,
             "metadata[openmynd_user_id]": str(user_id),
             "metadata[tier]": normalized_tier,
+            "metadata[billing_period]": normalized_period,
         },
         active_config,
     )

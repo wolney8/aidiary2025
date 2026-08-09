@@ -167,7 +167,6 @@ import { OAuthProvider } from '../../core/models/user.model';
           </p>
 
           <nav class="auth-public-links" aria-label="OpenMynd public links">
-            <a routerLink="/pricing">Pricing</a>
             <a routerLink="/privacy">Privacy</a>
             <a routerLink="/terms">Terms</a>
           </nav>

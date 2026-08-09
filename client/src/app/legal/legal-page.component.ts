@@ -78,7 +78,7 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
       {
         heading: "Cancellation and refunds",
         body:
-          "Subscription changes are handled through the billing portal. Final cancellation, refund, and pricing terms must match the public pricing page before launch.",
+          "Subscription changes are handled through the billing portal. Final cancellation, refund, and plan terms are shown inside authenticated onboarding, Account, and upgrade prompts.",
       },
     ],
   },

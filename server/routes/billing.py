@@ -19,6 +19,7 @@ from services.stripe_billing import (
     BillingConfigurationError,
     BillingProviderError,
     BillingSignatureError,
+    configured_checkout_periods,
     configured_checkout_tiers,
     create_checkout_session,
     create_customer_portal_session,
@@ -26,6 +27,7 @@ from services.stripe_billing import (
     load_stripe_billing_config,
     verify_stripe_webhook_event,
 )
+from services.plan_catalogue import list_plan_catalogue, seed_default_plan_catalogue, upsert_plan
 from services.usage_limits import get_user_usage_summary
 
 
@@ -175,8 +177,11 @@ def _subscription_tier_from_object(subscription: dict[str, object]) -> str:
             continue
         price = item.get("price") if isinstance(item.get("price"), dict) else {}
         price_id = str(price.get("id") or "").strip()
-        for tier, configured_price_id in price_ids.items():
+        for configured_key, configured_price_id in price_ids.items():
             if configured_price_id and price_id == configured_price_id:
+                tier = configured_key.split("_", 1)[0]
+                if tier in {"personal", "plus"}:
+                    return tier
                 return tier
     return "free"
 
@@ -453,14 +458,23 @@ def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
     config = load_stripe_billing_config()
     customer = _get_billing_customer(conn, user_id)
     entitlement = resolve_user_entitlement(conn, user_id)
+    seed_default_plan_catalogue(conn)
     return {
         "entitlement": entitlement,
         "provider": "stripe",
         "stripe_configured": config.configured,
         "checkout_tiers": configured_checkout_tiers(config),
+        "checkout_periods": configured_checkout_periods(config),
         "has_billing_customer": customer is not None,
         "usage": get_user_usage_summary(conn, user_id),
+        "plans": list_plan_catalogue(conn, include_internal=False),
+        "is_admin": entitlement.get("tier") == "administrator",
     }
+
+
+def _require_admin(conn, user_id: int) -> tuple[bool, dict[str, object]]:
+    entitlement = resolve_user_entitlement(conn, user_id)
+    return entitlement.get("tier") == "administrator", entitlement
 
 
 @billing_bp.route("/billing/status", methods=["GET"])
@@ -471,15 +485,77 @@ def get_billing_status():
         return jsonify(_billing_status_payload(conn, user_id)), 200
 
 
+@billing_bp.route("/billing/plans", methods=["GET"])
+@jwt_required()
+def get_billing_plans():
+    user_id = int(get_jwt_identity())
+    with get_db() as conn:
+        try:
+            entitlement = resolve_user_entitlement(conn, user_id)
+        except Exception as exc:
+            current_app.logger.warning(
+                "Plan catalogue request using default entitlement for user %s: %s",
+                user_id,
+                exc,
+            )
+            entitlement = {"tier": "free"}
+        seed_default_plan_catalogue(conn)
+        config = load_stripe_billing_config()
+        include_internal = entitlement.get("tier") == "administrator" and (
+            request.args.get("include_internal") == "1"
+        )
+        return jsonify(
+            {
+                "plans": list_plan_catalogue(conn, include_internal=include_internal),
+                "is_admin": entitlement.get("tier") == "administrator",
+                "stripe_configured": config.configured,
+                "checkout_tiers": configured_checkout_tiers(config),
+                "checkout_periods": configured_checkout_periods(config),
+            }
+        ), 200
+
+
+@billing_bp.route("/billing/admin/plans", methods=["GET"])
+@jwt_required()
+def get_admin_billing_plans():
+    user_id = int(get_jwt_identity())
+    with get_db() as conn:
+        is_admin, _entitlement = _require_admin(conn, user_id)
+        if not is_admin:
+            return jsonify({"error": "Administrator access is required."}), 403
+        seed_default_plan_catalogue(conn)
+        return jsonify({"plans": list_plan_catalogue(conn, include_internal=True)}), 200
+
+
+@billing_bp.route("/billing/admin/plans/<tier>", methods=["PUT"])
+@jwt_required()
+def update_admin_billing_plan(tier: str):
+    user_id = int(get_jwt_identity())
+    payload = request.get_json(silent=True) or {}
+    payload["tier"] = tier
+    try:
+        with get_db() as conn:
+            is_admin, _entitlement = _require_admin(conn, user_id)
+            if not is_admin:
+                return jsonify({"error": "Administrator access is required."}), 403
+            plan = upsert_plan(conn, payload)
+            return jsonify({"plan": plan}), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
 @billing_bp.route("/billing/checkout-session", methods=["POST"])
 @jwt_required()
 def start_checkout_session():
     user_id = int(get_jwt_identity())
     data = request.get_json(silent=True) or {}
     tier = str(data.get("tier") or "").strip().lower()
+    billing_period = str(data.get("billing_period") or "monthly").strip().lower()
 
     if not tier:
         return jsonify({"error": "Choose a billing plan."}), 400
+    if billing_period not in {"monthly", "annual"}:
+        return jsonify({"error": "Choose monthly or annual billing."}), 400
 
     try:
         with get_db() as conn:
@@ -502,6 +578,7 @@ def start_checkout_session():
 
             session = create_checkout_session(
                 tier=tier,
+                billing_period=billing_period,
                 customer_id=customer_id,
                 user_id=user_id,
             )

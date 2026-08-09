@@ -104,7 +104,8 @@ Required behavior:
 
 - SPA fallback to `index.html`.
 - `/api/*` rewrite/proxy must reach the backend API.
-- Legal routes `/privacy`, `/terms`, `/cookies`, and future `/pricing` must be public.
+- Legal routes `/privacy`, `/terms`, and `/cookies` must be public. Plan comparison and
+  pricing are authenticated-only in v1 through onboarding, Account, and upgrade prompts.
 
 ### Backend
 

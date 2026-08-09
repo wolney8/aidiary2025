@@ -81,11 +81,21 @@ export const routes: Routes = [
       import("./legal/legal-page.component").then((m) => m.LegalPageComponent),
   },
   {
-    path: "pricing",
-    title: "Pricing | OpenMynd",
+    path: "plans",
+    title: "Plans | OpenMynd",
+    canActivate: [authGuard],
+    canMatch: [authMatchGuard],
     loadComponent: () =>
-      import("./public/pricing/pricing.component").then(
-        (m) => m.PricingComponent,
+      import("./billing/plans.component").then((m) => m.PlansComponent),
+  },
+  {
+    path: "admin/plans",
+    title: "Plan matrix | OpenMynd",
+    canActivate: [authGuard],
+    canMatch: [authMatchGuard],
+    loadComponent: () =>
+      import("./billing/admin-plan-catalogue.component").then(
+        (m) => m.AdminPlanCatalogueComponent,
       ),
   },
   {

@@ -6,6 +6,25 @@ import { AuthService } from "./auth.service";
 
 export type BillingTier = "free" | "personal" | "plus" | "therapeutic" | "lifetime" | "complimentary" | "administrator";
 export type CheckoutTier = "personal" | "plus";
+export type BillingPeriod = "monthly" | "annual";
+
+export interface BillingPlan {
+  tier: BillingTier;
+  public_name: string;
+  strapline: string;
+  description: string;
+  monthly_price_gbp_pence: number;
+  annual_price_gbp_pence: number;
+  annual_discount_percent: number;
+  quotas: Record<string, number | null>;
+  features: string[];
+  gated_features: string[];
+  is_paid: boolean;
+  is_public: boolean;
+  sort_order: number;
+  catalogue_version: number;
+  updated_at?: string | null;
+}
 
 export interface BillingEntitlement {
   tier: BillingTier;
@@ -24,6 +43,7 @@ export interface BillingStatus {
   provider: "stripe";
   stripe_configured: boolean;
   checkout_tiers: CheckoutTier[];
+  checkout_periods?: Partial<Record<CheckoutTier, BillingPeriod[]>>;
   has_billing_customer: boolean;
   usage?: {
     plan: BillingTier;
@@ -36,10 +56,24 @@ export interface BillingStatus {
       unlimited: boolean;
     };
   };
+  plans: BillingPlan[];
+  is_admin?: boolean;
 }
 
 export interface BillingSessionResponse {
   url: string;
+}
+
+export interface BillingPlansResponse {
+  plans: BillingPlan[];
+  is_admin?: boolean;
+  stripe_configured?: boolean;
+  checkout_tiers?: CheckoutTier[];
+  checkout_periods?: Partial<Record<CheckoutTier, BillingPeriod[]>>;
+}
+
+export interface AdminBillingPlansResponse {
+  plans: BillingPlan[];
 }
 
 @Injectable({ providedIn: "root" })
@@ -55,11 +89,14 @@ export class BillingService {
     });
   }
 
-  startCheckout(tier: CheckoutTier): Observable<BillingSessionResponse> {
+  startCheckout(
+    tier: CheckoutTier,
+    billingPeriod: BillingPeriod = "monthly",
+  ): Observable<BillingSessionResponse> {
     this.ensureAuthenticated();
     return this.http.post<BillingSessionResponse>(
       `${this.apiUrl}/checkout-session`,
-      { tier },
+      { tier, billing_period: billingPeriod },
       { headers: this.buildHeaders() },
     );
   }
@@ -69,6 +106,34 @@ export class BillingService {
     return this.http.post<BillingSessionResponse>(
       `${this.apiUrl}/customer-portal-session`,
       {},
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  getPlans(includeInternal = false): Observable<BillingPlansResponse> {
+    this.ensureAuthenticated();
+    return this.http.get<BillingPlansResponse>(
+      `${this.apiUrl}/plans${includeInternal ? "?include_internal=1" : ""}`,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  getAdminPlans(): Observable<AdminBillingPlansResponse> {
+    this.ensureAuthenticated();
+    return this.http.get<AdminBillingPlansResponse>(
+      `${this.apiUrl}/admin/plans`,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  updateAdminPlan(
+    tier: BillingTier,
+    payload: Partial<BillingPlan>,
+  ): Observable<{ plan: BillingPlan }> {
+    this.ensureAuthenticated();
+    return this.http.put<{ plan: BillingPlan }>(
+      `${this.apiUrl}/admin/plans/${tier}`,
+      payload,
       { headers: this.buildHeaders() },
     );
   }

@@ -285,7 +285,7 @@ import { User } from "../core/models/user.model";
                 <mat-icon aria-hidden="true">
                   {{ billingBusyTier === "personal" ? "hourglass_top" : "workspace_premium" }}
                 </mat-icon>
-                <span>{{ billingBusyTier === "personal" ? "Opening..." : "Personal" }}</span>
+                <span>{{ billingBusyTier === "personal" ? "Opening..." : getPlanName("personal") }}</span>
               </button>
               <button
                 mat-raised-button
@@ -299,7 +299,7 @@ import { User } from "../core/models/user.model";
                 <mat-icon aria-hidden="true">
                   {{ billingBusyTier === "plus" ? "hourglass_top" : "auto_awesome" }}
                 </mat-icon>
-                <span>{{ billingBusyTier === "plus" ? "Opening..." : "Plus" }}</span>
+                <span>{{ billingBusyTier === "plus" ? "Opening..." : getPlanName("plus") }}</span>
               </button>
               <button
                 mat-stroked-button
@@ -316,12 +316,22 @@ import { User } from "../core/models/user.model";
               </button>
               <a
                 mat-stroked-button
-                routerLink="/pricing"
+                routerLink="/plans"
                 class="billing-action"
-                data-testid="account-billing-pricing"
+                data-testid="account-billing-plans"
               >
                 <mat-icon aria-hidden="true">sell</mat-icon>
-                <span>Pricing</span>
+                <span>Plans</span>
+              </a>
+              <a
+                *ngIf="billingStatus?.is_admin"
+                mat-stroked-button
+                routerLink="/admin/plans"
+                class="billing-action"
+                data-testid="account-admin-plans"
+              >
+                <mat-icon aria-hidden="true">admin_panel_settings</mat-icon>
+                <span>Plan matrix</span>
               </a>
             </div>
 
@@ -830,7 +840,12 @@ export class ProfileComponent implements OnInit {
 
   getBillingTierLabel(): string {
     const tier = this.billingStatus?.entitlement?.tier || "free";
-    return this.toTitleCase(tier);
+    return this.getPlanName(tier);
+  }
+
+  getPlanName(tier: string): string {
+    const plan = this.billingStatus?.plans?.find((item) => item.tier === tier);
+    return plan?.public_name || this.toTitleCase(tier);
   }
 
   getBillingStatusLabel(): string {
