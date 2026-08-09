@@ -12,14 +12,58 @@ from services.plan_catalogue import AI_ANALYSIS_LIMIT_KEY, get_plan
 
 
 AI_ANALYSIS_EVENT = "ai_analysis"
+AI_IMAGE_EVENT = "ai_image"
+OCR_PAGE_EVENT = "ocr_page"
+TRANSCRIPTION_MINUTE_EVENT = "transcription_minute"
+EVENT_LIMIT_KEYS = {
+    AI_ANALYSIS_EVENT: AI_ANALYSIS_LIMIT_KEY,
+    AI_IMAGE_EVENT: "ai_images_monthly",
+    OCR_PAGE_EVENT: "ocr_pages_monthly",
+    TRANSCRIPTION_MINUTE_EVENT: "transcription_minutes_monthly",
+}
 FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
-    "free": {AI_ANALYSIS_LIMIT_KEY: 10},
-    "personal": {AI_ANALYSIS_LIMIT_KEY: 250},
-    "plus": {AI_ANALYSIS_LIMIT_KEY: 1000},
-    "therapeutic": {AI_ANALYSIS_LIMIT_KEY: 1000},
-    "lifetime": {AI_ANALYSIS_LIMIT_KEY: 1000},
-    "complimentary": {AI_ANALYSIS_LIMIT_KEY: 1000},
-    "administrator": {AI_ANALYSIS_LIMIT_KEY: None},
+    "free": {
+        AI_ANALYSIS_LIMIT_KEY: 10,
+        "ai_images_monthly": 0,
+        "ocr_pages_monthly": 5,
+        "transcription_minutes_monthly": 0,
+    },
+    "personal": {
+        AI_ANALYSIS_LIMIT_KEY: 250,
+        "ai_images_monthly": 10,
+        "ocr_pages_monthly": 100,
+        "transcription_minutes_monthly": 30,
+    },
+    "plus": {
+        AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_images_monthly": 40,
+        "ocr_pages_monthly": 500,
+        "transcription_minutes_monthly": 180,
+    },
+    "therapeutic": {
+        AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_images_monthly": 40,
+        "ocr_pages_monthly": 500,
+        "transcription_minutes_monthly": 180,
+    },
+    "lifetime": {
+        AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_images_monthly": 40,
+        "ocr_pages_monthly": 500,
+        "transcription_minutes_monthly": 180,
+    },
+    "complimentary": {
+        AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_images_monthly": 40,
+        "ocr_pages_monthly": 500,
+        "transcription_minutes_monthly": 180,
+    },
+    "administrator": {
+        AI_ANALYSIS_LIMIT_KEY: None,
+        "ai_images_monthly": None,
+        "ocr_pages_monthly": None,
+        "transcription_minutes_monthly": None,
+    },
 }
 
 
@@ -48,47 +92,79 @@ def get_plan_limits(conn, tier: str | None) -> dict[str, int | None]:
     quotas = plan.get("quotas") if isinstance(plan, dict) else {}
     if not isinstance(quotas, dict):
         return fallback
-    value = quotas.get(AI_ANALYSIS_LIMIT_KEY, fallback[AI_ANALYSIS_LIMIT_KEY])
-    if value is None:
-        return {AI_ANALYSIS_LIMIT_KEY: None}
-    try:
-        return {AI_ANALYSIS_LIMIT_KEY: max(0, int(value))}
-    except (TypeError, ValueError):
-        return fallback
+    limits: dict[str, int | None] = {}
+    for limit_key, fallback_value in fallback.items():
+        value = quotas.get(limit_key, fallback_value)
+        if value is None:
+            limits[limit_key] = None
+            continue
+        try:
+            limits[limit_key] = max(0, int(value))
+        except (TypeError, ValueError):
+            limits[limit_key] = fallback_value
+    return limits
 
 
 def get_user_usage_summary(conn, user_id: int) -> dict[str, Any]:
     entitlement = resolve_user_entitlement(conn, user_id)
     tier = str(entitlement.get("tier") or "free")
     limits = get_plan_limits(conn, tier)
-    ai_limit = limits[AI_ANALYSIS_LIMIT_KEY]
     window_start = month_window_start()
-    used = count_usage_events(
-        conn,
-        user_id=user_id,
-        event_type=AI_ANALYSIS_EVENT,
-        since=window_start,
-    )
+    usage_payload = {
+        event_type: _usage_for_event(
+            conn,
+            user_id=user_id,
+            event_type=event_type,
+            limit=limits.get(limit_key),
+            window_start=window_start,
+        )
+        for event_type, limit_key in EVENT_LIMIT_KEYS.items()
+    }
     return {
         "plan": tier,
         "window": "month",
         "window_start": window_start,
-        "ai_analysis": {
-            "used": used,
-            "limit": ai_limit,
-            "remaining": None if ai_limit is None else max(int(ai_limit) - used, 0),
-            "unlimited": ai_limit is None,
-        },
+        **usage_payload,
     }
 
 
-def enforce_usage_limit(conn, *, user_id: int, event_type: str) -> dict[str, Any]:
-    if event_type != AI_ANALYSIS_EVENT:
+def _usage_for_event(
+    conn,
+    *,
+    user_id: int,
+    event_type: str,
+    limit: int | None,
+    window_start: str,
+) -> dict[str, Any]:
+    used = count_usage_events(
+        conn,
+        user_id=user_id,
+        event_type=event_type,
+        since=window_start,
+    )
+    return {
+        "used": used,
+        "limit": limit,
+        "remaining": None if limit is None else max(int(limit) - used, 0),
+        "unlimited": limit is None,
+    }
+
+
+def enforce_usage_limit(
+    conn,
+    *,
+    user_id: int,
+    event_type: str,
+    units: int = 1,
+) -> dict[str, Any]:
+    if event_type not in EVENT_LIMIT_KEYS:
         raise ValueError("Unsupported usage event type")
+    if units < 1:
+        raise ValueError("Usage units must be positive")
     summary = get_user_usage_summary(conn, user_id)
-    usage = summary["ai_analysis"]
+    usage = summary[event_type]
     limit = usage["limit"]
-    if limit is not None and int(usage["used"]) >= int(limit):
+    if limit is not None and int(usage["used"]) + units > int(limit):
         raise UsageLimitExceeded(summary)
     return summary
 
@@ -101,7 +177,7 @@ def record_usage_event(
     units: int = 1,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    if event_type != AI_ANALYSIS_EVENT:
+    if event_type not in EVENT_LIMIT_KEYS:
         raise ValueError("Unsupported usage event type")
     if units < 1:
         raise ValueError("Usage units must be positive")

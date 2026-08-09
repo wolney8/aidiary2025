@@ -59,15 +59,20 @@ export interface BillingStatus {
     plan: BillingTier;
     window: "month";
     window_start: string;
-    ai_analysis: {
-      used: number;
-      limit: number | null;
-      remaining: number | null;
-      unlimited: boolean;
-    };
+    ai_analysis: BillingUsageMetric;
+    ai_image?: BillingUsageMetric;
+    ocr_page?: BillingUsageMetric;
+    transcription_minute?: BillingUsageMetric;
   };
   plans: BillingPlan[];
   is_admin?: boolean;
+}
+
+export interface BillingUsageMetric {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  unlimited: boolean;
 }
 
 export interface BillingSessionResponse {
