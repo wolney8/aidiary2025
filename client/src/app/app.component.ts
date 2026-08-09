@@ -43,17 +43,22 @@ import { User } from "./core/models/user.model";
         data-testid="authenticated-app-shell"
       >
         <mat-sidenav #sidenav mode="over" position="start">
-          <app-side-nav (closeSidenav)="sidenav.close()"></app-side-nav>
+          <app-side-nav
+            [onboardingMode]="isOnboardingRoute"
+            (closeSidenav)="sidenav.close()"
+          ></app-side-nav>
         </mat-sidenav>
 
         <mat-sidenav-content>
-          <app-top-bar (toggleSidenav)="sidenav.toggle()"></app-top-bar>
+          <app-top-bar
+            [onboardingMode]="isOnboardingRoute"
+            (toggleSidenav)="sidenav.toggle()"
+          ></app-top-bar>
           <main id="main-content" class="main-content" tabindex="-1">
             <router-outlet></router-outlet>
           </main>
           <footer class="app-footer" aria-label="OpenMynd information">
             <span>OpenMynd {{ versionLabel }}</span>
-            <a routerLink="/pricing">Pricing</a>
             <a routerLink="/privacy">Privacy policy</a>
             <a routerLink="/terms">Terms</a>
             <a routerLink="/cookies">Cookie policy</a>
@@ -167,6 +172,7 @@ export class AppComponent {
   readonly versionLabel = APP_VERSION;
   isAuthenticated = this.authService.isAuthenticated();
   currentUser = this.authService.getCurrentUser();
+  isOnboardingRoute = this.isOnboardingUrl(this.router.url);
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
   constructor() {
@@ -178,6 +184,7 @@ export class AppComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((event) => {
+        this.isOnboardingRoute = this.isOnboardingUrl(event.urlAfterRedirects);
         this.showChatCompanion = this.shouldShowChatCompanion(
           event.urlAfterRedirects,
         );
@@ -188,6 +195,7 @@ export class AppComponent {
       .subscribe((user) => {
         this.currentUser = user;
         this.isAuthenticated = !!user && this.authService.isAuthenticated();
+        this.isOnboardingRoute = this.isOnboardingUrl(this.router.url);
         this.showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
         if (user && this.inactivityConfig.enabled) {
@@ -280,10 +288,15 @@ export class AppComponent {
     return /^\/dashboard(?:\/|\?|#|$)/.test(url);
   }
 
+  private isOnboardingUrl(url: string): boolean {
+    return /^\/onboarding(?:\/|\?|#|$)/.test(url);
+  }
+
   private shouldShowChatCompanion(url: string): boolean {
     return (
       this.isAuthenticated &&
       this.isChatEnabled(this.currentUser) &&
+      !this.isOnboardingUrl(url) &&
       !this.isCbtRoute(url) &&
       !this.isDashboardRoute(url)
     );

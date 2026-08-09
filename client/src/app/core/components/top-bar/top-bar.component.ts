@@ -2,6 +2,7 @@ import {
   Component,
   Output,
   EventEmitter,
+  Input,
   HostListener,
   inject,
   OnDestroy,
@@ -104,6 +105,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       </button>
 
       <div
+        *ngIf="!onboardingMode"
         class="search-wrapper"
         [class.search-wrapper-compact]="isCompact()"
         [class.search-wrapper-hidden]="isCompact() && !isCompactSearchOpen()"
@@ -246,7 +248,10 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
 
       <span class="spacer" *ngIf="!isCompactSearchOpen()"></span>
 
-      <div class="compact-actions" *ngIf="isCompact() && !isCompactSearchOpen()">
+      <div
+        class="compact-actions"
+        *ngIf="!onboardingMode && isCompact() && !isCompactSearchOpen()"
+      >
         <button
           mat-icon-button
           type="button"
@@ -280,6 +285,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           </span>
         </button>
         <button
+          *ngIf="!onboardingMode"
           mat-icon-button
           class="notification-bell"
           type="button"
@@ -298,6 +304,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           </ng-container>
         </button>
         <button
+          *ngIf="!onboardingMode"
           mat-icon-button
           class="account-menu-trigger"
           [matMenuTriggerFor]="userMenu"
@@ -1115,6 +1122,7 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   readonly isCompact = computed(() => this.isCompactViewport());
   readonly isCompactSearchOpen = signal(false);
+  @Input() onboardingMode = false;
   @Output() toggleSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
   private searchService = inject(SearchService);

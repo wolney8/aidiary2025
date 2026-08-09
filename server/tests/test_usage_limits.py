@@ -13,6 +13,7 @@ from services.usage_limits import (
     month_window_start,
     record_usage_event,
 )
+from services.plan_catalogue import upsert_plan
 
 
 def _connect(path):
@@ -60,8 +61,8 @@ def test_free_plan_usage_summary_tracks_monthly_ai_limit(tmp_path):
 
     assert summary["plan"] == "free"
     assert summary["ai_analysis"]["used"] == 1
-    assert summary["ai_analysis"]["limit"] == 20
-    assert summary["ai_analysis"]["remaining"] == 19
+    assert summary["ai_analysis"]["limit"] == 10
+    assert summary["ai_analysis"]["remaining"] == 9
 
 
 def test_usage_limit_blocks_when_monthly_limit_is_reached(tmp_path):
@@ -69,14 +70,39 @@ def test_usage_limit_blocks_when_monthly_limit_is_reached(tmp_path):
     _create_usage_db(db_path)
 
     with _connect(db_path) as conn:
-        for _index in range(20):
+        for _index in range(10):
             record_usage_event(conn, user_id=1, event_type=AI_ANALYSIS_EVENT)
 
         with pytest.raises(UsageLimitExceeded) as exc_info:
             enforce_usage_limit(conn, user_id=1, event_type=AI_ANALYSIS_EVENT)
 
-    assert exc_info.value.summary["ai_analysis"]["used"] == 20
+    assert exc_info.value.summary["ai_analysis"]["used"] == 10
     assert exc_info.value.summary["ai_analysis"]["remaining"] == 0
+
+
+def test_usage_limit_reads_admin_editable_plan_catalogue(tmp_path):
+    db_path = tmp_path / "usage.db"
+    _create_usage_db(db_path)
+
+    with _connect(db_path) as conn:
+        upsert_plan(
+            conn,
+            {
+                "tier": "free",
+                "public_name": "Free",
+                "quotas": {"ai_analysis_monthly": 2},
+                "features": ["Two AI responses"],
+                "is_public": True,
+                "sort_order": 10,
+            },
+        )
+        record_usage_event(conn, user_id=1, event_type=AI_ANALYSIS_EVENT)
+        record_usage_event(conn, user_id=1, event_type=AI_ANALYSIS_EVENT)
+
+        with pytest.raises(UsageLimitExceeded) as exc_info:
+            enforce_usage_limit(conn, user_id=1, event_type=AI_ANALYSIS_EVENT)
+
+    assert exc_info.value.summary["ai_analysis"]["limit"] == 2
 
 
 def test_administrator_usage_is_unlimited(tmp_path):

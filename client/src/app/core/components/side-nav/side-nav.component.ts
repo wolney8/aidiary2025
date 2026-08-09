@@ -1,5 +1,5 @@
 // Side navigation matching wireframes
-import { Component, Output, EventEmitter, computed, inject } from "@angular/core";
+import { Component, Output, EventEmitter, Input, computed, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { RouterModule } from "@angular/router";
 import { MatListModule } from "@angular/material/list";
@@ -32,105 +32,107 @@ import { ThemeService } from "../../services/theme.service";
       </div>
 
       <mat-nav-list>
-        <a
-          mat-list-item
-          routerLink="/dashboard"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #dashboardRla="routerLinkActive"
-          [attr.aria-current]="dashboardRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-          data-testid="nav-dashboard"
-        >
-          <mat-icon matListItemIcon>dashboard</mat-icon>
-          <span matListItemTitle>Dashboard</span>
-        </a>
+        <ng-container *ngIf="!onboardingMode">
+          <a
+            mat-list-item
+            routerLink="/dashboard"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            #dashboardRla="routerLinkActive"
+            [attr.aria-current]="dashboardRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+            data-testid="nav-dashboard"
+          >
+            <mat-icon matListItemIcon>dashboard</mat-icon>
+            <span matListItemTitle>Dashboard</span>
+          </a>
 
-        <a
-          mat-list-item
-          routerLink="/entries"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #entriesRla="routerLinkActive"
-          [attr.aria-current]="entriesRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-          data-testid="nav-entries"
-        >
-          <mat-icon matListItemIcon>auto_stories</mat-icon>
-          <span matListItemTitle>Entries</span>
-        </a>
+          <a
+            mat-list-item
+            routerLink="/entries"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            #entriesRla="routerLinkActive"
+            [attr.aria-current]="entriesRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+            data-testid="nav-entries"
+          >
+            <mat-icon matListItemIcon>auto_stories</mat-icon>
+            <span matListItemTitle>Entries</span>
+          </a>
 
-        <a
-          mat-list-item
-          [routerLink]="['/entries']"
-          [queryParams]="{ type: 'daily' }"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #dailyRla="routerLinkActive"
-          [attr.aria-current]="dailyRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-        >
-          <mat-icon matListItemIcon>book</mat-icon>
-          <span matListItemTitle>Daily Diary</span>
-        </a>
+          <a
+            mat-list-item
+            [routerLink]="['/entries']"
+            [queryParams]="{ type: 'daily' }"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            #dailyRla="routerLinkActive"
+            [attr.aria-current]="dailyRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+          >
+            <mat-icon matListItemIcon>book</mat-icon>
+            <span matListItemTitle>Daily Diary</span>
+          </a>
 
-        <a
-          mat-list-item
-          [routerLink]="['/entries']"
-          [queryParams]="{ type: 'dreams' }"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #dreamsRla="routerLinkActive"
-          [attr.aria-current]="dreamsRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-        >
-          <mat-icon matListItemIcon>nights_stay</mat-icon>
-          <span matListItemTitle>Dream Diary</span>
-        </a>
+          <a
+            mat-list-item
+            [routerLink]="['/entries']"
+            [queryParams]="{ type: 'dreams' }"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            #dreamsRla="routerLinkActive"
+            [attr.aria-current]="dreamsRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+          >
+            <mat-icon matListItemIcon>nights_stay</mat-icon>
+            <span matListItemTitle>Dream Diary</span>
+          </a>
 
-        <a
-          mat-list-item
-          routerLink="/cbt"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: false }"
-          #cbtRla="routerLinkActive"
-          [attr.aria-current]="cbtRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-          data-testid="nav-thought-records"
-        >
-          <mat-icon matListItemIcon>psychology_alt</mat-icon>
-          <span matListItemTitle>Thought Records</span>
-        </a>
+          <a
+            mat-list-item
+            routerLink="/cbt"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: false }"
+            #cbtRla="routerLinkActive"
+            [attr.aria-current]="cbtRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+            data-testid="nav-thought-records"
+          >
+            <mat-icon matListItemIcon>psychology_alt</mat-icon>
+            <span matListItemTitle>Thought Records</span>
+          </a>
 
-        <a
-          mat-list-item
-          routerLink="/important-days"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #importantDaysRla="routerLinkActive"
-          [attr.aria-current]="importantDaysRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-          data-testid="nav-important-days"
-        >
-          <mat-icon matListItemIcon>event</mat-icon>
-          <span matListItemTitle>Important Days</span>
-        </a>
+          <a
+            mat-list-item
+            routerLink="/important-days"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            #importantDaysRla="routerLinkActive"
+            [attr.aria-current]="importantDaysRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+            data-testid="nav-important-days"
+          >
+            <mat-icon matListItemIcon>event</mat-icon>
+            <span matListItemTitle>Important Days</span>
+          </a>
 
-        <a
-          mat-list-item
-          routerLink="/reflections"
-          routerLinkActive="is-active"
-          [routerLinkActiveOptions]="{ exact: true }"
-          #reflectionsRla="routerLinkActive"
-          [attr.aria-current]="reflectionsRla.isActive ? 'page' : null"
-          (click)="closeSidenav.emit()"
-          data-testid="nav-reflection-summaries"
-        >
-          <mat-icon matListItemIcon>summarize</mat-icon>
-          <span matListItemTitle>Reflections</span>
-        </a>
+          <a
+            mat-list-item
+            routerLink="/reflections"
+            routerLinkActive="is-active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            #reflectionsRla="routerLinkActive"
+            [attr.aria-current]="reflectionsRla.isActive ? 'page' : null"
+            (click)="closeSidenav.emit()"
+            data-testid="nav-reflection-summaries"
+          >
+            <mat-icon matListItemIcon>summarize</mat-icon>
+            <span matListItemTitle>Reflections</span>
+          </a>
 
-        <mat-divider></mat-divider>
+          <mat-divider></mat-divider>
+        </ng-container>
 
         <a mat-list-item (click)="logout()">
           <mat-icon matListItemIcon>logout</mat-icon>
@@ -209,6 +211,7 @@ import { ThemeService } from "../../services/theme.service";
   ],
 })
 export class SideNavComponent {
+  @Input() onboardingMode = false;
   @Output() closeSidenav = new EventEmitter<void>();
   private authService = inject(AuthService);
   private readonly themeService = inject(ThemeService);

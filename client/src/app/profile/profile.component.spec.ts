@@ -107,6 +107,57 @@ describe("Account page", () => {
         stripe_configured: true,
         checkout_tiers: ["personal", "plus"],
         has_billing_customer: false,
+        plans: [
+          {
+            tier: "free",
+            public_name: "Free",
+            strapline: "Core private journalling.",
+            description: "",
+            monthly_price_gbp_pence: 0,
+            annual_price_gbp_pence: 0,
+            annual_discount_percent: 0,
+            quotas: { ai_analysis_monthly: 10 },
+            features: [],
+            gated_features: [],
+            is_paid: false,
+            is_public: true,
+            sort_order: 10,
+            catalogue_version: 1,
+          },
+          {
+            tier: "personal",
+            public_name: "Plus",
+            strapline: "Regular AI-supported reflection.",
+            description: "",
+            monthly_price_gbp_pence: 499,
+            annual_price_gbp_pence: 4790,
+            annual_discount_percent: 20,
+            quotas: { ai_analysis_monthly: 250 },
+            features: [],
+            gated_features: [],
+            is_paid: true,
+            is_public: true,
+            sort_order: 20,
+            catalogue_version: 1,
+          },
+          {
+            tier: "plus",
+            public_name: "Premier",
+            strapline: "Maximum headroom.",
+            description: "",
+            monthly_price_gbp_pence: 1199,
+            annual_price_gbp_pence: 11510,
+            annual_discount_percent: 20,
+            quotas: { ai_analysis_monthly: 1000 },
+            features: [],
+            gated_features: [],
+            is_paid: true,
+            is_public: true,
+            sort_order: 30,
+            catalogue_version: 1,
+          },
+        ],
+        is_admin: false,
       }),
     );
 
@@ -176,8 +227,8 @@ describe("Account page", () => {
     expect(host.textContent).toContain("Plan and subscription");
     expect(host.textContent).toContain("Current plan:");
     expect(host.textContent).toContain("Free");
-    expect(host.textContent).toContain("Personal");
     expect(host.textContent).toContain("Plus");
+    expect(host.textContent).toContain("Premier");
   });
 
   it("shows the display name counter", () => {

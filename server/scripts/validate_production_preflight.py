@@ -22,7 +22,7 @@ PUBLIC_LEGAL_ROUTES = (
     "client/src/app/legal/legal-page.component.ts",
     "client/src/app/shared/components/cookie-consent/cookie-consent.component.ts",
 )
-PUBLIC_FRONTEND_ROUTES = ("privacy", "terms", "cookies", "pricing")
+PUBLIC_FRONTEND_ROUTES = ("privacy", "terms", "cookies")
 AUTH_RATE_LIMIT_ENV_KEYS = (
     "AUTH_LOGIN_RATE_LIMIT",
     "AUTH_REGISTER_RATE_LIMIT",
