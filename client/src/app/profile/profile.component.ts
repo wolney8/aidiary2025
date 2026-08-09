@@ -248,6 +248,9 @@ import { User } from "../core/models/user.model";
                   {{ getBillingStatusLabel() }}
                 </span>
               </p>
+              <p class="billing-subscription-meta" *ngIf="getSubscriptionMetaLabel()">
+                {{ getSubscriptionMetaLabel() }}
+              </p>
               <div
                 class="billing-usage"
                 *ngIf="billingStatus?.usage?.ai_analysis as aiUsage"
@@ -600,6 +603,7 @@ import { User } from "../core/models/user.model";
       }
 
       .billing-copy p,
+      .billing-subscription-meta,
       .billing-note {
         color: var(--colour-text-secondary);
         font-weight: 750;
@@ -849,8 +853,33 @@ export class ProfileComponent implements OnInit {
   }
 
   getBillingStatusLabel(): string {
-    const status = this.billingStatus?.entitlement?.status || "active";
+    const status =
+      this.billingStatus?.current_subscription?.status ||
+      this.billingStatus?.entitlement?.stored_status ||
+      this.billingStatus?.entitlement?.status ||
+      "active";
     return this.toTitleCase(status.replace(/_/g, " "));
+  }
+
+  getSubscriptionMetaLabel(): string {
+    const subscription = this.billingStatus?.current_subscription;
+    if (!subscription) {
+      return "";
+    }
+    const period =
+      subscription.billing_period === "annual"
+        ? "Annual billing"
+        : subscription.billing_period === "monthly"
+          ? "Monthly billing"
+          : "Billing period pending";
+    const endDate = this.formatBillingDate(subscription.current_period_end);
+    if (subscription.cancel_at_period_end && endDate) {
+      return `${period}. Cancels on ${endDate}.`;
+    }
+    if (endDate && subscription.status === "active") {
+      return `${period}. Renews on ${endDate}.`;
+    }
+    return period;
   }
 
   getAiUsageLabel(): string {
@@ -1140,6 +1169,21 @@ export class ProfileComponent implements OnInit {
 
   private toTitleCase(value: string): string {
     return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  private formatBillingDate(value?: string | null): string {
+    if (!value) {
+      return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(date);
   }
 
   private canGoBack(): boolean {

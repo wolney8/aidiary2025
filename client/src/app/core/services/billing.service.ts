@@ -45,6 +45,16 @@ export interface BillingStatus {
   checkout_tiers: CheckoutTier[];
   checkout_periods?: Partial<Record<CheckoutTier, BillingPeriod[]>>;
   has_billing_customer: boolean;
+  current_subscription?: {
+    provider: "stripe";
+    provider_subscription_id?: string | null;
+    tier: BillingTier;
+    status: string;
+    billing_period?: BillingPeriod | null;
+    current_period_start?: string | null;
+    current_period_end?: string | null;
+    cancel_at_period_end?: boolean;
+  } | null;
   usage?: {
     plan: BillingTier;
     window: "month";

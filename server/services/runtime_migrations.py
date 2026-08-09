@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     provider_subscription_id TEXT,
     tier                     TEXT NOT NULL DEFAULT 'free',
     status                   TEXT NOT NULL DEFAULT 'inactive',
+    billing_period           TEXT,
+    provider_price_id        TEXT,
     current_period_start     TEXT,
     current_period_end       TEXT,
     cancel_at_period_end     INTEGER NOT NULL DEFAULT 0
@@ -147,6 +149,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     UNIQUE(provider, provider_subscription_id)
 )
 """
+
+_SUBSCRIPTION_COLUMNS: dict[str, str] = {
+    'billing_period': 'TEXT',
+    'provider_price_id': 'TEXT',
+}
 
 _ENTITLEMENTS_DDL = """
 CREATE TABLE IF NOT EXISTS entitlements (
@@ -682,6 +689,17 @@ def ensure_billing_tables(
         conn.execute(_BILLING_EVENTS_DDL)
         conn.execute(_USAGE_EVENTS_DDL)
         conn.execute(_BILLING_PLANS_DDL)
+        subscription_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(subscriptions)").fetchall()
+        }
+        for column_name, column_definition in _SUBSCRIPTION_COLUMNS.items():
+            if column_name not in subscription_columns:
+                conn.execute(
+                    f'ALTER TABLE subscriptions ADD COLUMN {column_name} {column_definition}'
+                )
+                if log:
+                    log('Runtime migration added column %s.%s', 'subscriptions', column_name)
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status

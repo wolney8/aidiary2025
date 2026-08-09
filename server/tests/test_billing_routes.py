@@ -353,7 +353,7 @@ def test_checkout_completed_webhook_activates_entitlement(client, monkeypatch):
                 "customer": "cus_123",
                 "subscription": "sub_123",
                 "client_reference_id": "1",
-                "metadata": {"openmynd_user_id": "1", "tier": "plus"},
+                "metadata": {"openmynd_user_id": "1", "tier": "plus", "billing_period": "annual"},
             }
         },
     }
@@ -370,7 +370,7 @@ def test_checkout_completed_webhook_activates_entitlement(client, monkeypatch):
         ).fetchone()
         subscription = conn.execute(
             """
-            SELECT provider_subscription_id, tier, status
+            SELECT provider_subscription_id, tier, status, billing_period
             FROM subscriptions
             WHERE user_id = 1
             """
@@ -378,7 +378,7 @@ def test_checkout_completed_webhook_activates_entitlement(client, monkeypatch):
         event_count = conn.execute("SELECT COUNT(*) FROM billing_events").fetchone()[0]
 
     assert entitlement == ("plus", "stripe", "active")
-    assert subscription == ("sub_123", "plus", "active")
+    assert subscription == ("sub_123", "plus", "active", "annual")
     assert event_count == 1
 
 
@@ -428,7 +428,7 @@ def test_subscription_updated_webhook_maps_price_to_tier(client, monkeypatch):
         ).fetchone()
         subscription = conn.execute(
             """
-            SELECT tier, status, cancel_at_period_end
+            SELECT tier, status, billing_period, provider_price_id, cancel_at_period_end
             FROM subscriptions
             WHERE provider_subscription_id = 'sub_123'
             """
@@ -436,7 +436,66 @@ def test_subscription_updated_webhook_maps_price_to_tier(client, monkeypatch):
 
     assert entitlement[0:3] == ("plus", "stripe", "past_due")
     assert entitlement[3].startswith("2026-09-")
-    assert subscription == ("plus", "past_due", 1)
+    assert subscription == ("plus", "past_due", "monthly", "price_plus", 1)
+
+
+def test_subscription_deleted_webhook_downgrades_resolved_entitlement_to_free(client, monkeypatch):
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    monkeypatch.setenv("STRIPE_PRICE_PLUS_ANNUAL", "price_plus_annual")
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO billing_customers (user_id, provider_customer_id) VALUES (1, 'cus_123')"
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'plus', 'stripe', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'plus', source = 'stripe', status = 'active'
+            """
+        )
+    event = {
+        "id": "evt_subscription_deleted",
+        "type": "customer.subscription.deleted",
+        "livemode": False,
+        "data": {
+            "object": {
+                "id": "sub_cancelled",
+                "object": "subscription",
+                "customer": "cus_123",
+                "status": "canceled",
+                "current_period_start": 1786122000,
+                "current_period_end": 1788800400,
+                "items": {"data": [{"price": {"id": "price_plus_annual"}}]},
+            }
+        },
+    }
+
+    response = _post_webhook(client, event)
+
+    assert response.status_code == 200
+    with sqlite3.connect(db_path) as conn:
+        stored_entitlement = conn.execute(
+            "SELECT tier, source, status FROM entitlements WHERE user_id = 1"
+        ).fetchone()
+        subscription = conn.execute(
+            """
+            SELECT tier, status, billing_period
+            FROM subscriptions
+            WHERE provider_subscription_id = 'sub_cancelled'
+            """
+        ).fetchone()
+
+    assert stored_entitlement == ("plus", "stripe", "cancelled")
+    assert subscription == ("plus", "cancelled", "annual")
+
+    status_response = client.get("/api/billing/status", headers=_headers(client.application))
+    status_body = status_response.get_json()
+    assert status_body["entitlement"]["tier"] == "free"
+    assert status_body["entitlement"]["stored_tier"] == "plus"
+    assert status_body["entitlement"]["stored_status"] == "cancelled"
+    assert status_body["current_subscription"]["status"] == "cancelled"
+    assert status_body["current_subscription"]["billing_period"] == "annual"
 
 
 def test_stripe_webhook_duplicate_delivery_is_idempotent(client, monkeypatch):
