@@ -37,6 +37,7 @@ export interface User {
   chat_enabled?: boolean;
   password_auth_enabled?: boolean;
   onboarding_completed?: boolean;
+  account_status?: "active" | "restricted" | string;
   dailydiary_api_key?: string;
   dreamdiary_api_key?: string;
   chatgpt_daily_diary_coachname?: string;

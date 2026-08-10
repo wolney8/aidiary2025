@@ -234,6 +234,183 @@ def test_administrator_cannot_remove_own_admin_access(client):
     assert response.get_json()["error"] == "You cannot remove your own administrator access."
 
 
+def test_unified_admin_routes_require_administrator_entitlement(client):
+    response = client.get("/api/admin/overview", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
+def test_administrator_can_use_unified_admin_console_routes(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, email, first_name, last_name, display_name
+            )
+            VALUES (2, 'member', 'hash', 'member@example.com', 'Member', 'User', 'Member')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    overview = client.get("/api/admin/overview", headers=_headers(client.application))
+    assert overview.status_code == 200
+    assert overview.get_json()["total_users"] == 2
+
+    users = client.get(
+        "/api/admin/users?search=member",
+        headers=_headers(client.application),
+    )
+    assert users.status_code == 200
+    body = users.get_json()
+    assert body["users"][0]["email"] == "member@example.com"
+    assert "usage" in body["users"][0]
+
+    update = client.put(
+        "/api/admin/users/2/entitlement",
+        headers=_headers(client.application),
+        json={"tier": "complimentary", "status": "active"},
+    )
+    assert update.status_code == 200
+    assert update.get_json()["user"]["entitlement"]["tier"] == "complimentary"
+
+    restrict = client.put(
+        "/api/admin/users/2/access",
+        headers=_headers(client.application),
+        json={"account_status": "restricted"},
+    )
+    assert restrict.status_code == 200
+    assert restrict.get_json()["user"]["account_status"] == "restricted"
+
+    blocked_login = client.post(
+        "/api/login",
+        json={"username": "member", "password": "hash"},
+    )
+    assert blocked_login.status_code == 403
+    assert blocked_login.get_json()["code"] == "account_restricted"
+
+    restore = client.put(
+        "/api/admin/users/2/access",
+        headers=_headers(client.application),
+        json={"account_status": "active"},
+    )
+    assert restore.status_code == 200
+    assert restore.get_json()["user"]["account_status"] == "active"
+
+    plans = client.get("/api/admin/billing/plans", headers=_headers(client.application))
+    assert plans.status_code == 200
+    assert "administrator" in [plan["tier"] for plan in plans.get_json()["plans"]]
+
+
+def test_admin_announcements_target_users_and_track_state(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, email, first_name, last_name, display_name
+            )
+            VALUES (2, 'member', 'hash', 'member@example.com', 'Member', 'User', 'Member')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    create_response = client.post(
+        "/api/admin/announcements",
+        headers=_headers(client.application),
+        json={
+            "title": "Maintenance window",
+            "message": "OpenMynd will be briefly unavailable tonight.",
+            "severity": "warning",
+            "placement": "both",
+            "status": "published",
+            "dismissible": True,
+            "targets": [{"type": "user", "value": "2"}],
+        },
+    )
+    assert create_response.status_code == 201
+    announcement = create_response.get_json()["announcement"]
+
+    admin_active = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application),
+    )
+    assert admin_active.status_code == 200
+    assert admin_active.get_json()["announcements"] == []
+
+    member_active = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert member_active.status_code == 200
+    member_announcements = member_active.get_json()["announcements"]
+    assert member_announcements[0]["title"] == "Maintenance window"
+    assert member_announcements[0]["unread"] is True
+
+    read_response = client.post(
+        f"/api/announcements/{announcement['id']}/read",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert read_response.status_code == 200
+    reread = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert reread.get_json()["announcements"][0]["unread"] is False
+
+    admin_list = client.get(
+        "/api/admin/announcements",
+        headers=_headers(client.application),
+    )
+    assert admin_list.status_code == 200
+    assert admin_list.get_json()["announcements"][0]["read_count"] == 1
+
+    dismiss_response = client.post(
+        f"/api/announcements/{announcement['id']}/dismiss",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert dismiss_response.status_code == 200
+    dismissed = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert dismissed.get_json()["announcements"] == []
+
+
+def test_active_announcements_ignore_invalid_schedule_rows(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO admin_announcements (
+                title, message, severity, placement, status, starts_at, timezone, dismissible
+            )
+            VALUES ('Bad schedule', 'This should not break the feed.', 'info', 'both', 'published', 'not-a-date', 'Europe/London', 1)
+            """
+        )
+
+    response = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["announcements"] == []
+
+
 def test_checkout_requires_auth(client):
     response = client.post("/api/billing/checkout-session", json={"tier": "personal"})
 

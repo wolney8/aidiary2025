@@ -32,7 +32,7 @@ import {
 } from "@angular/animations";
 import { DomSanitizer, SafeHtml } from "@angular/platform-browser";
 import { AuthService } from "../../services/auth.service";
-import { Subject } from "rxjs";
+import { combineLatest, map, Subject, timer } from "rxjs";
 import { filter, takeUntil } from "rxjs/operators";
 import { SearchService } from "../../services/search.service";
 import { Location } from "@angular/common";
@@ -40,8 +40,33 @@ import { ThemeService } from "../../services/theme.service";
 import { ImportJobService } from "../../services/import-job.service";
 import { type AppNotification } from "../../services/import-job.service";
 import { WritingReminderService } from "../../services/writing-reminder.service";
+import {
+  AnnouncementService,
+  PlatformAnnouncement,
+} from "../../services/announcement.service";
+import { BillingService } from "../../services/billing.service";
 
 type SearchFilterKey = "keywords" | "tags" | "people" | "date";
+type TopBarNotification = AppNotification | AnnouncementNotification;
+
+interface AnnouncementNotification {
+  id: string;
+  announcementId: number;
+  kind: "announcement";
+  status: "completed";
+  title: string;
+  message: string;
+  processed: 0;
+  total: 0;
+  percent: 0;
+  unread: boolean;
+  isDelayed: false;
+  createdAt: string;
+  destination: "";
+  actionLabel?: string;
+  dismissible: boolean;
+  severity: PlatformAnnouncement["severity"];
+}
 
 @Component({
   selector: "app-top-bar",
@@ -294,7 +319,7 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           aria-haspopup="dialog"
           [attr.aria-expanded]="showNotifications()"
         >
-          <ng-container *ngIf="notifications$ | async as notifications">
+          <ng-container *ngIf="combinedNotifications$ | async as notifications">
             <mat-icon>{{ hasRunningImport(notifications) ? "notifications_active" : "notifications_none" }}</mat-icon>
             <span
               *ngIf="getUnreadCount(notifications) > 0"
@@ -351,6 +376,10 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
           <mat-icon aria-hidden="true">settings</mat-icon>
           <span>Settings</span>
         </button>
+        <button *ngIf="isAdmin()" mat-menu-item routerLink="/admin">
+          <mat-icon aria-hidden="true">admin_panel_settings</mat-icon>
+          <span>Admin</span>
+        </button>
         <button mat-menu-item (click)="logout()">
           <mat-icon aria-hidden="true">logout</mat-icon>
           <span>Logout</span>
@@ -392,15 +421,16 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
               (change)="showUnreadOnly.set($event.checked)"
             >Only show unread</mat-slide-toggle>
           </div>
-          <ng-container *ngIf="notifications$ | async as notifications">
+          <ng-container *ngIf="combinedNotifications$ | async as notifications">
             <div
               *ngFor="let notification of getVisibleNotifications(notifications)"
               class="notification-item"
+              [ngClass]="getNotificationToneClass(notification)"
               [class.notification-item--unread]="notification.unread"
               role="article"
               [attr.aria-label]="notification.title + (notification.unread ? ', unread' : '')"
               data-testid="notification-item"
-              (click)="markNotificationRead(notification.id)"
+              (click)="markNotificationRead(notification)"
             >
               <span
                 *ngIf="notification.unread"
@@ -431,12 +461,13 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
                   *ngIf="notification.unread"
                   mat-button
                   type="button"
-                  (click)="$event.stopPropagation(); markNotificationRead(notification.id)"
+                  (click)="$event.stopPropagation(); markNotificationRead(notification)"
                   [attr.aria-label]="'Mark ' + notification.title + ' as read'"
                 >
                   Mark read
                 </button>
                 <button
+                  *ngIf="notification.kind !== 'announcement'"
                   mat-stroked-button
                   type="button"
                   (click)="$event.stopPropagation(); openNotificationDestination(notification)"
@@ -444,10 +475,10 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
                   {{ notification.actionLabel || "Open" }}
                 </button>
                 <button
-                  *ngIf="notification.status === 'completed' || notification.status === 'failed'"
+                  *ngIf="canDismissNotification(notification)"
                   mat-button
                   type="button"
-                  (click)="$event.stopPropagation(); dismissImportNotification(notification.id)"
+                  (click)="$event.stopPropagation(); dismissNotification(notification)"
                 >
                   Dismiss
                 </button>
@@ -772,6 +803,22 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       .notification-item--unread {
         background: var(--colour-info-bg);
       }
+      .notification-item--info {
+        border-color: color-mix(in srgb, var(--colour-primary) 42%, var(--colour-border));
+        background: var(--colour-info-bg);
+      }
+      .notification-item--success {
+        border-color: color-mix(in srgb, var(--colour-success-text) 48%, var(--colour-border));
+        background: var(--colour-success-bg);
+      }
+      .notification-item--warning {
+        border-color: color-mix(in srgb, var(--colour-warning-text) 52%, var(--colour-border));
+        background: var(--colour-warning-bg);
+      }
+      .notification-item--critical {
+        border-color: color-mix(in srgb, var(--colour-danger-text) 56%, var(--colour-border));
+        background: var(--colour-danger-bg);
+      }
       .notification-unread-dot {
         position: absolute;
         top: var(--spacing-sm);
@@ -799,6 +846,31 @@ type SearchFilterKey = "keywords" | "tags" | "people" | "date";
       }
       .notification-item__actions button {
         min-width: 0;
+        min-height: 36px;
+        padding: 0 var(--spacing-sm);
+        border-radius: var(--radius-pill);
+        color: var(--colour-text-primary) !important;
+        background: color-mix(in srgb, currentColor 10%, transparent) !important;
+      }
+      .notification-item__actions button .mat-icon,
+      .notification-item__actions button .mdc-button__label {
+        color: inherit !important;
+      }
+      .notification-item--info .notification-item__actions button {
+        color: var(--colour-primary) !important;
+      }
+      .notification-item--success .notification-item__actions button {
+        color: var(--colour-success-text) !important;
+      }
+      .notification-item--warning .notification-item__actions button {
+        color: var(--colour-warning-text) !important;
+      }
+      .notification-item--critical .notification-item__actions button {
+        color: var(--colour-danger-text) !important;
+      }
+      .notification-item__actions button:hover,
+      .notification-item__actions button:focus-visible {
+        background: color-mix(in srgb, currentColor 16%, transparent) !important;
       }
       .notification-panel__empty {
         margin: var(--spacing-md) 0 0;
@@ -1132,6 +1204,8 @@ export class TopBarComponent implements OnInit, OnDestroy {
   private sanitizer = inject(DomSanitizer);
   private readonly themeService = inject(ThemeService);
   private readonly importJobService = inject(ImportJobService);
+  private readonly announcementService = inject(AnnouncementService);
+  private readonly billingService = inject(BillingService);
   private readonly writingReminderService = inject(WritingReminderService);
   private destroy$ = new Subject<void>();
 
@@ -1152,8 +1226,23 @@ export class TopBarComponent implements OnInit, OnDestroy {
   );
   readonly importJob$ = this.importJobService.job$;
   readonly notifications$ = this.importJobService.notifications$;
+  readonly combinedNotifications$ = combineLatest([
+    this.importJobService.notifications$,
+    this.announcementService.announcements$,
+  ]).pipe(
+    map(([notifications, announcements]) => [
+      ...announcements
+        .filter(
+          (announcement) =>
+            announcement.placement === "bell" || announcement.placement === "both",
+        )
+        .map((announcement) => this.toAnnouncementNotification(announcement)),
+      ...notifications,
+    ]),
+  );
   readonly showUnreadOnly = signal(false);
   readonly showNotifications = signal(false);
+  readonly isAdmin = signal(false);
 
   // Track search loading state
   isSearching = false;
@@ -1164,6 +1253,15 @@ export class TopBarComponent implements OnInit, OnDestroy {
 
   constructor() {
     this.writingReminderService.start();
+    this.billingService.getStatus().subscribe({
+      next: (status) => this.isAdmin.set(Boolean(status.is_admin)),
+      error: () => this.isAdmin.set(false),
+    });
+    timer(0, 60_000)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.announcementService.refresh().subscribe({ error: () => undefined });
+      });
 
     // Clear search when navigating away from entries
     this.router.events
@@ -1213,41 +1311,62 @@ export class TopBarComponent implements OnInit, OnDestroy {
     this.closeNotifications();
   }
 
-  openNotificationDestination(notification: AppNotification): void {
-    this.importJobService.markRead(notification.id);
+  openNotificationDestination(notification: TopBarNotification): void {
+    this.markNotificationRead(notification);
     this.closeNotifications();
+    if (notification.kind === "announcement") {
+      return;
+    }
     void this.router.navigateByUrl(notification.destination || "/entries");
   }
 
-  dismissImportNotification(notificationId: string): void {
-    this.importJobService.dismiss(notificationId);
+  dismissNotification(notification: TopBarNotification): void {
+    if (notification.kind === "announcement") {
+      this.announcementService.dismiss(notification.announcementId).subscribe({
+        error: () => this.announcementService.refresh().subscribe({ error: () => undefined }),
+      });
+      return;
+    }
+    this.importJobService.dismiss(notification.id);
   }
 
-  markNotificationRead(notificationId: string): void {
-    this.importJobService.markRead(notificationId);
+  markNotificationRead(notification: TopBarNotification): void {
+    if (notification.kind === "announcement") {
+      this.announcementService.markRead(notification.announcementId).subscribe({
+        error: () => this.announcementService.refresh().subscribe({ error: () => undefined }),
+      });
+      return;
+    }
+    this.importJobService.markRead(notification.id);
   }
 
   clearNotifications(): void {
     this.importJobService.clearCompleted();
   }
 
-  getUnreadCount(notifications: AppNotification[]): number {
+  getUnreadCount(notifications: TopBarNotification[]): number {
     return notifications.filter((notification) => notification.unread).length;
   }
 
-  getUnreadBadgeLabel(notifications: AppNotification[]): string {
+  getUnreadBadgeLabel(notifications: TopBarNotification[]): string {
     const count = this.getUnreadCount(notifications);
     return count > 9 ? "9+" : String(count);
   }
 
-  hasRunningImport(notifications: AppNotification[]): boolean {
+  hasRunningImport(notifications: TopBarNotification[]): boolean {
     return notifications.some(
       (notification) =>
         notification.status === "queued" || notification.status === "running",
     );
   }
 
-  getNotificationIcon(notification: AppNotification): string {
+  getNotificationIcon(notification: TopBarNotification): string {
+    if (notification.kind === "announcement") {
+      if (notification.severity === "critical") return "priority_high";
+      if (notification.severity === "warning") return "warning";
+      if (notification.severity === "success") return "check_circle";
+      return "campaign";
+    }
     if (notification.kind === "writing_reminder") {
       return "edit_note";
     }
@@ -1260,12 +1379,48 @@ export class TopBarComponent implements OnInit, OnDestroy {
     return "sync";
   }
 
+  getNotificationToneClass(notification: TopBarNotification): string {
+    if (notification.kind !== "announcement") {
+      return "";
+    }
+    return `notification-item--${notification.severity || "info"}`;
+  }
+
+  canDismissNotification(notification: TopBarNotification): boolean {
+    if (notification.kind === "announcement") {
+      return notification.dismissible;
+    }
+    return notification.status === "completed" || notification.status === "failed";
+  }
+
   getVisibleNotifications(
-    notifications: AppNotification[],
-  ): AppNotification[] {
+    notifications: TopBarNotification[],
+  ): TopBarNotification[] {
     return this.showUnreadOnly()
       ? notifications.filter((notification) => notification.unread)
       : notifications;
+  }
+
+  private toAnnouncementNotification(
+    announcement: PlatformAnnouncement,
+  ): AnnouncementNotification {
+    return {
+      id: `announcement:${announcement.id}`,
+      announcementId: announcement.id,
+      kind: "announcement",
+      status: "completed",
+      title: announcement.title,
+      message: announcement.message,
+      processed: 0,
+      total: 0,
+      percent: 0,
+      unread: announcement.unread,
+      isDelayed: false,
+      createdAt: announcement.starts_at || new Date().toISOString(),
+      destination: "",
+      dismissible: announcement.dismissible,
+      severity: announcement.severity,
+    };
   }
 
   getAccountDisplayName(user: {

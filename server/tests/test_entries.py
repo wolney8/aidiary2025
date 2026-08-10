@@ -320,6 +320,22 @@ def get_auth_token(client):
     return data['token']
 
 
+def grant_ai_media_access(user_id: int = 1) -> None:
+    """Give a test user enough quota to exercise AI media behaviours."""
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (?, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET
+                tier = 'administrator',
+                source = 'manual',
+                status = 'active'
+            """,
+            (user_id,),
+        )
+
+
 def create_test_image_bytes(
     size: tuple[int, int] = (1200, 900),
     color: tuple[int, int, int] = (64, 128, 196),
@@ -2365,6 +2381,7 @@ def test_update_dream_entry_rejects_future_entry_date(client):
 @patch('routes.entries.OpenAIService')
 def test_generate_dream_image_updates_entry(mock_service_cls, client):
     token = get_auth_token(client)
+    grant_ai_media_access()
 
     create_resp = client.post(
         '/api/dreams',
@@ -2425,6 +2442,7 @@ def test_generate_dream_image_updates_entry(mock_service_cls, client):
 @patch('routes.entries.OpenAIService')
 def test_generate_dream_image_uses_override_without_persisting_it(mock_service_cls, client):
     token = get_auth_token(client)
+    grant_ai_media_access()
 
     create_resp = client.post(
         '/api/dreams',
@@ -2662,6 +2680,7 @@ def test_delete_dream_image_clears_only_image(client):
 @patch('routes.entries.OpenAIService')
 def test_generate_daily_image_derives_prompt_and_stores_image(mock_service_cls, client):
     token = get_auth_token(client)
+    grant_ai_media_access()
 
     create_resp = client.post(
         '/api/daily',
@@ -2724,6 +2743,7 @@ def test_generate_daily_image_derives_prompt_and_stores_image(mock_service_cls, 
 @patch('routes.entries.OpenAIService')
 def test_generate_daily_image_override_does_not_persist_it(mock_service_cls, client):
     token = get_auth_token(client)
+    grant_ai_media_access()
 
     create_resp = client.post(
         '/api/daily',
@@ -3261,6 +3281,7 @@ def test_attachment_download_uses_attachment_headers(client):
 @patch('routes.entries.OpenAIService')
 def test_transcribe_dream_audio_attachment_persists_derived_text(mock_openai_service_cls, client):
     token = get_auth_token(client)
+    grant_ai_media_access()
 
     create_resp = client.post(
         '/api/dreams',

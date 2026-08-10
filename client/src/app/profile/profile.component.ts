@@ -300,12 +300,12 @@ interface AccountUsageCard {
                 <a
                   *ngIf="billingStatus?.is_admin"
                   mat-stroked-button
-                  routerLink="/admin/plans"
+                  routerLink="/admin"
                   class="billing-action"
                   data-testid="account-admin-plans"
                 >
                   <mat-icon aria-hidden="true">admin_panel_settings</mat-icon>
-                  <span class="billing-action-label">Billing console</span>
+                  <span class="billing-action-label">Admin console</span>
                 </a>
               </div>
             </div>

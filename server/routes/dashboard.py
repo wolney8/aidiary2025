@@ -428,7 +428,7 @@ def _build_streak(
         date_keys.extend(_date_key(row.get("record_date")) for row in cbt_rows)
     unique_dates = sorted({key for key in date_keys if key})
     weekly_goal = min(max(_safe_int(settings.get("writing_rhythm_weekly_goal"), 4), 1), 21)
-    week_start = today - timedelta(days=today.weekday())
+    week_start = today - timedelta(days=6)
     month_start = today.replace(day=1)
     week_count = sum(1 for key in date_keys if key and key >= week_start.isoformat())
     month_count = sum(1 for key in date_keys if key and key >= month_start.isoformat())

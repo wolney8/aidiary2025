@@ -19,11 +19,11 @@ describe("authGuard", () => {
   let authServiceMock: {
     isAuthenticated: () => boolean;
     consumeSessionExpiredFlag: () => boolean;
-    getCurrentUser: () => { onboarding_completed?: boolean } | null;
+    getCurrentUser: () => { onboarding_completed?: boolean; account_status?: string } | null;
     clearLocalSession: () => void;
   };
   let profileServiceMock: {
-    getProfile: () => Observable<{ onboarding_completed: boolean }>;
+    getProfile: () => Observable<{ onboarding_completed: boolean; account_status?: string }>;
   };
   let sessionExpired = false;
 
@@ -162,5 +162,39 @@ describe("authGuard", () => {
     expect(router.serializeUrl(resolved as UrlTree)).toBe(
       "/onboarding?returnUrl=%2Fdashboard",
     );
+  });
+
+  it("redirects restricted users to the limited account page", async () => {
+    isAuthenticated = true;
+    profileServiceMock.getProfile = () =>
+      of({ onboarding_completed: true, account_status: "restricted" });
+
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard(
+        {} as ActivatedRouteSnapshot,
+        { url: "/dashboard" } as RouterStateSnapshot,
+      ),
+    );
+
+    const resolved = await resolveGuardResult(result);
+    expect(resolved instanceof UrlTree).toBeTrue();
+    expect(router.serializeUrl(resolved as UrlTree)).toBe("/account-restricted");
+  });
+
+  it("allows restricted users to access the limited account page", async () => {
+    isAuthenticated = true;
+    authServiceMock.getCurrentUser = () => ({
+      onboarding_completed: true,
+      account_status: "restricted",
+    });
+
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard(
+        {} as ActivatedRouteSnapshot,
+        { url: "/account-restricted" } as RouterStateSnapshot,
+      ),
+    );
+
+    await expectAsync(resolveGuardResult(result)).toBeResolvedTo(true);
   });
 });

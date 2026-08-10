@@ -19,6 +19,7 @@ import { environment } from "../environments/environment";
 import { environment as environmentProd } from "../environments/environment.prod";
 import { ChatCompanionComponent } from "./shared/components/chat-companion/chat-companion.component";
 import { CookieConsentComponent } from "./shared/components/cookie-consent/cookie-consent.component";
+import { AnnouncementBannerComponent } from "./shared/components/announcement-banner/announcement-banner.component";
 import { APP_VERSION } from "./version";
 import { User } from "./core/models/user.model";
 
@@ -34,6 +35,7 @@ import { User } from "./core/models/user.model";
     MatSidenavModule,
     ChatCompanionComponent,
     CookieConsentComponent,
+    AnnouncementBannerComponent,
   ],
   template: `
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -54,6 +56,9 @@ import { User } from "./core/models/user.model";
             [onboardingMode]="isOnboardingRoute"
             (toggleSidenav)="sidenav.toggle()"
           ></app-top-bar>
+          <app-announcement-banner
+            *ngIf="!isOnboardingRoute"
+          ></app-announcement-banner>
           <main id="main-content" class="main-content" tabindex="-1">
             <router-outlet></router-outlet>
           </main>
@@ -288,6 +293,14 @@ export class AppComponent {
     return /^\/dashboard(?:\/|\?|#|$)/.test(url);
   }
 
+  private isAdminRoute(url: string): boolean {
+    return /^\/admin(?:\/|\?|#|$)/.test(url);
+  }
+
+  private isRestrictedRoute(url: string): boolean {
+    return /^\/account-restricted(?:\/|\?|#|$)/.test(url);
+  }
+
   private isOnboardingUrl(url: string): boolean {
     return /^\/onboarding(?:\/|\?|#|$)/.test(url);
   }
@@ -298,7 +311,9 @@ export class AppComponent {
       this.isChatEnabled(this.currentUser) &&
       !this.isOnboardingUrl(url) &&
       !this.isCbtRoute(url) &&
-      !this.isDashboardRoute(url)
+      !this.isDashboardRoute(url) &&
+      !this.isAdminRoute(url) &&
+      !this.isRestrictedRoute(url)
     );
   }
 

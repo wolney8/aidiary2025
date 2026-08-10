@@ -35,6 +35,13 @@ function requireAuthenticated(
   if (authService.isAuthenticated()) {
     const currentUser = authService.getCurrentUser();
     if (
+      currentUser?.account_status === "restricted" &&
+      returnUrl.split("?")[0] !== "/account-restricted"
+    ) {
+      return router.createUrlTree(["/account-restricted"]);
+    }
+
+    if (
       currentUser?.onboarding_completed === false &&
       returnUrl.split("?")[0] !== "/onboarding"
     ) {
@@ -49,6 +56,12 @@ function requireAuthenticated(
 
     return profileService.getProfile().pipe(
       map((profile) => {
+        if (
+          profile.account_status === "restricted" &&
+          returnUrl.split("?")[0] !== "/account-restricted"
+        ) {
+          return router.createUrlTree(["/account-restricted"]);
+        }
         if (
           profile.onboarding_completed === false &&
           returnUrl.split("?")[0] !== "/onboarding"
