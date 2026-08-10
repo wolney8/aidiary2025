@@ -82,7 +82,24 @@ describe("ChatCompanionComponent", () => {
     expect(panel.getAttribute("aria-label")).toBe("Chat with Sage");
     expect(chatService.getHistory).toHaveBeenCalledWith("conversation-1");
     expect(chatService.getContextStatus).toHaveBeenCalled();
-    expect(component.contextSummary()).toBe("May use: Diary entries (2)");
+    expect(component.contextSummary()).toBe("May reference: Diary entries (2)");
+  });
+
+  it("keeps a visible close control and closes back to the launcher", () => {
+    component.open();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const closeButton = host.querySelector<HTMLButtonElement>(
+      '[data-testid="chat-close-button"]',
+    );
+    expect(closeButton).not.toBeNull();
+
+    closeButton?.click();
+    fixture.detectChanges();
+
+    expect(component.isOpen()).toBeFalse();
+    expect(host.querySelector('[data-testid="chat-open-button"]')).not.toBeNull();
   });
 
   it("exposes stable hooks for the trigger and primary chat controls", () => {

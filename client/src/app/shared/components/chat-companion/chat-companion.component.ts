@@ -1,4 +1,3 @@
-import { A11yModule } from "@angular/cdk/a11y";
 import { CommonModule } from "@angular/common";
 import {
   Component,
@@ -24,7 +23,6 @@ import { ChatService } from "../../../core/services/chat.service";
   selector: "app-chat-companion",
   standalone: true,
   imports: [
-    A11yModule,
     CommonModule,
     FormsModule,
     MatButtonModule,
@@ -39,8 +37,6 @@ import { ChatService } from "../../../core/services/chat.service";
       role="dialog"
       aria-modal="false"
       [attr.aria-label]="'Chat with ' + coachName()"
-      cdkTrapFocus
-      [cdkTrapFocusAutoCapture]="true"
       (keydown.escape)="close()"
     >
       <header class="chat-header" data-testid="chat-header">
@@ -55,6 +51,7 @@ import { ChatService } from "../../../core/services/chat.service";
         </div>
         <div class="chat-header-actions">
           <button
+            *ngIf="messages().length > 0"
             mat-icon-button
             type="button"
             matTooltip="Clear conversation"
@@ -198,12 +195,14 @@ import { ChatService } from "../../../core/services/chat.service";
       :host {
         position: relative;
         z-index: 900;
+        --chat-edge-offset: 1rem;
+        --chat-panel-width: min(26.5rem, calc(100dvw - (var(--chat-edge-offset) * 2)));
       }
 
       .chat-fab {
         position: fixed;
-        right: 1.5rem;
-        bottom: 1.5rem;
+        right: var(--chat-edge-offset);
+        bottom: var(--chat-edge-offset);
         z-index: 900;
         background: var(--colour-primary);
         color: var(--colour-on-primary);
@@ -212,13 +211,16 @@ import { ChatService } from "../../../core/services/chat.service";
 
       .chat-panel {
         position: fixed;
-        right: 1.5rem;
-        bottom: 1.5rem;
+        right: var(--chat-edge-offset);
+        bottom: var(--chat-edge-offset);
         z-index: 900;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr) auto auto auto;
-        width: min(30rem, calc(100vw - 3rem));
-        height: min(35rem, calc(100vh - 6rem));
+        width: var(--chat-panel-width);
+        max-width: calc(100dvw - (var(--chat-edge-offset) * 2));
+        height: min(38rem, calc(100dvh - (var(--chat-edge-offset) * 2)));
+        max-height: calc(100dvh - (var(--chat-edge-offset) * 2));
+        box-sizing: border-box;
         overflow: hidden;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
@@ -231,8 +233,9 @@ import { ChatService } from "../../../core/services/chat.service";
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: var(--spacing-sm);
-        padding: 0.85rem 0.75rem 0.85rem 1rem;
+        gap: var(--spacing-md);
+        min-width: 0;
+        padding: 0.75rem;
         border-bottom: 1px solid var(--colour-border);
         background: var(--colour-surface-muted);
       }
@@ -241,6 +244,7 @@ import { ChatService } from "../../../core/services/chat.service";
       .chat-header-actions {
         display: flex;
         align-items: center;
+        gap: var(--spacing-xs);
       }
 
       .chat-heading {
@@ -250,6 +254,20 @@ import { ChatService } from "../../../core/services/chat.service";
 
       .chat-header-actions {
         flex: 0 0 auto;
+      }
+
+      .chat-header-actions button {
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: 0 0 2.5rem;
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+        color: var(--colour-text-primary);
+      }
+
+      .chat-header-actions button:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
       }
 
       .coach-icon {
@@ -478,9 +496,11 @@ import { ChatService } from "../../../core/services/chat.service";
       .chat-composer-meta {
         display: flex;
         justify-content: space-between;
+        align-items: center;
         gap: 0.75rem;
         padding: 0 1rem 0.8rem;
         background: var(--colour-surface-elevated);
+        min-width: 0;
       }
 
       .chat-composer-meta span:first-child {
@@ -520,17 +540,14 @@ import { ChatService } from "../../../core/services/chat.service";
       }
 
       @media (max-width: 599px) {
-        .chat-panel {
-          right: 0.75rem;
-          bottom: 0.75rem;
-          left: 0.75rem;
-          width: auto;
-          height: min(38rem, calc(100dvh - 1.5rem));
+        :host {
+          --chat-edge-offset: 0.75rem;
         }
 
-        .chat-fab {
-          right: 1rem;
-          bottom: 1rem;
+        .chat-panel {
+          left: var(--chat-edge-offset);
+          width: auto;
+          height: min(38rem, calc(100dvh - (var(--chat-edge-offset) * 2)));
         }
 
         .message-bubble {
@@ -574,12 +591,14 @@ export class ChatCompanionComponent {
   readonly contextSummary = computed(() => {
     const status = this.contextStatus();
     if (!status) return "Checking context settings…";
-    if (!status.history_enabled) return "Prior-entry memory is off.";
+    if (!status.history_enabled) {
+      return "Past-entry references are off in Customisation.";
+    }
     const activeSources = status.sources
       .filter((source) => source.enabled && source.count > 0)
       .map((source) => `${source.label} (${source.count})`);
     if (activeSources.length === 0) return "No prior diary context available yet.";
-    return `May use: ${activeSources.join(", ")}`;
+    return `May reference: ${activeSources.join(", ")}`;
   });
   readonly coachName = computed(() => {
     const user = this.authService.getCurrentUser();
