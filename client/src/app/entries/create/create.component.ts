@@ -2312,10 +2312,36 @@ export class CreateComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (analysisWarning === "ai-upgrade-required") {
+      const shouldSeePlans = await this.showSavedEntryUpgradeDialog();
+      if (shouldSeePlans) {
+        this.isSaving = false;
+        this.thoughtRecordAfterSave = null;
+        this.resetForm();
+        void this.router.navigate(["/plans"], {
+          queryParams: {
+            returnUrl: `/entries/${entryId}`,
+            entryType,
+          },
+        });
+        return;
+      }
+    }
+
     this.finishNavigation(entryId, {
       analysisWarning,
       attachmentWarning,
       showAttachments: shouldRevealAttachments,
+    });
+  }
+
+  private showSavedEntryUpgradeDialog(): Promise<boolean> {
+    return this.appDialog.confirm({
+      title: "Entry saved. AI response needs a higher plan",
+      message: "Your entry was saved, but your current plan has reached its AI response allowance for this month.",
+      confirmText: "See plans",
+      cancelText: "View entry",
+      variant: "info",
     });
   }
 
