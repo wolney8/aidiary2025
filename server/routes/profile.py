@@ -460,6 +460,7 @@ def _select_profile(conn, user_id: int):
                writing_reminder_silence_days, writing_reminder_entry_types,
                writing_rhythm_progress_enabled, writing_rhythm_weekly_goal,
                chat_enabled, password_auth_enabled, onboarding_completed,
+               {('account_status' if 'account_status' in _database_adapter().table_columns(conn, 'users') else "'active'")} AS account_status,
                {auth_provider_select} AS auth_provider,
                profile_picture_storage_key
         FROM users WHERE users.id = ?

@@ -161,6 +161,15 @@ export class AuthService {
     });
   }
 
+  handleAccountRestricted(): void {
+    if (this.router.url.split("?")[0] === "/account-restricted") {
+      return;
+    }
+    this.router.navigate(["/account-restricted"], {
+      replaceUrl: true,
+    });
+  }
+
   private clearSession(): void {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.legacyTokenKey);

@@ -8,6 +8,8 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from services.billing_entitlements import (
+    VALID_STATUSES,
+    VALID_TIERS,
     record_billing_event,
     resolve_user_entitlement,
     upsert_user_entitlement,
@@ -57,6 +59,23 @@ def _row_get(row, key: str):
         return row[key]
     except (KeyError, TypeError, IndexError):
         return getattr(row, key, None)
+
+
+def _table_columns(conn, table_name: str) -> set[str]:
+    if _database_provider() == SQLITE_PROVIDER:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {str(_row_get(row, "name") or row[1]) for row in rows}
+    rows = conn.execute(
+        _sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = ?
+            """
+        ),
+        (table_name,),
+    ).fetchall()
+    return {str(_row_get(row, "column_name") or row[0]) for row in rows}
 
 
 def _iso_from_epoch(value) -> str | None:
@@ -113,6 +132,49 @@ def _get_subscription_by_provider_id(conn, subscription_id: str):
         ),
         (subscription_id,),
     ).fetchone()
+
+
+def _get_current_subscription_for_user(conn, user_id: int) -> dict[str, object] | None:
+    row = conn.execute(
+        _sql(
+            """
+            SELECT provider_subscription_id,
+                   tier,
+                   status,
+                   billing_period,
+                   current_period_start,
+                   current_period_end,
+                   cancel_at_period_end,
+                   updated_at
+            FROM subscriptions
+            WHERE user_id = ? AND provider = 'stripe'
+            ORDER BY
+                CASE status
+                    WHEN 'active' THEN 0
+                    WHEN 'past_due' THEN 1
+                    WHEN 'cancelled' THEN 2
+                    WHEN 'expired' THEN 3
+                    ELSE 4
+                END,
+                updated_at DESC,
+                id DESC
+            LIMIT 1
+            """
+        ),
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "provider": "stripe",
+        "provider_subscription_id": _row_get(row, "provider_subscription_id"),
+        "tier": _row_get(row, "tier"),
+        "status": _row_get(row, "status"),
+        "billing_period": _row_get(row, "billing_period"),
+        "current_period_start": _row_get(row, "current_period_start"),
+        "current_period_end": _row_get(row, "current_period_end"),
+        "cancel_at_period_end": bool(_row_get(row, "cancel_at_period_end")),
+    }
 
 
 def _user_exists(conn, user_id: int) -> bool:
@@ -186,6 +248,49 @@ def _subscription_tier_from_object(subscription: dict[str, object]) -> str:
     return "free"
 
 
+def _subscription_item_price(subscription: dict[str, object]) -> dict[str, object]:
+    items = subscription.get("items") if isinstance(subscription.get("items"), dict) else {}
+    item_rows = items.get("data") if isinstance(items.get("data"), list) else []
+    for item in item_rows:
+        if not isinstance(item, dict):
+            continue
+        price = item.get("price") if isinstance(item.get("price"), dict) else {}
+        if price:
+            return price
+    return {}
+
+
+def _subscription_price_id_from_object(subscription: dict[str, object]) -> str:
+    price = _subscription_item_price(subscription)
+    return str(price.get("id") or "").strip()
+
+
+def _subscription_billing_period_from_object(subscription: dict[str, object]) -> str | None:
+    metadata = subscription.get("metadata") if isinstance(subscription.get("metadata"), dict) else {}
+    metadata_period = str((metadata or {}).get("billing_period") or "").strip().lower()
+    if metadata_period in {"monthly", "annual"}:
+        return metadata_period
+
+    price_id = _subscription_price_id_from_object(subscription)
+    configured_prices = load_stripe_billing_config().price_ids
+    for configured_key, configured_price_id in configured_prices.items():
+        if not configured_price_id or configured_price_id != price_id:
+            continue
+        if configured_key.endswith("_annual"):
+            return "annual"
+        if configured_key.endswith("_monthly") or configured_key in {"personal", "plus"}:
+            return "monthly"
+
+    price = _subscription_item_price(subscription)
+    recurring = price.get("recurring") if isinstance(price.get("recurring"), dict) else {}
+    interval = str(recurring.get("interval") or "").strip().lower()
+    if interval == "year":
+        return "annual"
+    if interval == "month":
+        return "monthly"
+    return None
+
+
 def _map_stripe_subscription_status(status: str) -> str:
     normalized = (status or "").strip().lower()
     if normalized in {"active", "trialing"}:
@@ -211,6 +316,8 @@ def _upsert_subscription_from_stripe(
 
     tier = _subscription_tier_from_object(subscription)
     status = _map_stripe_subscription_status(str(subscription.get("status") or ""))
+    billing_period = _subscription_billing_period_from_object(subscription)
+    provider_price_id = _subscription_price_id_from_object(subscription) or None
     current_period_start = _iso_from_epoch(subscription.get("current_period_start"))
     current_period_end = _iso_from_epoch(subscription.get("current_period_end"))
     cancel_at_period_end = 1 if bool(subscription.get("cancel_at_period_end")) else 0
@@ -223,15 +330,19 @@ def _upsert_subscription_from_stripe(
                 provider_subscription_id,
                 tier,
                 status,
+                billing_period,
+                provider_price_id,
                 current_period_start,
                 current_period_end,
                 cancel_at_period_end
             )
-            VALUES (?, 'stripe', ?, ?, ?, ?, ?, ?)
+            VALUES (?, 'stripe', ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(provider, provider_subscription_id) DO UPDATE SET
                 user_id = excluded.user_id,
                 tier = excluded.tier,
                 status = excluded.status,
+                billing_period = excluded.billing_period,
+                provider_price_id = excluded.provider_price_id,
                 current_period_start = excluded.current_period_start,
                 current_period_end = excluded.current_period_end,
                 cancel_at_period_end = excluded.cancel_at_period_end,
@@ -243,6 +354,8 @@ def _upsert_subscription_from_stripe(
             subscription_id,
             tier,
             status,
+            billing_period,
+            provider_price_id,
             current_period_start,
             current_period_end,
             cancel_at_period_end,
@@ -260,6 +373,7 @@ def _upsert_subscription_from_stripe(
         "subscription_id": subscription_id,
         "tier": tier,
         "status": status,
+        "billing_period": billing_period,
         "entitlement": entitlement,
     }
 
@@ -294,6 +408,9 @@ def _handle_checkout_completed(conn, event: dict[str, object]) -> dict[str, obje
     tier = str((metadata or {}).get("tier") or "").strip().lower()
     if tier not in {"personal", "plus"}:
         tier = "free"
+    billing_period = str((metadata or {}).get("billing_period") or "").strip().lower()
+    if billing_period not in {"monthly", "annual"}:
+        billing_period = None
 
     subscription_id = str(session.get("subscription") or "").strip()
     if subscription_id:
@@ -301,17 +418,18 @@ def _handle_checkout_completed(conn, event: dict[str, object]) -> dict[str, obje
             _sql(
                 """
                 INSERT INTO subscriptions (
-                    user_id, provider, provider_subscription_id, tier, status
+                    user_id, provider, provider_subscription_id, tier, status, billing_period
                 )
-                VALUES (?, 'stripe', ?, ?, 'active')
+                VALUES (?, 'stripe', ?, ?, 'active', ?)
                 ON CONFLICT(provider, provider_subscription_id) DO UPDATE SET
                     user_id = excluded.user_id,
                     tier = excluded.tier,
                     status = excluded.status,
+                    billing_period = excluded.billing_period,
                     updated_at = CURRENT_TIMESTAMP
                 """
             ),
-            (user_id, subscription_id, tier),
+            (user_id, subscription_id, tier, billing_period),
         )
     entitlement = upsert_user_entitlement(
         conn,
@@ -325,6 +443,7 @@ def _handle_checkout_completed(conn, event: dict[str, object]) -> dict[str, obje
         "customer_id": customer_id,
         "subscription_id": subscription_id,
         "tier": tier,
+        "billing_period": billing_period,
         "status": "active",
         "entitlement": entitlement,
     }
@@ -466,6 +585,7 @@ def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
         "checkout_tiers": configured_checkout_tiers(config),
         "checkout_periods": configured_checkout_periods(config),
         "has_billing_customer": customer is not None,
+        "current_subscription": _get_current_subscription_for_user(conn, user_id),
         "usage": get_user_usage_summary(conn, user_id),
         "plans": list_plan_catalogue(conn, include_internal=False),
         "is_admin": entitlement.get("tier") == "administrator",
@@ -475,6 +595,54 @@ def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
 def _require_admin(conn, user_id: int) -> tuple[bool, dict[str, object]]:
     entitlement = resolve_user_entitlement(conn, user_id)
     return entitlement.get("tier") == "administrator", entitlement
+
+
+def _serialise_admin_user(row, entitlement: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": int(_row_get(row, "id")),
+        "username": _row_get(row, "username") or "",
+        "email": _row_get(row, "email") or "",
+        "display_name": _row_get(row, "display_name") or "",
+        "first_name": _row_get(row, "first_name") or "",
+        "last_name": _row_get(row, "last_name") or "",
+        "registered_at": _row_get(row, "registered_at"),
+        "entitlement": entitlement,
+    }
+
+
+def _list_admin_users(conn, *, search: str = "", limit: int = 40) -> list[dict[str, object]]:
+    user_columns = _table_columns(conn, "users")
+    registered_expr = "registered_at" if "registered_at" in user_columns else "NULL AS registered_at"
+    search_text = search.strip().lower()
+    params: list[object] = []
+    where_clause = ""
+    if search_text:
+        like_value = f"%{search_text}%"
+        where_clause = """
+        WHERE lower(COALESCE(username, '')) LIKE ?
+           OR lower(COALESCE(email, '')) LIKE ?
+           OR lower(COALESCE(display_name, '')) LIKE ?
+           OR lower(COALESCE(first_name, '')) LIKE ?
+           OR lower(COALESCE(last_name, '')) LIKE ?
+        """
+        params.extend([like_value] * 5)
+    params.append(max(1, min(int(limit or 40), 100)))
+    rows = conn.execute(
+        _sql(
+            f"""
+            SELECT id, username, email, display_name, first_name, last_name, {registered_expr}
+            FROM users
+            {where_clause}
+            ORDER BY COALESCE(registered_at, ''), id DESC
+            LIMIT ?
+            """
+        ),
+        tuple(params),
+    ).fetchall()
+    return [
+        _serialise_admin_user(row, resolve_user_entitlement(conn, int(_row_get(row, "id"))))
+        for row in rows
+    ]
 
 
 @billing_bp.route("/billing/status", methods=["GET"])
@@ -542,6 +710,69 @@ def update_admin_billing_plan(tier: str):
             return jsonify({"plan": plan}), 200
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+@billing_bp.route("/billing/admin/users", methods=["GET"])
+@jwt_required()
+def get_admin_billing_users():
+    user_id = int(get_jwt_identity())
+    search = str(request.args.get("search") or "")
+    with get_db() as conn:
+        is_admin, _entitlement = _require_admin(conn, user_id)
+        if not is_admin:
+            return jsonify({"error": "Administrator access is required."}), 403
+        return jsonify({"users": _list_admin_users(conn, search=search)}), 200
+
+
+@billing_bp.route("/billing/admin/users/<int:target_user_id>/entitlement", methods=["PUT"])
+@jwt_required()
+def update_admin_user_entitlement(target_user_id: int):
+    user_id = int(get_jwt_identity())
+    payload = request.get_json(silent=True) or {}
+    tier = str(payload.get("tier") or "").strip().lower()
+    status = str(payload.get("status") or "active").strip().lower()
+    valid_until = payload.get("valid_until")
+    valid_until_text = str(valid_until).strip() if valid_until not in {None, ""} else None
+
+    if tier not in VALID_TIERS:
+        return jsonify({"error": "Choose a valid account tier."}), 400
+    if status not in VALID_STATUSES:
+        return jsonify({"error": "Choose a valid entitlement status."}), 400
+    if target_user_id == user_id and tier != "administrator":
+        return jsonify({"error": "You cannot remove your own administrator access."}), 400
+
+    with get_db() as conn:
+        is_admin, _entitlement = _require_admin(conn, user_id)
+        if not is_admin:
+            return jsonify({"error": "Administrator access is required."}), 403
+        row = conn.execute(
+            _sql(
+                """
+                SELECT id, username, email, display_name, first_name, last_name,
+                       {registered_expr}
+                FROM users
+                WHERE id = ?
+                """.format(
+                    registered_expr=(
+                        "registered_at"
+                        if "registered_at" in _table_columns(conn, "users")
+                        else "NULL AS registered_at"
+                    )
+                )
+            ),
+            (target_user_id,),
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "User not found."}), 404
+        entitlement = upsert_user_entitlement(
+            conn,
+            user_id=target_user_id,
+            tier=tier,
+            source="manual",
+            status=status,
+            valid_until=valid_until_text,
+        )
+        return jsonify({"user": _serialise_admin_user(row, entitlement)}), 200
 
 
 @billing_bp.route("/billing/checkout-session", methods=["POST"])

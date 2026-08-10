@@ -6,6 +6,7 @@ import {
   inject,
 } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import { HttpErrorResponse } from "@angular/common/http";
 import { MatButtonModule } from "@angular/material/button";
 import { MatCardModule } from "@angular/material/card";
 import {
@@ -312,6 +313,10 @@ export class CbtWorksheetComponent implements OnInit {
       this.aiResponseAwaitingSave = true;
       this.savedMessage = "AI response ready to save.";
     } catch (error: unknown) {
+      if (this.isUpgradeRequiredError(error)) {
+        await this.showUpgradeRequiredDialog();
+        return;
+      }
       this.errorMessage = this.getErrorMessage(
         error,
         "The AI response could not be generated.",
@@ -392,6 +397,28 @@ export class CbtWorksheetComponent implements OnInit {
   private goToThoughtRecords(): void {
     this.allowNavigation = true;
     this.goBack();
+  }
+
+  private async showUpgradeRequiredDialog(): Promise<void> {
+    const confirmed = await this.appDialog.confirm({
+      title: "AI response needs a higher plan",
+      message: "Your current plan has reached its AI response allowance for this month.",
+      confirmText: "See plans",
+      cancelText: "Not now",
+      variant: "info",
+    });
+    if (confirmed) {
+      this.allowNavigation = true;
+      await this.router.navigate(["/plans"]);
+    }
+  }
+
+  private isUpgradeRequiredError(error: unknown): boolean {
+    return (
+      error instanceof HttpErrorResponse &&
+      error.status === 402 &&
+      error.error?.code === "upgrade_required"
+    );
   }
 
   async canDeactivate(): Promise<boolean> {

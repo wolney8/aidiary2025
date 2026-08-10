@@ -45,19 +45,34 @@ export interface BillingStatus {
   checkout_tiers: CheckoutTier[];
   checkout_periods?: Partial<Record<CheckoutTier, BillingPeriod[]>>;
   has_billing_customer: boolean;
+  current_subscription?: {
+    provider: "stripe";
+    provider_subscription_id?: string | null;
+    tier: BillingTier;
+    status: string;
+    billing_period?: BillingPeriod | null;
+    current_period_start?: string | null;
+    current_period_end?: string | null;
+    cancel_at_period_end?: boolean;
+  } | null;
   usage?: {
     plan: BillingTier;
     window: "month";
     window_start: string;
-    ai_analysis: {
-      used: number;
-      limit: number | null;
-      remaining: number | null;
-      unlimited: boolean;
-    };
+    ai_analysis: BillingUsageMetric;
+    ai_image?: BillingUsageMetric;
+    ocr_page?: BillingUsageMetric;
+    transcription_minute?: BillingUsageMetric;
   };
   plans: BillingPlan[];
   is_admin?: boolean;
+}
+
+export interface BillingUsageMetric {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  unlimited: boolean;
 }
 
 export interface BillingSessionResponse {
@@ -74,6 +89,21 @@ export interface BillingPlansResponse {
 
 export interface AdminBillingPlansResponse {
   plans: BillingPlan[];
+}
+
+export interface AdminBillingUser {
+  id: number;
+  username: string;
+  email?: string;
+  display_name?: string;
+  first_name?: string;
+  last_name?: string;
+  registered_at?: string | null;
+  entitlement: BillingEntitlement;
+}
+
+export interface AdminBillingUsersResponse {
+  users: AdminBillingUser[];
 }
 
 @Injectable({ providedIn: "root" })
@@ -133,6 +163,33 @@ export class BillingService {
     this.ensureAuthenticated();
     return this.http.put<{ plan: BillingPlan }>(
       `${this.apiUrl}/admin/plans/${tier}`,
+      payload,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  getAdminUsers(search = ""): Observable<AdminBillingUsersResponse> {
+    this.ensureAuthenticated();
+    const query = search.trim()
+      ? `?search=${encodeURIComponent(search.trim())}`
+      : "";
+    return this.http.get<AdminBillingUsersResponse>(
+      `${this.apiUrl}/admin/users${query}`,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  updateAdminUserEntitlement(
+    userId: number,
+    payload: {
+      tier: BillingTier;
+      status: string;
+      valid_until?: string | null;
+    },
+  ): Observable<{ user: AdminBillingUser }> {
+    this.ensureAuthenticated();
+    return this.http.put<{ user: AdminBillingUser }>(
+      `${this.apiUrl}/admin/users/${userId}/entitlement`,
       payload,
       { headers: this.buildHeaders() },
     );

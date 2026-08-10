@@ -80,6 +80,7 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'chat_enabled': 'INTEGER DEFAULT 1',
     'password_auth_enabled': 'INTEGER DEFAULT 1',
     'onboarding_completed': 'INTEGER DEFAULT 1',
+    'account_status': "TEXT DEFAULT 'active'",
 }
 
 _AUTH_IDENTITIES_DDL = """
@@ -137,6 +138,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     provider_subscription_id TEXT,
     tier                     TEXT NOT NULL DEFAULT 'free',
     status                   TEXT NOT NULL DEFAULT 'inactive',
+    billing_period           TEXT,
+    provider_price_id        TEXT,
     current_period_start     TEXT,
     current_period_end       TEXT,
     cancel_at_period_end     INTEGER NOT NULL DEFAULT 0
@@ -147,6 +150,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     UNIQUE(provider, provider_subscription_id)
 )
 """
+
+_SUBSCRIPTION_COLUMNS: dict[str, str] = {
+    'billing_period': 'TEXT',
+    'provider_price_id': 'TEXT',
+}
 
 _ENTITLEMENTS_DDL = """
 CREATE TABLE IF NOT EXISTS entitlements (
@@ -213,6 +221,54 @@ CREATE TABLE IF NOT EXISTS billing_plans (
     catalogue_version        INTEGER NOT NULL DEFAULT 1,
     created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+_ADMIN_ANNOUNCEMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS admin_announcements (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    title        TEXT NOT NULL,
+    message      TEXT NOT NULL,
+    severity     TEXT NOT NULL DEFAULT 'info'
+                 CHECK(severity IN ('info', 'success', 'warning', 'critical')),
+    placement    TEXT NOT NULL DEFAULT 'banner'
+                 CHECK(placement IN ('banner', 'bell', 'both')),
+    status       TEXT NOT NULL DEFAULT 'draft'
+                 CHECK(status IN ('draft', 'published', 'archived')),
+    starts_at    TEXT,
+    ends_at      TEXT,
+    timezone     TEXT NOT NULL DEFAULT 'Europe/London',
+    dismissible  INTEGER NOT NULL DEFAULT 1 CHECK(dismissible IN (0, 1)),
+    created_by   INTEGER,
+    created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+)
+"""
+
+_ADMIN_ANNOUNCEMENT_TARGETS_DDL = """
+CREATE TABLE IF NOT EXISTS admin_announcement_targets (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    announcement_id INTEGER NOT NULL,
+    target_type     TEXT NOT NULL CHECK(target_type IN ('all', 'tier', 'user')),
+    target_value    TEXT,
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (announcement_id) REFERENCES admin_announcements(id) ON DELETE CASCADE
+)
+"""
+
+_ADMIN_ANNOUNCEMENT_USER_STATE_DDL = """
+CREATE TABLE IF NOT EXISTS admin_announcement_user_state (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    announcement_id INTEGER NOT NULL,
+    user_id         INTEGER NOT NULL,
+    read_at         TEXT,
+    dismissed_at    TEXT,
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (announcement_id) REFERENCES admin_announcements(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(announcement_id, user_id)
 )
 """
 
@@ -682,6 +738,17 @@ def ensure_billing_tables(
         conn.execute(_BILLING_EVENTS_DDL)
         conn.execute(_USAGE_EVENTS_DDL)
         conn.execute(_BILLING_PLANS_DDL)
+        subscription_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(subscriptions)").fetchall()
+        }
+        for column_name, column_definition in _SUBSCRIPTION_COLUMNS.items():
+            if column_name not in subscription_columns:
+                conn.execute(
+                    f'ALTER TABLE subscriptions ADD COLUMN {column_name} {column_definition}'
+                )
+                if log:
+                    log('Runtime migration added column %s.%s', 'subscriptions', column_name)
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status
@@ -718,6 +785,47 @@ def ensure_billing_tables(
 
     if log:
         log('Runtime migration ensured billing, plan, and usage tables exist')
+
+    return True
+
+
+def ensure_admin_announcement_tables(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure platform announcement tables exist for admin-managed notices."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        conn.execute(_ADMIN_ANNOUNCEMENTS_DDL)
+        conn.execute(_ADMIN_ANNOUNCEMENT_TARGETS_DDL)
+        conn.execute(_ADMIN_ANNOUNCEMENT_USER_STATE_DDL)
+        columns = {
+            row[1] for row in conn.execute('PRAGMA table_info(admin_announcements)').fetchall()
+        }
+        if 'timezone' not in columns:
+            conn.execute(
+                "ALTER TABLE admin_announcements ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Europe/London'"
+            )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_announcements_status_dates
+            ON admin_announcements(status, starts_at, ends_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_announcement_targets_lookup
+            ON admin_announcement_targets(announcement_id, target_type, target_value)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_announcement_state_user
+            ON admin_announcement_user_state(user_id, dismissed_at, read_at)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured admin announcement tables exist')
 
     return True
 

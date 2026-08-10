@@ -22,6 +22,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       ) {
         authService.handleOnboardingRequired();
       }
+      if (
+        error.status === 403 &&
+        !isAuthRequest &&
+        error.error?.code === "account_restricted"
+      ) {
+        authService.handleAccountRestricted();
+      }
 
       return throwError(() => error);
     }),

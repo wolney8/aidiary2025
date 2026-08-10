@@ -253,6 +253,7 @@ def _optional_user_selects(conn) -> str:
         'last_name': 'NULL',
         'password_auth_enabled': '1',
         'onboarding_completed': '1',
+        'account_status': "'active'",
         'registered_at': 'NULL',
     }
     selects = []
@@ -262,6 +263,17 @@ def _optional_user_selects(conn) -> str:
         else:
             selects.append(f'{fallback} AS {column_name}')
     return ', '.join(selects)
+
+
+def _account_is_restricted(user) -> bool:
+    return str(user['account_status'] or 'active').strip().lower() == 'restricted'
+
+
+def _restricted_account_response():
+    return jsonify({
+        'error': 'This account has been restricted. Contact the OpenMynd administrator for access.',
+        'code': 'account_restricted',
+    }), 403
 
 
 def _is_duplicate_username_error(exc: Exception) -> bool:
@@ -362,7 +374,6 @@ def oauth_callback(provider_id: str):
         )
         return _redirect_oauth_error('External sign-in failed. Please try again.')
 
-    access_token = create_access_token(identity=str(user_id))
     with get_db() as conn:
         user = _load_user_for_auth(conn, user_id)
     if not user:
@@ -373,6 +384,17 @@ def oauth_callback(provider_id: str):
             metadata={'provider': provider_id, 'reason': 'user_load'},
         )
         return _redirect_oauth_error('OpenMynd account could not be loaded.')
+    if _account_is_restricted(user):
+        _audit_security_event_for_request(
+            'oauth_callback_failed',
+            user_id=int(user_id),
+            outcome='rejected',
+            metadata={'provider': provider_id, 'reason': 'account_restricted'},
+        )
+        return _redirect_oauth_error(
+            'This account has been restricted. Contact the OpenMynd administrator for access.'
+        )
+    access_token = create_access_token(identity=str(user_id))
     auth_user = _serialise_auth_user(user)
     onboarding_required = created_user or auth_user.get('onboarding_completed') is False
     if onboarding_required:
@@ -513,6 +535,7 @@ def register():
                 'chat_enabled': True,
                 'password_auth_enabled': True,
                 'onboarding_completed': True,
+                'account_status': 'active',
                 'registered_at': registered_at if 'registered_at' in user_columns else None,
             }
         }), 201
@@ -558,7 +581,7 @@ def login():
             metadata={'reason': 'unknown_user'},
         )
         return jsonify({'error': 'Invalid credentials'}), 401
-    
+
     # Check password (handle both bcrypt and legacy plaintext)
     stored_password = user['password'] or ''
     if stored_password.startswith('$2b$'):  # bcrypt hash
@@ -611,6 +634,15 @@ def login():
                 user_id=int(user['id']),
             )
     
+    if _account_is_restricted(user):
+        _audit_security_event_for_request(
+            'login_failed',
+            user_id=int(user['id']),
+            outcome='rejected',
+            metadata={'reason': 'account_restricted'},
+        )
+        return _restricted_account_response()
+
     # Create JWT token
     access_token = create_access_token(identity=str(user['id']))
     _audit_security_event_for_request('login_success', user_id=int(user['id']))
@@ -1401,5 +1433,6 @@ def _serialise_auth_user(user) -> dict[str, object]:
         'chat_enabled': bool(user['chat_enabled']),
         'password_auth_enabled': bool(user['password_auth_enabled']),
         'onboarding_completed': bool(user['onboarding_completed']),
+        'account_status': user['account_status'] or 'active',
         'registered_at': user['registered_at'],
     }

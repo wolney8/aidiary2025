@@ -164,6 +164,253 @@ def test_administrator_can_update_plan_matrix(client):
     assert updated_plan["quotas"]["ai_analysis_monthly"] == 333
 
 
+def test_admin_user_routes_require_administrator_entitlement(client):
+    response = client.get("/api/billing/admin/users", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
+def test_administrator_can_list_and_update_user_entitlements(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, email, first_name, last_name, display_name
+            )
+            VALUES (2, 'member', 'hash', 'member@example.com', 'Member', 'User', 'Member')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    list_response = client.get(
+        "/api/billing/admin/users?search=member",
+        headers=_headers(client.application),
+    )
+    assert list_response.status_code == 200
+    listed_users = list_response.get_json()["users"]
+    assert [user["email"] for user in listed_users] == ["member@example.com"]
+    assert listed_users[0]["entitlement"]["tier"] == "free"
+
+    update_response = client.put(
+        "/api/billing/admin/users/2/entitlement",
+        headers=_headers(client.application),
+        json={"tier": "complimentary", "status": "active"},
+    )
+    assert update_response.status_code == 200
+    body = update_response.get_json()
+    assert body["user"]["entitlement"]["tier"] == "complimentary"
+    assert body["user"]["entitlement"]["source"] == "manual"
+
+    status_response = client.get("/api/billing/status", headers=_headers(client.application, user_id=2))
+    assert status_response.get_json()["entitlement"]["tier"] == "complimentary"
+
+
+def test_administrator_cannot_remove_own_admin_access(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.put(
+        "/api/billing/admin/users/1/entitlement",
+        headers=_headers(client.application),
+        json={"tier": "free", "status": "active"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "You cannot remove your own administrator access."
+
+
+def test_unified_admin_routes_require_administrator_entitlement(client):
+    response = client.get("/api/admin/overview", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
+def test_administrator_can_use_unified_admin_console_routes(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, email, first_name, last_name, display_name
+            )
+            VALUES (2, 'member', 'hash', 'member@example.com', 'Member', 'User', 'Member')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    overview = client.get("/api/admin/overview", headers=_headers(client.application))
+    assert overview.status_code == 200
+    assert overview.get_json()["total_users"] == 2
+
+    users = client.get(
+        "/api/admin/users?search=member",
+        headers=_headers(client.application),
+    )
+    assert users.status_code == 200
+    body = users.get_json()
+    assert body["users"][0]["email"] == "member@example.com"
+    assert "usage" in body["users"][0]
+
+    update = client.put(
+        "/api/admin/users/2/entitlement",
+        headers=_headers(client.application),
+        json={"tier": "complimentary", "status": "active"},
+    )
+    assert update.status_code == 200
+    assert update.get_json()["user"]["entitlement"]["tier"] == "complimentary"
+
+    restrict = client.put(
+        "/api/admin/users/2/access",
+        headers=_headers(client.application),
+        json={"account_status": "restricted"},
+    )
+    assert restrict.status_code == 200
+    assert restrict.get_json()["user"]["account_status"] == "restricted"
+
+    blocked_login = client.post(
+        "/api/login",
+        json={"username": "member", "password": "hash"},
+    )
+    assert blocked_login.status_code == 403
+    assert blocked_login.get_json()["code"] == "account_restricted"
+
+    restore = client.put(
+        "/api/admin/users/2/access",
+        headers=_headers(client.application),
+        json={"account_status": "active"},
+    )
+    assert restore.status_code == 200
+    assert restore.get_json()["user"]["account_status"] == "active"
+
+    plans = client.get("/api/admin/billing/plans", headers=_headers(client.application))
+    assert plans.status_code == 200
+    assert "administrator" in [plan["tier"] for plan in plans.get_json()["plans"]]
+
+
+def test_admin_announcements_target_users_and_track_state(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, email, first_name, last_name, display_name
+            )
+            VALUES (2, 'member', 'hash', 'member@example.com', 'Member', 'User', 'Member')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    create_response = client.post(
+        "/api/admin/announcements",
+        headers=_headers(client.application),
+        json={
+            "title": "Maintenance window",
+            "message": "OpenMynd will be briefly unavailable tonight.",
+            "severity": "warning",
+            "placement": "both",
+            "status": "published",
+            "dismissible": True,
+            "targets": [{"type": "user", "value": "2"}],
+        },
+    )
+    assert create_response.status_code == 201
+    announcement = create_response.get_json()["announcement"]
+
+    admin_active = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application),
+    )
+    assert admin_active.status_code == 200
+    assert admin_active.get_json()["announcements"] == []
+
+    member_active = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert member_active.status_code == 200
+    member_announcements = member_active.get_json()["announcements"]
+    assert member_announcements[0]["title"] == "Maintenance window"
+    assert member_announcements[0]["unread"] is True
+
+    read_response = client.post(
+        f"/api/announcements/{announcement['id']}/read",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert read_response.status_code == 200
+    reread = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert reread.get_json()["announcements"][0]["unread"] is False
+
+    admin_list = client.get(
+        "/api/admin/announcements",
+        headers=_headers(client.application),
+    )
+    assert admin_list.status_code == 200
+    assert admin_list.get_json()["announcements"][0]["read_count"] == 1
+
+    dismiss_response = client.post(
+        f"/api/announcements/{announcement['id']}/dismiss",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert dismiss_response.status_code == 200
+    dismissed = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application, user_id=2),
+    )
+    assert dismissed.get_json()["announcements"] == []
+
+
+def test_active_announcements_ignore_invalid_schedule_rows(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO admin_announcements (
+                title, message, severity, placement, status, starts_at, timezone, dismissible
+            )
+            VALUES ('Bad schedule', 'This should not break the feed.', 'info', 'both', 'published', 'not-a-date', 'Europe/London', 1)
+            """
+        )
+
+    response = client.get(
+        "/api/announcements/active",
+        headers=_headers(client.application),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["announcements"] == []
+
+
 def test_checkout_requires_auth(client):
     response = client.post("/api/billing/checkout-session", json={"tier": "personal"})
 
@@ -353,7 +600,7 @@ def test_checkout_completed_webhook_activates_entitlement(client, monkeypatch):
                 "customer": "cus_123",
                 "subscription": "sub_123",
                 "client_reference_id": "1",
-                "metadata": {"openmynd_user_id": "1", "tier": "plus"},
+                "metadata": {"openmynd_user_id": "1", "tier": "plus", "billing_period": "annual"},
             }
         },
     }
@@ -370,7 +617,7 @@ def test_checkout_completed_webhook_activates_entitlement(client, monkeypatch):
         ).fetchone()
         subscription = conn.execute(
             """
-            SELECT provider_subscription_id, tier, status
+            SELECT provider_subscription_id, tier, status, billing_period
             FROM subscriptions
             WHERE user_id = 1
             """
@@ -378,7 +625,7 @@ def test_checkout_completed_webhook_activates_entitlement(client, monkeypatch):
         event_count = conn.execute("SELECT COUNT(*) FROM billing_events").fetchone()[0]
 
     assert entitlement == ("plus", "stripe", "active")
-    assert subscription == ("sub_123", "plus", "active")
+    assert subscription == ("sub_123", "plus", "active", "annual")
     assert event_count == 1
 
 
@@ -428,7 +675,7 @@ def test_subscription_updated_webhook_maps_price_to_tier(client, monkeypatch):
         ).fetchone()
         subscription = conn.execute(
             """
-            SELECT tier, status, cancel_at_period_end
+            SELECT tier, status, billing_period, provider_price_id, cancel_at_period_end
             FROM subscriptions
             WHERE provider_subscription_id = 'sub_123'
             """
@@ -436,7 +683,66 @@ def test_subscription_updated_webhook_maps_price_to_tier(client, monkeypatch):
 
     assert entitlement[0:3] == ("plus", "stripe", "past_due")
     assert entitlement[3].startswith("2026-09-")
-    assert subscription == ("plus", "past_due", 1)
+    assert subscription == ("plus", "past_due", "monthly", "price_plus", 1)
+
+
+def test_subscription_deleted_webhook_downgrades_resolved_entitlement_to_free(client, monkeypatch):
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
+    monkeypatch.setenv("STRIPE_PRICE_PLUS_ANNUAL", "price_plus_annual")
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO billing_customers (user_id, provider_customer_id) VALUES (1, 'cus_123')"
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'plus', 'stripe', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'plus', source = 'stripe', status = 'active'
+            """
+        )
+    event = {
+        "id": "evt_subscription_deleted",
+        "type": "customer.subscription.deleted",
+        "livemode": False,
+        "data": {
+            "object": {
+                "id": "sub_cancelled",
+                "object": "subscription",
+                "customer": "cus_123",
+                "status": "canceled",
+                "current_period_start": 1786122000,
+                "current_period_end": 1788800400,
+                "items": {"data": [{"price": {"id": "price_plus_annual"}}]},
+            }
+        },
+    }
+
+    response = _post_webhook(client, event)
+
+    assert response.status_code == 200
+    with sqlite3.connect(db_path) as conn:
+        stored_entitlement = conn.execute(
+            "SELECT tier, source, status FROM entitlements WHERE user_id = 1"
+        ).fetchone()
+        subscription = conn.execute(
+            """
+            SELECT tier, status, billing_period
+            FROM subscriptions
+            WHERE provider_subscription_id = 'sub_cancelled'
+            """
+        ).fetchone()
+
+    assert stored_entitlement == ("plus", "stripe", "cancelled")
+    assert subscription == ("plus", "cancelled", "annual")
+
+    status_response = client.get("/api/billing/status", headers=_headers(client.application))
+    status_body = status_response.get_json()
+    assert status_body["entitlement"]["tier"] == "free"
+    assert status_body["entitlement"]["stored_tier"] == "plus"
+    assert status_body["entitlement"]["stored_status"] == "cancelled"
+    assert status_body["current_subscription"]["status"] == "cancelled"
+    assert status_body["current_subscription"]["billing_period"] == "annual"
 
 
 def test_stripe_webhook_duplicate_delivery_is_idempotent(client, monkeypatch):

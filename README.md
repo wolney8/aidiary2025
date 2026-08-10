@@ -45,8 +45,16 @@ npm start
 ```bash
 cd server
 source venv/bin/activate
-python -m flask --app app.py --debug run -p 5001
+PYTHONPATH=. python scripts/run_resilient_dev_server.py
 # Runs on http://localhost:5001
+```
+
+For a one-shot backend process without auto-restart, use:
+
+```bash
+cd server
+source venv/bin/activate
+python -m flask --app app.py --debug run -p 5001
 ```
 
 ### Testing

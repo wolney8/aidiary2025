@@ -12,12 +12,22 @@ import { Router, RouterLink } from "@angular/router";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
 import {
+  BillingTier,
   BillingService,
   BillingStatus,
+  BillingUsageMetric,
   CheckoutTier,
 } from "../core/services/billing.service";
 import { ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
+
+interface AccountUsageCard {
+  key: string;
+  icon: string;
+  label: string;
+  description: string;
+  metric: BillingUsageMetric;
+}
 
 @Component({
   selector: "app-profile",
@@ -238,101 +248,116 @@ import { User } from "../core/models/user.model";
             aria-labelledby="billing-heading"
             data-testid="account-billing-section"
           >
-            <div class="billing-copy">
-              <span class="section-eyebrow">Billing</span>
-              <h3 id="billing-heading">Plan and subscription</h3>
-              <p>
-                Current plan:
-                <strong>{{ getBillingTierLabel() }}</strong>
-                <span class="billing-status-pill" *ngIf="billingStatus">
-                  {{ getBillingStatusLabel() }}
-                </span>
-              </p>
-              <div
-                class="billing-usage"
-                *ngIf="billingStatus?.usage?.ai_analysis as aiUsage"
-                aria-label="Monthly AI analysis usage"
-              >
-                <div class="billing-usage-row">
-                  <span>AI analysis</span>
-                  <strong>{{ getAiUsageLabel() }}</strong>
-                </div>
-                <div
-                  class="billing-meter"
-                  role="meter"
-                  aria-label="AI analysis usage this month"
-                  aria-valuemin="0"
-                  [attr.aria-valuemax]="aiUsage.limit ?? null"
-                  [attr.aria-valuenow]="aiUsage.used"
-                  [attr.aria-valuetext]="getAiUsageLabel()"
+            <div class="billing-header">
+              <div class="billing-copy">
+                <span class="section-eyebrow">Billing</span>
+                <h3 id="billing-heading">Plan and subscription</h3>
+                <p>View your plan, usage, upgrades, and billing controls.</p>
+              </div>
+
+              <div class="billing-actions">
+                <button
+                  *ngFor="let tier of getUpgradeTiers()"
+                  mat-raised-button
+                  color="primary"
+                  type="button"
+                  class="billing-action"
+                  [disabled]="!canStartCheckout(tier)"
+                  (click)="startCheckout(tier)"
+                  [attr.data-testid]="'account-billing-' + tier"
                 >
-                  <span [style.width.%]="getAiUsagePercent()"></span>
-                </div>
-                <p>Detailed AI responses and attachment context may use more provider capacity.</p>
+                  <mat-icon aria-hidden="true">
+                    {{ billingBusyTier === tier ? "hourglass_top" : "open_in_new" }}
+                  </mat-icon>
+                  <span class="billing-action-label">
+                    {{ billingBusyTier === tier ? "Opening..." : "Upgrade to " + getPlanName(tier) }}
+                  </span>
+                </button>
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="billing-action"
+                  [disabled]="!canOpenBillingPortal()"
+                  (click)="openBillingPortal()"
+                  data-testid="account-billing-portal"
+                >
+                  <mat-icon aria-hidden="true">
+                    {{ billingPortalBusy ? "hourglass_top" : "receipt_long" }}
+                  </mat-icon>
+                  <span class="billing-action-label">
+                    {{ billingPortalBusy ? "Opening..." : "Manage billing" }}
+                  </span>
+                </button>
+                <a
+                  mat-stroked-button
+                  routerLink="/plans"
+                  class="billing-action"
+                  data-testid="account-billing-plans"
+                >
+                  <mat-icon aria-hidden="true">sell</mat-icon>
+                  <span class="billing-action-label">See plans</span>
+                </a>
+                <a
+                  *ngIf="billingStatus?.is_admin"
+                  mat-stroked-button
+                  routerLink="/admin"
+                  class="billing-action"
+                  data-testid="account-admin-plans"
+                >
+                  <mat-icon aria-hidden="true">admin_panel_settings</mat-icon>
+                  <span class="billing-action-label">Admin console</span>
+                </a>
               </div>
             </div>
 
-            <div class="billing-actions">
-              <button
-                mat-raised-button
-                color="primary"
-                type="button"
-                class="billing-action"
-                [disabled]="!canStartCheckout('personal')"
-                (click)="startCheckout('personal')"
-                data-testid="account-billing-personal"
+            <div class="billing-current-card">
+              <div class="billing-plan-mark">
+                <mat-icon aria-hidden="true">workspace_premium</mat-icon>
+              </div>
+              <div>
+                <span class="summary-label">Current plan</span>
+                <strong>{{ getBillingTierLabel() }}</strong>
+                <p class="billing-subscription-meta" *ngIf="getSubscriptionMetaLabel()">
+                  {{ getSubscriptionMetaLabel() }}
+                </p>
+              </div>
+              <span class="billing-status-pill" *ngIf="billingStatus">
+                {{ getBillingStatusLabel() }}
+              </span>
+            </div>
+
+            <div
+              class="billing-usage-grid"
+              *ngIf="getBillingUsageCards().length"
+              aria-label="Monthly usage"
+            >
+              <article
+                class="billing-usage-card"
+                *ngFor="let card of getBillingUsageCards()"
+                [attr.data-testid]="'account-usage-' + card.key"
               >
-                <mat-icon aria-hidden="true">
-                  {{ billingBusyTier === "personal" ? "hourglass_top" : "workspace_premium" }}
-                </mat-icon>
-                <span>{{ billingBusyTier === "personal" ? "Opening..." : getPlanName("personal") }}</span>
-              </button>
-              <button
-                mat-raised-button
-                color="primary"
-                type="button"
-                class="billing-action"
-                [disabled]="!canStartCheckout('plus')"
-                (click)="startCheckout('plus')"
-                data-testid="account-billing-plus"
-              >
-                <mat-icon aria-hidden="true">
-                  {{ billingBusyTier === "plus" ? "hourglass_top" : "auto_awesome" }}
-                </mat-icon>
-                <span>{{ billingBusyTier === "plus" ? "Opening..." : getPlanName("plus") }}</span>
-              </button>
-              <button
-                mat-stroked-button
-                type="button"
-                class="billing-action"
-                [disabled]="!canOpenBillingPortal()"
-                (click)="openBillingPortal()"
-                data-testid="account-billing-portal"
-              >
-                <mat-icon aria-hidden="true">
-                  {{ billingPortalBusy ? "hourglass_top" : "receipt_long" }}
-                </mat-icon>
-                <span>{{ billingPortalBusy ? "Opening..." : "Manage billing" }}</span>
-              </button>
-              <a
-                mat-stroked-button
-                routerLink="/plans"
-                class="billing-action"
-                data-testid="account-billing-plans"
-              >
-                <mat-icon aria-hidden="true">sell</mat-icon>
-                <span>Plans</span>
-              </a>
-              <a
-                *ngIf="billingStatus?.is_admin"
-                mat-stroked-button
-                routerLink="/admin/plans"
-                class="billing-action"
-                data-testid="account-admin-plans"
-              >
-                <mat-icon aria-hidden="true">admin_panel_settings</mat-icon>
-                <span>Plan matrix</span>
-              </a>
+                <div class="billing-usage-heading">
+                  <span class="billing-usage-icon">
+                    <mat-icon aria-hidden="true">{{ card.icon }}</mat-icon>
+                  </span>
+                  <div>
+                    <h4>{{ card.label }}</h4>
+                    <p>{{ card.description }}</p>
+                  </div>
+                </div>
+                <strong>{{ getUsageLabel(card.metric) }}</strong>
+                <div
+                  class="billing-meter"
+                  role="meter"
+                  [attr.aria-label]="card.label + ' used this month'"
+                  aria-valuemin="0"
+                  [attr.aria-valuemax]="card.metric.limit ?? null"
+                  [attr.aria-valuenow]="card.metric.used"
+                  [attr.aria-valuetext]="getUsageLabel(card.metric)"
+                >
+                  <span [style.width.%]="getUsagePercent(card.metric)"></span>
+                </div>
+              </article>
             </div>
 
             <p class="billing-note" *ngIf="billingStatus && !billingStatus.stripe_configured">
@@ -578,14 +603,20 @@ import { User } from "../core/models/user.model";
 
       .billing-section {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
+        grid-template-columns: 1fr;
         gap: var(--spacing-md);
         margin-top: var(--spacing-lg);
         padding: var(--spacing-md);
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
+      }
+
+      .billing-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-md);
       }
 
       .billing-copy {
@@ -600,16 +631,51 @@ import { User } from "../core/models/user.model";
       }
 
       .billing-copy p,
+      .billing-subscription-meta,
       .billing-note {
         color: var(--colour-text-secondary);
         font-weight: 750;
+      }
+
+      .billing-current-card {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background:
+          radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--colour-primary) 18%, transparent), transparent 42%),
+          var(--colour-surface);
+      }
+
+      .billing-current-card strong {
+        display: block;
+        color: var(--colour-text-primary);
+        font-size: 1.35rem;
+        line-height: 1.2;
+      }
+
+      .billing-plan-mark,
+      .billing-usage-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-pill);
+        background: color-mix(in srgb, var(--colour-primary) 16%, var(--colour-surface));
+        color: var(--colour-primary);
+      }
+
+      .billing-plan-mark {
+        width: 48px;
+        height: 48px;
       }
 
       .billing-status-pill {
         display: inline-flex;
         align-items: center;
         min-height: 28px;
-        margin-left: var(--spacing-xs);
         padding: 0.18rem 0.58rem;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-pill);
@@ -619,20 +685,56 @@ import { User } from "../core/models/user.model";
         font-weight: 850;
       }
 
-      .billing-usage {
+      .billing-usage-grid {
         display: grid;
-        gap: var(--spacing-xs);
-        max-width: 420px;
-        margin-top: var(--spacing-sm);
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: var(--spacing-sm);
       }
 
-      .billing-usage-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+      .billing-usage-card {
+        display: grid;
+        align-content: start;
         gap: var(--spacing-sm);
+        min-height: 178px;
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface);
+      }
+
+      .billing-usage-heading {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: var(--spacing-sm);
+        align-items: start;
+      }
+
+      .billing-usage-heading h4,
+      .billing-usage-heading p {
+        margin: 0;
+      }
+
+      .billing-usage-heading h4 {
         color: var(--colour-text-primary);
-        font-weight: 850;
+        font-size: 1rem;
+        line-height: 1.2;
+      }
+
+      .billing-usage-heading p {
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .billing-usage-icon {
+        width: 40px;
+        height: 40px;
+      }
+
+      .billing-usage-card > strong {
+        color: var(--colour-text-primary);
+        font-size: 1.12rem;
+        line-height: 1.2;
       }
 
       .billing-meter {
@@ -654,13 +756,6 @@ import { User } from "../core/models/user.model";
         );
       }
 
-      .billing-usage p {
-        margin: 0;
-        color: var(--colour-text-secondary);
-        font-size: 0.88rem;
-        font-weight: 700;
-      }
-
       .billing-actions {
         display: flex;
         flex-wrap: wrap;
@@ -669,11 +764,19 @@ import { User } from "../core/models/user.model";
       }
 
       .billing-action {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        min-height: 44px;
         border-radius: var(--radius-pill);
       }
 
       .billing-action mat-icon {
-        margin-right: var(--spacing-xs);
+        margin-right: 0;
+      }
+
+      .billing-action-label {
+        line-height: 1.1;
       }
 
       .danger-section {
@@ -715,12 +818,20 @@ import { User } from "../core/models/user.model";
       }
 
       @media (max-width: 600px) {
-        .billing-section {
-          grid-template-columns: 1fr;
+        .billing-header,
+        .billing-actions {
+          align-items: stretch;
+          flex-direction: column;
+          justify-content: flex-start;
         }
 
-        .billing-actions {
-          justify-content: flex-start;
+        .billing-current-card {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .billing-status-pill {
+          grid-column: 1 / -1;
+          justify-self: start;
         }
 
         .profile-picture-section {
@@ -849,33 +960,108 @@ export class ProfileComponent implements OnInit {
   }
 
   getBillingStatusLabel(): string {
-    const status = this.billingStatus?.entitlement?.status || "active";
+    const status =
+      this.billingStatus?.current_subscription?.status ||
+      this.billingStatus?.entitlement?.stored_status ||
+      this.billingStatus?.entitlement?.status ||
+      "active";
     return this.toTitleCase(status.replace(/_/g, " "));
   }
 
-  getAiUsageLabel(): string {
-    const usage = this.billingStatus?.usage?.ai_analysis;
-    if (!usage) {
-      return "Not available";
+  getSubscriptionMetaLabel(): string {
+    const subscription = this.billingStatus?.current_subscription;
+    if (!subscription) {
+      return "";
     }
-    if (usage.unlimited || usage.limit === null) {
-      return `${usage.used} used`;
+    const period =
+      subscription.billing_period === "annual"
+        ? "Annual billing"
+        : subscription.billing_period === "monthly"
+          ? "Monthly billing"
+          : "Billing period pending";
+    const endDate = this.formatBillingDate(subscription.current_period_end);
+    if (subscription.cancel_at_period_end && endDate) {
+      return `${period}. Cancels on ${endDate}.`;
     }
-    return `${usage.used} / ${usage.limit}`;
+    if (endDate && subscription.status === "active") {
+      return `${period}. Renews on ${endDate}.`;
+    }
+    return period;
   }
 
-  getAiUsagePercent(): number {
-    const usage = this.billingStatus?.usage?.ai_analysis;
-    if (!usage || usage.unlimited || !usage.limit) {
+  getBillingUsageCards(): AccountUsageCard[] {
+    const usage = this.billingStatus?.usage;
+    if (!usage) {
+      return [];
+    }
+
+    const cards: AccountUsageCard[] = [
+      {
+        key: "ai-responses",
+        icon: "psychology",
+        label: "AI responses",
+        description: "Entry analysis and richer reflections.",
+        metric: usage.ai_analysis,
+      },
+    ];
+
+    if (usage.ai_image) {
+      cards.push({
+        key: "ai-images",
+        icon: "auto_awesome",
+        label: "AI images",
+        description: "Generated diary and dream images.",
+        metric: usage.ai_image,
+      });
+    }
+    if (usage.ocr_page) {
+      cards.push({
+        key: "pdf-pages",
+        icon: "picture_as_pdf",
+        label: "PDF pages",
+        description: "Pages processed for attachment context.",
+        metric: usage.ocr_page,
+      });
+    }
+    if (usage.transcription_minute) {
+      cards.push({
+        key: "audio-minutes",
+        icon: "graphic_eq",
+        label: "Audio minutes",
+        description: "Voice notes transcribed for context.",
+        metric: usage.transcription_minute,
+      });
+    }
+    return cards;
+  }
+
+  getUsageLabel(metric: BillingUsageMetric): string {
+    if (metric.unlimited || metric.limit === null) {
+      return `${metric.used} used`;
+    }
+    return `${metric.used} of ${metric.limit}`;
+  }
+
+  getUsagePercent(metric: BillingUsageMetric): number {
+    if (metric.unlimited || !metric.limit) {
       return 0;
     }
-    return Math.min(100, Math.max(0, (usage.used / usage.limit) * 100));
+    return Math.min(100, Math.max(0, (metric.used / metric.limit) * 100));
+  }
+
+  getUpgradeTiers(): CheckoutTier[] {
+    const currentTier = this.billingStatus?.entitlement?.tier || "free";
+    const currentRank = this.getTierRank(currentTier);
+    return (["personal", "plus"] as CheckoutTier[]).filter((tier) => {
+      return this.getTierRank(tier) > currentRank && this.billingStatus?.checkout_tiers.includes(tier);
+    });
   }
 
   canStartCheckout(tier: CheckoutTier): boolean {
     return Boolean(
       this.billingStatus?.stripe_configured &&
         this.billingStatus.checkout_tiers.includes(tier) &&
+        this.getTierRank(tier) > this.getTierRank(this.billingStatus.entitlement.tier) &&
         !this.billingBusyTier &&
         !this.billingPortalBusy,
     );
@@ -1140,6 +1326,34 @@ export class ProfileComponent implements OnInit {
 
   private toTitleCase(value: string): string {
     return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  private formatBillingDate(value?: string | null): string {
+    if (!value) {
+      return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(date);
+  }
+
+  private getTierRank(tier: BillingTier): number {
+    const ranks: Record<BillingTier, number> = {
+      free: 0,
+      personal: 1,
+      plus: 2,
+      therapeutic: 3,
+      lifetime: 4,
+      complimentary: 4,
+      administrator: 5,
+    };
+    return ranks[tier] ?? 0;
   }
 
   private canGoBack(): boolean {

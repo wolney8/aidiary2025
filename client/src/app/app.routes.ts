@@ -89,14 +89,19 @@ export const routes: Routes = [
       import("./billing/plans.component").then((m) => m.PlansComponent),
   },
   {
-    path: "admin/plans",
-    title: "Plan matrix | OpenMynd",
+    path: "admin",
+    title: "Admin console | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./billing/admin-plan-catalogue.component").then(
         (m) => m.AdminPlanCatalogueComponent,
       ),
+  },
+  {
+    path: "admin/plans",
+    redirectTo: "/admin?section=billing",
+    pathMatch: "full",
   },
   {
     path: "dashboard",
@@ -106,6 +111,16 @@ export const routes: Routes = [
     loadComponent: () =>
       import("./dashboard/dashboard.component").then(
         (m) => m.DashboardComponent,
+      ),
+  },
+  {
+    path: "account-restricted",
+    title: "Account restricted | OpenMynd",
+    canActivate: [authGuard],
+    canMatch: [authMatchGuard],
+    loadComponent: () =>
+      import("./account-restricted/account-restricted.component").then(
+        (m) => m.AccountRestrictedComponent,
       ),
   },
   {

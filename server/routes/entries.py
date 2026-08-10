@@ -42,6 +42,14 @@ from services.media_storage import (
     store_generated_image,
     store_uploaded_image,
 )
+from services.usage_limits import (
+    AI_IMAGE_EVENT,
+    OCR_PAGE_EVENT,
+    TRANSCRIPTION_MINUTE_EVENT,
+    UsageLimitExceeded,
+    enforce_usage_limit,
+    record_usage_event,
+)
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 entries_bp = Blueprint('entries', __name__)
@@ -74,6 +82,46 @@ MAX_ENTRY_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024
 MAX_ATTACHMENTS_PER_ENTRY = 3
 ENTRY_IMAGE_TARGET_SIZE = (933, 705)
 ENTRY_IMAGE_JPEG_QUALITY = 85
+
+
+def _quota_exceeded_payload(exc: UsageLimitExceeded, message: str) -> tuple[dict, int]:
+    return {
+        'error': message,
+        'code': 'upgrade_required',
+        'usage': exc.summary,
+    }, 402
+
+
+def _check_usage_or_error(conn, *, user_id: int, event_type: str, units: int, message: str):
+    try:
+        enforce_usage_limit(conn, user_id=user_id, event_type=event_type, units=units)
+    except UsageLimitExceeded as exc:
+        return _quota_exceeded_payload(exc, message)
+    except Exception:
+        current_app.logger.exception('Usage check failed for event %s', event_type)
+        return {'error': 'Usage could not be checked. Please try again.'}, 503
+    return None
+
+
+def _record_usage_safely(
+    conn,
+    *,
+    user_id: int,
+    event_type: str,
+    units: int = 1,
+    metadata: dict | None = None,
+) -> None:
+    try:
+        record_usage_event(
+            conn,
+            user_id=user_id,
+            event_type=event_type,
+            units=units,
+            metadata=metadata or {},
+        )
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning('Usage event could not be recorded for %s: %s', event_type, exc)
+
 
 def get_db():
     """Get database connection."""
@@ -801,6 +849,17 @@ def _transcribe_entry_attachment(
         conn.close()
         return {'error': 'Attachment file is missing.'}, 404
 
+    quota_error = _check_usage_or_error(
+        conn,
+        user_id=user_id,
+        event_type=TRANSCRIPTION_MINUTE_EVENT,
+        units=1,
+        message='This plan has reached its monthly audio transcription limit.',
+    )
+    if quota_error:
+        conn.close()
+        return quota_error
+
     try:
         transcript_text = OpenAIService().transcribe_audio_attachment(
             file_bytes,
@@ -826,6 +885,13 @@ def _transcribe_entry_attachment(
         WHERE id = ? AND user_id = ?
         ''',
         (transcript_text, 'audio-transcription', updated_at, asset_id, user_id),
+    )
+    _record_usage_safely(
+        conn,
+        user_id=user_id,
+        event_type=TRANSCRIPTION_MINUTE_EVENT,
+        units=1,
+        metadata={'entry_type': entry_type, 'asset_id': asset_id},
     )
     conn.commit()
     attachments = _serialise_entry_assets(
@@ -910,6 +976,16 @@ def _derive_pdf_attachment_text(
             conn.close()
             return {'error': 'No extractable PDF text was found.'}, 422
         if extracted_text_source == 'pdf-ocr':
+            quota_error = _check_usage_or_error(
+                conn,
+                user_id=user_id,
+                event_type=OCR_PAGE_EVENT,
+                units=1,
+                message='This plan has reached its monthly OCR limit.',
+            )
+            if quota_error:
+                conn.close()
+                return quota_error
             extracted_text = OpenAIService().clean_ocr_extracted_text(extracted_text)
     except AnalysisRateLimitError:
         conn.close()
@@ -937,6 +1013,14 @@ def _derive_pdf_attachment_text(
             user_id,
         ),
     )
+    if extracted_text_source == 'pdf-ocr':
+        _record_usage_safely(
+            conn,
+            user_id=user_id,
+            event_type=OCR_PAGE_EVENT,
+            units=1,
+            metadata={'entry_type': entry_type, 'asset_id': asset_id},
+        )
     conn.commit()
     attachments = _serialise_entry_assets(
         conn,
@@ -1390,6 +1474,18 @@ def generate_daily_image(entry_id):
         conn.close()
         return jsonify({'error': 'This daily entry needs saved AI analysis before an image can be generated.'}), 400
 
+    quota_error = _check_usage_or_error(
+        conn,
+        user_id=user_id,
+        event_type=AI_IMAGE_EVENT,
+        units=1,
+        message='This plan has reached its monthly AI image limit.',
+    )
+    if quota_error:
+        conn.close()
+        payload, status_code = quota_error
+        return jsonify(payload), status_code
+
     try:
         ai_service = OpenAIService()
         image_bytes = ai_service.generate_image(
@@ -1419,6 +1515,12 @@ def generate_daily_image(entry_id):
             'UPDATE dailydiary_entries SET image_storage_key = ?, image_url = NULL, image_prompt = ?, image_source = ? WHERE id = ? AND user_id = ?',
             (storage_key, image_prompt, 'ai', entry_id, user_id),
         )
+    _record_usage_safely(
+        conn,
+        user_id=user_id,
+        event_type=AI_IMAGE_EVENT,
+        metadata={'entry_type': 'daily', 'entry_id': entry_id},
+    )
     conn.commit()
     conn.close()
     delete_image(entry['image_storage_key'])
@@ -1964,6 +2066,18 @@ def generate_dream_image(entry_id):
         conn.close()
         return jsonify({'error': 'This dream entry does not yet have an image prompt.'}), 400
 
+    quota_error = _check_usage_or_error(
+        conn,
+        user_id=user_id,
+        event_type=AI_IMAGE_EVENT,
+        units=1,
+        message='This plan has reached its monthly AI image limit.',
+    )
+    if quota_error:
+        conn.close()
+        payload, status_code = quota_error
+        return jsonify(payload), status_code
+
     try:
         ai_service = OpenAIService()
         image_bytes = ai_service.generate_image(image_prompt)
@@ -1983,6 +2097,12 @@ def generate_dream_image(entry_id):
     cursor.execute(
         'UPDATE dreamdiary_entries SET image_storage_key = ?, image_url = NULL, image_source = ? WHERE id = ? AND user_id = ?',
         (storage_key, 'ai', entry_id, user_id),
+    )
+    _record_usage_safely(
+        conn,
+        user_id=user_id,
+        event_type=AI_IMAGE_EVENT,
+        metadata={'entry_type': 'dream', 'entry_id': entry_id},
     )
     conn.commit()
     conn.close()

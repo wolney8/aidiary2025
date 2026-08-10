@@ -12,6 +12,7 @@ from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_
 from services.database_resilience import classify_database_exception
 from services.runtime_migrations import (
     ensure_account_security_tokens_table,
+    ensure_admin_announcement_tables,
     ensure_auth_identities_table,
     ensure_billing_tables,
     ensure_cbt_worksheet_tables,
@@ -204,6 +205,11 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
         ensure_billing_tables(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime billing table migration skipped due to error: %s', migration_exc)
+
+    try:
+        ensure_admin_announcement_tables(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime admin announcement migration skipped due to error: %s', migration_exc)
 
     try:
         ensure_export_history_table(database_path, app.logger.info)
@@ -439,7 +445,6 @@ def create_app():
             '/api/login',
             '/api/register',
             '/api/oauth/',
-            '/api/profile',
         )
         if request.path.startswith(allowed_prefixes):
             return None
@@ -461,12 +466,39 @@ def create_app():
         try:
             adapter = app.config['DATABASE_ADAPTER']
             with adapter.connect() as conn:
+                user_columns = adapter.table_columns(conn, 'users')
+                account_status_expr = (
+                    'account_status'
+                    if 'account_status' in user_columns
+                    else "'active' AS account_status"
+                )
                 row = conn.execute(
-                    'SELECT onboarding_completed FROM users WHERE id = ?',
+                    f'''
+                    SELECT onboarding_completed, {account_status_expr}
+                    FROM users
+                    WHERE id = ?
+                    ''',
                     (user_id,),
                 ).fetchone()
         except Exception as exc:
             app.logger.warning('Onboarding gate check failed: %s', exc)
+            return None
+
+        if row is not None and str(row['account_status'] or 'active').lower() == 'restricted':
+            restricted_allowed = (
+                request.path == '/api/profile/account'
+                and request.method == 'DELETE'
+            ) or (
+                request.path == '/api/import/export'
+                and request.method == 'GET'
+            )
+            if not restricted_allowed:
+                return jsonify({
+                    'error': 'This account has been restricted. Contact the OpenMynd administrator for access.',
+                    'code': 'account_restricted',
+                }), 403
+
+        if request.path.startswith('/api/profile'):
             return None
 
         if row is not None and not bool(row['onboarding_completed']):
@@ -491,6 +523,7 @@ def create_app():
     from routes.cbt import cbt_bp
     from routes.dashboard import dashboard_bp
     from routes.billing import billing_bp
+    from routes.admin import admin_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(profile_bp, url_prefix='/api')
@@ -505,6 +538,7 @@ def create_app():
     app.register_blueprint(cbt_bp, url_prefix='/api')
     app.register_blueprint(dashboard_bp, url_prefix='/api')
     app.register_blueprint(billing_bp, url_prefix='/api')
+    app.register_blueprint(admin_bp, url_prefix='/api')
 
     try:
         recovered_jobs = recover_import_jobs(app)
