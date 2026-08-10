@@ -10,6 +10,7 @@ import {
 } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
+import { HttpErrorResponse } from "@angular/common/http";
 import { ActivatedRoute, Router, RouterModule } from "@angular/router";
 import { MatCardModule } from "@angular/material/card";
 import { MatChipsModule } from "@angular/material/chips";
@@ -2316,6 +2317,13 @@ export class DetailComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error("Failed to transcribe attachment:", error);
         this.transcribingAttachmentIds.delete(Number(attachment.id));
+        if (this.isUpgradeRequiredError(error)) {
+          void this.showUpgradeRequiredDialog(
+            "Audio transcription needs a higher plan",
+            "Your current plan has reached its audio transcription allowance for this month.",
+          );
+          return;
+        }
         void this.showErrorDialog(
           "Transcription failed",
           error?.error?.error || "Failed to transcribe the audio attachment.",
@@ -2347,6 +2355,13 @@ export class DetailComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error("Failed to derive attachment text:", error);
         this.derivingAttachmentTextIds.delete(Number(attachment.id));
+        if (this.isUpgradeRequiredError(error)) {
+          void this.showUpgradeRequiredDialog(
+            "PDF text extraction needs a higher plan",
+            "Your current plan has reached its PDF text extraction allowance for this month.",
+          );
+          return;
+        }
         void this.showErrorDialog(
           "Text extraction failed",
           error?.error?.error || "Failed to derive text from the PDF attachment.",
@@ -2729,6 +2744,13 @@ export class DetailComponent implements OnInit, OnDestroy {
         console.error("Failed to generate dream image from edited prompt:", error);
         this.isGeneratingDreamImage = false;
         this.isSavingDreamPrompt = false;
+        if (this.isUpgradeRequiredError(error)) {
+          void this.showUpgradeRequiredDialog(
+            "AI image generation needs a higher plan",
+            "Your current plan has reached its AI image allowance for this month.",
+          );
+          return;
+        }
         void this.showErrorDialog(
           "Image generation failed",
           "Failed to generate a new image from this prompt. Please try again.",
@@ -2770,6 +2792,13 @@ export class DetailComponent implements OnInit, OnDestroy {
       error: (error) => {
         console.error("Failed to generate dream image:", error);
         this.isGeneratingDreamImage = false;
+        if (this.isUpgradeRequiredError(error)) {
+          void this.showUpgradeRequiredDialog(
+            "AI image generation needs a higher plan",
+            "Your current plan has reached its AI image allowance for this month.",
+          );
+          return;
+        }
         void this.showErrorDialog(
           "Image generation failed",
           "Failed to generate dream image. Please try again.",
@@ -2888,6 +2917,27 @@ export class DetailComponent implements OnInit, OnDestroy {
       confirmText: "OK",
       variant: "error",
     });
+  }
+
+  private async showUpgradeRequiredDialog(title: string, message: string): Promise<void> {
+    const confirmed = await this.appDialog.confirm({
+      title,
+      message,
+      confirmText: "See plans",
+      cancelText: "Not now",
+      variant: "info",
+    });
+    if (confirmed) {
+      void this.router.navigate(["/plans"]);
+    }
+  }
+
+  private isUpgradeRequiredError(error: unknown): boolean {
+    return (
+      error instanceof HttpErrorResponse &&
+      error.status === 402 &&
+      error.error?.code === "upgrade_required"
+    );
   }
 
   getUserParagraphs(): string[] {
@@ -3290,6 +3340,12 @@ export class DetailComponent implements OnInit, OnDestroy {
     if (warningCode === "ai-save-failed") {
       this.analysisWarningMessage =
         "Your entry was saved, but the AI response could not be attached to it. Please try analysing again.";
+      return;
+    }
+
+    if (warningCode === "ai-upgrade-required") {
+      this.analysisWarningMessage =
+        "Your entry was saved, but AI response generation needs a higher plan or more monthly allowance.";
       return;
     }
 
