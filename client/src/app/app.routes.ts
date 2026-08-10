@@ -90,7 +90,7 @@ export const routes: Routes = [
   },
   {
     path: "admin/plans",
-    title: "Plan matrix | OpenMynd",
+    title: "Billing console | OpenMynd",
     canActivate: [authGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>

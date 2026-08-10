@@ -8,6 +8,8 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from services.billing_entitlements import (
+    VALID_STATUSES,
+    VALID_TIERS,
     record_billing_event,
     resolve_user_entitlement,
     upsert_user_entitlement,
@@ -57,6 +59,23 @@ def _row_get(row, key: str):
         return row[key]
     except (KeyError, TypeError, IndexError):
         return getattr(row, key, None)
+
+
+def _table_columns(conn, table_name: str) -> set[str]:
+    if _database_provider() == SQLITE_PROVIDER:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {str(_row_get(row, "name") or row[1]) for row in rows}
+    rows = conn.execute(
+        _sql(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = ?
+            """
+        ),
+        (table_name,),
+    ).fetchall()
+    return {str(_row_get(row, "column_name") or row[0]) for row in rows}
 
 
 def _iso_from_epoch(value) -> str | None:
@@ -578,6 +597,54 @@ def _require_admin(conn, user_id: int) -> tuple[bool, dict[str, object]]:
     return entitlement.get("tier") == "administrator", entitlement
 
 
+def _serialise_admin_user(row, entitlement: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": int(_row_get(row, "id")),
+        "username": _row_get(row, "username") or "",
+        "email": _row_get(row, "email") or "",
+        "display_name": _row_get(row, "display_name") or "",
+        "first_name": _row_get(row, "first_name") or "",
+        "last_name": _row_get(row, "last_name") or "",
+        "registered_at": _row_get(row, "registered_at"),
+        "entitlement": entitlement,
+    }
+
+
+def _list_admin_users(conn, *, search: str = "", limit: int = 40) -> list[dict[str, object]]:
+    user_columns = _table_columns(conn, "users")
+    registered_expr = "registered_at" if "registered_at" in user_columns else "NULL AS registered_at"
+    search_text = search.strip().lower()
+    params: list[object] = []
+    where_clause = ""
+    if search_text:
+        like_value = f"%{search_text}%"
+        where_clause = """
+        WHERE lower(COALESCE(username, '')) LIKE ?
+           OR lower(COALESCE(email, '')) LIKE ?
+           OR lower(COALESCE(display_name, '')) LIKE ?
+           OR lower(COALESCE(first_name, '')) LIKE ?
+           OR lower(COALESCE(last_name, '')) LIKE ?
+        """
+        params.extend([like_value] * 5)
+    params.append(max(1, min(int(limit or 40), 100)))
+    rows = conn.execute(
+        _sql(
+            f"""
+            SELECT id, username, email, display_name, first_name, last_name, {registered_expr}
+            FROM users
+            {where_clause}
+            ORDER BY COALESCE(registered_at, ''), id DESC
+            LIMIT ?
+            """
+        ),
+        tuple(params),
+    ).fetchall()
+    return [
+        _serialise_admin_user(row, resolve_user_entitlement(conn, int(_row_get(row, "id"))))
+        for row in rows
+    ]
+
+
 @billing_bp.route("/billing/status", methods=["GET"])
 @jwt_required()
 def get_billing_status():
@@ -643,6 +710,69 @@ def update_admin_billing_plan(tier: str):
             return jsonify({"plan": plan}), 200
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+@billing_bp.route("/billing/admin/users", methods=["GET"])
+@jwt_required()
+def get_admin_billing_users():
+    user_id = int(get_jwt_identity())
+    search = str(request.args.get("search") or "")
+    with get_db() as conn:
+        is_admin, _entitlement = _require_admin(conn, user_id)
+        if not is_admin:
+            return jsonify({"error": "Administrator access is required."}), 403
+        return jsonify({"users": _list_admin_users(conn, search=search)}), 200
+
+
+@billing_bp.route("/billing/admin/users/<int:target_user_id>/entitlement", methods=["PUT"])
+@jwt_required()
+def update_admin_user_entitlement(target_user_id: int):
+    user_id = int(get_jwt_identity())
+    payload = request.get_json(silent=True) or {}
+    tier = str(payload.get("tier") or "").strip().lower()
+    status = str(payload.get("status") or "active").strip().lower()
+    valid_until = payload.get("valid_until")
+    valid_until_text = str(valid_until).strip() if valid_until not in {None, ""} else None
+
+    if tier not in VALID_TIERS:
+        return jsonify({"error": "Choose a valid account tier."}), 400
+    if status not in VALID_STATUSES:
+        return jsonify({"error": "Choose a valid entitlement status."}), 400
+    if target_user_id == user_id and tier != "administrator":
+        return jsonify({"error": "You cannot remove your own administrator access."}), 400
+
+    with get_db() as conn:
+        is_admin, _entitlement = _require_admin(conn, user_id)
+        if not is_admin:
+            return jsonify({"error": "Administrator access is required."}), 403
+        row = conn.execute(
+            _sql(
+                """
+                SELECT id, username, email, display_name, first_name, last_name,
+                       {registered_expr}
+                FROM users
+                WHERE id = ?
+                """.format(
+                    registered_expr=(
+                        "registered_at"
+                        if "registered_at" in _table_columns(conn, "users")
+                        else "NULL AS registered_at"
+                    )
+                )
+            ),
+            (target_user_id,),
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "User not found."}), 404
+        entitlement = upsert_user_entitlement(
+            conn,
+            user_id=target_user_id,
+            tier=tier,
+            source="manual",
+            status=status,
+            valid_until=valid_until_text,
+        )
+        return jsonify({"user": _serialise_admin_user(row, entitlement)}), 200
 
 
 @billing_bp.route("/billing/checkout-session", methods=["POST"])

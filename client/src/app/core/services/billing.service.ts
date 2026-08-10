@@ -91,6 +91,21 @@ export interface AdminBillingPlansResponse {
   plans: BillingPlan[];
 }
 
+export interface AdminBillingUser {
+  id: number;
+  username: string;
+  email?: string;
+  display_name?: string;
+  first_name?: string;
+  last_name?: string;
+  registered_at?: string | null;
+  entitlement: BillingEntitlement;
+}
+
+export interface AdminBillingUsersResponse {
+  users: AdminBillingUser[];
+}
+
 @Injectable({ providedIn: "root" })
 export class BillingService {
   private readonly http = inject(HttpClient);
@@ -148,6 +163,33 @@ export class BillingService {
     this.ensureAuthenticated();
     return this.http.put<{ plan: BillingPlan }>(
       `${this.apiUrl}/admin/plans/${tier}`,
+      payload,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  getAdminUsers(search = ""): Observable<AdminBillingUsersResponse> {
+    this.ensureAuthenticated();
+    const query = search.trim()
+      ? `?search=${encodeURIComponent(search.trim())}`
+      : "";
+    return this.http.get<AdminBillingUsersResponse>(
+      `${this.apiUrl}/admin/users${query}`,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  updateAdminUserEntitlement(
+    userId: number,
+    payload: {
+      tier: BillingTier;
+      status: string;
+      valid_until?: string | null;
+    },
+  ): Observable<{ user: AdminBillingUser }> {
+    this.ensureAuthenticated();
+    return this.http.put<{ user: AdminBillingUser }>(
+      `${this.apiUrl}/admin/users/${userId}/entitlement`,
       payload,
       { headers: this.buildHeaders() },
     );

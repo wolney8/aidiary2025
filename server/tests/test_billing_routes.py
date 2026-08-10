@@ -164,6 +164,76 @@ def test_administrator_can_update_plan_matrix(client):
     assert updated_plan["quotas"]["ai_analysis_monthly"] == 333
 
 
+def test_admin_user_routes_require_administrator_entitlement(client):
+    response = client.get("/api/billing/admin/users", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
+def test_administrator_can_list_and_update_user_entitlements(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, email, first_name, last_name, display_name
+            )
+            VALUES (2, 'member', 'hash', 'member@example.com', 'Member', 'User', 'Member')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    list_response = client.get(
+        "/api/billing/admin/users?search=member",
+        headers=_headers(client.application),
+    )
+    assert list_response.status_code == 200
+    listed_users = list_response.get_json()["users"]
+    assert [user["email"] for user in listed_users] == ["member@example.com"]
+    assert listed_users[0]["entitlement"]["tier"] == "free"
+
+    update_response = client.put(
+        "/api/billing/admin/users/2/entitlement",
+        headers=_headers(client.application),
+        json={"tier": "complimentary", "status": "active"},
+    )
+    assert update_response.status_code == 200
+    body = update_response.get_json()
+    assert body["user"]["entitlement"]["tier"] == "complimentary"
+    assert body["user"]["entitlement"]["source"] == "manual"
+
+    status_response = client.get("/api/billing/status", headers=_headers(client.application, user_id=2))
+    assert status_response.get_json()["entitlement"]["tier"] == "complimentary"
+
+
+def test_administrator_cannot_remove_own_admin_access(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.put(
+        "/api/billing/admin/users/1/entitlement",
+        headers=_headers(client.application),
+        json={"tier": "free", "status": "active"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "You cannot remove your own administrator access."
+
+
 def test_checkout_requires_auth(client):
     response = client.post("/api/billing/checkout-session", json={"tier": "personal"})
 

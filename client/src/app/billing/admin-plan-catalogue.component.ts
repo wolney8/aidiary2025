@@ -7,7 +7,9 @@ import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
+import { MatSelectModule } from "@angular/material/select";
 import {
+  AdminBillingUser,
   BillingPlan,
   BillingService,
   BillingTier,
@@ -16,6 +18,11 @@ import {
 interface EditablePlan extends BillingPlan {
   featuresText: string;
   quotasText: string;
+}
+
+interface EditableAdminUser extends AdminBillingUser {
+  selectedTier: BillingTier;
+  selectedStatus: string;
 }
 
 @Component({
@@ -30,6 +37,7 @@ interface EditablePlan extends BillingPlan {
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatSelectModule,
   ],
   template: `
     <section class="admin-plans-page" data-testid="admin-plans-page">
@@ -40,13 +48,104 @@ interface EditablePlan extends BillingPlan {
 
       <header class="admin-plans-hero">
         <p class="admin-eyebrow">Administrator</p>
-        <h1>Plan matrix</h1>
-        <p>Changes are reflected anywhere OpenMynd shows plans or enforces usage limits.</p>
+        <h1>Billing console</h1>
+        <p>Manage account access, pricing copy, quotas, and plan visibility.</p>
       </header>
 
       <p class="admin-status" *ngIf="isLoading" role="status">Loading plan matrix...</p>
       <p class="admin-status is-error" *ngIf="errorMessage" role="alert">{{ errorMessage }}</p>
       <p class="admin-status is-success" *ngIf="successMessage" role="status">{{ successMessage }}</p>
+
+      <section class="admin-access-card" aria-labelledby="admin-user-access-heading">
+        <div class="admin-section-header">
+          <div>
+            <p class="admin-eyebrow">User access</p>
+            <h2 id="admin-user-access-heading">Manual account tiers</h2>
+          </div>
+          <form class="admin-user-search" (ngSubmit)="loadUsers()">
+            <mat-form-field appearance="outline">
+              <mat-label>Search users</mat-label>
+              <input
+                matInput
+                [(ngModel)]="userSearch"
+                name="user_search"
+                placeholder="Email, username, or name"
+              />
+            </mat-form-field>
+            <button
+              mat-stroked-button
+              type="submit"
+              class="admin-pill-action"
+              [disabled]="usersLoading"
+            >
+              <mat-icon aria-hidden="true">{{ usersLoading ? "hourglass_top" : "search" }}</mat-icon>
+              <span>{{ usersLoading ? "Searching..." : "Search" }}</span>
+            </button>
+          </form>
+        </div>
+
+        <p class="admin-user-note">
+          Manual tiers are owner overrides. Stripe subscriptions still manage paid self-service accounts.
+        </p>
+
+        <div class="admin-users-list" *ngIf="!usersLoading; else loadingUsers">
+          <article
+            class="admin-user-row"
+            *ngFor="let user of users"
+            [attr.data-testid]="'admin-user-' + user.id"
+          >
+            <div class="admin-user-identity">
+              <div class="admin-user-avatar" aria-hidden="true">
+                {{ getUserInitial(user) }}
+              </div>
+              <div>
+                <h3>{{ getUserDisplayName(user) }}</h3>
+                <p>{{ user.email || user.username }} · {{ getEntitlementLabel(user) }}</p>
+              </div>
+            </div>
+
+            <div class="admin-user-controls">
+              <mat-form-field appearance="outline">
+                <mat-label>Tier</mat-label>
+                <mat-select [(ngModel)]="user.selectedTier" [name]="'user_' + user.id + '_tier'">
+                  <mat-option *ngFor="let tier of tierOptions" [value]="tier">
+                    {{ tier }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Status</mat-label>
+                <mat-select [(ngModel)]="user.selectedStatus" [name]="'user_' + user.id + '_status'">
+                  <mat-option *ngFor="let status of statusOptions" [value]="status">
+                    {{ status }}
+                  </mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <button
+                mat-raised-button
+                color="primary"
+                type="button"
+                class="admin-pill-action"
+                [disabled]="savingUserId === user.id"
+                (click)="saveUserEntitlement(user)"
+              >
+                <mat-icon aria-hidden="true">
+                  {{ savingUserId === user.id ? "hourglass_top" : "save" }}
+                </mat-icon>
+                <span>{{ savingUserId === user.id ? "Saving..." : "Save access" }}</span>
+              </button>
+            </div>
+          </article>
+
+          <p class="admin-empty-state" *ngIf="!users.length">No users found.</p>
+        </div>
+
+        <ng-template #loadingUsers>
+          <p class="admin-status" role="status">Loading users...</p>
+        </ng-template>
+      </section>
 
       <div class="admin-plan-list" *ngIf="!isLoading">
         <article class="admin-plan-card" *ngFor="let plan of plans" [attr.data-testid]="'admin-plan-' + plan.tier">
@@ -134,6 +233,7 @@ interface EditablePlan extends BillingPlan {
 
     .admin-back-link,
     .admin-status,
+    .admin-access-card,
     .admin-plan-card,
     .admin-plans-hero {
       border: 1px solid var(--colour-border);
@@ -142,6 +242,7 @@ interface EditablePlan extends BillingPlan {
     }
 
     .admin-back-link,
+    .admin-pill-action,
     .admin-save-plan {
       display: inline-flex;
       align-items: center;
@@ -159,6 +260,7 @@ interface EditablePlan extends BillingPlan {
     }
 
     .admin-back-link mat-icon,
+    .admin-pill-action mat-icon,
     .admin-save-plan mat-icon {
       width: 20px;
       height: 20px;
@@ -223,6 +325,87 @@ interface EditablePlan extends BillingPlan {
       color: var(--colour-success-text);
     }
 
+    .admin-access-card {
+      display: grid;
+      gap: var(--spacing-md);
+      padding: var(--spacing-lg);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-elevated);
+    }
+
+    .admin-section-header,
+    .admin-user-row,
+    .admin-user-controls,
+    .admin-user-identity,
+    .admin-user-search {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .admin-section-header,
+    .admin-user-row {
+      justify-content: space-between;
+    }
+
+    .admin-section-header h2,
+    .admin-user-identity h3,
+    .admin-user-identity p,
+    .admin-user-note,
+    .admin-empty-state {
+      margin: 0;
+    }
+
+    .admin-user-note,
+    .admin-user-identity p,
+    .admin-empty-state {
+      color: var(--colour-text-secondary);
+      font-weight: 750;
+    }
+
+    .admin-user-search {
+      align-items: flex-start;
+    }
+
+    .admin-user-search mat-form-field {
+      width: min(24rem, 52vw);
+    }
+
+    .admin-users-list {
+      display: grid;
+      gap: var(--spacing-sm);
+    }
+
+    .admin-user-row {
+      padding: var(--spacing-sm);
+      border: 1px solid var(--colour-border);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-muted);
+    }
+
+    .admin-user-avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-pill);
+      background: color-mix(in srgb, var(--colour-primary) 16%, var(--colour-surface));
+      color: var(--colour-primary);
+      font-weight: 950;
+      text-transform: uppercase;
+    }
+
+    .admin-user-controls mat-form-field {
+      width: 10rem;
+    }
+
+    .admin-pill-action {
+      min-height: 44px;
+      border-radius: var(--radius-pill);
+      font-weight: 900;
+    }
+
     .admin-plan-list {
       display: grid;
       gap: var(--spacing-md);
@@ -266,6 +449,19 @@ interface EditablePlan extends BillingPlan {
       .admin-plan-grid {
         grid-template-columns: 1fr;
       }
+
+      .admin-section-header,
+      .admin-user-row,
+      .admin-user-controls,
+      .admin-user-search {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .admin-user-search mat-form-field,
+      .admin-user-controls mat-form-field {
+        width: 100%;
+      }
     }
   `],
 })
@@ -273,12 +469,26 @@ export class AdminPlanCatalogueComponent implements OnInit {
   private readonly billingService = inject(BillingService);
 
   plans: EditablePlan[] = [];
+  users: EditableAdminUser[] = [];
+  userSearch = "";
   isLoading = true;
+  usersLoading = true;
   savingTier: BillingTier | null = null;
+  savingUserId: number | null = null;
   errorMessage = "";
   successMessage = "";
+  readonly tierOptions: BillingTier[] = [
+    "free",
+    "personal",
+    "plus",
+    "complimentary",
+    "lifetime",
+    "administrator",
+  ];
+  readonly statusOptions = ["active", "inactive", "past_due", "cancelled", "expired"];
 
   ngOnInit(): void {
+    this.loadUsers();
     this.billingService.getAdminPlans().subscribe({
       next: (response) => {
         this.plans = response.plans.map((plan) => this.toEditablePlan(plan));
@@ -288,6 +498,44 @@ export class AdminPlanCatalogueComponent implements OnInit {
         this.errorMessage =
           error?.error?.error || "Plan matrix could not be loaded.";
         this.isLoading = false;
+      },
+    });
+  }
+
+  loadUsers(): void {
+    this.usersLoading = true;
+    this.errorMessage = "";
+    this.billingService.getAdminUsers(this.userSearch).subscribe({
+      next: (response) => {
+        this.users = response.users.map((user) => this.toEditableUser(user));
+        this.usersLoading = false;
+      },
+      error: (error) => {
+        this.usersLoading = false;
+        this.errorMessage = error?.error?.error || "Users could not be loaded.";
+      },
+    });
+  }
+
+  saveUserEntitlement(user: EditableAdminUser): void {
+    this.savingUserId = user.id;
+    this.errorMessage = "";
+    this.successMessage = "";
+    this.billingService.updateAdminUserEntitlement(user.id, {
+      tier: user.selectedTier,
+      status: user.selectedStatus,
+    }).subscribe({
+      next: (response) => {
+        const updated = this.toEditableUser(response.user);
+        this.users = this.users.map((item) =>
+          item.id === updated.id ? updated : item,
+        );
+        this.savingUserId = null;
+        this.successMessage = `${this.getUserDisplayName(updated)} access updated.`;
+      },
+      error: (error) => {
+        this.savingUserId = null;
+        this.errorMessage = error?.error?.error || "User access could not be saved.";
       },
     });
   }
@@ -339,5 +587,33 @@ export class AdminPlanCatalogueComponent implements OnInit {
       featuresText: (plan.features || []).join("\n"),
       quotasText: JSON.stringify(plan.quotas || {}, null, 2),
     };
+  }
+
+  private toEditableUser(user: AdminBillingUser): EditableAdminUser {
+    return {
+      ...user,
+      selectedTier: user.entitlement?.tier || "free",
+      selectedStatus: user.entitlement?.status || "active",
+    };
+  }
+
+  getUserDisplayName(user: AdminBillingUser): string {
+    return (
+      user.display_name ||
+      [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+      user.username ||
+      `User ${user.id}`
+    );
+  }
+
+  getUserInitial(user: AdminBillingUser): string {
+    return this.getUserDisplayName(user).trim().charAt(0) || "?";
+  }
+
+  getEntitlementLabel(user: AdminBillingUser): string {
+    const tier = user.entitlement?.tier || "free";
+    const source = user.entitlement?.source || "system";
+    const status = user.entitlement?.status || "active";
+    return `${tier} · ${source} · ${status}`;
   }
 }
