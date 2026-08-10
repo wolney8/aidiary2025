@@ -76,6 +76,32 @@ describe("ChatService", () => {
     request.flush(null);
   });
 
+  it("loads chat context status through the API", () => {
+    let result: unknown;
+    service.getContextStatus().subscribe((status) => (result = status));
+
+    const request = httpTesting.expectOne(
+      `${environment.apiBaseUrl}/chat/context-status`,
+    );
+    expect(request.request.method).toBe("GET");
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer test-token",
+    );
+    request.flush({
+      history_enabled: true,
+      sources: [
+        { key: "daily", label: "Diary entries", count: 2, enabled: true },
+      ],
+    });
+
+    expect(result).toEqual({
+      history_enabled: true,
+      sources: [
+        { key: "daily", label: "Diary entries", count: 2, enabled: true },
+      ],
+    });
+  });
+
   it("creates and reuses a local conversation UUID", () => {
     const conversationId = service.getOrCreateConversationId();
 

@@ -28,6 +28,14 @@ class _ContextEntry:
     people: str
 
 
+_SOURCE_LABELS = {
+    'Daily': 'Diary entries',
+    'Dream': 'Dream entries',
+    'Thought Record': 'Thought records',
+    'Important Day': 'Important days',
+}
+
+
 def estimate_tokens(text: str) -> int:
     """Return a conservative dependency-free token estimate."""
     return math.ceil(len(text) / 4)
@@ -110,6 +118,27 @@ class ChatContextService:
             sections.append('Recent diary entries:\n' + '\n'.join(included_entries))
 
         return self._fit_to_budget('\n\n'.join(sections))
+
+    def build_context_status(self, user_id: int) -> dict[str, object]:
+        """Return a user-facing summary of what chat context may use."""
+        with self.adapter.connect(timeout=10) as conn:
+            allow_ai_history = self._load_ai_history_allowed(conn, user_id)
+            entries = self._load_recent_entries(conn, user_id) if allow_ai_history else []
+
+        counts = Counter(entry.mode for entry in entries)
+        sources = [
+            {
+                'key': key.lower().replace(' ', '_'),
+                'label': label,
+                'count': int(counts.get(key, 0)),
+                'enabled': bool(allow_ai_history),
+            }
+            for key, label in _SOURCE_LABELS.items()
+        ]
+        return {
+            'history_enabled': bool(allow_ai_history),
+            'sources': sources,
+        }
 
     def build_system_prompt(self, user_id: int) -> str:
         """Return the companion instructions and bounded private context."""
@@ -230,6 +259,47 @@ class ChatContextService:
             ).fetchall()
             entries.extend(self._rows_to_entries('Dream', rows))
 
+        if self._table_exists(conn, 'cbt_worksheets') and self._table_exists(conn, 'cbt_thought_record_data'):
+            rows = conn.execute(
+                adapt_placeholders(
+                    """
+                SELECT w.record_date AS entry_date,
+                       COALESCE(w.current_step, 0) AS entry_number,
+                       COALESCE(w.title, '') AS title,
+                       COALESCE(d.situation, '') AS situation,
+                       COALESCE(d.balanced_thought, '') AS balanced_thought
+                FROM cbt_worksheets w
+                JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
+                WHERE w.user_id = ?
+                ORDER BY w.record_date DESC, w.updated_at DESC, w.id DESC
+                LIMIT ?
+                """,
+                    self.adapter.provider,
+                ),
+                (user_id, self.recent_entry_limit),
+            ).fetchall()
+            entries.extend(self._thought_rows_to_entries(rows))
+
+        if self._table_exists(conn, 'important_days'):
+            rows = conn.execute(
+                adapt_placeholders(
+                    """
+                SELECT COALESCE(starts_on, '') AS entry_date,
+                       0 AS entry_number,
+                       COALESCE(label, '') AS title,
+                       COALESCE(note, '') AS body,
+                       COALESCE(category, '') AS tags
+                FROM important_days
+                WHERE user_id = ?
+                ORDER BY starts_on DESC, updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                    self.adapter.provider,
+                ),
+                (user_id, self.recent_entry_limit),
+            ).fetchall()
+            entries.extend(self._important_day_rows_to_entries(rows))
+
         entries.sort(key=lambda item: (item.entry_date, item.entry_number), reverse=True)
         return entries[:self.recent_entry_limit]
 
@@ -244,6 +314,45 @@ class ChatContextService:
                 body=_compact_text(row['body']),
                 tags=str(row['tags'] or ''),
                 people=str(row['people'] or ''),
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def _thought_rows_to_entries(rows: Iterable[object]) -> list[_ContextEntry]:
+        entries: list[_ContextEntry] = []
+        for row in rows:
+            situation = _compact_text(row['situation'], 260)
+            balanced = _compact_text(row['balanced_thought'], 260)
+            body_parts = []
+            if situation:
+                body_parts.append(f'Situation: {situation}')
+            if balanced:
+                body_parts.append(f'Balanced thought: {balanced}')
+            entries.append(
+                _ContextEntry(
+                    mode='Thought Record',
+                    entry_date=str(row['entry_date'] or ''),
+                    entry_number=int(row['entry_number'] or 0),
+                    title=_compact_text(row['title'], 120) or 'Thought record',
+                    body=' '.join(body_parts) or 'No thought record detail saved.',
+                    tags='cbt,thought record',
+                    people='',
+                )
+            )
+        return entries
+
+    @staticmethod
+    def _important_day_rows_to_entries(rows: Iterable[object]) -> list[_ContextEntry]:
+        return [
+            _ContextEntry(
+                mode='Important Day',
+                entry_date=str(row['entry_date'] or ''),
+                entry_number=int(row['entry_number'] or 0),
+                title=_compact_text(row['title'], 120) or 'Important day',
+                body=_compact_text(row['body']) or 'No important-day note saved.',
+                tags=str(row['tags'] or ''),
+                people='',
             )
             for row in rows
         ]

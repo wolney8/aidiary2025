@@ -126,10 +126,12 @@ def test_chat_endpoints_require_auth(client):
         content_type='application/json',
     )
     get_response = client.get(f'/api/chat/history?conversation_id={conversation_id}')
+    context_response = client.get('/api/chat/context-status')
     delete_response = client.delete(f'/api/chat/conversation?conversation_id={conversation_id}')
 
     assert post_response.status_code == 401
     assert get_response.status_code == 401
+    assert context_response.status_code == 401
     assert delete_response.status_code == 401
 
 
@@ -303,6 +305,31 @@ def test_chat_send_history_clear_flow(client, mocked_chat_services):
     assert report['slo_alerts'] == []
     assert report['token_usage']['input_tokens'] > 0
     assert report['token_usage']['output_tokens'] > 0
+
+
+def test_chat_context_status_returns_source_summary(client, mocked_chat_services):
+    token = _register_and_get_token(client, 'chat_context_status_user')
+    context_service, _ = mocked_chat_services
+    context_service.return_value.build_context_status.return_value = {
+        'history_enabled': True,
+        'sources': [
+            {'key': 'daily', 'label': 'Diary entries', 'count': 2, 'enabled': True},
+        ],
+    }
+
+    response = client.get(
+        '/api/chat/context-status',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.data) == {
+        'history_enabled': True,
+        'sources': [
+            {'key': 'daily', 'label': 'Diary entries', 'count': 2, 'enabled': True},
+        ],
+    }
+    context_service.return_value.build_context_status.assert_called_once_with(1)
 
 
 def test_chat_retry_reuses_request_without_duplicate_messages(client, mocked_chat_services):

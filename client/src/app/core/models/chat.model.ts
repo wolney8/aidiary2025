@@ -29,3 +29,15 @@ export interface ChatStreamEvent {
   retryable?: boolean;
   retry_after_ms?: number;
 }
+
+export interface ChatContextSource {
+  key: string;
+  label: string;
+  count: number;
+  enabled: boolean;
+}
+
+export interface ChatContextStatus {
+  history_enabled: boolean;
+  sources: ChatContextSource[];
+}

@@ -15,7 +15,7 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { finalize } from "rxjs";
-import { ChatMessage } from "../../../core/models/chat.model";
+import { ChatContextStatus, ChatMessage } from "../../../core/models/chat.model";
 import { AppDialogService } from "../../../core/services/app-dialog.service";
 import { AuthService } from "../../../core/services/auth.service";
 import { ChatService } from "../../../core/services/chat.service";
@@ -174,7 +174,7 @@ import { ChatService } from "../../../core/services/chat.service";
         </button>
       </form>
       <div class="chat-composer-meta" data-testid="chat-composer-meta">
-        <span>Enter to send · Shift+Enter for a new line</span>
+        <span>{{ contextSummary() }}</span>
         <span>{{ draft.length }} / 2000</span>
       </div>
     </section>
@@ -483,6 +483,17 @@ import { ChatService } from "../../../core/services/chat.service";
         background: var(--colour-surface-elevated);
       }
 
+      .chat-composer-meta span:first-child {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chat-composer-meta span:last-child {
+        flex: 0 0 auto;
+      }
+
       .visually-hidden {
         position: absolute;
         width: 1px;
@@ -559,6 +570,17 @@ export class ChatCompanionComponent {
   readonly showTypingIndicator = signal(false);
   readonly errorMessage = signal("");
   readonly messages = signal<ChatMessage[]>([]);
+  readonly contextStatus = signal<ChatContextStatus | null>(null);
+  readonly contextSummary = computed(() => {
+    const status = this.contextStatus();
+    if (!status) return "Checking context settings…";
+    if (!status.history_enabled) return "Prior-entry memory is off.";
+    const activeSources = status.sources
+      .filter((source) => source.enabled && source.count > 0)
+      .map((source) => `${source.label} (${source.count})`);
+    if (activeSources.length === 0) return "No prior diary context available yet.";
+    return `May use: ${activeSources.join(", ")}`;
+  });
   readonly coachName = computed(() => {
     const user = this.authService.getCurrentUser();
     return (
@@ -574,6 +596,7 @@ export class ChatCompanionComponent {
   open(): void {
     this.isOpen.set(true);
     if (!this.historyLoaded) this.loadHistory();
+    if (!this.contextStatus()) this.loadContextStatus();
     setTimeout(() => this.messageInput?.nativeElement.focus());
   }
 
@@ -700,6 +723,21 @@ export class ChatCompanionComponent {
         },
         error: () => {
           this.errorMessage.set("Your chat history could not be loaded.");
+        },
+      });
+  }
+
+  private loadContextStatus(): void {
+    this.chatService
+      .getContextStatus()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (status) => this.contextStatus.set(status),
+        error: () => {
+          this.contextStatus.set({
+            history_enabled: false,
+            sources: [],
+          });
         },
       });
   }

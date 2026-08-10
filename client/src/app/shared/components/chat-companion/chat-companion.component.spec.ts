@@ -14,6 +14,7 @@ describe("ChatCompanionComponent", () => {
     getOrCreateConversationId: jasmine.Spy;
     resetConversationId: jasmine.Spy;
     getHistory: jasmine.Spy;
+    getContextStatus: jasmine.Spy;
     sendMessage: jasmine.Spy;
     clearConversation: jasmine.Spy;
   };
@@ -29,6 +30,14 @@ describe("ChatCompanionComponent", () => {
         .createSpy("resetConversationId")
         .and.returnValue("conversation-2"),
       getHistory: jasmine.createSpy("getHistory").and.returnValue(of([])),
+      getContextStatus: jasmine.createSpy("getContextStatus").and.returnValue(
+        of({
+          history_enabled: true,
+          sources: [
+            { key: "daily", label: "Diary entries", count: 2, enabled: true },
+          ],
+        }),
+      ),
       sendMessage: jasmine.createSpy("sendMessage").and.returnValue(stream),
       clearConversation: jasmine
         .createSpy("clearConversation")
@@ -72,6 +81,8 @@ describe("ChatCompanionComponent", () => {
     expect(panel).not.toBeNull();
     expect(panel.getAttribute("aria-label")).toBe("Chat with Sage");
     expect(chatService.getHistory).toHaveBeenCalledWith("conversation-1");
+    expect(chatService.getContextStatus).toHaveBeenCalled();
+    expect(component.contextSummary()).toBe("May use: Diary entries (2)");
   });
 
   it("exposes stable hooks for the trigger and primary chat controls", () => {

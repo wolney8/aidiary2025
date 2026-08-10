@@ -525,6 +525,18 @@ def get_history():
     }), 200
 
 
+@chat_bp.route('/chat/context-status', methods=['GET'])
+@jwt_required()
+def get_context_status():
+    """Expose user-facing chat context permissions without returning private content."""
+    user_id = int(get_jwt_identity())
+    status = ChatContextService(
+        current_app.config['DATABASE_PATH'],
+        adapter=current_app.config.get('DATABASE_ADAPTER'),
+    ).build_context_status(user_id)
+    return jsonify(status), 200
+
+
 @chat_bp.route('/chat/conversation', methods=['DELETE'])
 @jwt_required()
 def clear_conversation():
