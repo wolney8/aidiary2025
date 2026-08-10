@@ -141,6 +141,43 @@ import { ChatService } from "../../../core/services/chat.service";
         <span>{{ errorMessage() }}</span>
       </p>
 
+      <aside
+        *ngIf="isContextOpen()"
+        id="chat-context-drawer"
+        class="chat-context-drawer"
+        data-testid="chat-context-drawer"
+        role="region"
+        aria-labelledby="chat-context-title"
+      >
+        <div class="chat-context-heading">
+          <div>
+            <h3 id="chat-context-title">Context available</h3>
+            <p>{{ contextDetailSummary() }}</p>
+          </div>
+          <button
+            mat-icon-button
+            type="button"
+            aria-label="Collapse chat context details"
+            matTooltip="Collapse context details"
+            (click)="toggleContextDrawer()"
+            data-testid="chat-context-collapse-button"
+          >
+            <mat-icon>keyboard_arrow_down</mat-icon>
+          </button>
+        </div>
+
+        <ul class="chat-context-list" aria-label="Chat context sources">
+          <li
+            *ngFor="let source of contextSources(); trackBy: trackContextSource"
+            [class.is-available]="source.available"
+          >
+            <mat-icon aria-hidden="true">{{ source.icon }}</mat-icon>
+            <span>{{ source.label }}</span>
+            <small>{{ source.detail }}</small>
+          </li>
+        </ul>
+      </aside>
+
       <form
         class="chat-composer"
         data-testid="chat-composer"
@@ -171,7 +208,20 @@ import { ChatService } from "../../../core/services/chat.service";
         </button>
       </form>
       <div class="chat-composer-meta" data-testid="chat-composer-meta">
-        <span>{{ contextSummary() }}</span>
+        <button
+          type="button"
+          class="chat-context-toggle"
+          [attr.aria-expanded]="isContextOpen()"
+          aria-controls="chat-context-drawer"
+          (click)="toggleContextDrawer()"
+          data-testid="chat-context-toggle"
+        >
+          <mat-icon aria-hidden="true">privacy_tip</mat-icon>
+          <span>{{ contextSummary() }}</span>
+          <mat-icon aria-hidden="true">
+            {{ isContextOpen() ? "keyboard_arrow_down" : "keyboard_arrow_up" }}
+          </mat-icon>
+        </button>
         <span>{{ draft.length }} / 2000</span>
       </div>
     </section>
@@ -450,6 +500,92 @@ import { ChatService } from "../../../core/services/chat.service";
         font-size: 1.15rem;
       }
 
+      .chat-context-drawer {
+        max-height: min(13rem, 34dvh);
+        overflow-y: auto;
+        border-top: 1px solid var(--colour-border);
+        background: var(--colour-surface-muted);
+        padding: 0.85rem 1rem;
+      }
+
+      .chat-context-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+        margin-bottom: 0.7rem;
+      }
+
+      .chat-context-heading h3 {
+        color: var(--colour-text-primary);
+        font-size: 0.95rem;
+        line-height: 1.25;
+      }
+
+      .chat-context-heading p {
+        margin-top: 0.15rem;
+        color: var(--colour-text-secondary);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+
+      .chat-context-heading button {
+        width: 2.25rem;
+        height: 2.25rem;
+        flex: 0 0 2.25rem;
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+        color: var(--colour-text-primary);
+      }
+
+      .chat-context-list {
+        display: grid;
+        gap: 0.45rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .chat-context-list li {
+        display: grid;
+        grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.55rem;
+        min-height: 2.5rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        color: var(--colour-text-secondary);
+        padding: 0.35rem 0.7rem;
+      }
+
+      .chat-context-list li.is-available {
+        border-color: color-mix(in srgb, var(--colour-primary) 50%, var(--colour-border));
+        color: var(--colour-text-primary);
+      }
+
+      .chat-context-list mat-icon {
+        width: 1.25rem;
+        height: 1.25rem;
+        font-size: 1.25rem;
+        color: var(--colour-primary);
+      }
+
+      .chat-context-list span {
+        min-width: 0;
+        overflow: hidden;
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .chat-context-list small {
+        color: var(--colour-text-secondary);
+        font-size: 0.72rem;
+        white-space: nowrap;
+      }
+
       .chat-composer {
         display: flex;
         align-items: flex-end;
@@ -503,7 +639,41 @@ import { ChatService } from "../../../core/services/chat.service";
         min-width: 0;
       }
 
-      .chat-composer-meta span:first-child {
+      .chat-context-toggle {
+        display: inline-flex;
+        align-items: center;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 2rem;
+        gap: 0.35rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+        font: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
+      }
+
+      .chat-context-toggle:hover {
+        border-color: var(--colour-primary);
+        color: var(--colour-text-primary);
+      }
+
+      .chat-context-toggle:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
+      }
+
+      .chat-context-toggle mat-icon {
+        width: 1rem;
+        height: 1rem;
+        flex: 0 0 1rem;
+        font-size: 1rem;
+      }
+
+      .chat-context-toggle span {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -554,12 +724,25 @@ import { ChatService } from "../../../core/services/chat.service";
           max-width: 88%;
         }
 
-        .chat-composer-meta span:first-child {
-          display: none;
+        .chat-composer-meta {
+          align-items: flex-end;
+          flex-direction: column;
+          gap: 0.45rem;
         }
 
-        .chat-composer-meta {
-          justify-content: flex-end;
+        .chat-context-toggle {
+          width: 100%;
+          justify-content: center;
+        }
+
+        .chat-context-list li {
+          grid-template-columns: 1.5rem minmax(0, 1fr);
+          border-radius: var(--radius-lg);
+        }
+
+        .chat-context-list small {
+          grid-column: 2;
+          white-space: normal;
         }
       }
 
@@ -587,18 +770,45 @@ export class ChatCompanionComponent {
   readonly showTypingIndicator = signal(false);
   readonly errorMessage = signal("");
   readonly messages = signal<ChatMessage[]>([]);
+  readonly isContextOpen = signal(false);
   readonly contextStatus = signal<ChatContextStatus | null>(null);
+  readonly contextSources = computed(() => {
+    const status = this.contextStatus();
+    const sources = status?.sources ?? [];
+    return sources.map((source) => {
+      const available = Boolean(status?.history_enabled && source.enabled && source.count > 0);
+      return {
+        key: source.key,
+        label: source.label,
+        icon: this.contextIconFor(source.key),
+        available,
+        detail: !status?.history_enabled
+          ? "Off"
+          : available
+            ? "Available"
+            : "No records",
+      };
+    });
+  });
   readonly contextSummary = computed(() => {
     const status = this.contextStatus();
     if (!status) return "Checking context settings…";
     if (!status.history_enabled) {
-      return "Past-entry references are off in Customisation.";
+      return "Past-entry references off";
     }
     const activeSources = status.sources
       .filter((source) => source.enabled && source.count > 0)
-      .map((source) => `${source.label} (${source.count})`);
-    if (activeSources.length === 0) return "No prior diary context available yet.";
-    return `May reference: ${activeSources.join(", ")}`;
+      .map((source) => source.label);
+    if (activeSources.length === 0) return "No prior context";
+    return `May reference ${activeSources.length} source${activeSources.length === 1 ? "" : "s"}`;
+  });
+  readonly contextDetailSummary = computed(() => {
+    const status = this.contextStatus();
+    if (!status) return "Checking your current chat context settings.";
+    if (!status.history_enabled) {
+      return "Turn on “Allow AI to reference past entries” in Customisation to use prior records.";
+    }
+    return "Chat may use these record types when relevant. It does not show private record text here.";
   });
   readonly coachName = computed(() => {
     const user = this.authService.getCurrentUser();
@@ -632,6 +842,10 @@ export class ChatCompanionComponent {
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     this.send();
+  }
+
+  toggleContextDrawer(): void {
+    this.isContextOpen.update((value) => !value);
   }
 
   send(): void {
@@ -723,6 +937,25 @@ export class ChatCompanionComponent {
 
   trackMessage(index: number, message: ChatMessage): string {
     return `${message.role}-${message.created_at ?? index}-${index}`;
+  }
+
+  trackContextSource(index: number, source: { key: string }): string {
+    return source.key || String(index);
+  }
+
+  private contextIconFor(key: string): string {
+    switch (key) {
+      case "daily":
+        return "book";
+      case "dream":
+        return "bedtime";
+      case "thought_record":
+        return "psychology_alt";
+      case "important_day":
+        return "event";
+      default:
+        return "source";
+    }
   }
 
   private loadHistory(): void {

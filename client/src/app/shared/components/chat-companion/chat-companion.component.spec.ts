@@ -82,7 +82,20 @@ describe("ChatCompanionComponent", () => {
     expect(panel.getAttribute("aria-label")).toBe("Chat with Sage");
     expect(chatService.getHistory).toHaveBeenCalledWith("conversation-1");
     expect(chatService.getContextStatus).toHaveBeenCalled();
-    expect(component.contextSummary()).toBe("May reference: Diary entries (2)");
+    expect(component.contextSummary()).toBe("May reference 1 source");
+  });
+
+  it("expands context source details without exposing diary values", () => {
+    component.open();
+    component.toggleContextDrawer();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const drawer = host.querySelector('[data-testid="chat-context-drawer"]');
+    expect(drawer).not.toBeNull();
+    expect(drawer?.textContent).toContain("Diary entries");
+    expect(drawer?.textContent).toContain("Available");
+    expect(drawer?.textContent).not.toContain("Diary entries (2)");
   });
 
   it("keeps a visible close control and closes back to the launcher", () => {
