@@ -3,8 +3,10 @@ import { Injectable, inject } from "@angular/core";
 import { Observable, map } from "rxjs";
 import { environment } from "../../../environments/environment";
 import {
+  ChatContextStatus,
   ChatHistoryResponse,
   ChatMessage,
+  ChatStats,
   ChatStreamEvent,
 } from "../models/chat.model";
 import { AuthService } from "./auth.service";
@@ -72,6 +74,19 @@ export class ChatService {
 
   clearConversation(conversationId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/chat/conversation`, {
+      params: { conversation_id: conversationId },
+      headers: this.buildAuthHeaders(),
+    });
+  }
+
+  getContextStatus(): Observable<ChatContextStatus> {
+    return this.http.get<ChatContextStatus>(`${this.apiUrl}/chat/context-status`, {
+      headers: this.buildAuthHeaders(),
+    });
+  }
+
+  getStats(conversationId: string): Observable<ChatStats> {
+    return this.http.get<ChatStats>(`${this.apiUrl}/chat/stats`, {
       params: { conversation_id: conversationId },
       headers: this.buildAuthHeaders(),
     });

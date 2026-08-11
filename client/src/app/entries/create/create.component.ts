@@ -85,6 +85,7 @@ const MAX_ATTACHMENTS_PER_ENTRY = 3;
 const MAX_IMAGE_OR_PDF_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_IMPORTANT_DAY_IMAGE_BYTES = 5 * 1024 * 1024;
+const CHAT_ENTRY_DRAFT_KEY = "openmynd_chat_entry_draft";
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
@@ -1904,6 +1905,9 @@ export class CreateComponent implements OnInit, OnDestroy {
         this.previousSelectedType = typeParam;
       }
 
+      if (params.get("source") === "chat" && !this.isEditing) {
+        this.applyChatEntryDraft();
+      }
     });
 
     // Check for id parameter for editing
@@ -3469,6 +3473,38 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.resetDreamFields();
     this.resetImportantDayFields();
     this.resetThoughtRecordFields();
+  }
+
+  private applyChatEntryDraft(): void {
+    const rawDraft = sessionStorage.getItem(CHAT_ENTRY_DRAFT_KEY);
+    if (!rawDraft) return;
+
+    try {
+      const draft = JSON.parse(rawDraft) as {
+        title?: unknown;
+        body?: unknown;
+        tags?: unknown;
+      };
+      this.selectedType = "daily";
+      this.previousSelectedType = "daily";
+      if (!this.entryTitle.trim() && typeof draft.title === "string") {
+        this.entryTitle = draft.title.slice(0, 120);
+      }
+      if (!this.content.trim() && typeof draft.body === "string") {
+        this.content = draft.body;
+      }
+      if (this.tags.length === 0 && Array.isArray(draft.tags)) {
+        this.tags = draft.tags
+          .filter((tag): tag is string => typeof tag === "string")
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+          .slice(0, 6);
+      }
+    } catch {
+      this.handleError("The chat draft could not be loaded.");
+    } finally {
+      sessionStorage.removeItem(CHAT_ENTRY_DRAFT_KEY);
+    }
   }
 
   hasAttachmentContextCandidates(): boolean {

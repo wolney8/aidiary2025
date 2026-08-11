@@ -213,26 +213,50 @@ describe("AppComponent inactivity integration", () => {
     expect(authServiceMock.logout).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the chat companion throughout the CBT workflow", () => {
+  it("shows the chat companion throughout diary-adjacent workflows", () => {
     const user: User = { id: 1, username: "tester" };
     authServiceMock.isAuthenticated.and.returnValue(true);
     currentUserSubject.next(user);
 
     routerEvents.next(new NavigationEnd(1, "/cbt/12", "/cbt/12"));
 
-    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+    expect(fixture.componentInstance.showChatCompanion).toBeTrue();
 
-    routerEvents.next(new NavigationEnd(2, "/entries", "/entries"));
+    routerEvents.next(
+      new NavigationEnd(2, "/important-days", "/important-days"),
+    );
+    expect(fixture.componentInstance.showChatCompanion).toBeTrue();
+
+    routerEvents.next(new NavigationEnd(3, "/reflections", "/reflections"));
     expect(fixture.componentInstance.showChatCompanion).toBeTrue();
   });
 
-  it("hides the chat companion on the dashboard", () => {
+  it("hides the chat companion outside diary-adjacent workflows", () => {
     const user: User = { id: 1, username: "tester" };
     authServiceMock.isAuthenticated.and.returnValue(true);
     currentUserSubject.next(user);
 
     routerEvents.next(new NavigationEnd(1, "/dashboard", "/dashboard"));
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
 
+    routerEvents.next(new NavigationEnd(2, "/settings", "/settings"));
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+
+    routerEvents.next(new NavigationEnd(3, "/account", "/account"));
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+  });
+
+  it("hides the chat companion on admin and restricted routes", () => {
+    const user: User = { id: 1, username: "tester" };
+    authServiceMock.isAuthenticated.and.returnValue(true);
+    currentUserSubject.next(user);
+
+    routerEvents.next(new NavigationEnd(1, "/admin", "/admin"));
+    expect(fixture.componentInstance.showChatCompanion).toBeFalse();
+
+    routerEvents.next(
+      new NavigationEnd(2, "/account-restricted", "/account-restricted"),
+    );
     expect(fixture.componentInstance.showChatCompanion).toBeFalse();
   });
 });

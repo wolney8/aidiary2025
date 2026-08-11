@@ -7,6 +7,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from time import perf_counter
 from uuid import UUID
 
@@ -18,6 +19,13 @@ from services.chat_context_svc import ChatContextService, estimate_tokens
 from services.chat_observability import ChatObservabilityService
 from services.openai_svc import ChatStreamError, OpenAIService
 from services.sql_compat import adapt_placeholders, current_date_expr, date_expr
+from services.usage_limits import (
+    AI_CHAT_EVENT,
+    UsageLimitExceeded,
+    enforce_usage_limit,
+    get_user_usage_summary,
+    record_usage_event,
+)
 
 
 chat_bp = Blueprint('chat', __name__)
@@ -73,6 +81,17 @@ def _token_count(text: str) -> int:
     return estimate_tokens(text)
 
 
+def _row_get(row, key: str, default=None):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, TypeError, IndexError):
+        return getattr(row, key, default)
+
+
 def _is_missing_chat_table(exc: sqlite3.OperationalError) -> bool:
     return 'no such table: chat_messages' in str(exc).lower()
 
@@ -99,6 +118,24 @@ def _chat_rate_limit_key() -> str:
 
 def _chat_model() -> str:
     return os.getenv('CHAT_MODEL', DEFAULT_CHAT_MODEL)
+
+
+def _parse_db_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip()
+    if normalized.endswith('Z'):
+        normalized = f'{normalized[:-1]}+00:00'
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        try:
+            parsed = datetime.strptime(normalized, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _is_chat_enabled(conn: sqlite3.Connection, user_id: int) -> bool:
@@ -315,6 +352,26 @@ def send_message():
                 return jsonify({'error': 'request_id is already used by another message'}), 409
 
             if 'user' not in existing_request:
+                try:
+                    enforce_usage_limit(conn, user_id=user_id, event_type=AI_CHAT_EVENT)
+                except UsageLimitExceeded as exc:
+                    _record_chat_event(
+                        event_type='token_budget_exceeded',
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        request_id=request_id,
+                        error_code='monthly_chat_limit_exceeded',
+                        input_tokens=input_tokens,
+                        model=_chat_model(),
+                    )
+                    return jsonify({
+                        'error': 'Monthly chat limit reached. Upgrade your plan or wait for next month.',
+                        'usage': exc.summary,
+                    }), 429
+                except Exception:
+                    current_app.logger.exception('Chat usage check failed')
+                    return jsonify({'error': 'Chat usage could not be checked. Please try again.'}), 503
+
                 projected_usage = _daily_token_usage(conn, user_id) + input_tokens
                 if projected_usage > current_app.config['CHAT_DAILY_TOKEN_BUDGET']:
                     _record_chat_event(
@@ -407,6 +464,19 @@ def send_message():
                             request_id=request_id,
                         )
                         _prune_conversation(stream_conn, user_id, conversation_id)
+                        try:
+                            record_usage_event(
+                                stream_conn,
+                                user_id=user_id,
+                                event_type=AI_CHAT_EVENT,
+                                metadata={'conversation_id': conversation_id},
+                            )
+                        except Exception:
+                            current_app.logger.warning(
+                                'Chat usage event could not be recorded for user %s',
+                                user_id,
+                                exc_info=True,
+                            )
                 except Exception:
                     current_app.logger.exception('Chat response could not be persisted')
                     raise
@@ -523,6 +593,94 @@ def get_history():
             for row in rows
         ],
     }), 200
+
+
+@chat_bp.route('/chat/stats', methods=['GET'])
+@jwt_required()
+def get_chat_stats():
+    """Return bounded user-facing stats for one conversation and current limits."""
+    conversation_id = _parse_conversation_id(request.args.get('conversation_id'))
+    if conversation_id is None:
+        return jsonify({'error': 'Invalid conversation_id'}), 400
+
+    user_id = int(get_jwt_identity())
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                _sql("""
+                SELECT
+                    COUNT(*) AS message_count,
+                    COALESCE(SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END), 0) AS user_message_count,
+                    COALESCE(SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END), 0) AS assistant_message_count,
+                    COALESCE(SUM(token_count), 0) AS token_count,
+                    MIN(created_at) AS started_at,
+                    MAX(created_at) AS last_message_at
+                FROM chat_messages
+                WHERE user_id = ? AND conversation_id = ?
+                """),
+                (user_id, conversation_id),
+            ).fetchone()
+            conversation_count_row = conn.execute(
+                _sql("""
+                SELECT COUNT(DISTINCT conversation_id) AS conversation_count
+                FROM chat_messages
+                WHERE user_id = ?
+                """),
+                (user_id,),
+            ).fetchone()
+            usage = get_user_usage_summary(conn, user_id).get(AI_CHAT_EVENT, {})
+    except sqlite3.OperationalError as exc:
+        if _is_missing_chat_table(exc):
+            return jsonify({'error': 'chat storage not initialised'}), 503
+        raise
+    except Exception as exc:
+        if _is_missing_chat_storage_error(exc):
+            return jsonify({'error': 'chat storage not initialised'}), 503
+        raise
+
+    started_at = row['started_at'] if row else None
+    last_message_at = row['last_message_at'] if row else None
+    started = _parse_db_datetime(started_at)
+    active_seconds = 0
+    if started is not None:
+        active_seconds = max(
+            0,
+            int((datetime.now(timezone.utc) - started).total_seconds()),
+        )
+
+    return jsonify({
+        'conversation_id': conversation_id,
+        'message_count': int(_row_get(row, 'message_count', 0) or 0),
+        'user_message_count': int(_row_get(row, 'user_message_count', 0) or 0),
+        'assistant_message_count': int(_row_get(row, 'assistant_message_count', 0) or 0),
+        'token_count': int(_row_get(row, 'token_count', 0) or 0),
+        'started_at': started_at,
+        'last_message_at': last_message_at,
+        'active_seconds': active_seconds,
+        'conversation_count': int(
+            _row_get(conversation_count_row, 'conversation_count', 0) or 0
+        ),
+        'limits': {
+            'max_message_length': MAX_MESSAGE_LENGTH,
+            'max_messages_per_conversation': MAX_MESSAGES_PER_CONVERSATION,
+            'model_history_limit': MODEL_HISTORY_LIMIT,
+            'history_response_limit': HISTORY_RESPONSE_LIMIT,
+            'daily_token_budget': current_app.config['CHAT_DAILY_TOKEN_BUDGET'],
+            'monthly_chat': usage,
+        },
+    }), 200
+
+
+@chat_bp.route('/chat/context-status', methods=['GET'])
+@jwt_required()
+def get_context_status():
+    """Expose user-facing chat context permissions without returning private content."""
+    user_id = int(get_jwt_identity())
+    status = ChatContextService(
+        current_app.config['DATABASE_PATH'],
+        adapter=current_app.config.get('DATABASE_ADAPTER'),
+    ).build_context_status(user_id)
+    return jsonify(status), 200
 
 
 @chat_bp.route('/chat/conversation', methods=['DELETE'])

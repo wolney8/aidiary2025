@@ -285,36 +285,25 @@ export class AppComponent {
     this.authService.logout();
   }
 
-  private isCbtRoute(url: string): boolean {
-    return /^\/cbt(?:\/|\?|#|$)/.test(url);
-  }
-
-  private isDashboardRoute(url: string): boolean {
-    return /^\/dashboard(?:\/|\?|#|$)/.test(url);
-  }
-
-  private isAdminRoute(url: string): boolean {
-    return /^\/admin(?:\/|\?|#|$)/.test(url);
-  }
-
-  private isRestrictedRoute(url: string): boolean {
-    return /^\/account-restricted(?:\/|\?|#|$)/.test(url);
-  }
-
-  private isOnboardingUrl(url: string): boolean {
-    return /^\/onboarding(?:\/|\?|#|$)/.test(url);
-  }
-
   private shouldShowChatCompanion(url: string): boolean {
     return (
       this.isAuthenticated &&
       this.isChatEnabled(this.currentUser) &&
-      !this.isOnboardingUrl(url) &&
-      !this.isCbtRoute(url) &&
-      !this.isDashboardRoute(url) &&
-      !this.isAdminRoute(url) &&
-      !this.isRestrictedRoute(url)
+      this.isDiaryChatRoute(url)
     );
+  }
+
+  private isDiaryChatRoute(url: string): boolean {
+    return (
+      /^\/entries(?:\/|\?|#|$)/.test(url) ||
+      /^\/cbt(?:\/|\?|#|$)/.test(url) ||
+      /^\/important-days(?:\/|\?|#|$)/.test(url) ||
+      /^\/reflections(?:\/|\?|#|$)/.test(url)
+    );
+  }
+
+  private isOnboardingUrl(url: string): boolean {
+    return /^\/onboarding(?:\/|\?|#|$)/.test(url);
   }
 
   private isChatEnabled(user: User | null): boolean {

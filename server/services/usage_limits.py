@@ -12,11 +12,13 @@ from services.plan_catalogue import AI_ANALYSIS_LIMIT_KEY, get_plan
 
 
 AI_ANALYSIS_EVENT = "ai_analysis"
+AI_CHAT_EVENT = "ai_chat"
 AI_IMAGE_EVENT = "ai_image"
 OCR_PAGE_EVENT = "ocr_page"
 TRANSCRIPTION_MINUTE_EVENT = "transcription_minute"
 EVENT_LIMIT_KEYS = {
     AI_ANALYSIS_EVENT: AI_ANALYSIS_LIMIT_KEY,
+    AI_CHAT_EVENT: "ai_chat_monthly",
     AI_IMAGE_EVENT: "ai_images_monthly",
     OCR_PAGE_EVENT: "ocr_pages_monthly",
     TRANSCRIPTION_MINUTE_EVENT: "transcription_minutes_monthly",
@@ -24,42 +26,49 @@ EVENT_LIMIT_KEYS = {
 FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
     "free": {
         AI_ANALYSIS_LIMIT_KEY: 10,
+        "ai_chat_monthly": 10,
         "ai_images_monthly": 0,
         "ocr_pages_monthly": 5,
         "transcription_minutes_monthly": 0,
     },
     "personal": {
         AI_ANALYSIS_LIMIT_KEY: 250,
+        "ai_chat_monthly": 150,
         "ai_images_monthly": 10,
         "ocr_pages_monthly": 100,
         "transcription_minutes_monthly": 30,
     },
     "plus": {
         AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
         "ocr_pages_monthly": 500,
         "transcription_minutes_monthly": 180,
     },
     "therapeutic": {
         AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
         "ocr_pages_monthly": 500,
         "transcription_minutes_monthly": 180,
     },
     "lifetime": {
         AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
         "ocr_pages_monthly": 500,
         "transcription_minutes_monthly": 180,
     },
     "complimentary": {
         AI_ANALYSIS_LIMIT_KEY: 1000,
+        "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
         "ocr_pages_monthly": 500,
         "transcription_minutes_monthly": 180,
     },
     "administrator": {
         AI_ANALYSIS_LIMIT_KEY: None,
+        "ai_chat_monthly": None,
         "ai_images_monthly": None,
         "ocr_pages_monthly": None,
         "transcription_minutes_monthly": None,

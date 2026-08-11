@@ -41,6 +41,31 @@ def _create_context_database(path: str) -> None:
                 tags TEXT,
                 dream_people_names TEXT
             );
+            CREATE TABLE cbt_worksheets (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                title TEXT,
+                status TEXT,
+                current_step INTEGER,
+                record_date TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE cbt_thought_record_data (
+                worksheet_id INTEGER PRIMARY KEY,
+                situation TEXT,
+                balanced_thought TEXT
+            );
+            CREATE TABLE important_days (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                label TEXT,
+                starts_on TEXT,
+                month INTEGER,
+                day INTEGER,
+                category TEXT,
+                note TEXT,
+                updated_at TEXT
+            );
             """
         )
 
@@ -149,6 +174,79 @@ def test_chat_context_omits_prior_entries_when_history_is_disabled(tmp_path):
     assert 'Private callback' not in context
     assert 'This prior detail should stay out' not in context
     assert 'Frequent themes' not in context
+
+
+def test_chat_context_includes_thought_records_and_important_days_when_history_allowed(tmp_path):
+    database_path = str(tmp_path / 'context.db')
+    _create_context_database(database_path)
+
+    with sqlite3.connect(database_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, display_name, allow_ai_history
+            ) VALUES (1, 'one', 'hash', 'Alex', 1)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO cbt_worksheets (
+                id, user_id, title, status, current_step, record_date, updated_at
+            ) VALUES (1, 1, 'Reframing work anxiety', 'completed', 7, '2026-07-22', '2026-07-22')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO cbt_thought_record_data (
+                worksheet_id, situation, balanced_thought
+            ) VALUES (1, 'Felt judged in a meeting', 'I had evidence that the meeting went fine')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO important_days (
+                id, user_id, label, starts_on, month, day, category, note, updated_at
+            ) VALUES (1, 1, 'Therapy milestone', '2026-07-20', 7, 20, 'milestone', 'First clear progress marker', '2026-07-20')
+            """
+        )
+
+    context = ChatContextService(database_path).build_context(1)
+    status = ChatContextService(database_path).build_context_status(1)
+
+    assert 'Thought Record | Reframing work anxiety' in context
+    assert 'Situation: Felt judged in a meeting' in context
+    assert 'Important Day | Therapy milestone' in context
+    assert 'First clear progress marker' in context
+    source_counts = {source['label']: source['count'] for source in status['sources']}
+    assert source_counts['Thought records'] == 1
+    assert source_counts['Important days'] == 1
+
+
+def test_chat_context_status_does_not_count_prior_records_when_history_disabled(tmp_path):
+    database_path = str(tmp_path / 'context.db')
+    _create_context_database(database_path)
+
+    with sqlite3.connect(database_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id, username, password, display_name, allow_ai_history
+            ) VALUES (1, 'one', 'hash', 'Alex', 0)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO important_days (
+                id, user_id, label, starts_on, month, day, category, note, updated_at
+            ) VALUES (1, 1, 'Private milestone', '2026-07-20', 7, 20, 'milestone', 'Do not count', '2026-07-20')
+            """
+        )
+
+    status = ChatContextService(database_path).build_context_status(1)
+
+    assert status['history_enabled'] is False
+    assert all(source['count'] == 0 for source in status['sources'])
+    assert all(source['enabled'] is False for source in status['sources'])
 
 
 def test_chat_context_trims_oldest_entries_to_respect_budget(tmp_path):
