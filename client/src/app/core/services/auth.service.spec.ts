@@ -50,7 +50,10 @@ describe("AuthService session handling", () => {
 
     expect(localStorage.getItem("openmynd_token")).toBeNull();
     expect(localStorage.getItem("openmynd_user")).toBeNull();
-    expect(routerMock.navigate).toHaveBeenCalledWith(["/login"]);
+    expect(routerMock.navigate).toHaveBeenCalledWith(["/login"], {
+      queryParams: undefined,
+      replaceUrl: false,
+    });
   });
 
   it("handleSessionExpired redirects to login with expiry reason on protected pages", () => {
@@ -121,5 +124,19 @@ describe("AuthService session handling", () => {
 
     expect(service.isAuthenticated()).toBeFalse();
     expect(localStorage.getItem("openmynd_token")).toBeNull();
+  });
+
+  it("does not sync a late user response after the token has been cleared", () => {
+    service.syncCurrentUser({ id: 1, username: "late-response" });
+
+    expect(localStorage.getItem("openmynd_user")).toBeNull();
+  });
+
+  it("syncs the current user while a token is still present", () => {
+    localStorage.setItem("openmynd_token", "token");
+
+    service.syncCurrentUser({ id: 1, username: "active-user" });
+
+    expect(localStorage.getItem("openmynd_user")).toContain("active-user");
   });
 });

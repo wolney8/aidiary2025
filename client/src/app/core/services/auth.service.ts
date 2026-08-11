@@ -204,6 +204,9 @@ export class AuthService {
   }
 
   syncCurrentUser(user: User): void {
+    if (!this.getToken()) {
+      return;
+    }
     localStorage.setItem(this.userKey, JSON.stringify(user));
     localStorage.removeItem(this.legacyUserKey);
     this.currentUserSubject.next(user);
