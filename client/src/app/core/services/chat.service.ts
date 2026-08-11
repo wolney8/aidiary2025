@@ -6,6 +6,7 @@ import {
   ChatContextStatus,
   ChatHistoryResponse,
   ChatMessage,
+  ChatStats,
   ChatStreamEvent,
 } from "../models/chat.model";
 import { AuthService } from "./auth.service";
@@ -80,6 +81,13 @@ export class ChatService {
 
   getContextStatus(): Observable<ChatContextStatus> {
     return this.http.get<ChatContextStatus>(`${this.apiUrl}/chat/context-status`, {
+      headers: this.buildAuthHeaders(),
+    });
+  }
+
+  getStats(conversationId: string): Observable<ChatStats> {
+    return this.http.get<ChatStats>(`${this.apiUrl}/chat/stats`, {
+      params: { conversation_id: conversationId },
       headers: this.buildAuthHeaders(),
     });
   }

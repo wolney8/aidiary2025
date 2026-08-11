@@ -126,11 +126,13 @@ def test_chat_endpoints_require_auth(client):
         content_type='application/json',
     )
     get_response = client.get(f'/api/chat/history?conversation_id={conversation_id}')
+    stats_response = client.get(f'/api/chat/stats?conversation_id={conversation_id}')
     context_response = client.get('/api/chat/context-status')
     delete_response = client.delete(f'/api/chat/conversation?conversation_id={conversation_id}')
 
     assert post_response.status_code == 401
     assert get_response.status_code == 401
+    assert stats_response.status_code == 401
     assert context_response.status_code == 401
     assert delete_response.status_code == 401
 
@@ -270,6 +272,21 @@ def test_chat_send_history_clear_flow(client, mocked_chat_services):
     assert history_data['messages'][0]['message'] == 'How am I doing?'
     assert history_data['messages'][1]['role'] == 'assistant'
     assert history_data['messages'][1]['message'] == 'Helpful reply'
+
+    stats_response = client.get(
+        f'/api/chat/stats?conversation_id={conversation_id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert stats_response.status_code == 200
+    stats = json.loads(stats_response.data)
+    assert stats['conversation_id'] == conversation_id
+    assert stats['message_count'] == 2
+    assert stats['user_message_count'] == 1
+    assert stats['assistant_message_count'] == 1
+    assert stats['token_count'] > 0
+    assert stats['conversation_count'] == 1
+    assert stats['limits']['max_messages_per_conversation'] == 100
+    assert stats['limits']['monthly_chat']['used'] == 1
 
     clear_response = client.delete(
         f'/api/chat/conversation?conversation_id={conversation_id}',

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from "@angular/core/testing";
+import { NavigationEnd, Router } from "@angular/router";
 import { provideNoopAnimations } from "@angular/platform-browser/animations";
 import { Subject, of } from "rxjs";
 import { AppDialogService } from "../../../core/services/app-dialog.service";
@@ -15,13 +16,18 @@ describe("ChatCompanionComponent", () => {
     resetConversationId: jasmine.Spy;
     getHistory: jasmine.Spy;
     getContextStatus: jasmine.Spy;
+    getStats: jasmine.Spy;
     sendMessage: jasmine.Spy;
     clearConversation: jasmine.Spy;
   };
   let dialogService: { confirm: jasmine.Spy };
+  let routerEvents: Subject<NavigationEnd>;
+  let router: { navigate: jasmine.Spy; url: string; events: Subject<NavigationEnd> };
 
   beforeEach(async () => {
+    sessionStorage.clear();
     stream = new Subject<string>();
+    routerEvents = new Subject<NavigationEnd>();
     chatService = {
       getOrCreateConversationId: jasmine
         .createSpy("getOrCreateConversationId")
@@ -38,6 +44,32 @@ describe("ChatCompanionComponent", () => {
           ],
         }),
       ),
+      getStats: jasmine.createSpy("getStats").and.returnValue(
+        of({
+          conversation_id: "conversation-1",
+          message_count: 0,
+          user_message_count: 0,
+          assistant_message_count: 0,
+          token_count: 0,
+          started_at: null,
+          last_message_at: null,
+          active_seconds: 0,
+          conversation_count: 0,
+          limits: {
+            max_message_length: 2000,
+            max_messages_per_conversation: 100,
+            model_history_limit: 20,
+            history_response_limit: 50,
+            daily_token_budget: 8000,
+            monthly_chat: {
+              used: 0,
+              limit: 10,
+              remaining: 10,
+              unlimited: false,
+            },
+          },
+        }),
+      ),
       sendMessage: jasmine.createSpy("sendMessage").and.returnValue(stream),
       clearConversation: jasmine
         .createSpy("clearConversation")
@@ -46,6 +78,11 @@ describe("ChatCompanionComponent", () => {
     dialogService = {
       confirm: jasmine.createSpy("confirm").and.resolveTo(true),
     };
+    router = {
+      navigate: jasmine.createSpy("navigate").and.resolveTo(true),
+      url: "/entries",
+      events: routerEvents,
+    };
 
     await TestBed.configureTestingModule({
       imports: [ChatCompanionComponent],
@@ -53,6 +90,7 @@ describe("ChatCompanionComponent", () => {
         provideNoopAnimations(),
         { provide: ChatService, useValue: chatService },
         { provide: AppDialogService, useValue: dialogService },
+        { provide: Router, useValue: router },
         {
           provide: AuthService,
           useValue: {
@@ -82,7 +120,34 @@ describe("ChatCompanionComponent", () => {
     expect(panel.getAttribute("aria-label")).toBe("Chat with Sage");
     expect(chatService.getHistory).toHaveBeenCalledWith("conversation-1");
     expect(chatService.getContextStatus).toHaveBeenCalled();
+    expect(chatService.getStats).toHaveBeenCalledWith("conversation-1");
     expect(component.contextSummary()).toBe("May reference 1 source");
+  });
+
+  it("offers a stale conversation choice and can start a new chat", () => {
+    chatService.getHistory.and.returnValue(
+      of([
+        {
+          conversation_id: "conversation-1",
+          role: "user",
+          content: "Old message",
+          created_at: "2026-01-01T10:00:00.000Z",
+        },
+      ]),
+    );
+
+    component.open();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[data-testid="chat-session-choice"]')).not.toBeNull();
+
+    component.startNewChat();
+    fixture.detectChanges();
+
+    expect(chatService.resetConversationId).toHaveBeenCalled();
+    expect(component.messages()).toEqual([]);
+    expect(component.showSessionChoice()).toBeFalse();
   });
 
   it("expands context source details without exposing diary values", () => {
@@ -123,6 +188,11 @@ describe("ChatCompanionComponent", () => {
     fixture.detectChanges();
 
     expect(host.querySelector('[data-testid="chat-close-button"]')).not.toBeNull();
+    component.messages.set([
+      { conversation_id: "conversation-1", role: "user", content: "Hello" },
+    ]);
+    fixture.detectChanges();
+    expect(host.querySelector('[data-testid="chat-session-button"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="chat-message-thread"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="chat-message-input"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="chat-send-button"]')).not.toBeNull();
@@ -164,5 +234,73 @@ describe("ChatCompanionComponent", () => {
     expect(chatService.clearConversation).toHaveBeenCalledWith("conversation-1");
     expect(component.messages()).toEqual([]);
     expect(chatService.resetConversationId).toHaveBeenCalled();
+  });
+
+  it("creates a daily entry draft from the current chat", () => {
+    component.isOpen.set(true);
+    component.messages.set([
+      {
+        conversation_id: "conversation-1",
+        role: "user",
+        content: "I felt more settled today.",
+        created_at: "2026-06-01T10:00:00.000Z",
+      },
+      {
+        conversation_id: "conversation-1",
+        role: "assistant",
+        content: "That sounds like a useful reflection to keep.",
+        created_at: "2026-06-01T10:01:00.000Z",
+      },
+    ]);
+
+    component.createEntryDraft();
+
+    const stored = sessionStorage.getItem("openmynd_chat_entry_draft");
+    expect(stored).toContain("Chat reflection");
+    expect(stored).toContain("useful reflection");
+    expect(router.navigate).toHaveBeenCalledWith(["/entries/create"], {
+      queryParams: { type: "daily", source: "chat" },
+    });
+    expect(component.isOpen()).toBeFalse();
+  });
+
+  it("shows diary route starter chips and sends the selected prompt", () => {
+    component.open();
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[data-testid="chat-starter-chips"]')).not.toBeNull();
+    expect(host.textContent).toContain("What patterns stand out?");
+
+    host.querySelector<HTMLButtonElement>(".chat-starter-chip")?.click();
+
+    expect(chatService.sendMessage).toHaveBeenCalledWith(
+      "conversation-1",
+      "What patterns stand out across my recent diary and dream entries?",
+    );
+  });
+
+  it("updates starter chips for thought-record routes", () => {
+    component.open();
+    router.url = "/cbt";
+    routerEvents.next(new NavigationEnd(1, "/cbt", "/cbt"));
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).toContain("What's a Thought Record?");
+    expect(host.textContent).toContain("How do I fill this out?");
+  });
+
+  it("updates starter chips for important-day routes", () => {
+    component.open();
+    router.url = "/important-days";
+    routerEvents.next(
+      new NavigationEnd(1, "/important-days", "/important-days"),
+    );
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).toContain("Create my first important day");
+    expect(host.textContent).toContain("What should I track?");
   });
 });
