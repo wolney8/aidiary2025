@@ -34,6 +34,9 @@ Current automated evidence:
   and event metadata is categorical only.
 - Backend auth/profile/chat/import/database tests cover user scoping, account deletion,
   import/revert ownership, chat storage, and database provider compatibility.
+- Playwright smoke now covers login, registration, legal/cookie routes, auth recovery
+  screens, OAuth onboarding routing, Dashboard loading/interactions, account
+  deletion/restricted access, and Chat route scope/starter chips.
 
 The standard public SaaS path is tracked separately in
 [public-saas-readiness-plan.md](./public-saas-readiness-plan.md). That plan covers
@@ -50,11 +53,11 @@ SaaS path.
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Backup/snapshot/restore tooling exists and maintenance evidence can now be validated; production scheduling and real-provider evidence still need owner sign-off. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth; removal needs a migration window. | `#113` or auth-hardening issue |
-| Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and browser smoke coverage. | Local account token flows exist; preflight blocks console email in production; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
+| Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and operational validation. | Local account token flows exist; browser smoke covers verification/reset screens; preflight blocks console email in production; security audit capture exists without an operator review UI. | `#113` or auth-hardening issue |
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
 | Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Entitlement tables, Stripe Checkout, Customer Portal session creation, verified webhook entitlement sync, and the first AI-analysis plan gate exist. Production preflight checks and billing disclosures remain. | `#131`, `#132` |
-| Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists but should be expanded for OAuth, import, chat, account deletion, dashboard, and settings. | testing issue |
+| Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists for public auth, legal/cookie, OAuth onboarding, Dashboard, account deletion/restricted access, and Chat route scope. Import review/commit/revert, deeper Chat context assertions, settings updates, and broader dark/light a11y remain. | testing issue |
 
 ## Privacy Boundary Review
 
