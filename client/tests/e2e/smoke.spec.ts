@@ -4,24 +4,12 @@ async function seedAuthenticatedSession(
   page: Page,
   options: { chatEnabled?: boolean } = {},
 ) {
-  await page.addInitScript((chatEnabled) => {
-    const encode = (value: object) =>
-      btoa(JSON.stringify(value))
-        .replace(/=/g, "")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
-    const token = `${encode({ alg: "none", typ: "JWT" })}.${encode({ exp: expiresAt })}.e2e`;
-    const user = {
-      id: 1,
-      username: "chat-e2e",
-      display_name: "Alex",
-      chat_enabled: chatEnabled,
-    };
-
-    localStorage.setItem("openmynd_token", token);
-    localStorage.setItem("openmynd_user", JSON.stringify(user));
-  }, options.chatEnabled ?? true);
+  await seedLocalSession(page, {
+    id: 1,
+    username: "chat-e2e",
+    display_name: "Alex",
+    chat_enabled: options.chatEnabled ?? true,
+  });
 
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -129,6 +117,25 @@ function makeE2eJwt(): string {
   return `${encodeBase64Url({ alg: "none", typ: "JWT" })}.${encodeBase64Url({ exp: expiresAt })}.e2e`;
 }
 
+async function seedLocalSession(page: Page, userOverrides: Record<string, unknown> = {}) {
+  await page.addInitScript(
+    ({ token, userOverrides }) => {
+      const user = {
+        id: 42,
+        username: "e2e-user",
+        display_name: "E2EUser",
+        onboarding_completed: true,
+        chat_enabled: true,
+        ...userOverrides,
+      };
+
+      localStorage.setItem("openmynd_token", token);
+      localStorage.setItem("openmynd_user", JSON.stringify(user));
+    },
+    { token: makeE2eJwt(), userOverrides },
+  );
+}
+
 async function mockAuthenticatedApi(page: Page, userOverrides: Record<string, unknown> = {}) {
   const user = {
     id: 42,
@@ -151,6 +158,49 @@ async function mockAuthenticatedApi(page: Page, userOverrides: Record<string, un
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(user),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/profile/account") && route.request().method() === "DELETE") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Account deleted" }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/billing/status")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          entitlement: {
+            tier: "free",
+            source: "system",
+            status: "active",
+            is_default: true,
+            is_active: true,
+          },
+          provider: "stripe",
+          stripe_configured: false,
+          checkout_tiers: ["personal", "plus"],
+          checkout_periods: {},
+          has_billing_customer: false,
+          current_subscription: null,
+          usage: {
+            plan: "free",
+            window: "month",
+            window_start: "2026-08-01",
+            ai_analysis: { used: 0, limit: 10, remaining: 10, unlimited: false },
+            ai_image: { used: 0, limit: 0, remaining: 0, unlimited: false },
+            ocr_page: { used: 0, limit: 5, remaining: 5, unlimited: false },
+            transcription_minute: { used: 0, limit: 0, remaining: 0, unlimited: false },
+          },
+          plans: [],
+          is_admin: false,
+        }),
       });
       return;
     }
@@ -337,6 +387,57 @@ test("OAuth callback returns completed users to a safe app URL", async ({ page }
   await page.goto(`/oauth/callback#${fragment.toString()}`);
 
   await expect(page).toHaveURL(/\/entries\?display=calendar$/);
+});
+
+test("restricted accounts can export or delete from the limited access page", async ({ page }) => {
+  await seedLocalSession(page, {
+    account_status: "restricted",
+    onboarding_completed: true,
+    password_auth_enabled: false,
+  });
+  await mockAuthenticatedApi(page, {
+    account_status: "restricted",
+    onboarding_completed: true,
+    password_auth_enabled: false,
+  });
+
+  await page.goto("/account-restricted");
+
+  await expect(page.getByTestId("account-restricted-page")).toBeVisible();
+  await expect(page.getByTestId("account-restricted-page")).toContainText("Account restricted");
+  await expect(page.getByTestId("restricted-export-button")).toBeVisible();
+  await expect(page.getByTestId("restricted-delete-account-button")).toBeDisabled();
+
+  await page.getByLabel("Type DELETE MY ACCOUNT").fill("DELETE MY ACCOUNT");
+  await expect(page.getByTestId("restricted-delete-account-button")).toBeEnabled();
+});
+
+test("account deletion uses the app dialog and clears the session", async ({ page }) => {
+  await seedLocalSession(page, {
+    auth_provider: "google",
+    onboarding_completed: true,
+    password_auth_enabled: false,
+  });
+  await mockAuthenticatedApi(page, {
+    auth_provider: "google",
+    onboarding_completed: true,
+    password_auth_enabled: false,
+    registered_at: "2026-08-11T10:00:00Z",
+  });
+
+  await page.goto("/account");
+
+  await expect(page.getByTestId("account-page")).toBeVisible();
+  await page.getByLabel("Type DELETE MY ACCOUNT").fill("DELETE MY ACCOUNT");
+  await page.getByTestId("account-delete-account-button").click();
+
+  await expect(page.getByTestId("app-dialog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Permanently delete account?" })).toBeVisible();
+  await page.getByTestId("app-dialog-confirm").click();
+
+  await expect(page).toHaveURL(/\/login\?reason=account-deleted$/);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("openmynd_token"))).toBeNull();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("openmynd_user"))).toBeNull();
 });
 
 test("chat companion is limited to diary content routes", async ({ page }) => {
