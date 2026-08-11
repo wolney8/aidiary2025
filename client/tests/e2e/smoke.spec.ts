@@ -154,6 +154,30 @@ test("registration screen exposes labelled account controls", async ({ page }) =
   );
 });
 
+test("public legal pages and cookie consent are reachable", async ({ page }) => {
+  await page.goto("/login");
+
+  const banner = page.getByTestId("cookie-consent-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("Cookies");
+  await page.getByRole("button", { name: "Manage" }).click();
+  await expect(page.getByLabel("Essential cookies")).toBeChecked();
+  await page.getByRole("button", { name: "Save choices" }).click();
+  await expect(banner).toHaveCount(0);
+
+  await page.goto("/privacy");
+  await expect(page.getByTestId("legal-privacy")).toContainText("Privacy policy");
+  await expect(page.getByTestId("legal-privacy")).toContainText("How AI features use your data");
+
+  await page.goto("/terms");
+  await expect(page.getByTestId("legal-terms")).toContainText("Terms and conditions");
+  await expect(page.getByTestId("legal-terms")).toContainText("AI limitations");
+
+  await page.goto("/cookies");
+  await expect(page.getByTestId("legal-cookies")).toContainText("Cookie policy");
+  await expect(page.getByTestId("legal-cookies")).toContainText("Optional cookies");
+});
+
 test("chat companion is limited to diary content routes", async ({ page }) => {
   await seedAuthenticatedSession(page);
 
