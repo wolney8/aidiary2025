@@ -142,6 +142,22 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
             <p>{{ section.body }}</p>
           </section>
         </div>
+
+        <div
+          *ngIf="pageKind === 'cookies'"
+          class="legal-actions"
+          data-testid="cookie-policy-actions"
+        >
+          <button
+            type="button"
+            class="legal-action"
+            data-testid="manage-cookie-preferences"
+            (click)="openCookiePreferences()"
+          >
+            <mat-icon aria-hidden="true">tune</mat-icon>
+            <span>Manage cookie choices</span>
+          </button>
+        </div>
       </article>
     </section>
   `,
@@ -271,6 +287,44 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
         font-size: 1.1rem;
       }
 
+      .legal-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding: 0 clamp(1rem, 3vw, 1.5rem) clamp(1rem, 3vw, 1.5rem);
+      }
+
+      .legal-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-xs);
+        min-height: 44px;
+        padding: 0 var(--spacing-md);
+        border: 1px solid transparent;
+        border-radius: var(--radius-pill);
+        background: var(--colour-control-selected);
+        color: var(--colour-control-selected-text);
+        font: inherit;
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      .legal-action:hover {
+        filter: brightness(1.04);
+      }
+
+      .legal-action:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: 3px;
+      }
+
+      .legal-action mat-icon {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 20px;
+        font-size: 20px;
+      }
+
       @media (max-width: 720px) {
         .legal-section {
           padding: var(--spacing-sm);
@@ -284,6 +338,10 @@ export class LegalPageComponent {
 
   readonly pageKind = this.getPageKind();
   readonly page = LEGAL_CONTENT[this.pageKind];
+
+  openCookiePreferences(): void {
+    window.dispatchEvent(new Event("openmynd-cookie-preferences"));
+  }
 
   private getPageKind(): LegalPageKind {
     const pageKind = this.route.snapshot.data["legalPage"];

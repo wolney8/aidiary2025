@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, OnInit } from "@angular/core";
+import { Component, HostListener, OnInit } from "@angular/core";
 import { RouterLink } from "@angular/router";
 
 type CookieConsentChoice = "accepted" | "rejected" | "essential";
@@ -183,6 +183,13 @@ export class CookieConsentComponent implements OnInit {
     this.isVisible = !localStorage.getItem(COOKIE_CONSENT_KEY);
   }
 
+  @HostListener("window:openmynd-cookie-preferences")
+  openPreferences(): void {
+    this.optionalCookies = this.currentChoiceAllowsOptionalCookies();
+    this.showPreferences = true;
+    this.isVisible = true;
+  }
+
   savePreferenceChoice(): void {
     this.saveChoice(this.optionalCookies ? "accepted" : "essential");
   }
@@ -202,5 +209,16 @@ export class CookieConsentComponent implements OnInit {
       }),
     );
     this.isVisible = false;
+  }
+
+  private currentChoiceAllowsOptionalCookies(): boolean {
+    const rawChoice = localStorage.getItem(COOKIE_CONSENT_KEY);
+    if (!rawChoice) return false;
+    try {
+      const parsed = JSON.parse(rawChoice) as { optionalCookies?: unknown };
+      return parsed.optionalCookies === true;
+    } catch {
+      return false;
+    }
   }
 }
