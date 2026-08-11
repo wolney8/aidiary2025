@@ -439,6 +439,41 @@ async function mockAuthenticatedApi(page: Page, userOverrides: Record<string, un
   });
 }
 
+async function mockAuthRecoveryApi(page: Page) {
+  await page.route("**/api/auth/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+
+    if (path.endsWith("/api/auth/password-reset/request")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "If the account exists, a reset link has been sent." }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/auth/password-reset/confirm")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Password reset complete." }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/auth/email/verification/confirm")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Email verified." }),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+}
+
 test("login screen loads with core controls", async ({ page }) => {
   await page.goto("/login");
 
@@ -474,6 +509,27 @@ test("registration screen exposes labelled account controls", async ({ page }) =
     "autocomplete",
     "new-password",
   );
+});
+
+test("email verification and password recovery public flows render and submit", async ({ page }) => {
+  await mockAuthRecoveryApi(page);
+
+  await page.goto("/forgot-password");
+  await expect(page.getByTestId("forgot-password-page")).toBeVisible();
+  await page.getByTestId("forgot-password-email").fill("person@example.com");
+  await page.getByTestId("forgot-password-submit").click();
+  await expect(page.getByTestId("forgot-password-success")).toContainText("reset link");
+
+  await page.goto("/reset-password?token=reset-token");
+  await expect(page.getByTestId("reset-password-page")).toBeVisible();
+  await page.getByTestId("reset-password-new-password").fill("Newpass123");
+  await page.getByTestId("reset-password-confirm-password").fill("Newpass123");
+  await page.getByTestId("reset-password-submit").click();
+  await expect(page.getByTestId("reset-password-success")).toContainText("complete");
+
+  await page.goto("/verify-email?token=verify-token");
+  await expect(page.getByTestId("verify-email-page")).toBeVisible();
+  await expect(page.getByTestId("verify-email-page")).toContainText("Email verified.");
 });
 
 test("public legal pages and cookie consent are reachable", async ({ page }) => {
