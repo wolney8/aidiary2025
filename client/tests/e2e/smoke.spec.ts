@@ -176,6 +176,9 @@ test("public legal pages and cookie consent are reachable", async ({ page }) => 
   await page.goto("/cookies");
   await expect(page.getByTestId("legal-cookies")).toContainText("Cookie policy");
   await expect(page.getByTestId("legal-cookies")).toContainText("Optional cookies");
+  await page.getByTestId("manage-cookie-preferences").click();
+  await expect(page.getByTestId("cookie-consent-banner")).toBeVisible();
+  await expect(page.getByLabel("Optional analytics")).toBeVisible();
 });
 
 test("chat companion is limited to diary content routes", async ({ page }) => {
