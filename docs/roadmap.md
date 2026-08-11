@@ -67,16 +67,20 @@ new broad product surfaces.
      the OpenMynd import workbook with real diary entries, run the staged review, and
      confirm import, revert, duplicate handling, and media/attachment expectations.
 6. Testing and release gates
-   - Backend unit/integration coverage is strong. Browser workflow coverage should be
-     expanded for the highest-risk paths: OAuth onboarding, Chat context, import
-     review/commit/revert, dashboard, account deletion, and dark/light accessibility.
+   - Backend unit/integration coverage is strong. Browser smoke coverage now includes
+     login, registration, legal/cookie pages, auth recovery, OAuth onboarding,
+     Dashboard, account deletion/restricted access, and Chat route scope/starter chips.
+     The remaining highest-risk browser gaps are import review/commit/revert,
+     deeper Chat context assertions, account settings updates, and dark/light
+     accessibility sweeps.
    - Keep `npm run lint`, `npm run build`, `npm run test:e2e:smoke`, and
      `npm run test:e2e:a11y` as release-boundary frontend gates.
 
 ## Product Gaps To Keep Visible
 
-- Chat: full smoke and automated coverage for prior-entry context, privacy settings,
-  source disclosure, rate limits, retry/error handling, and disabled-chat behavior.
+- Chat: automated route-scope and starter-chip smoke exists. Remaining coverage should
+  assert prior-entry context, privacy settings, source disclosure, rate limits,
+  retry/error handling, and disabled-chat behavior.
 - Personal import: end-to-end import of the user's real diary data through the OpenMynd
   XLSX template, including staged review before commit and safe revert.
 - Dashboard: deeper analytics can later include stronger year-over-year insights,
