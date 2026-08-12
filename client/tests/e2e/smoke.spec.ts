@@ -694,6 +694,159 @@ async function mockImportReviewApi(page: Page) {
   });
 }
 
+async function mockSettingsUpdateApi(page: Page) {
+  let profile = {
+    id: 42,
+    username: "settings-e2e",
+    email: "settings@example.com",
+    email_verified: true,
+    first_name: "Settings",
+    last_name: "User",
+    age: 34,
+    display_name: "SettingsUser",
+    pronouns: "they/them",
+    gender: "non-binary",
+    profile_picture_url: null,
+    auth_provider: "password",
+    password_auth_enabled: true,
+    onboarding_completed: true,
+    registered_at: "2026-08-01T10:00:00Z",
+    timezone: "Europe/London",
+    holiday_country_code: "GB",
+    show_public_holidays: true,
+    show_on_this_day: true,
+    ai_tone: "friendly",
+    ai_verbosity: "balanced",
+    ai_focus: "reflective",
+    ai_model: "gpt-4.1-mini",
+    custom_guidance: "",
+    allow_ai_history: true,
+    allow_ai_attachment_context: false,
+    chat_enabled: true,
+    writing_reminders_enabled: true,
+    writing_reminder_days: "monday,tuesday,wednesday,thursday,friday",
+    writing_reminder_time: "19:00",
+    writing_reminder_silence_days: 2,
+    writing_reminder_entry_types: "daily,dream",
+    writing_rhythm_progress_enabled: true,
+    writing_rhythm_weekly_goal: 5,
+  };
+
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+
+    if (path.endsWith("/api/profile") && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(profile),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/profile") && request.method() === "PUT") {
+      const payload = request.postDataJSON() as Partial<typeof profile>;
+      profile = {
+        ...profile,
+        ...payload,
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          message: "Settings saved.",
+          user: profile,
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/billing/status")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          entitlement: {
+            tier: "free",
+            source: "system",
+            status: "active",
+            is_default: true,
+            is_active: true,
+          },
+          provider: "stripe",
+          stripe_configured: false,
+          checkout_tiers: [],
+          checkout_periods: {},
+          has_billing_customer: false,
+          current_subscription: null,
+          usage: {},
+          plans: [],
+          is_admin: false,
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/plans")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          stripe_configured: false,
+          checkout_periods: {},
+          plans: [],
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/context-status")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ history_enabled: false, sources: [] }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/history")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ conversation_id: "settings-e2e-chat", messages: [] }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/stats")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversation_id: "settings-e2e-chat",
+          message_count: 0,
+          user_message_count: 0,
+          assistant_message_count: 0,
+          token_count: 0,
+          started_at: null,
+          last_message_at: null,
+          active_seconds: 0,
+          conversation_count: 0,
+          limits: {},
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+}
+
 test("login screen loads with core controls", async ({ page }) => {
   await page.goto("/login");
 
@@ -962,6 +1115,32 @@ test("import review commits selected entries and can revert prior imports", asyn
     "Reverted",
   );
   await expect(page.getByRole("button", { name: /Revert import/i })).toHaveCount(0);
+});
+
+test("account and customisation settings save through profile updates", async ({ page }) => {
+  await seedLocalSession(page, {
+    display_name: "SettingsUser",
+    onboarding_completed: true,
+  });
+  await mockSettingsUpdateApi(page);
+
+  await page.goto("/account");
+
+  await expect(page.getByTestId("account-page")).toBeVisible();
+  await page.getByLabel("Display Name").fill("Settings_User2");
+  await expect(page.getByRole("button", { name: "Save Changes" })).toBeEnabled();
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.getByText("Settings saved.")).toBeVisible();
+
+  await page.goto("/settings/personalisation");
+
+  await expect(page.getByTestId("customisation-settings")).toBeVisible();
+  await page.getByRole("button", { name: /App behaviour/i }).click();
+  await page.getByLabel("Show AI chat companion").click();
+  await expect(page.getByTestId("customisation-save-button")).toBeEnabled();
+  await page.getByTestId("customisation-save-button").click();
+  await expect(page.getByTestId("customisation-success")).toContainText("Settings saved.");
+  await expect(page.getByTestId("customisation-save-button")).toBeDisabled();
 });
 
 test("chat companion is limited to diary content routes", async ({ page }) => {

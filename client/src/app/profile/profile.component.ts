@@ -162,6 +162,7 @@ interface AccountUsageCard {
                   matInput
                   [(ngModel)]="profile.first_name"
                   name="first_name"
+                  (input)="markProfileDirty()"
                 />
               </mat-form-field>
 
@@ -171,6 +172,7 @@ interface AccountUsageCard {
                   matInput
                   [(ngModel)]="profile.last_name"
                   name="last_name"
+                  (input)="markProfileDirty()"
                 />
               </mat-form-field>
 
@@ -181,24 +183,30 @@ interface AccountUsageCard {
                   type="number"
                   [(ngModel)]="profile.age"
                   name="age"
+                  (input)="markProfileDirty()"
                 />
               </mat-form-field>
 
               <mat-form-field appearance="outline">
                 <mat-label>Display Name</mat-label>
                 <input
-	                  matInput
-	                  [(ngModel)]="profile.display_name"
-	                  name="display_name"
-	                  maxlength="24"
-	                />
-	                <mat-hint align="start">Letters, numbers, hyphens, or underscores.</mat-hint>
-	                <mat-hint align="end">{{ getDisplayNameLength() }}/24</mat-hint>
+                  matInput
+                  [(ngModel)]="profile.display_name"
+                  name="display_name"
+                  maxlength="24"
+                  (input)="markProfileDirty()"
+                />
+                <mat-hint align="start">Letters, numbers, hyphens, or underscores.</mat-hint>
+                <mat-hint align="end">{{ getDisplayNameLength() }}/24</mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline">
                 <mat-label>Pronouns</mat-label>
-                <mat-select [(ngModel)]="profile.pronouns" name="pronouns">
+                <mat-select
+                  [(ngModel)]="profile.pronouns"
+                  name="pronouns"
+                  (selectionChange)="markProfileDirty()"
+                >
                   <mat-option value="">Not set</mat-option>
                   <mat-option value="he/him">he/him</mat-option>
                   <mat-option value="she/her">she/her</mat-option>
@@ -213,7 +221,11 @@ interface AccountUsageCard {
 
               <mat-form-field appearance="outline">
                 <mat-label>Gender</mat-label>
-                <mat-select [(ngModel)]="profile.gender" name="gender">
+                <mat-select
+                  [(ngModel)]="profile.gender"
+                  name="gender"
+                  (selectionChange)="markProfileDirty()"
+                >
                   <mat-option value="">Not set</mat-option>
                   <mat-option value="man">man</mat-option>
                   <mat-option value="woman">woman</mat-option>
@@ -231,7 +243,7 @@ interface AccountUsageCard {
                 mat-raised-button
                 color="primary"
                 type="submit"
-                [disabled]="saving || !hasPendingChanges()"
+                [disabled]="saving"
               >
                 {{ saving ? "Saving..." : "Save Changes" }}
               </button>
@@ -863,6 +875,7 @@ export class ProfileComponent implements OnInit {
   billingBusyTier: CheckoutTier | null = null;
   billingPortalBusy = false;
   private initialProfileSnapshot = "";
+  profileDirty = false;
 
   goBack(): void {
     if (this.canGoBack()) {
@@ -878,6 +891,7 @@ export class ProfileComponent implements OnInit {
       next: (profile) => {
         this.profile = { ...profile };
         this.initialProfileSnapshot = this.serialiseProfile(this.profile);
+        this.profileDirty = false;
       },
       error: () => {
         this.errorMessage = "Unable to load profile details.";
@@ -888,6 +902,9 @@ export class ProfileComponent implements OnInit {
 
   onSubmit(): void {
     if (!this.profile) {
+      return;
+    }
+    if (!this.hasPendingChanges() && !this.profileDirty) {
       return;
     }
 
@@ -910,6 +927,7 @@ export class ProfileComponent implements OnInit {
         this.saving = false;
         if (this.profile) {
           this.initialProfileSnapshot = this.serialiseProfile(this.profile);
+          this.profileDirty = false;
         }
       },
       error: (error) => {
@@ -1254,6 +1272,10 @@ export class ProfileComponent implements OnInit {
       return false;
     }
     return this.serialiseProfile(this.profile) !== this.initialProfileSnapshot;
+  }
+
+  markProfileDirty(): void {
+    this.profileDirty = true;
   }
 
   canDeactivate(): boolean | Promise<boolean> {
