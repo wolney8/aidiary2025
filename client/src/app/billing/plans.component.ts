@@ -26,6 +26,10 @@ type BillingPeriod = "monthly" | "annual";
       <header class="plans-hero">
         <p class="plans-eyebrow">Plans</p>
         <h1>Choose how much AI support you need</h1>
+        <p class="plans-disclosure">
+          Free stays available. Paid checkout and billing management open in
+          Stripe; OpenMynd applies plan limits from your local entitlement.
+        </p>
       </header>
 
       <div
@@ -213,6 +217,13 @@ type BillingPeriod = "monthly" | "annual";
       font-size: clamp(2rem, 4.5vw, 3.4rem);
       line-height: 1;
       letter-spacing: -0.055em;
+    }
+
+    .plans-disclosure {
+      max-width: 760px;
+      color: var(--colour-text-secondary);
+      font-weight: 750;
+      line-height: 1.45;
     }
 
     .plans-status {

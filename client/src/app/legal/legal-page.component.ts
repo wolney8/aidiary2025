@@ -73,12 +73,12 @@ const LEGAL_CONTENT: Record<LegalPageKind, LegalPageContent> = {
       {
         heading: "Subscriptions",
         body:
-          "Paid plans, when enabled, use Stripe-hosted checkout and billing management. Plan access is controlled by OpenMynd entitlements and may include monthly AI or storage limits.",
+          "Paid plans, when enabled, use Stripe-hosted checkout and billing management. OpenMynd stores plan entitlements and usage limits, but does not store full card details.",
       },
       {
         heading: "Cancellation and refunds",
         body:
-          "Subscription changes are handled through the billing portal. Final cancellation, refund, and plan terms are shown inside authenticated onboarding, Account, and upgrade prompts.",
+          "Subscription changes are handled through the Stripe billing portal. Current plan terms and limits are shown inside authenticated onboarding, Account, and upgrade prompts.",
       },
     ],
   },
