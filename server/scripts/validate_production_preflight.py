@@ -22,6 +22,7 @@ PUBLIC_LEGAL_ROUTES = (
     "client/src/app/legal/legal-page.component.ts",
     "client/src/app/shared/components/cookie-consent/cookie-consent.component.ts",
 )
+FRONTEND_PRODUCTION_ENV_PATH = "client/src/environments/environment.prod.ts"
 PUBLIC_FRONTEND_ROUTES = ("privacy", "terms", "cookies")
 AUTH_RATE_LIMIT_ENV_KEYS = (
     "AUTH_LOGIN_RATE_LIMIT",
@@ -126,6 +127,19 @@ def _env_flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _frontend_cookie_only_auth_enabled(repo_root: Path) -> bool | None:
+    environment_path = repo_root / FRONTEND_PRODUCTION_ENV_PATH
+    if not environment_path.exists():
+        return None
+    source = environment_path.read_text(encoding="utf-8")
+    compact_source = "".join(source.split())
+    if "cookieOnlyAuth:true" in compact_source:
+        return True
+    if "cookieOnlyAuth:false" in compact_source:
+        return False
+    return None
 
 
 def _parse_positive_int(value: str | None) -> int | None:
@@ -373,16 +387,41 @@ def build_production_preflight(
                 ),
             )
 
+    repo_root = root_path.parent
+    frontend_tree_available = (repo_root / "client").exists()
+    frontend_cookie_only_auth_enabled = (
+        _frontend_cookie_only_auth_enabled(repo_root)
+        if frontend_tree_available
+        else None
+    )
+
     cookie_auth_mode = _env_flag(env, "OPENMYND_AUTH_COOKIE_MODE")
     cookie_csrf_protect = _env_flag(env, "OPENMYND_AUTH_COOKIE_CSRF_PROTECT")
-    if app_env == "production" and not _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"):
+    localstorage_jwt_risk_present = frontend_cookie_only_auth_enabled is not True
+    if (
+        app_env == "production"
+        and localstorage_jwt_risk_present
+        and not _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK")
+    ):
         _add_gate(
             warnings,
             gate="jwt_browser_storage_review",
             severity="warning",
             message=(
-                "Browser bearer tokens are currently stored in localStorage. "
-                "Set OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK=true only after the launch owner accepts this risk or ships a cookie/session redesign."
+                "The production frontend is not confirmed as cookie-only, so "
+                "browser bearer tokens may be stored in localStorage. Set "
+                "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK=true only after the "
+                "launch owner accepts this risk or ships a cookie/session redesign."
+            ),
+        )
+    if app_env == "production" and cookie_auth_mode and frontend_cookie_only_auth_enabled is False:
+        _add_gate(
+            warnings,
+            gate="cookie_auth_frontend_mode",
+            severity="warning",
+            message=(
+                "OPENMYND_AUTH_COOKIE_MODE is enabled, but the production frontend has cookieOnlyAuth=false. "
+                "This is additive cookie mode, not a cookie-only launch posture."
             ),
         )
     if app_env == "production" and cookie_auth_mode and not cookie_csrf_protect:
@@ -416,8 +455,6 @@ def build_production_preflight(
             ),
         )
 
-    repo_root = root_path.parent
-    frontend_tree_available = (repo_root / "client").exists()
     missing_legal_sources = []
     if frontend_tree_available:
         missing_legal_sources = [
@@ -652,6 +689,7 @@ def build_production_preflight(
             "localstorage_jwt_risk_accepted": _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"),
             "cookie_auth_mode": cookie_auth_mode,
             "cookie_auth_csrf_protect": cookie_csrf_protect,
+            "frontend_cookie_only_auth_enabled": frontend_cookie_only_auth_enabled,
             "legacy_password_fallback_accepted": _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"),
             "legacy_password_fallback_disabled": legacy_password_fallback_disabled,
             "legal_privacy_routes_present": not missing_legal_sources,

@@ -39,7 +39,12 @@ def _base_env() -> dict[str, str]:
     }
 
 
-def _write_frontend_sources(root, *, include_cookies: bool = True) -> None:
+def _write_frontend_sources(
+    root,
+    *,
+    include_cookies: bool = True,
+    cookie_only_auth: bool = False,
+) -> None:
     client_root = root / "client"
     routes = [
         'path: "privacy"',
@@ -59,6 +64,11 @@ def _write_frontend_sources(root, *, include_cookies: bool = True) -> None:
         client_root
         / "src/app/shared/components/cookie-consent/cookie-consent.component.ts"
     ).write_text("export class CookieConsentComponent {}", encoding="utf-8")
+    (client_root / "src/environments").mkdir(parents=True)
+    (client_root / "src/environments/environment.prod.ts").write_text(
+        f"export const environment = {{ cookieOnlyAuth: {str(cookie_only_auth).lower()} }};",
+        encoding="utf-8",
+    )
 
 
 def test_preflight_blocks_unsafe_production_defaults(tmp_path):
@@ -315,6 +325,7 @@ def test_preflight_warns_about_unaccepted_session_and_password_risks(tmp_path):
     assert report["summary"]["legacy_password_fallback_accepted"] is False
     assert report["summary"]["cookie_auth_mode"] is False
     assert report["summary"]["cookie_auth_csrf_protect"] is False
+    assert report["summary"]["frontend_cookie_only_auth_enabled"] is None
 
 
 def test_preflight_warns_when_cookie_auth_lacks_csrf(tmp_path):
@@ -354,6 +365,52 @@ def test_preflight_records_cookie_auth_with_csrf(tmp_path):
     assert "cookie_auth_csrf" not in warning_gates
     assert report["summary"]["cookie_auth_mode"] is True
     assert report["summary"]["cookie_auth_csrf_protect"] is True
+
+
+def test_preflight_warns_when_cookie_backend_is_enabled_but_frontend_is_not_cookie_only(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True, cookie_only_auth=False)
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["OPENMYND_AUTH_COOKIE_MODE"] = "true"
+    env["OPENMYND_AUTH_COOKIE_CSRF_PROTECT"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "cookie_auth_frontend_mode" in warning_gates
+    assert "jwt_browser_storage_review" in warning_gates
+    assert report["summary"]["frontend_cookie_only_auth_enabled"] is False
+
+
+def test_preflight_suppresses_localstorage_warning_when_frontend_is_cookie_only(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True, cookie_only_auth=True)
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["OPENMYND_AUTH_COOKIE_MODE"] = "true"
+    env["OPENMYND_AUTH_COOKIE_CSRF_PROTECT"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "jwt_browser_storage_review" not in warning_gates
+    assert "cookie_auth_frontend_mode" not in warning_gates
+    assert report["summary"]["frontend_cookie_only_auth_enabled"] is True
 
 
 def test_preflight_records_accepted_session_and_password_risks(tmp_path):

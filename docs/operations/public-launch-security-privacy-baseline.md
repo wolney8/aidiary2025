@@ -19,7 +19,9 @@ Current automated evidence:
   shared rate limiting.
 - The preflight now also checks production frontend URL shape, Google OAuth callback
   safety, public legal/cookie route presence when the frontend tree is available, and
-  explicit owner acceptance for known session/password migration risks.
+  explicit owner acceptance for known session/password migration risks. It also reports
+  whether the production frontend is configured for cookie-only auth or only additive
+  cookie compatibility.
 - Login, registration, email verification, password reset, OAuth start/callback,
   AI analysis, import/export, import revert, and account deletion routes have
   explicit rate limits, with preflight visibility for production configuration.
