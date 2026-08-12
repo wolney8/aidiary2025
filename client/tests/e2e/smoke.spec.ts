@@ -474,6 +474,226 @@ async function mockAuthRecoveryApi(page: Page) {
   });
 }
 
+async function mockImportReviewApi(page: Page) {
+  let reverted = false;
+
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+
+    if (path.endsWith("/api/profile")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 42,
+          username: "import-e2e",
+          display_name: "ImportUser",
+          onboarding_completed: true,
+          chat_enabled: true,
+          allow_ai_history: true,
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/billing/status")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          entitlement: {
+            tier: "free",
+            source: "system",
+            status: "active",
+            is_default: true,
+            is_active: true,
+          },
+          provider: "stripe",
+          stripe_configured: false,
+          checkout_tiers: [],
+          checkout_periods: {},
+          has_billing_customer: false,
+          current_subscription: null,
+          usage: {},
+          plans: [],
+          is_admin: false,
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/import/history") && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          history: [
+            {
+              id: 101,
+              imported_at: "2026-08-10T12:00:00Z",
+              filename: "previous-import.xlsx",
+              imported_count: 2,
+              skipped_count: 0,
+              status: reverted ? "reverted" : "success",
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/import/history/101/revert") && request.method() === "POST") {
+      reverted = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ deleted_total: 2 }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/import/upload") && request.method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "review",
+          message: "Review entries before import.",
+          imported_count: 0,
+          skipped_count: 0,
+          error_count: 0,
+          import_session_id: "review-session-e2e",
+          summary: {
+            ready_daily: 1,
+            ready_dreams: 0,
+            duplicate_daily: 1,
+            duplicate_dreams: 0,
+          },
+          review_entries: [
+            {
+              row_id: "row-1",
+              entry_type: "daily",
+              entry_date: "2026-08-09",
+              title: "Imported reflection",
+              content_preview: "A reviewed diary entry ready to import.",
+              is_duplicate: false,
+              attachment_count: 0,
+              source_record_kind: "authored",
+            },
+            {
+              row_id: "row-2",
+              entry_type: "daily",
+              entry_date: "2026-08-09",
+              title: "Possible duplicate",
+              content_preview: "A duplicate candidate that remains unselected by default.",
+              duplicate_reason: "Matching daily entry on this date.",
+              is_duplicate: true,
+              attachment_count: 0,
+              source_record_kind: "authored",
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/import/jobs") && request.method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "import-job-e2e",
+          status: "completed",
+          processed: 1,
+          total: 1,
+          percent: 100,
+          message: "Import complete: 1 entry imported.",
+          created_at: "2026-08-10T12:05:00Z",
+          updated_at: "2026-08-10T12:05:01Z",
+          result: {
+            status: "success",
+            message: "Import successful",
+            imported_count: 1,
+            skipped_count: 1,
+            error_count: 0,
+            summary: {
+              inserted_daily: 1,
+              inserted_dreams: 0,
+              skipped_daily: 1,
+              skipped_dreams: 0,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/import/jobs/import-job-e2e") && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "import-job-e2e",
+          status: "completed",
+          processed: 1,
+          total: 1,
+          percent: 100,
+          message: "Import complete: 1 entry imported.",
+          created_at: "2026-08-10T12:05:00Z",
+          updated_at: "2026-08-10T12:05:01Z",
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/context-status")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ history_enabled: false, sources: [] }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/history")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ conversation_id: "import-e2e-chat", messages: [] }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/stats")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversation_id: "import-e2e-chat",
+          message_count: 0,
+          user_message_count: 0,
+          assistant_message_count: 0,
+          token_count: 0,
+          started_at: null,
+          last_message_at: null,
+          active_seconds: 0,
+          conversation_count: 0,
+          limits: {},
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+}
+
 test("login screen loads with core controls", async ({ page }) => {
   await page.goto("/login");
 
@@ -690,6 +910,58 @@ test("dashboard loads core insight cards and interactive controls", async ({ pag
   await page.getByLabel("Open quick log actions").click();
   await expect(page.getByRole("menu", { name: "Quick log" })).toContainText("Diary");
   await expect(page.getByRole("menu", { name: "Quick log" })).toContainText("Thought record");
+});
+
+test("import review commits selected entries and can revert prior imports", async ({ page }) => {
+  await seedLocalSession(page, {
+    display_name: "ImportUser",
+    onboarding_completed: true,
+  });
+  await mockImportReviewApi(page);
+
+  await page.goto("/settings/import");
+
+  await expect(page.getByRole("main", { name: "Import entries" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Import history table" })).toContainText(
+    "previous-import.xlsx",
+  );
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "smoke-import.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from("smoke import"),
+  });
+  await page.getByLabel("Upload selected file and import entries").click();
+
+  await expect(page.getByTestId("import-review-open")).toBeVisible();
+  await expect(page.getByTestId("import-review-open")).toContainText("Review entries");
+
+  await page.getByTestId("import-review-open").click();
+  await expect(page.getByTestId("import-review-modal")).toBeVisible();
+  await expect(page.getByTestId("import-review-table")).toContainText("Imported reflection");
+  await expect(page.getByTestId("import-review-table")).toContainText("Possible duplicate");
+  await expect(page.getByTestId("import-review-modal")).toContainText("1 of 2 selected");
+
+  await page.getByTestId("import-review-commit").click();
+  await expect(page.getByTestId("import-review-modal")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("openmynd_notifications") || "[]";
+        return JSON.parse(raw)[0]?.message as string | undefined;
+      }),
+    )
+    .toContain("1 entry imported");
+
+  await page.getByRole("button", { name: /Revert import/i }).click();
+  await expect(page.getByTestId("app-dialog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Revert this import?" })).toBeVisible();
+  await page.getByTestId("app-dialog-confirm").click();
+
+  await expect(page.getByRole("table", { name: "Import history table" })).toContainText(
+    "Reverted",
+  );
+  await expect(page.getByRole("button", { name: /Revert import/i })).toHaveCount(0);
 });
 
 test("chat companion is limited to diary content routes", async ({ page }) => {
