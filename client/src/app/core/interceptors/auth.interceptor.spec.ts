@@ -5,7 +5,7 @@ import {
 } from "@angular/common/http";
 import { TestBed } from "@angular/core/testing";
 import { of, throwError } from "rxjs";
-import { authInterceptor } from "./auth.interceptor";
+import { authInterceptor, readCookie } from "./auth.interceptor";
 import { AuthService } from "../services/auth.service";
 
 describe("authInterceptor", () => {
@@ -15,6 +15,14 @@ describe("authInterceptor", () => {
   };
 
   beforeEach(() => {
+    document.cookie
+      .split(";")
+      .forEach((cookie) => {
+        const name = cookie.split("=")[0]?.trim();
+        if (name) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        }
+      });
     authServiceMock = {
       handleSessionExpired: jasmine.createSpy("handleSessionExpired"),
       handleOnboardingRequired: jasmine.createSpy("handleOnboardingRequired"),
@@ -96,5 +104,50 @@ describe("authInterceptor", () => {
 
     expect(responseStatus).toBe(200);
     expect(authServiceMock.handleSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it("adds credentials to API requests", () => {
+    const request = new HttpRequest("GET", "/api/entries");
+    let forwarded: HttpRequest<unknown> | undefined;
+
+    TestBed.runInInjectionContext(() => {
+      authInterceptor(request, (nextRequest) => {
+        forwarded = nextRequest;
+        return of(new HttpResponse({ status: 200 }));
+      }).subscribe();
+    });
+
+    expect(forwarded?.withCredentials).toBeTrue();
+  });
+
+  it("adds a CSRF header for unsafe API requests when the CSRF cookie exists", () => {
+    document.cookie = "csrf_access_token=test-csrf-token; path=/";
+    const request = new HttpRequest("POST", "/api/entries", {});
+    let forwarded: HttpRequest<unknown> | undefined;
+
+    TestBed.runInInjectionContext(() => {
+      authInterceptor(request, (nextRequest) => {
+        forwarded = nextRequest;
+        return of(new HttpResponse({ status: 200 }));
+      }).subscribe();
+    });
+
+    expect(readCookie("csrf_access_token")).toBe("test-csrf-token");
+    expect(forwarded?.headers.get("X-CSRF-TOKEN")).toBe("test-csrf-token");
+  });
+
+  it("does not add a CSRF header for safe API requests", () => {
+    document.cookie = "csrf_access_token=test-csrf-token; path=/";
+    const request = new HttpRequest("GET", "/api/entries");
+    let forwarded: HttpRequest<unknown> | undefined;
+
+    TestBed.runInInjectionContext(() => {
+      authInterceptor(request, (nextRequest) => {
+        forwarded = nextRequest;
+        return of(new HttpResponse({ status: 200 }));
+      }).subscribe();
+    });
+
+    expect(forwarded?.headers.has("X-CSRF-TOKEN")).toBeFalse();
   });
 });
