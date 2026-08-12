@@ -8,11 +8,12 @@ import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
-import { Router, RouterLink } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
 import {
   BillingTier,
+  BillingPeriod,
   BillingService,
   BillingStatus,
   BillingUsageMetric,
@@ -268,6 +269,32 @@ interface AccountUsageCard {
               </div>
 
               <div class="billing-actions">
+                <div
+                  class="billing-period-toggle"
+                  role="group"
+                  aria-label="Choose billing period for upgrades"
+                  data-testid="account-billing-period-toggle"
+                >
+                  <button
+                    type="button"
+                    class="billing-period-option"
+                    [class.is-active]="selectedBillingPeriod === 'monthly'"
+                    [attr.aria-pressed]="selectedBillingPeriod === 'monthly'"
+                    (click)="setBillingPeriod('monthly')"
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    class="billing-period-option"
+                    [class.is-active]="selectedBillingPeriod === 'annual'"
+                    [attr.aria-pressed]="selectedBillingPeriod === 'annual'"
+                    (click)="setBillingPeriod('annual')"
+                  >
+                    Annual
+                    <span class="billing-saving-pill">Save up to 20%</span>
+                  </button>
+                </div>
                 <button
                   *ngFor="let tier of getUpgradeTiers()"
                   mat-raised-button
@@ -282,7 +309,7 @@ interface AccountUsageCard {
                     {{ billingBusyTier === tier ? "hourglass_top" : "open_in_new" }}
                   </mat-icon>
                   <span class="billing-action-label">
-                    {{ billingBusyTier === tier ? "Opening..." : "Upgrade to " + getPlanName(tier) }}
+                    {{ getCheckoutButtonLabel(tier) }}
                   </span>
                 </button>
                 <button
@@ -806,6 +833,53 @@ interface AccountUsageCard {
         gap: var(--spacing-sm);
       }
 
+      .billing-period-toggle {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        padding: 4px;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        box-shadow: 0 8px 20px var(--colour-shadow-soft);
+      }
+
+      .billing-period-option {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-xs);
+        min-height: 40px;
+        padding: 0 var(--spacing-sm);
+        border: 0;
+        border-radius: var(--radius-pill);
+        background: transparent;
+        color: var(--colour-text-secondary);
+        cursor: pointer;
+        font: inherit;
+        font-weight: 900;
+      }
+
+      .billing-period-option.is-active {
+        background: var(--colour-control-selected);
+        color: var(--colour-control-selected-text);
+      }
+
+      .billing-period-option:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
+      }
+
+      .billing-saving-pill {
+        padding: 0.08rem 0.38rem;
+        border-radius: var(--radius-pill);
+        background: color-mix(in srgb, var(--colour-warning-text) 16%, var(--colour-surface));
+        color: var(--colour-warning-text);
+        font-size: 0.72rem;
+        font-weight: 950;
+        white-space: nowrap;
+      }
+
       .billing-action {
         display: inline-flex;
         align-items: center;
@@ -892,6 +966,7 @@ export class ProfileComponent implements OnInit {
   private profileService = inject(ProfileService);
   private location = inject(Location);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   profile: User | null = null;
   saving = false;
@@ -905,6 +980,7 @@ export class ProfileComponent implements OnInit {
   billingStatus: BillingStatus | null = null;
   billingBusyTier: CheckoutTier | null = null;
   billingPortalBusy = false;
+  selectedBillingPeriod: BillingPeriod = "monthly";
   private initialProfileSnapshot = "";
   profileDirty = false;
 
@@ -918,6 +994,16 @@ export class ProfileComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.route.queryParamMap.subscribe((params) => {
+      const billingResult = params.get("billing");
+      if (billingResult === "success") {
+        this.successMessage = "Billing updated.";
+        this.clearBillingQueryParam();
+      } else if (billingResult === "cancelled") {
+        this.errorMessage = "Billing checkout was cancelled.";
+        this.clearBillingQueryParam();
+      }
+    });
     this.profileService.getProfile().subscribe({
       next: (profile) => {
         this.profile = { ...profile };
@@ -1106,6 +1192,18 @@ export class ProfileComponent implements OnInit {
     });
   }
 
+  setBillingPeriod(period: BillingPeriod): void {
+    this.selectedBillingPeriod = period;
+  }
+
+  getCheckoutButtonLabel(tier: CheckoutTier): string {
+    if (this.billingBusyTier === tier) {
+      return "Opening...";
+    }
+    const cadence = this.selectedBillingPeriod === "annual" ? "annual" : "monthly";
+    return `Upgrade to ${this.getPlanName(tier)} ${cadence}`;
+  }
+
   canStartCheckout(tier: CheckoutTier): boolean {
     return Boolean(
       this.billingStatus?.stripe_configured &&
@@ -1131,7 +1229,7 @@ export class ProfileComponent implements OnInit {
     this.billingBusyTier = tier;
     this.errorMessage = "";
     this.successMessage = "";
-    this.billingService.startCheckout(tier).subscribe({
+    this.billingService.startCheckout(tier, this.selectedBillingPeriod).subscribe({
       next: (response) => {
         window.location.href = response.url;
       },
@@ -1374,6 +1472,15 @@ export class ProfileComponent implements OnInit {
       error: () => {
         this.billingStatus = null;
       },
+    });
+  }
+
+  private clearBillingQueryParam(): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { billing: null },
+      queryParamsHandling: "merge",
+      replaceUrl: true,
     });
   }
 

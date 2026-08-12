@@ -18,7 +18,7 @@ type BillingPeriod = "monthly" | "annual";
   imports: [CommonModule, RouterLink, MatButtonModule, MatIconModule],
   template: `
     <section class="plans-page" data-testid="plans-page">
-      <a routerLink="/profile" class="plans-back-link">
+      <a routerLink="/account" class="plans-back-link">
         <mat-icon aria-hidden="true">arrow_back</mat-icon>
         <span>Back to Account</span>
       </a>

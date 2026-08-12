@@ -66,15 +66,15 @@ def load_stripe_billing_config() -> StripeBillingConfig:
         price_ids=price_ids,
         success_url=(
             os.getenv("STRIPE_CHECKOUT_SUCCESS_URL", "").strip()
-            or urljoin(f"{frontend_base}/", "profile?billing=success")
+            or urljoin(f"{frontend_base}/", "account?billing=success")
         ),
         cancel_url=(
             os.getenv("STRIPE_CHECKOUT_CANCEL_URL", "").strip()
-            or urljoin(f"{frontend_base}/", "profile?billing=cancelled")
+            or urljoin(f"{frontend_base}/", "account?billing=cancelled")
         ),
         portal_return_url=(
             os.getenv("STRIPE_CUSTOMER_PORTAL_RETURN_URL", "").strip()
-            or urljoin(f"{frontend_base}/", "profile")
+            or urljoin(f"{frontend_base}/", "account")
         ),
     )
 
