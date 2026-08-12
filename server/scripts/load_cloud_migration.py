@@ -25,6 +25,7 @@ IDENTITY_ID_TABLES = {
     "users",
     "auth_identities",
     "account_security_tokens",
+    "auth_sessions",
     "billing_customers",
     "subscriptions",
     "entitlements",

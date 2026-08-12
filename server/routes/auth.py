@@ -2,10 +2,13 @@
 from flask import Blueprint, request, jsonify, current_app, redirect
 from flask_jwt_extended import (
     create_access_token,
+    decode_token,
+    get_jwt,
     get_jwt_identity,
     jwt_required,
     set_access_cookies,
     unset_jwt_cookies,
+    verify_jwt_in_request,
 )
 import bcrypt
 import base64
@@ -27,6 +30,11 @@ from extensions import limiter
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.email_delivery import send_transactional_email
+from services.auth_sessions import (
+    epoch_to_utc_iso,
+    record_auth_session,
+    revoke_session_by_jti,
+)
 from services.media_storage import resolve_image_url, store_profile_image
 from services.security_audit import record_security_event
 from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
@@ -128,6 +136,22 @@ def _auth_json_response(payload: dict[str, object], access_token: str, status_co
     response = jsonify(payload)
     response.status_code = status_code
     return _attach_auth_cookie(response, access_token)
+
+
+def _create_tracked_access_token(user_id: int) -> str:
+    access_token = create_access_token(identity=str(user_id))
+    decoded_token = decode_token(access_token)
+    jwt_jti = str(decoded_token.get('jti') or '').strip()
+    if not jwt_jti:
+        raise RuntimeError('JWT token did not include a jti claim')
+    with get_db() as conn:
+        record_auth_session(
+            conn,
+            user_id=int(user_id),
+            jwt_jti=jwt_jti,
+            expires_at=epoch_to_utc_iso(decoded_token.get('exp')),
+        )
+    return access_token
 
 
 def _oauth_scope(provider_id: str) -> str:
@@ -416,7 +440,7 @@ def oauth_callback(provider_id: str):
         return _redirect_oauth_error(
             'This account has been restricted. Contact the OpenMynd administrator for access.'
         )
-    access_token = create_access_token(identity=str(user_id))
+    access_token = _create_tracked_access_token(int(user_id))
     auth_user = _serialise_auth_user(user)
     onboarding_required = created_user or auth_user.get('onboarding_completed') is False
     if onboarding_required:
@@ -535,7 +559,7 @@ def register():
             _send_email_verification(conn, int(user_id), email)
         
         # Create JWT token
-        access_token = create_access_token(identity=str(user_id))
+        access_token = _create_tracked_access_token(int(user_id))
         
         return _auth_json_response({
             'token': access_token,
@@ -666,7 +690,7 @@ def login():
         return _restricted_account_response()
 
     # Create JWT token
-    access_token = create_access_token(identity=str(user['id']))
+    access_token = _create_tracked_access_token(int(user['id']))
     _audit_security_event_for_request('login_success', user_id=int(user['id']))
     
     return _auth_json_response({
@@ -678,6 +702,20 @@ def login():
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     """Clear cookie auth state when cookie mode is enabled."""
+    try:
+        verify_jwt_in_request(optional=True)
+        jwt_payload = get_jwt()
+        jwt_jti = str(jwt_payload.get('jti') or '').strip()
+    except Exception:
+        jwt_jti = ''
+
+    if jwt_jti:
+        try:
+            with get_db() as conn:
+                revoke_session_by_jti(conn, jwt_jti, reason='logout')
+        except Exception as exc:  # noqa: BLE001
+            current_app.logger.warning('Logout session revocation failed: %s', exc)
+
     response = jsonify({'message': 'Logged out'})
     unset_jwt_cookies(response)
     return response, 200

@@ -1,6 +1,6 @@
 # Session And Auth Hardening Plan
 
-Updated: 7 August 2026
+Updated: 12 August 2026
 
 Scope: public-readiness follow-on after the security/privacy baseline.
 
@@ -16,8 +16,11 @@ incident logs, or user records.
   `HttpOnly` cookie while preserving bearer-token compatibility.
 - `OPENMYND_AUTH_COOKIE_CSRF_PROTECT=true` enables the framework CSRF cookie/header
   path for unsafe methods in cookie mode.
+- Access tokens are now tracked in `auth_sessions` by JWT `jti`.
+- Logout revokes the active tracked token, and account deletion revokes all tracked
+  user sessions before removing the user account.
 - Cookie mode is not the final production cutover until frontend cookie-only smoke
-  coverage and server-side session revocation are complete.
+  coverage is complete and bearer-token localStorage persistence is removed.
 - Frontend guards clear malformed or expired tokens before protected navigation.
 - Backend routes remain the source of truth for authentication and ownership checks.
 - Sensitive public routes have configurable rate limits.
@@ -52,7 +55,7 @@ The safest migration is dual-mode, then cutover:
    present.
 3. CSRF token issuance and frontend header forwarding for unsafe API methods are in
    place when cookie mode CSRF protection is enabled.
-4. Add server-side session/revocation storage.
+4. Server-side session/revocation storage is in place.
 5. Run browser smoke tests for password login, Google login, onboarding, logout,
    session expiry, account deletion, import, export, Chat, and AI analysis.
 6. Flip production to cookie mode.
@@ -86,8 +89,8 @@ Requirements:
 - Add cookie-backed auth for password and Google OAuth login.
 - Use secure `HttpOnly` cookies with production-safe attributes.
 - Add CSRF protection for unsafe methods in cookie-auth mode.
-- Add server-side session or revocation support so logout and account deletion can
-  invalidate active sessions.
+- Use server-side session/revocation support so logout and account deletion invalidate
+  active sessions.
 - Keep a temporary bearer-token compatibility mode during migration.
 - Update frontend auth service/interceptor to support cookie mode without storing access
   tokens in `localStorage`.

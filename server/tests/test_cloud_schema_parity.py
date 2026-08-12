@@ -11,6 +11,7 @@ from services.runtime_migrations import (
     ensure_account_security_tokens_table,
     ensure_admin_announcement_tables,
     ensure_auth_identities_table,
+    ensure_auth_sessions_table,
     ensure_billing_tables,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
@@ -108,6 +109,7 @@ def _build_runtime_sqlite_schema(db_path):
     ensure_user_settings_columns(str(db_path))
     ensure_auth_identities_table(str(db_path))
     ensure_account_security_tokens_table(str(db_path))
+    ensure_auth_sessions_table(str(db_path))
     ensure_billing_tables(str(db_path))
     ensure_admin_announcement_tables(str(db_path))
     ensure_export_history_table(str(db_path))
@@ -141,6 +143,7 @@ def test_runtime_sqlite_managed_columns_exist_in_postgres_schema(tmp_path):
         "users",
         "auth_identities",
         "account_security_tokens",
+        "auth_sessions",
         "billing_customers",
         "subscriptions",
         "entitlements",

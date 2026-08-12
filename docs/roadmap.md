@@ -1,6 +1,6 @@
 # Roadmap
 
-Updated: 8 August 2026. GitHub issues remain the delivery source of truth; this file
+Updated: 12 August 2026. GitHub issues remain the delivery source of truth; this file
 records the intended sequence and the major readiness gaps that should not be lost
 between delivery sessions.
 
@@ -33,7 +33,9 @@ new broad product surfaces.
    - Finish public-launch security review before any real public onboarding.
    - Harden auth rate limiting, browser session storage, legacy password migration,
      account recovery, audit logging, and consent/privacy evidence.
-   - Session migration target is documented in
+   - Additive cookie auth, CSRF forwarding, and tracked JWT session revocation are in
+     place; cookie-only browser smoke and localStorage token removal remain. The
+     session migration target is documented in
      [session-auth-hardening-plan.md](./operations/session-auth-hardening-plan.md).
 2. Database operations and cloud readiness
    - Keep SQLite as the current local fallback while rehearsing Neon/Postgres cutover.

@@ -14,6 +14,7 @@ from services.runtime_migrations import (
     ensure_account_security_tokens_table,
     ensure_admin_announcement_tables,
     ensure_auth_identities_table,
+    ensure_auth_sessions_table,
     ensure_billing_tables,
     ensure_cbt_worksheet_tables,
     ensure_chat_messages_table,
@@ -32,6 +33,7 @@ from services.runtime_migrations import (
     ensure_user_settings_columns,
 )
 from services.media_storage import DEFAULT_MEDIA_URL_PREFIX, ensure_media_root
+from services.auth_sessions import token_is_revoked
 
 # Load environment variables
 load_dotenv()
@@ -202,6 +204,11 @@ def _run_sqlite_runtime_migrations(app, database_path: str) -> None:
         )
 
     try:
+        ensure_auth_sessions_table(database_path, app.logger.info)
+    except Exception as migration_exc:
+        app.logger.warning('Runtime auth session migration skipped due to error: %s', migration_exc)
+
+    try:
         ensure_billing_tables(database_path, app.logger.info)
     except Exception as migration_exc:
         app.logger.warning('Runtime billing table migration skipped due to error: %s', migration_exc)
@@ -365,7 +372,7 @@ def create_app():
     CORS(app, origins=cors_origins, supports_credentials=True)
     
     # JWT initialisation
-    JWTManager(app)
+    jwt = JWTManager(app)
     limiter.init_app(app)
     # --- DEBUG: helpful JWT logging for local development ---
     # These handlers will log common JWT errors so the developer can
@@ -432,6 +439,18 @@ def create_app():
                 app.logger.exception('Chat rate-limit event could not be recorded')
             return {'error': 'Rate limit exceeded. Try again in 60 minutes.'}, 429
         return {'error': 'Too many attempts. Try again shortly.'}, 429
+
+    @jwt.token_in_blocklist_loader
+    def _jwt_token_is_revoked(_jwt_header, jwt_payload):
+        jwt_jti = str(jwt_payload.get('jti') or '').strip()
+        if not jwt_jti:
+            return True
+        try:
+            with app.config['DATABASE_ADAPTER'].connect(timeout=5) as conn:
+                return token_is_revoked(conn, jwt_jti)
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning('JWT revocation check failed: %s', exc)
+            return app_environment == 'production'
 
     @app.before_request
     def _log_jwt_presence():

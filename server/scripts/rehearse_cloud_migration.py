@@ -24,6 +24,7 @@ TABLE_ORDER = [
     "users",
     "auth_identities",
     "account_security_tokens",
+    "auth_sessions",
     "billing_customers",
     "subscriptions",
     "entitlements",
