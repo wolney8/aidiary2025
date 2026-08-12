@@ -373,6 +373,8 @@ def build_production_preflight(
                 ),
             )
 
+    cookie_auth_mode = _env_flag(env, "OPENMYND_AUTH_COOKIE_MODE")
+    cookie_csrf_protect = _env_flag(env, "OPENMYND_AUTH_COOKIE_CSRF_PROTECT")
     if app_env == "production" and not _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"):
         _add_gate(
             warnings,
@@ -381,6 +383,17 @@ def build_production_preflight(
             message=(
                 "Browser bearer tokens are currently stored in localStorage. "
                 "Set OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK=true only after the launch owner accepts this risk or ships a cookie/session redesign."
+            ),
+        )
+    if app_env == "production" and cookie_auth_mode and not cookie_csrf_protect:
+        _add_gate(
+            warnings,
+            gate="cookie_auth_csrf",
+            severity="warning",
+            message=(
+                "OPENMYND_AUTH_COOKIE_MODE is enabled without "
+                "OPENMYND_AUTH_COOKIE_CSRF_PROTECT. This is only acceptable during "
+                "the staged migration before cookie-only launch."
             ),
         )
 
@@ -637,6 +650,8 @@ def build_production_preflight(
             "smtp_host_configured": bool(smtp_host),
             "registration_email_required": _env_flag(env, "OPENMYND_REQUIRE_REGISTRATION_EMAIL"),
             "localstorage_jwt_risk_accepted": _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"),
+            "cookie_auth_mode": cookie_auth_mode,
+            "cookie_auth_csrf_protect": cookie_csrf_protect,
             "legacy_password_fallback_accepted": _env_flag(env, "OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK"),
             "legacy_password_fallback_disabled": legacy_password_fallback_disabled,
             "legal_privacy_routes_present": not missing_legal_sources,

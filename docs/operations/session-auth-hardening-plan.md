@@ -12,6 +12,10 @@ incident logs, or user records.
 - The frontend stores the access token in `localStorage` under `openmynd_token`.
 - API calls send `Authorization: Bearer <token>`.
 - JWT access tokens expire after 24 hours.
+- `OPENMYND_AUTH_COOKIE_MODE=true` can now issue the access token as an additional
+  `HttpOnly` cookie while preserving bearer-token compatibility.
+- Cookie mode is not the final production cutover until CSRF protection and frontend
+  cookie-only smoke coverage are complete.
 - Frontend guards clear malformed or expired tokens before protected navigation.
 - Backend routes remain the source of truth for authentication and ownership checks.
 - Sensitive public routes have configurable rate limits.
@@ -40,8 +44,10 @@ Preferred direction:
 
 The safest migration is dual-mode, then cutover:
 
-1. Add server support for cookie-backed auth while continuing to accept bearer tokens.
-2. Add frontend support for credentialed requests and cookie-mode login/logout.
+1. Server support for additive cookie-backed auth while continuing to accept bearer
+   tokens is in place.
+2. Frontend API calls can send credentials, and logout clears cookie auth state where
+   present.
 3. Add CSRF token issuance and enforcement for unsafe methods in cookie mode.
 4. Add server-side session/revocation storage.
 5. Run browser smoke tests for password login, Google login, onboarding, logout,

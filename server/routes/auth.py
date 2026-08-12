@@ -1,6 +1,12 @@
 # Authentication routes with JWT
 from flask import Blueprint, request, jsonify, current_app, redirect
-from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
+from flask_jwt_extended import (
+    create_access_token,
+    get_jwt_identity,
+    jwt_required,
+    set_access_cookies,
+    unset_jwt_cookies,
+)
 import bcrypt
 import base64
 import hashlib
@@ -106,6 +112,22 @@ def _legacy_password_fallback_disabled() -> bool:
 
 def _registration_email_required() -> bool:
     return _env_flag('OPENMYND_REQUIRE_REGISTRATION_EMAIL', default=False)
+
+
+def _cookie_auth_enabled() -> bool:
+    return bool(current_app.config.get('OPENMYND_AUTH_COOKIE_MODE'))
+
+
+def _attach_auth_cookie(response, access_token: str):
+    if _cookie_auth_enabled():
+        set_access_cookies(response, access_token)
+    return response
+
+
+def _auth_json_response(payload: dict[str, object], access_token: str, status_code: int = 200):
+    response = jsonify(payload)
+    response.status_code = status_code
+    return _attach_auth_cookie(response, access_token)
 
 
 def _oauth_scope(provider_id: str) -> str:
@@ -515,7 +537,7 @@ def register():
         # Create JWT token
         access_token = create_access_token(identity=str(user_id))
         
-        return jsonify({
+        return _auth_json_response({
             'token': access_token,
             'user': {
                 'id': user_id,
@@ -538,7 +560,7 @@ def register():
                 'account_status': 'active',
                 'registered_at': registered_at if 'registered_at' in user_columns else None,
             }
-        }), 201
+        }, access_token, 201)
         
     except Exception as exc:
         if _is_duplicate_username_error(exc):
@@ -647,10 +669,18 @@ def login():
     access_token = create_access_token(identity=str(user['id']))
     _audit_security_event_for_request('login_success', user_id=int(user['id']))
     
-    return jsonify({
+    return _auth_json_response({
         'token': access_token,
         'user': _serialise_auth_user(user),
-    }), 200
+    }, access_token, 200)
+
+
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    """Clear cookie auth state when cookie mode is enabled."""
+    response = jsonify({'message': 'Logged out'})
+    unset_jwt_cookies(response)
+    return response, 200
 
 
 @auth_bp.route('/auth/email/verification/request', methods=['POST'])
@@ -1017,7 +1047,8 @@ def _redirect_oauth_success(
         'onboardingRequired': 'true' if onboarding_required else 'false',
     })
     callback_path = 'onboarding' if onboarding_required else 'oauth/callback'
-    return redirect(f'{_frontend_base_url()}/{callback_path}#{fragment}')
+    response = redirect(f'{_frontend_base_url()}/{callback_path}#{fragment}')
+    return _attach_auth_cookie(response, token)
 
 
 def _exchange_oauth_profile(
