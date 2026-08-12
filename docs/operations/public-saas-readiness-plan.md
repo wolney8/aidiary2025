@@ -339,9 +339,13 @@ Implementation note:
 - Account now shows the current OpenMynd entitlement and Stripe-hosted billing actions.
 - Required environment variables:
   - `STRIPE_SECRET_KEY`
-  - `STRIPE_PRICE_PERSONAL`
-  - `STRIPE_PRICE_PLUS`
-  - `STRIPE_WEBHOOK_SECRET` for the follow-on webhook endpoint
+  - `STRIPE_WEBHOOK_SECRET`
+  - `STRIPE_PRICE_PERSONAL_MONTHLY`
+  - `STRIPE_PRICE_PERSONAL_ANNUAL`
+  - `STRIPE_PRICE_PLUS_MONTHLY`
+  - `STRIPE_PRICE_PLUS_ANNUAL`
+  - legacy monthly fallbacks `STRIPE_PRICE_PERSONAL` and `STRIPE_PRICE_PLUS` are
+    still tolerated, but annual prices must be explicit
   - optional `STRIPE_CHECKOUT_SUCCESS_URL`
   - optional `STRIPE_CHECKOUT_CANCEL_URL`
   - optional `STRIPE_CUSTOMER_PORTAL_RETURN_URL`
@@ -510,9 +514,11 @@ Implementation note:
 
 - `feat/131-public-launch-preflight` extends production preflight with Stripe
   configuration checks for `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-  `STRIPE_PRICE_PERSONAL`, and `STRIPE_PRICE_PLUS`.
+  `STRIPE_PRICE_PERSONAL_MONTHLY`, `STRIPE_PRICE_PERSONAL_ANNUAL`,
+  `STRIPE_PRICE_PLUS_MONTHLY`, and `STRIPE_PRICE_PLUS_ANNUAL`.
 - The preflight now reports Stripe readiness in the summary and blocks partial or
-  malformed Stripe configuration.
+  malformed Stripe configuration. Legacy monthly `STRIPE_PRICE_PERSONAL` and
+  `STRIPE_PRICE_PLUS` values are accepted only as monthly fallbacks.
 - Frontend source checks now include public route presence for `/privacy`, `/terms`, and
   `/cookies`. `/plans` is authenticated and intentionally not public.
 
