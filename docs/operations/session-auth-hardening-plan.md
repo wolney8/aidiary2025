@@ -22,8 +22,9 @@ incident logs, or user records.
 - The frontend has a build-time `cookieOnlyAuth` switch. When enabled, it stops storing
   the bearer token and keeps only non-secret user metadata while API auth relies on the
   server cookie.
-- Cookie mode is not the final production cutover until frontend cookie-only smoke
-  coverage is complete and bearer-token localStorage persistence is removed.
+- Cookie mode now has dedicated frontend browser smoke coverage through the
+  `cookie-only` Angular configuration. Production cutover still requires running the
+  wider authenticated smoke set before removing bearer-token compatibility.
 - Frontend guards clear malformed or expired tokens before protected navigation.
 - Backend routes remain the source of truth for authentication and ownership checks.
 - Sensitive public routes have configurable rate limits.
@@ -63,7 +64,13 @@ The safest migration is dual-mode, then cutover:
 4. Server-side session/revocation storage is in place.
 5. Enable frontend `cookieOnlyAuth` in a controlled build and run browser smoke tests
    for password login, Google login, onboarding, logout,
-   session expiry, account deletion, import, export, Chat, and AI analysis.
+   session expiry, account deletion, import, export, Chat, and AI analysis. The
+   focused cookie-only password-login smoke is:
+
+   ```bash
+   cd client
+   npm run test:e2e:cookie-auth
+   ```
 6. Flip production to cookie mode.
 7. Remove localStorage bearer-token persistence after the cookie path is proven.
 

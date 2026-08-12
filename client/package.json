@@ -9,7 +9,8 @@
     "lint": "eslint \"src/**/*.{ts,html}\" --max-warnings=0",
     "test:e2e:a11y": "PLAYWRIGHT_PORT=4211 playwright test tests/e2e/accessibility.spec.ts",
     "test:e2e:smoke": "playwright test tests/e2e/smoke.spec.ts",
-    "test:e2e:inactivity": "PLAYWRIGHT_PORT=4210 PLAYWRIGHT_ANGULAR_CONFIGURATION=production playwright test tests/e2e/inactivity.spec.ts"
+    "test:e2e:inactivity": "PLAYWRIGHT_PORT=4210 PLAYWRIGHT_ANGULAR_CONFIGURATION=production playwright test tests/e2e/inactivity.spec.ts",
+    "test:e2e:cookie-auth": "PLAYWRIGHT_PORT=4212 PLAYWRIGHT_ANGULAR_CONFIGURATION=cookie-only playwright test tests/e2e/cookie-auth.spec.ts"
   },
   "private": true,
   "dependencies": {

@@ -12,7 +12,7 @@
       "files": ["*.ts"],
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
-        "project": ["tsconfig.app.json", "tsconfig.spec.json"],
+        "project": ["tsconfig.app.json", "tsconfig.spec.json", "tsconfig.e2e.json"],
         "createDefaultProgram": false
       },
       "plugins": ["@typescript-eslint", "@angular-eslint"],
