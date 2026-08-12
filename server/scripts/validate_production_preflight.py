@@ -456,15 +456,43 @@ def build_production_preflight(
 
     stripe_secret_key = (env.get("STRIPE_SECRET_KEY") or "").strip()
     stripe_webhook_secret = (env.get("STRIPE_WEBHOOK_SECRET") or "").strip()
-    stripe_price_personal = (env.get("STRIPE_PRICE_PERSONAL") or "").strip()
-    stripe_price_plus = (env.get("STRIPE_PRICE_PLUS") or "").strip()
+    stripe_price_personal_legacy = (env.get("STRIPE_PRICE_PERSONAL") or "").strip()
+    stripe_price_plus_legacy = (env.get("STRIPE_PRICE_PLUS") or "").strip()
+    stripe_price_personal_monthly = (
+        (env.get("STRIPE_PRICE_PERSONAL_MONTHLY") or "").strip()
+        or stripe_price_personal_legacy
+    )
+    stripe_price_personal_annual = (
+        env.get("STRIPE_PRICE_PERSONAL_ANNUAL") or ""
+    ).strip()
+    stripe_price_plus_monthly = (
+        (env.get("STRIPE_PRICE_PLUS_MONTHLY") or "").strip()
+        or stripe_price_plus_legacy
+    )
+    stripe_price_plus_annual = (env.get("STRIPE_PRICE_PLUS_ANNUAL") or "").strip()
     stripe_values = {
         "STRIPE_SECRET_KEY": stripe_secret_key,
         "STRIPE_WEBHOOK_SECRET": stripe_webhook_secret,
-        "STRIPE_PRICE_PERSONAL": stripe_price_personal,
-        "STRIPE_PRICE_PLUS": stripe_price_plus,
+        "STRIPE_PRICE_PERSONAL_MONTHLY": stripe_price_personal_monthly,
+        "STRIPE_PRICE_PERSONAL_ANNUAL": stripe_price_personal_annual,
+        "STRIPE_PRICE_PLUS_MONTHLY": stripe_price_plus_monthly,
+        "STRIPE_PRICE_PLUS_ANNUAL": stripe_price_plus_annual,
     }
-    stripe_partially_configured = any(stripe_values.values())
+    stripe_price_inputs = {
+        "STRIPE_PRICE_PERSONAL": stripe_price_personal_legacy,
+        "STRIPE_PRICE_PLUS": stripe_price_plus_legacy,
+        "STRIPE_PRICE_PERSONAL_MONTHLY": (
+            env.get("STRIPE_PRICE_PERSONAL_MONTHLY") or ""
+        ).strip(),
+        "STRIPE_PRICE_PERSONAL_ANNUAL": stripe_price_personal_annual,
+        "STRIPE_PRICE_PLUS_MONTHLY": (
+            env.get("STRIPE_PRICE_PLUS_MONTHLY") or ""
+        ).strip(),
+        "STRIPE_PRICE_PLUS_ANNUAL": stripe_price_plus_annual,
+    }
+    stripe_partially_configured = any(stripe_values.values()) or any(
+        stripe_price_inputs.values()
+    )
     if app_env == "production":
         missing_stripe_values = [
             key for key, value in stripe_values.items() if _looks_like_placeholder(value)
@@ -490,15 +518,12 @@ def build_production_preflight(
                 gate="stripe_webhook_secret",
                 message="STRIPE_WEBHOOK_SECRET must look like a Stripe webhook signing secret.",
             )
-        for tier_key, price_value in (
-            ("stripe_price_personal", stripe_price_personal),
-            ("stripe_price_plus", stripe_price_plus),
-        ):
+        for tier_key, price_value in stripe_price_inputs.items():
             if price_value and not _looks_like_prefixed_secret(price_value, "price_"):
                 _add_gate(
                     blockers,
-                    gate=tier_key,
-                    message=f"{tier_key.upper()} must look like a Stripe Price ID.",
+                    gate=tier_key.lower(),
+                    message=f"{tier_key} must look like a Stripe Price ID.",
                 )
 
     media_root = (env.get("MEDIA_ROOT") or "").strip()
@@ -621,8 +646,16 @@ def build_production_preflight(
             ),
             "stripe_secret_configured": bool(stripe_secret_key),
             "stripe_webhook_secret_configured": bool(stripe_webhook_secret),
-            "stripe_price_personal_configured": bool(stripe_price_personal),
-            "stripe_price_plus_configured": bool(stripe_price_plus),
+            "stripe_price_personal_configured": bool(stripe_price_personal_monthly),
+            "stripe_price_plus_configured": bool(stripe_price_plus_monthly),
+            "stripe_price_personal_monthly_configured": bool(
+                stripe_price_personal_monthly
+            ),
+            "stripe_price_personal_annual_configured": bool(
+                stripe_price_personal_annual
+            ),
+            "stripe_price_plus_monthly_configured": bool(stripe_price_plus_monthly),
+            "stripe_price_plus_annual_configured": bool(stripe_price_plus_annual),
             "media_root_configured": bool(media_root),
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",

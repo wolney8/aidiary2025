@@ -32,8 +32,10 @@ def _base_env() -> dict[str, str]:
         "SMTP_HOST": "smtp.openmynd.app",
         "STRIPE_SECRET_KEY": "sk_test_public_preflight",
         "STRIPE_WEBHOOK_SECRET": "whsec_public_preflight",
-        "STRIPE_PRICE_PERSONAL": "price_personal",
-        "STRIPE_PRICE_PLUS": "price_plus",
+        "STRIPE_PRICE_PERSONAL_MONTHLY": "price_personal_monthly",
+        "STRIPE_PRICE_PERSONAL_ANNUAL": "price_personal_annual",
+        "STRIPE_PRICE_PLUS_MONTHLY": "price_plus_monthly",
+        "STRIPE_PRICE_PLUS_ANNUAL": "price_plus_annual",
     }
 
 
@@ -208,13 +210,57 @@ def test_preflight_blocks_incomplete_stripe_configuration(tmp_path):
     assert report["summary"]["stripe_webhook_secret_configured"] is False
 
 
+def test_preflight_blocks_missing_annual_stripe_prices(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env.pop("STRIPE_PRICE_PERSONAL_ANNUAL")
+    env.pop("STRIPE_PRICE_PLUS_ANNUAL")
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "stripe_configuration" in gates
+    assert report["summary"]["stripe_price_personal_monthly_configured"] is True
+    assert report["summary"]["stripe_price_personal_annual_configured"] is False
+    assert report["summary"]["stripe_price_plus_annual_configured"] is False
+
+
+def test_preflight_accepts_legacy_monthly_stripe_prices_with_annual_prices(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env.pop("STRIPE_PRICE_PERSONAL_MONTHLY")
+    env.pop("STRIPE_PRICE_PLUS_MONTHLY")
+    env["STRIPE_PRICE_PERSONAL"] = "price_personal_legacy"
+    env["STRIPE_PRICE_PLUS"] = "price_plus_legacy"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    assert report["ready_for_production"] is True
+    assert report["blockers"] == []
+    assert report["summary"]["stripe_price_personal_monthly_configured"] is True
+    assert report["summary"]["stripe_price_personal_annual_configured"] is True
+    assert report["summary"]["stripe_price_plus_monthly_configured"] is True
+    assert report["summary"]["stripe_price_plus_annual_configured"] is True
+
+
 def test_preflight_blocks_malformed_stripe_values(tmp_path):
     env = _base_env()
     env["DATABASE_PROVIDER"] = "postgres"
     env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
     env["STRIPE_SECRET_KEY"] = "not-a-stripe-secret"
     env["STRIPE_WEBHOOK_SECRET"] = "not-a-webhook-secret"
-    env["STRIPE_PRICE_PLUS"] = "plus-tier"
+    env["STRIPE_PRICE_PLUS_MONTHLY"] = "plus-tier"
 
     report = build_production_preflight(
         root_path=tmp_path,
@@ -226,7 +272,7 @@ def test_preflight_blocks_malformed_stripe_values(tmp_path):
     assert report["ready_for_production"] is False
     assert "stripe_secret_key" in gates
     assert "stripe_webhook_secret" in gates
-    assert "stripe_price_plus" in gates
+    assert "stripe_price_plus_monthly" in gates
 
 
 def test_preflight_blocks_local_google_oauth_redirect_in_production(tmp_path):
