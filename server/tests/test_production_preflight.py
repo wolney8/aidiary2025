@@ -313,6 +313,27 @@ def test_preflight_warns_about_unaccepted_session_and_password_risks(tmp_path):
     assert "legacy_password_fallback_review" in warning_gates
     assert report["summary"]["localstorage_jwt_risk_accepted"] is False
     assert report["summary"]["legacy_password_fallback_accepted"] is False
+    assert report["summary"]["cookie_auth_mode"] is False
+    assert report["summary"]["cookie_auth_csrf_protect"] is False
+
+
+def test_preflight_warns_when_cookie_auth_lacks_csrf(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["OPENMYND_AUTH_COOKIE_MODE"] = "true"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "cookie_auth_csrf" in warning_gates
+    assert report["summary"]["cookie_auth_mode"] is True
+    assert report["summary"]["cookie_auth_csrf_protect"] is False
 
 
 def test_preflight_records_accepted_session_and_password_risks(tmp_path):

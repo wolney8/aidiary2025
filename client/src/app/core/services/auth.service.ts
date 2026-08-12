@@ -118,6 +118,7 @@ export class AuthService {
   }
 
   logout(options: { reason?: string; replaceUrl?: boolean } = {}): void {
+    this.http.post(`${this.apiUrl}/logout`, {}).subscribe({ error: () => undefined });
     this.clearSession();
     this.router.navigate(["/login"], {
       queryParams: options.reason ? { reason: options.reason } : undefined,

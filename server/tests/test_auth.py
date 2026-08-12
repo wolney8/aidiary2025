@@ -753,6 +753,46 @@ def test_login_success(client):
         ("login_success", "success", 1),
     ]
 
+
+def test_cookie_auth_mode_sets_and_clears_access_cookie(client):
+    """Cookie mode is additive while bearer-token compatibility remains active."""
+    client.application.config['OPENMYND_AUTH_COOKIE_MODE'] = True
+    client.application.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
+    client.application.config['JWT_COOKIE_CSRF_PROTECT'] = False
+
+    client.post('/api/register',
+        data=json.dumps({
+            'username': 'cookieuser',
+            'password': 'password123',
+            'first_name': 'Cookie',
+            'last_name': 'User',
+        }),
+        content_type='application/json'
+    )
+
+    response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'cookieuser',
+            'password': 'password123',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    assert 'token' in json.loads(response.data)
+    set_cookie_headers = response.headers.getlist('Set-Cookie')
+    assert any('access_token_cookie=' in header for header in set_cookie_headers)
+    assert any('HttpOnly' in header for header in set_cookie_headers)
+
+    logout_response = client.post('/api/logout')
+    logout_cookie_headers = logout_response.headers.getlist('Set-Cookie')
+    assert logout_response.status_code == 200
+    assert any(
+        'access_token_cookie=' in header
+        and 'Expires=Thu, 01 Jan 1970 00:00:00 GMT' in header
+        for header in logout_cookie_headers
+    )
+
 def test_login_invalid_credentials(client):
     """Test login with invalid credentials."""
     response = client.post('/api/login',

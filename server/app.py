@@ -288,6 +288,20 @@ def create_app():
         app.logger.warning('JWT_SECRET is not configured; using local development secret')
     app.config['JWT_SECRET_KEY'] = jwt_secret or 'dev-secret-key'
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 86400  # 24 hours
+    cookie_auth_enabled = (
+        os.getenv('OPENMYND_AUTH_COOKIE_MODE', '').strip().lower()
+        in {'1', 'true', 'yes', 'on'}
+    )
+    app.config['OPENMYND_AUTH_COOKIE_MODE'] = cookie_auth_enabled
+    app.config['JWT_TOKEN_LOCATION'] = (
+        ['headers', 'cookies'] if cookie_auth_enabled else ['headers']
+    )
+    app.config['JWT_COOKIE_SECURE'] = app_environment == 'production'
+    app.config['JWT_COOKIE_SAMESITE'] = os.getenv('JWT_COOKIE_SAMESITE', 'Lax')
+    app.config['JWT_COOKIE_CSRF_PROTECT'] = (
+        os.getenv('OPENMYND_AUTH_COOKIE_CSRF_PROTECT', '').strip().lower()
+        in {'1', 'true', 'yes', 'on'}
+    )
     app.config['CHAT_RATE_LIMIT'] = os.getenv('CHAT_RATE_LIMIT', '20 per hour')
     try:
         app.config['CHAT_DAILY_TOKEN_BUDGET'] = max(
