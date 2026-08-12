@@ -1329,7 +1329,7 @@ export class ChatCompanionComponent {
     const status = this.contextStatus();
     if (!status) return "Checking your current chat context settings.";
     if (!status.history_enabled) {
-      return "Turn on “Allow AI to reference past entries” in Customisation to use prior records.";
+      return "Past-entry references are off. Chat will not use diary, dream, thought record, or important day history.";
     }
     return "Chat may use these record types when relevant. It does not show private record text here.";
   });

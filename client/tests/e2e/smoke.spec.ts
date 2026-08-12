@@ -2,7 +2,11 @@ import { expect, Page, test } from "@playwright/test";
 
 async function seedAuthenticatedSession(
   page: Page,
-  options: { chatEnabled?: boolean } = {},
+  options: {
+    chatEnabled?: boolean;
+    historyEnabled?: boolean;
+    chatSources?: Array<{ key: string; label: string; count: number; enabled: boolean }>;
+  } = {},
 ) {
   await seedLocalSession(page, {
     id: 1,
@@ -23,7 +27,7 @@ async function seedAuthenticatedSession(
           username: "chat-e2e",
           display_name: "Alex",
           chat_enabled: options.chatEnabled ?? true,
-          allow_ai_history: true,
+          allow_ai_history: options.historyEnabled ?? true,
         }),
       });
       return;
@@ -34,23 +38,25 @@ async function seedAuthenticatedSession(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          history_enabled: true,
-          sources: [
-            { key: "daily", label: "Diary entries", count: 2, enabled: true },
-            { key: "dream", label: "Dream entries", count: 1, enabled: true },
-            {
-              key: "thought_record",
-              label: "Thought records",
-              count: 1,
-              enabled: true,
-            },
-            {
-              key: "important_day",
-              label: "Important days",
-              count: 1,
-              enabled: true,
-            },
-          ],
+          history_enabled: options.historyEnabled ?? true,
+          sources:
+            options.chatSources ??
+            [
+              { key: "daily", label: "Diary entries", count: 2, enabled: true },
+              { key: "dream", label: "Dream entries", count: 1, enabled: true },
+              {
+                key: "thought_record",
+                label: "Thought records",
+                count: 1,
+                enabled: true,
+              },
+              {
+                key: "important_day",
+                label: "Important days",
+                count: 1,
+                enabled: true,
+              },
+            ],
         }),
       });
       return;
@@ -1334,6 +1340,34 @@ test("chat companion exposes context, stats, and streams a contextual reply", as
   await expect(page.getByTestId("chat-session-button")).toBeVisible();
   await expect(page.getByTestId("chat-create-entry-button")).toBeVisible();
   await expect(page.getByTestId("chat-download-button")).toBeVisible();
+});
+
+test("chat companion clearly disables prior-entry context when history is off", async ({ page }) => {
+  await seedAuthenticatedSession(page, {
+    historyEnabled: false,
+    chatSources: [
+      { key: "daily", label: "Diary entries", count: 0, enabled: false },
+      { key: "dream", label: "Dream entries", count: 0, enabled: false },
+      { key: "thought_record", label: "Thought records", count: 0, enabled: false },
+      { key: "important_day", label: "Important days", count: 0, enabled: false },
+    ],
+  });
+
+  await page.goto("/entries");
+  await page.getByRole("button", { name: "Reject optional" }).click();
+  await page.getByTestId("chat-open-button").click();
+
+  await expect(page.getByTestId("chat-composer-meta")).toContainText(
+    "Past-entry references off",
+  );
+
+  await page.getByTestId("chat-context-toggle").click();
+  await expect(page.getByTestId("chat-context-drawer")).toContainText(
+    "Past-entry references are off",
+  );
+  await expect(page.getByTestId("chat-context-drawer")).toContainText("Diary entries");
+  await expect(page.getByTestId("chat-context-drawer")).toContainText("Off");
+  await expect(page.getByTestId("chat-context-drawer")).not.toContainText("Available");
 });
 
 test("chat companion shows route-aware starter chips", async ({ page }) => {

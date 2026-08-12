@@ -79,9 +79,10 @@ new broad product surfaces.
 
 ## Product Gaps To Keep Visible
 
-- Chat: automated route-scope and starter-chip smoke exists. Remaining coverage should
-  assert prior-entry context, privacy settings, source disclosure, rate limits,
-  retry/error handling, and disabled-chat behavior.
+- Chat: automated route-scope, starter-chip, prior-entry privacy/status, source
+  summary, stats, and streamed-reply smoke exists. Remaining work is product
+  refinement: source disclosure depth, retry/error UX, attachment-derived context,
+  and tier-specific chat limits.
 - Personal import: end-to-end import of the user's real diary data through the OpenMynd
   XLSX template, including staged review before commit and safe revert.
 - Dashboard: deeper analytics can later include stronger year-over-year insights,
