@@ -24,6 +24,11 @@ PUBLIC_LEGAL_ROUTES = (
 )
 FRONTEND_PRODUCTION_ENV_PATH = "client/src/environments/environment.prod.ts"
 PUBLIC_FRONTEND_ROUTES = ("privacy", "terms", "cookies")
+PROCESS_SUPERVISION_FILES = (
+    "wsgi.py",
+    "gunicorn.conf.py",
+    "scripts/healthcheck.py",
+)
 AUTH_RATE_LIMIT_ENV_KEYS = (
     "AUTH_LOGIN_RATE_LIMIT",
     "AUTH_REGISTER_RATE_LIMIT",
@@ -148,6 +153,13 @@ def _parse_positive_int(value: str | None) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _app_declares_health_routes(app_path: Path) -> bool:
+    if not app_path.exists():
+        return False
+    source = app_path.read_text(encoding="utf-8")
+    return "/health" in source and "/api/health/database" in source
 
 
 def build_production_preflight(
@@ -661,6 +673,26 @@ def build_production_preflight(
             message="OPENAI_API_KEY is not configured; AI features will fail.",
         )
 
+    missing_process_supervision_files = [
+        path for path in PROCESS_SUPERVISION_FILES if not (root_path / path).exists()
+    ]
+    health_routes_present = _app_declares_health_routes(root_path / "app.py")
+    if app_env == "production" and (
+        missing_process_supervision_files or not health_routes_present
+    ):
+        missing_details = list(missing_process_supervision_files)
+        if not health_routes_present:
+            missing_details.append("app.py health routes")
+        _add_gate(
+            warnings,
+            gate="process_supervision",
+            severity="warning",
+            message=(
+                "Production process supervision assets or health routes are missing: "
+                + ", ".join(missing_details)
+            ),
+        )
+
     return {
         "ready_for_production": not blockers,
         "require_postgres": require_postgres,
@@ -715,6 +747,9 @@ def build_production_preflight(
             "sensitive_rate_limits_configured": configured_sensitive_rate_limits,
             "security_audit_retention_days": security_audit_retention_days,
             "openai_api_key_configured": bool(openai_key),
+            "process_supervision_files_present": not missing_process_supervision_files,
+            "missing_process_supervision_files": missing_process_supervision_files,
+            "health_routes_present": health_routes_present,
         },
     }
 

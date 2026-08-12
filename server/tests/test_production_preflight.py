@@ -71,6 +71,17 @@ def _write_frontend_sources(
     )
 
 
+def _write_process_supervision_sources(server_root) -> None:
+    (server_root / "scripts").mkdir(parents=True, exist_ok=True)
+    (server_root / "wsgi.py").write_text("from app import create_app\napp = create_app()\n", encoding="utf-8")
+    (server_root / "gunicorn.conf.py").write_text("bind = '0.0.0.0:5001'\n", encoding="utf-8")
+    (server_root / "scripts/healthcheck.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    (server_root / "app.py").write_text(
+        "@app.route('/health')\n@app.route('/api/health/database')\n",
+        encoding="utf-8",
+    )
+
+
 def test_preflight_blocks_unsafe_production_defaults(tmp_path):
     report = build_production_preflight(
         root_path=tmp_path,
@@ -621,3 +632,44 @@ def test_preflight_accepts_public_routes_when_frontend_sources_are_complete(tmp_
 
     assert report["ready_for_production"] is True
     assert report["summary"]["public_frontend_routes_present"] is True
+
+
+def test_preflight_warns_when_process_supervision_assets_are_missing(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "process_supervision" in warning_gates
+    assert report["summary"]["process_supervision_files_present"] is False
+    assert report["summary"]["health_routes_present"] is False
+
+
+def test_preflight_records_process_supervision_readiness(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    _write_process_supervision_sources(server_root)
+    env = _base_env()
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert "process_supervision" not in warning_gates
+    assert report["summary"]["process_supervision_files_present"] is True
+    assert report["summary"]["missing_process_supervision_files"] == []
+    assert report["summary"]["health_routes_present"] is True
