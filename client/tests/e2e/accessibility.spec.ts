@@ -105,6 +105,161 @@ async function expectElementWithinViewport(
   );
 }
 
+function makeDashboardOverview(range: string) {
+  return {
+    range,
+    theme_filter: null,
+    generated_at: "2026-08-11T12:00:00Z",
+    available_seasons: [{ value: "summer-2026", label: "Summer 2026" }],
+    streak: {
+      current_days: 4,
+      best_days: 9,
+      weekly_goal: 5,
+      week_count: 3,
+      month_count: 8,
+      weekly_progress: 60,
+      included_entry_types: ["daily", "dream", "thought_record"],
+    },
+    series: [
+      {
+        date: "2026-08-09",
+        daily_words: 180,
+        dream_words: 0,
+        thought_records: 1,
+        mood_score: 3,
+        sentiment_score: 0.1,
+      },
+      {
+        date: "2026-08-10",
+        daily_words: 240,
+        dream_words: 120,
+        thought_records: 0,
+        mood_score: 4,
+        sentiment_score: 0.3,
+      },
+    ],
+    themes: [
+      { label: "therapy", count: 12, kind: "tag" },
+      { label: "sleep", count: 8, kind: "dream_symbol" },
+    ],
+    cbt: {
+      total_records: 2,
+      common_patterns: [{ label: "Catastrophising", count: 1 }],
+      average_before: 7,
+      average_after: 4,
+      average_change: -3,
+      recent_reflections: [
+        {
+          id: 7,
+          title: "Work worry",
+          date: "2026-08-10",
+          situation: "A difficult email arrived.",
+          balanced_thought: "I can answer this step by step.",
+        },
+      ],
+    },
+    recent_activity: [
+      {
+        type: "daily",
+        id: 10,
+        title: "A useful day",
+        date: "2026-08-10",
+        summary: "Logged a short reflection.",
+        route: "/entries/10",
+      },
+      {
+        type: "dream",
+        id: 11,
+        title: "River dream",
+        date: "2026-08-09",
+        summary: "A dream about crossing water.",
+        route: "/entries/11",
+      },
+    ],
+    recent_activity_by_type: {
+      daily: [
+        {
+          type: "daily",
+          id: 10,
+          title: "A useful day",
+          date: "2026-08-10",
+          summary: "Logged a short reflection.",
+          route: "/entries/10",
+        },
+      ],
+      dream: [
+        {
+          type: "dream",
+          id: 11,
+          title: "River dream",
+          date: "2026-08-09",
+          summary: "A dream about crossing water.",
+          route: "/entries/11",
+        },
+      ],
+      thought_record: [],
+      important_day: [],
+    },
+    dream_insights: {
+      total_dreams: 1,
+      top_symbols: [{ label: "river", count: 1, kind: "dream_symbol" }],
+      top_people: [],
+      top_places: [],
+      recent: [
+        {
+          id: 11,
+          title: "River dream",
+          date: "2026-08-09",
+          summary: "A dream about crossing water.",
+          image_url: null,
+          route: "/entries/11",
+          symbols: ["river"],
+          people: [],
+          places: [],
+        },
+      ],
+      recent_repeating_patterns: [],
+      latest: {
+        id: 11,
+        title: "River dream",
+        date: "2026-08-09",
+        summary: "A dream about crossing water.",
+        image_url: null,
+        route: "/entries/11",
+        symbols: ["river"],
+        people: [],
+        places: [],
+      },
+    },
+    focus_sections: {
+      memory_echo: { label: "This time before", count: 0, items: [] },
+      theme_drift: [
+        { label: "therapy", kind: "tag", current_count: 3, previous_count: 1, change: 2 },
+      ],
+      mood_anchors: [{ label: "therapy", kind: "tag", average_mood: 4, count: 3 }],
+      important_day_cues: [
+        {
+          id: 4,
+          label: "Anniversary",
+          date: "2026-08-20",
+          category: "Milestone",
+          note: "A marked date.",
+          icon_name: "event",
+          accent_color: "blue",
+          days_until: 9,
+          route: "/important-days",
+        },
+      ],
+    },
+    quick_actions: [
+      { type: "daily", label: "Diary", icon: "bookmark", route: "/entries/create?type=daily" },
+      { type: "dream", label: "Dream", icon: "bedtime", route: "/entries/create?type=dream" },
+      { type: "thought_record", label: "Thought record", icon: "psychology", route: "/cbt/new" },
+      { type: "important_day", label: "Important day", icon: "event", route: "/entries/create?type=important-day" },
+    ],
+  };
+}
+
 async function seedAuthenticatedSession(
   page: Page,
   theme: "light" | "dark" = "light",
@@ -201,6 +356,16 @@ async function seedAuthenticatedSession(
             profile_picture_url: null,
           },
         ),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/dashboard/overview")) {
+      const range = new URL(url).searchParams.get("range") || "1m";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(makeDashboardOverview(range)),
       });
       return;
     }
@@ -399,6 +564,41 @@ test.describe("WCAG 2.2 AA automated checks", () => {
 
       await expectNoWcagViolations(page);
     });
+  }
+
+  for (const theme of ["light", "dark"] as const) {
+    for (const route of [
+      {
+        name: "dashboard",
+        path: "/dashboard",
+        testId: "dashboard-page",
+      },
+      {
+        name: "calendar",
+        path: "/entries?display=calendar&show=daily,dreams,important-days",
+        testId: "authenticated-app-shell",
+      },
+      {
+        name: "account",
+        path: "/account",
+        testId: "account-page",
+      },
+      {
+        name: "appearance settings",
+        path: "/settings/appearance",
+        testId: "appearance-settings",
+      },
+    ] as const) {
+      test(`${route.name} critical surface in ${theme} theme`, async ({ page }) => {
+        await seedAuthenticatedSession(page, theme);
+        await page.goto(route.path);
+        await expect(page.getByTestId(route.testId)).toBeVisible();
+
+        await expectNoDocumentHorizontalOverflow(page);
+        await expectNoElementHorizontalOverflow(page, route.testId);
+        await expectNoWcagViolations(page);
+      });
+    }
   }
 
   test("compact shell navigation and search reflow with WCAG text spacing", async ({
