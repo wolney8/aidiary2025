@@ -725,6 +725,25 @@ const QUOTA_FIELDS: Array<{
                   <mat-option value="failure">Failure</mat-option>
                 </mat-select>
               </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Event type</mat-label>
+                <input
+                  matInput
+                  [(ngModel)]="securityEventType"
+                  name="admin_security_event_type"
+                  placeholder="login_failed"
+                />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>User ID</mat-label>
+                <input
+                  matInput
+                  type="number"
+                  min="1"
+                  [(ngModel)]="securityUserId"
+                  name="admin_security_user_id"
+                />
+              </mat-form-field>
               <button
                 mat-stroked-button
                 type="submit"
@@ -733,6 +752,16 @@ const QUOTA_FIELDS: Array<{
               >
                 <mat-icon aria-hidden="true">refresh</mat-icon>
                 <span>Refresh</span>
+              </button>
+              <button
+                mat-button
+                type="button"
+                class="admin-pill-button"
+                (click)="clearSecurityFilters()"
+                data-testid="admin-security-clear"
+              >
+                <mat-icon aria-hidden="true">filter_alt_off</mat-icon>
+                <span>Clear</span>
               </button>
             </form>
           </div>
@@ -1700,6 +1729,8 @@ export class AdminPlanCatalogueComponent implements OnInit {
   successMessage = "";
   securityDays = 30;
   securityOutcome = "";
+  securityEventType = "";
+  securityUserId: number | null = null;
   announcementDraft: AnnouncementDraft = this.emptyAnnouncementDraft();
 
   ngOnInit(): void {
@@ -1820,6 +1851,8 @@ export class AdminPlanCatalogueComponent implements OnInit {
         days: this.securityDays,
         limit: 50,
         outcome: this.securityOutcome,
+        event_type: this.securityEventType,
+        user_id: this.securityUserId || undefined,
       })
       .subscribe({
         next: (report) => (this.securityReport = report),
@@ -1829,6 +1862,14 @@ export class AdminPlanCatalogueComponent implements OnInit {
           }
         },
       });
+  }
+
+  clearSecurityFilters(): void {
+    this.securityDays = 30;
+    this.securityOutcome = "";
+    this.securityEventType = "";
+    this.securityUserId = null;
+    this.loadSecurityReport();
   }
 
   saveUserEntitlement(user: EditableAdminUser): void {
