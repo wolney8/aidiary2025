@@ -161,6 +161,37 @@ export interface AdminAuditEvent {
   created_at: string;
 }
 
+export interface AdminSecurityAuditReport {
+  generated_at: string;
+  available: boolean;
+  message?: string;
+  filters: {
+    days: number;
+    limit: number;
+    event_type?: string | null;
+    outcome?: string | null;
+    user_id?: number | null;
+  };
+  total_events: number;
+  events_by_type: Array<{
+    event_type: string;
+    outcome: string;
+    count: number;
+  }>;
+  events_by_outcome: Array<{
+    outcome: string;
+    count: number;
+  }>;
+  recent_events: Array<{
+    id: number;
+    user_id?: number | null;
+    event_type: string;
+    outcome: string;
+    created_at: string;
+    metadata: Record<string, unknown>;
+  }>;
+}
+
 @Injectable({ providedIn: "root" })
 export class AdminService {
   private readonly http = inject(HttpClient);
@@ -273,6 +304,25 @@ export class AdminService {
 
   getAuditEvents(): Observable<{ events: AdminAuditEvent[] }> {
     return this.http.get<{ events: AdminAuditEvent[] }>(`${this.apiUrl}/audit`, {
+      headers: this.headers(),
+    });
+  }
+
+  getSecurityAuditReport(options: {
+    days?: number;
+    limit?: number;
+    event_type?: string;
+    outcome?: string;
+    user_id?: number;
+  } = {}): Observable<AdminSecurityAuditReport> {
+    const params = new URLSearchParams();
+    if (options.days) params.set("days", String(options.days));
+    if (options.limit) params.set("limit", String(options.limit));
+    if (options.event_type?.trim()) params.set("event_type", options.event_type.trim());
+    if (options.outcome?.trim()) params.set("outcome", options.outcome.trim());
+    if (options.user_id) params.set("user_id", String(options.user_id));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.http.get<AdminSecurityAuditReport>(`${this.apiUrl}/security${query}`, {
       headers: this.headers(),
     });
   }

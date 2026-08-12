@@ -21,6 +21,7 @@ from services.billing_entitlements import (
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.plan_catalogue import list_plan_catalogue, seed_default_plan_catalogue, upsert_plan
+from services.security_audit_report import build_security_audit_report
 from services.sql_compat import append_returning_id, inserted_id
 from services.stripe_billing import (
     configured_checkout_periods,
@@ -569,6 +570,14 @@ def _list_admin_audit_events(conn) -> list[dict[str, object]]:
         """
     ).fetchall()
     return [_serialise_admin_audit_event(row) for row in rows]
+
+
+def _bounded_int(value: object, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value or default)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
 
 
 def _list_admin_users(conn, *, search: str = "", tier: str = "", status: str = "", page: int = 1) -> dict[str, object]:
@@ -1231,6 +1240,37 @@ def admin_audit_events():
         if forbidden:
             return forbidden
         return jsonify({"events": _list_admin_audit_events(conn)}), 200
+
+
+@admin_bp.route("/admin/security", methods=["GET"])
+@jwt_required()
+def admin_security_audit_report():
+    user_id = _current_user_id()
+    days = _bounded_int(request.args.get("days"), default=30, minimum=1, maximum=180)
+    limit = _bounded_int(request.args.get("limit"), default=50, minimum=1, maximum=200)
+    event_type = str(request.args.get("event_type") or "").strip().lower() or None
+    outcome = str(request.args.get("outcome") or "").strip().lower() or None
+    target_user_id = request.args.get("user_id")
+    filtered_user_id = (
+        _bounded_int(target_user_id, default=0, minimum=1, maximum=2_147_483_647)
+        if target_user_id
+        else None
+    )
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+        return jsonify(
+            build_security_audit_report(
+                conn,
+                database_provider=_database_provider(),
+                days=days,
+                limit=limit,
+                event_type=event_type,
+                outcome=outcome,
+                user_id=filtered_user_id,
+            )
+        ), 200
 
 
 @admin_bp.route("/announcements/active", methods=["GET"])

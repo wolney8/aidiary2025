@@ -19,12 +19,21 @@ import {
   AdminBillingUser,
   AdminOverview,
   AdminOperationsReadiness,
+  AdminSecurityAuditReport,
   AdminService,
 } from "../core/services/admin.service";
 import { BillingPlan, BillingTier } from "../core/services/billing.service";
 import { AnnouncementService } from "../core/services/announcement.service";
 
-type AdminSection = "overview" | "users" | "billing" | "announcements" | "operations" | "audit" | "stripe";
+type AdminSection =
+  | "overview"
+  | "users"
+  | "billing"
+  | "announcements"
+  | "operations"
+  | "security"
+  | "audit"
+  | "stripe";
 
 interface EditableAdminUser extends AdminBillingUser {
   selectedTier: BillingTier;
@@ -686,6 +695,118 @@ const QUOTA_FIELDS: Array<{
         </section>
 
         <section
+          *ngSwitchCase="'security'"
+          class="admin-section"
+          aria-labelledby="admin-security-heading"
+          data-testid="admin-security-section"
+        >
+          <div class="admin-section-heading">
+            <div>
+              <p class="admin-eyebrow">Security</p>
+              <h2 id="admin-security-heading">Security events</h2>
+              <p>Recent sign-in, account, and sensitive-action events.</p>
+            </div>
+            <form class="admin-search-bar admin-security-filters" (ngSubmit)="loadSecurityReport()">
+              <mat-form-field appearance="outline">
+                <mat-label>Window</mat-label>
+                <mat-select [(ngModel)]="securityDays" name="admin_security_days">
+                  <mat-option [value]="7">7 days</mat-option>
+                  <mat-option [value]="30">30 days</mat-option>
+                  <mat-option [value]="90">90 days</mat-option>
+                  <mat-option [value]="180">180 days</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Outcome</mat-label>
+                <mat-select [(ngModel)]="securityOutcome" name="admin_security_outcome">
+                  <mat-option value="">All</mat-option>
+                  <mat-option value="success">Success</mat-option>
+                  <mat-option value="rejected">Rejected</mat-option>
+                  <mat-option value="failure">Failure</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <button
+                mat-stroked-button
+                type="submit"
+                class="admin-pill-button"
+                data-testid="admin-security-refresh"
+              >
+                <mat-icon aria-hidden="true">refresh</mat-icon>
+                <span>Refresh</span>
+              </button>
+            </form>
+          </div>
+
+          <ng-container *ngIf="securityReport as report; else securityLoading">
+            <p class="admin-empty" *ngIf="!report.available">
+              {{ report.message || "Security audit events are not available." }}
+            </p>
+
+            <div class="admin-metric-grid admin-security-metrics" *ngIf="report.available">
+              <article class="admin-metric-card">
+                <mat-icon aria-hidden="true">shield</mat-icon>
+                <strong>{{ report.total_events }}</strong>
+                <span>Total events</span>
+              </article>
+              <article
+                class="admin-metric-card"
+                *ngFor="let outcome of report.events_by_outcome.slice(0, 3)"
+              >
+                <mat-icon aria-hidden="true">{{ securityOutcomeIcon(outcome.outcome) }}</mat-icon>
+                <strong>{{ outcome.count }}</strong>
+                <span>{{ formatEnumLabel(outcome.outcome) }}</span>
+              </article>
+            </div>
+
+            <div class="admin-chip-list admin-security-type-list" *ngIf="report.events_by_type.length">
+              <span
+                class="admin-chip"
+                *ngFor="let eventType of report.events_by_type.slice(0, 8)"
+              >
+                {{ formatEnumLabel(eventType.event_type) }} · {{ eventType.count }}
+              </span>
+            </div>
+
+            <div class="admin-audit-list" *ngIf="report.recent_events.length; else securityEmpty">
+              <article
+                class="admin-audit-row"
+                *ngFor="let event of report.recent_events"
+                [attr.data-testid]="'admin-security-event-' + event.id"
+              >
+                <span class="admin-readiness-icon admin-security-icon" aria-hidden="true">
+                  <mat-icon>{{ securityOutcomeIcon(event.outcome) }}</mat-icon>
+                </span>
+                <div class="admin-audit-main">
+                  <div class="admin-audit-title-row">
+                    <h3>{{ formatEnumLabel(event.event_type) }}</h3>
+                    <span
+                      class="admin-chip admin-chip--strong"
+                      [class.admin-chip--danger]="event.outcome !== 'success'"
+                    >
+                      {{ formatEnumLabel(event.outcome) }}
+                    </span>
+                  </div>
+                  <span class="admin-muted">
+                    {{ formatDateTime(event.created_at) }} · User {{ event.user_id || "n/a" }}
+                  </span>
+                </div>
+                <div class="admin-audit-meta">
+                  {{ metadataSummary(event.metadata) || "No metadata" }}
+                </div>
+              </article>
+            </div>
+          </ng-container>
+
+          <ng-template #securityLoading>
+            <p class="admin-empty">Security events have not loaded yet.</p>
+          </ng-template>
+
+          <ng-template #securityEmpty>
+            <p class="admin-empty">No security events match this filter.</p>
+          </ng-template>
+        </section>
+
+        <section
           *ngSwitchCase="'stripe'"
           class="admin-section"
           aria-labelledby="admin-stripe-heading"
@@ -1157,6 +1278,25 @@ const QUOTA_FIELDS: Array<{
       width: min(28rem, 52vw);
     }
 
+    .admin-security-filters mat-form-field {
+      width: min(11rem, 42vw);
+    }
+
+    .admin-security-metrics {
+      grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    }
+
+    .admin-security-type-list {
+      padding: var(--spacing-xs);
+      border: 1px solid var(--colour-border);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-muted);
+    }
+
+    .admin-security-icon {
+      background: color-mix(in srgb, var(--colour-accent) 26%, var(--colour-surface-elevated));
+    }
+
 	    .admin-table-wrap {
 	      overflow-x: hidden;
 	      border: 1px solid var(--colour-border);
@@ -1517,6 +1657,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     { id: "billing", label: "Plans & quotas", icon: "payments" },
     { id: "announcements", label: "Announcements", icon: "campaign" },
     { id: "operations", label: "Operations", icon: "monitor_heart" },
+    { id: "security", label: "Security", icon: "shield_lock" },
     { id: "audit", label: "Audit", icon: "manage_history" },
     { id: "stripe", label: "Stripe sync", icon: "sync" },
   ];
@@ -1545,6 +1686,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
 
   overview: AdminOverview | null = null;
   operations: AdminOperationsReadiness | null = null;
+  securityReport: AdminSecurityAuditReport | null = null;
   users: EditableAdminUser[] = [];
   plans: EditablePlan[] = [];
   announcements: AdminAnnouncement[] = [];
@@ -1556,6 +1698,8 @@ export class AdminPlanCatalogueComponent implements OnInit {
   savingAnnouncement = false;
   errorMessage = "";
   successMessage = "";
+  securityDays = 30;
+  securityOutcome = "";
   announcementDraft: AnnouncementDraft = this.emptyAnnouncementDraft();
 
   ngOnInit(): void {
@@ -1574,6 +1718,9 @@ export class AdminPlanCatalogueComponent implements OnInit {
     if (section === "operations" && !this.operations) {
       this.loadOperations();
     }
+    if (section === "security" && !this.securityReport) {
+      this.loadSecurityReport();
+    }
     if (section === "audit" && !this.auditEvents.length) {
       this.loadAuditEvents();
     }
@@ -1591,6 +1738,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     this.loadUsers();
     this.loadPlans();
     this.loadAnnouncements();
+    this.loadSecurityReport(true);
     this.loadAuditEvents(true);
   }
 
@@ -1664,6 +1812,23 @@ export class AdminPlanCatalogueComponent implements OnInit {
         }
       },
     });
+  }
+
+  loadSecurityReport(silent = false): void {
+    this.adminService
+      .getSecurityAuditReport({
+        days: this.securityDays,
+        limit: 50,
+        outcome: this.securityOutcome,
+      })
+      .subscribe({
+        next: (report) => (this.securityReport = report),
+        error: (error) => {
+          if (!silent) {
+            this.showError(error, "Security events could not be loaded.");
+          }
+        },
+      });
   }
 
   saveUserEntitlement(user: EditableAdminUser): void {
@@ -1931,6 +2096,19 @@ export class AdminPlanCatalogueComponent implements OnInit {
     return "admin_panel_settings";
   }
 
+  securityOutcomeIcon(outcome?: string): string {
+    switch (outcome) {
+      case "success":
+        return "check_circle";
+      case "rejected":
+        return "block";
+      case "failure":
+        return "error";
+      default:
+        return "shield";
+    }
+  }
+
   auditSummary(event: AdminAuditEvent): string {
     const metadata = event.metadata || {};
     const newTier = metadata["new_tier"];
@@ -1957,6 +2135,18 @@ export class AdminPlanCatalogueComponent implements OnInit {
     if (used === undefined) return "0";
     if (limit === null || limit === undefined) return `${used}/∞`;
     return `${used}/${limit}`;
+  }
+
+  metadataSummary(metadata?: Record<string, unknown>): string {
+    const entries = Object.entries(metadata || {})
+      .filter(([, value]) => value !== null && value !== undefined && String(value).trim())
+      .slice(0, 3);
+    if (!entries.length) {
+      return "";
+    }
+    return entries
+      .map(([key, value]) => `${this.formatEnumLabel(key)}: ${String(value)}`)
+      .join(" · ");
   }
 
 	  targetSummary(announcement: AdminAnnouncement): string {

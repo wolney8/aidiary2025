@@ -340,6 +340,56 @@ def test_admin_audit_route_requires_administrator_entitlement(client):
     assert response.get_json()["error"] == "Administrator access is required."
 
 
+def test_admin_security_route_reports_privacy_safe_events(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO security_audit_events (
+                user_id, event_type, outcome, ip_hash, user_agent_hash, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                "login_failed",
+                "rejected",
+                "hashed-ip",
+                "hashed-agent",
+                json.dumps({"reason": "bad_password"}),
+            ),
+        )
+
+    response = client.get(
+        "/api/admin/security?days=30&limit=20",
+        headers=_headers(client.application),
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["available"] is True
+    assert body["total_events"] == 1
+    assert body["events_by_outcome"] == [{"outcome": "rejected", "count": 1}]
+    assert body["recent_events"][0]["event_type"] == "login_failed"
+    assert body["recent_events"][0]["metadata"] == {"reason": "bad_password"}
+    assert "ip_hash" not in body["recent_events"][0]
+    assert "user_agent_hash" not in body["recent_events"][0]
+
+
+def test_admin_security_route_requires_administrator_entitlement(client):
+    response = client.get("/api/admin/security", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
 def test_admin_announcements_target_users_and_track_state(client):
     db_path = client.application.config["DATABASE_PATH"]
     with sqlite3.connect(db_path) as conn:
