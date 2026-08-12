@@ -378,6 +378,13 @@ interface AccountUsageCard {
             <p class="billing-note" *ngIf="billingStatus && !billingStatus.has_billing_customer">
               Billing management appears after checkout starts.
             </p>
+            <div class="billing-disclosure" data-testid="account-billing-disclosure">
+              <mat-icon aria-hidden="true">verified_user</mat-icon>
+              <p>
+                Stripe hosts checkout and billing management. OpenMynd stores your
+                plan entitlement and usage limits, not full card details.
+              </p>
+            </div>
           </section>
 
           <section class="danger-section" aria-labelledby="delete-account-heading">
@@ -647,6 +654,30 @@ interface AccountUsageCard {
       .billing-note {
         color: var(--colour-text-secondary);
         font-weight: 750;
+      }
+
+      .billing-disclosure {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: color-mix(in srgb, var(--colour-primary) 8%, var(--colour-surface));
+        color: var(--colour-text-secondary);
+        font-weight: 750;
+      }
+
+      .billing-disclosure mat-icon {
+        width: 22px;
+        height: 22px;
+        color: var(--colour-primary);
+        font-size: 22px;
+      }
+
+      .billing-disclosure p {
+        margin: 0;
       }
 
       .billing-current-card {
