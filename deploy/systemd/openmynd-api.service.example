@@ -1,0 +1,22 @@
+[Unit]
+Description=OpenMynd API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/openmynd/server
+EnvironmentFile=/etc/openmynd/openmynd-api.env
+ExecStart=/opt/openmynd/server/venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=35
+KillSignal=SIGTERM
+User=openmynd
+Group=openmynd
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

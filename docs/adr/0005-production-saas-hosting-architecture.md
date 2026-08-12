@@ -126,8 +126,14 @@ pip install -r requirements.txt
 Start command:
 
 ```bash
-gunicorn "wsgi:app" --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
+gunicorn -c gunicorn.conf.py wsgi:app
 ```
+
+The API process must be supervised by the managed host or by systemd on a VPS. The
+operational contract is documented in
+[process-supervision-and-healthchecks.md](../operations/process-supervision-and-healthchecks.md):
+crashes restart through the platform, `/health` checks process liveness, and
+`/api/health/database` checks database readiness.
 
 Production startup gates:
 

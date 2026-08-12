@@ -34,9 +34,12 @@ new broad product surfaces.
    - Harden auth rate limiting, browser session storage, legacy password migration,
      account recovery, audit logging, and consent/privacy evidence.
    - Additive cookie auth, CSRF forwarding, and tracked JWT session revocation are in
-     place; cookie-only browser smoke and localStorage token removal remain. The
-     session migration target is documented in
+     place; cookie-only browser smoke now exists, while full production cutover and
+     bearer localStorage removal remain. The session migration target is documented in
      [session-auth-hardening-plan.md](./operations/session-auth-hardening-plan.md).
+   - Process supervision is now explicit through Gunicorn config, healthcheck tooling,
+     and the restart contract in
+     [process-supervision-and-healthchecks.md](./operations/process-supervision-and-healthchecks.md).
 2. Database operations and cloud readiness
    - Keep SQLite as the current local fallback while rehearsing Neon/Postgres cutover.
    - Complete backup, restore, maintenance, rollback, integrity, and performance
