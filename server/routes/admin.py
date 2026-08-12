@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -608,6 +610,183 @@ def _overview(conn) -> dict[str, object]:
     }
 
 
+def _read_frontend_cookie_only_setting() -> bool | None:
+    """Best-effort check for the production frontend auth transport setting.
+
+    Deployed API containers may not include the frontend source tree, so this is
+    intentionally nullable rather than a hard dependency.
+    """
+    frontend_env = (
+        Path(current_app.root_path).parent
+        / "client"
+        / "src"
+        / "environments"
+        / "environment.prod.ts"
+    )
+    try:
+        content = frontend_env.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if "cookieOnlyAuth: true" in content:
+        return True
+    if "cookieOnlyAuth: false" in content:
+        return False
+    return None
+
+
+def _process_supervision_status() -> dict[str, bool]:
+    server_root = Path(current_app.root_path)
+    repo_root = server_root.parent
+    return {
+        "wsgi_entrypoint": (server_root / "wsgi.py").exists(),
+        "gunicorn_config": (server_root / "gunicorn.conf.py").exists(),
+        "healthcheck_script": (server_root / "scripts" / "healthcheck.py").exists(),
+        "systemd_template": (repo_root / "deploy" / "systemd" / "openmynd-api.service.example").exists(),
+        "health_routes": True,
+    }
+
+
+def _readiness_check(
+    key: str,
+    label: str,
+    status: str,
+    detail: str,
+) -> dict[str, str]:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "detail": detail,
+    }
+
+
+def _operations_readiness() -> dict[str, object]:
+    adapter = _database_adapter()
+    database_report = adapter.health_check(write=False)
+    app_environment = (os.getenv("APP_ENV") or "development").strip().lower()
+    database_provider = _database_provider()
+    runtime_migrations_enabled = bool(
+        current_app.config.get("DATABASE_RUNTIME_MIGRATIONS_ENABLED")
+    )
+    cookie_mode = bool(current_app.config.get("OPENMYND_AUTH_COOKIE_MODE"))
+    csrf_protect = bool(current_app.config.get("JWT_COOKIE_CSRF_PROTECT"))
+    frontend_cookie_only = _read_frontend_cookie_only_setting()
+    rate_limit_storage = str(
+        current_app.config.get("RATELIMIT_STORAGE_URI") or "memory://"
+    )
+    stripe_config = load_stripe_billing_config()
+    process_status = _process_supervision_status()
+
+    checks = [
+        _readiness_check(
+            "database",
+            "Database reachable",
+            "ok" if database_report.get("ok") else "blocked",
+            (
+                f"{database_provider.title()} responded in {database_report.get('latency_ms')} ms."
+                if database_report.get("ok")
+                else "Database read check failed. Review server logs and database credentials."
+            ),
+        ),
+        _readiness_check(
+            "database_provider",
+            "Production database provider",
+            "ok" if database_provider != SQLITE_PROVIDER else "warning",
+            (
+                "Postgres-ready provider is active."
+                if database_provider != SQLITE_PROVIDER
+                else "SQLite is suitable for local development only unless using a documented fallback."
+            ),
+        ),
+        _readiness_check(
+            "runtime_migrations",
+            "Runtime migrations",
+            "warning" if runtime_migrations_enabled else "ok",
+            (
+                "Runtime migrations are enabled. Use explicit migration tooling for public production."
+                if runtime_migrations_enabled
+                else "Runtime migrations are disabled."
+            ),
+        ),
+        _readiness_check(
+            "cookie_auth",
+            "Cookie session posture",
+            "ok" if cookie_mode and csrf_protect else "warning",
+            (
+                "Cookie auth and CSRF protection are enabled."
+                if cookie_mode and csrf_protect
+                else "Enable cookie auth and CSRF protection before public production."
+            ),
+        ),
+        _readiness_check(
+            "frontend_cookie_auth",
+            "Frontend token transport",
+            "ok" if frontend_cookie_only else "warning",
+            (
+                "Production frontend is configured for cookie-only auth."
+                if frontend_cookie_only
+                else "Production frontend cookie-only auth is not confirmed."
+            ),
+        ),
+        _readiness_check(
+            "rate_limit_storage",
+            "Shared rate-limit storage",
+            "ok" if rate_limit_storage != "memory://" else "warning",
+            (
+                "Rate-limit storage is configured outside process memory."
+                if rate_limit_storage != "memory://"
+                else "Use Redis or another shared limiter backend for multi-worker production."
+            ),
+        ),
+        _readiness_check(
+            "stripe",
+            "Stripe checkout",
+            "ok" if stripe_config.configured else "warning",
+            (
+                "Stripe credentials and checkout price IDs are configured."
+                if stripe_config.configured
+                else "Stripe is not fully configured; paid checkout remains unavailable."
+            ),
+        ),
+        _readiness_check(
+            "process_supervision",
+            "Process supervision assets",
+            "ok" if all(process_status.values()) else "warning",
+            (
+                "WSGI, healthcheck, and supervision templates are present."
+                if all(process_status.values())
+                else "One or more process supervision assets are missing."
+            ),
+        ),
+    ]
+
+    return {
+        "app": {
+            "environment": app_environment,
+            "production": app_environment == "production",
+            "database_provider": database_provider,
+            "runtime_migrations_enabled": runtime_migrations_enabled,
+        },
+        "database": database_report,
+        "auth": {
+            "cookie_mode": cookie_mode,
+            "csrf_protect": csrf_protect,
+            "frontend_cookie_only": frontend_cookie_only,
+        },
+        "rate_limits": {
+            "storage": "shared" if rate_limit_storage != "memory://" else "memory",
+            "configured": rate_limit_storage != "memory://",
+        },
+        "stripe": {
+            "configured": stripe_config.configured,
+            "checkout_tiers": configured_checkout_tiers(stripe_config),
+            "checkout_periods": configured_checkout_periods(stripe_config),
+        },
+        "process": process_status,
+        "checks": checks,
+    }
+
+
 @admin_bp.route("/admin/overview", methods=["GET"])
 @jwt_required()
 def admin_overview():
@@ -618,6 +797,17 @@ def admin_overview():
             return forbidden
         seed_default_plan_catalogue(conn)
         return jsonify(_overview(conn)), 200
+
+
+@admin_bp.route("/admin/operations", methods=["GET"])
+@jwt_required()
+def admin_operations():
+    user_id = _current_user_id()
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+    return jsonify(_operations_readiness()), 200
 
 
 @admin_bp.route("/admin/users", methods=["GET"])

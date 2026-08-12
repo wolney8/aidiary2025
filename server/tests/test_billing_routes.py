@@ -240,6 +240,10 @@ def test_unified_admin_routes_require_administrator_entitlement(client):
     assert response.status_code == 403
     assert response.get_json()["error"] == "Administrator access is required."
 
+    operations = client.get("/api/admin/operations", headers=_headers(client.application))
+    assert operations.status_code == 403
+    assert operations.get_json()["error"] == "Administrator access is required."
+
 
 def test_administrator_can_use_unified_admin_console_routes(client):
     db_path = client.application.config["DATABASE_PATH"]
@@ -263,6 +267,19 @@ def test_administrator_can_use_unified_admin_console_routes(client):
     overview = client.get("/api/admin/overview", headers=_headers(client.application))
     assert overview.status_code == 200
     assert overview.get_json()["total_users"] == 2
+
+    operations = client.get("/api/admin/operations", headers=_headers(client.application))
+    assert operations.status_code == 200
+    operations_body = operations.get_json()
+    assert operations_body["database"]["ok"] is True
+    assert operations_body["auth"]["cookie_mode"] in {True, False}
+    assert operations_body["process"]["health_routes"] is True
+    assert {check["key"] for check in operations_body["checks"]} >= {
+        "database",
+        "cookie_auth",
+        "process_supervision",
+        "stripe",
+    }
 
     users = client.get(
         "/api/admin/users?search=member",

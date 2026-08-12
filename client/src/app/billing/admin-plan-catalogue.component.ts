@@ -17,12 +17,13 @@ import {
   AdminAnnouncementStatus,
   AdminBillingUser,
   AdminOverview,
+  AdminOperationsReadiness,
   AdminService,
 } from "../core/services/admin.service";
 import { BillingPlan, BillingTier } from "../core/services/billing.service";
 import { AnnouncementService } from "../core/services/announcement.service";
 
-type AdminSection = "overview" | "users" | "billing" | "announcements" | "stripe";
+type AdminSection = "overview" | "users" | "billing" | "announcements" | "operations" | "stripe";
 
 interface EditableAdminUser extends AdminBillingUser {
   selectedTier: BillingTier;
@@ -578,6 +579,112 @@ const QUOTA_FIELDS: Array<{
         </section>
 
         <section
+          *ngSwitchCase="'operations'"
+          class="admin-section"
+          aria-labelledby="admin-operations-heading"
+          data-testid="admin-operations-section"
+        >
+          <div class="admin-section-heading">
+            <div>
+              <p class="admin-eyebrow">Operations</p>
+              <h2 id="admin-operations-heading">Production readiness</h2>
+              <p>Safe runtime checks for database, auth, billing, and process health.</p>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              class="admin-pill-button"
+              (click)="loadOperations()"
+              data-testid="admin-operations-refresh"
+            >
+              <mat-icon aria-hidden="true">refresh</mat-icon>
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          <div class="admin-operations-grid" *ngIf="operations as ops; else operationsLoading">
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>database</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">Database</p>
+                <h3>{{ formatEnumLabel(ops.database.provider) }}</h3>
+                <span class="admin-muted">
+                  {{ ops.database.ok ? "Read check passed" : "Read check failed" }}
+                  <ng-container *ngIf="ops.database.latency_ms !== null && ops.database.latency_ms !== undefined">
+                    · {{ ops.database.latency_ms }} ms
+                  </ng-container>
+                </span>
+              </div>
+            </article>
+
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>shield_lock</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">Sessions</p>
+                <h3>{{ ops.auth.cookie_mode ? "Cookie auth" : "Header tokens" }}</h3>
+                <span class="admin-muted">
+                  CSRF {{ ops.auth.csrf_protect ? "enabled" : "not enabled" }}
+                </span>
+              </div>
+            </article>
+
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>payments</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">Billing</p>
+                <h3>{{ ops.stripe.configured ? "Stripe ready" : "Stripe incomplete" }}</h3>
+                <span class="admin-muted">
+                  {{ ops.stripe.checkout_tiers.length || 0 }} checkout tiers
+                </span>
+              </div>
+            </article>
+
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>monitor_heart</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">Runtime</p>
+                <h3>{{ formatEnumLabel(ops.app.environment) }}</h3>
+                <span class="admin-muted">
+                  Rate limits: {{ formatEnumLabel(ops.rate_limits.storage) }}
+                </span>
+              </div>
+            </article>
+          </div>
+
+          <ng-template #operationsLoading>
+            <p class="admin-empty">Readiness checks have not loaded yet.</p>
+          </ng-template>
+
+          <div class="admin-readiness-check-list" *ngIf="operations?.checks?.length">
+            <article
+              class="admin-readiness-check"
+              *ngFor="let check of operations?.checks"
+              [attr.data-testid]="'admin-operations-check-' + check.key"
+            >
+              <span
+                class="admin-readiness-status"
+                [ngClass]="readinessStatusClass(check.status)"
+              >
+                <mat-icon aria-hidden="true">{{ readinessIcon(check.status) }}</mat-icon>
+                <span>{{ formatEnumLabel(check.status) }}</span>
+              </span>
+              <div>
+                <h3>{{ check.label }}</h3>
+                <p>{{ check.detail }}</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section
           *ngSwitchCase="'stripe'"
           class="admin-section"
           aria-labelledby="admin-stripe-heading"
@@ -639,7 +746,9 @@ const QUOTA_FIELDS: Array<{
     .admin-metric-card,
     .admin-plan-card,
     .admin-announcement-form,
-    .admin-announcement-row {
+    .admin-announcement-row,
+    .admin-readiness-card,
+    .admin-readiness-check {
       border: 1px solid var(--colour-border);
       background: var(--colour-surface-elevated);
       box-shadow: 0 14px 34px var(--colour-shadow-soft);
@@ -787,7 +896,7 @@ const QUOTA_FIELDS: Array<{
     .admin-feedback.is-error {
       background: var(--colour-danger-bg);
       color: var(--colour-danger-text);
-      border-color: var(--colour-danger-border);
+      border-color: color-mix(in srgb, var(--colour-danger-text) 55%, var(--colour-border));
     }
 
     .admin-feedback.is-success {
@@ -836,6 +945,106 @@ const QUOTA_FIELDS: Array<{
       align-items: center;
       gap: var(--spacing-sm);
       flex-wrap: wrap;
+    }
+
+    .admin-operations-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--spacing-md);
+    }
+
+    .admin-readiness-card {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: var(--spacing-sm);
+      min-width: 0;
+      padding: var(--spacing-md);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-muted);
+    }
+
+    .admin-readiness-card h3,
+    .admin-readiness-check h3,
+    .admin-readiness-check p {
+      margin: 0;
+    }
+
+    .admin-readiness-card h3 {
+      margin-top: 0.15rem;
+      font-size: 1.1rem;
+    }
+
+    .admin-readiness-icon,
+    .admin-readiness-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-xs);
+      border-radius: var(--radius-pill);
+    }
+
+    .admin-readiness-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--colour-control-selected);
+      color: var(--colour-control-selected-text);
+    }
+
+    .admin-readiness-icon mat-icon,
+    .admin-readiness-status mat-icon {
+      width: 20px;
+      height: 20px;
+      font-size: 20px;
+      line-height: 20px;
+    }
+
+    .admin-readiness-check-list {
+      display: grid;
+      gap: var(--spacing-sm);
+    }
+
+    .admin-readiness-check {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      align-items: start;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-md);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-muted);
+    }
+
+    .admin-readiness-check p {
+      color: var(--colour-text-secondary);
+      font-weight: 760;
+    }
+
+    .admin-readiness-status {
+      min-height: 34px;
+      padding: 0 var(--spacing-sm);
+      border: 1px solid var(--colour-border);
+      font-size: 0.8rem;
+      font-weight: 950;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .admin-readiness-status--ok {
+      background: var(--colour-success-bg);
+      border-color: color-mix(in srgb, var(--colour-success-text) 55%, var(--colour-border));
+      color: var(--colour-success-text);
+    }
+
+    .admin-readiness-status--warning {
+      background: var(--colour-warning-bg);
+      border-color: color-mix(in srgb, var(--colour-warning-text) 55%, var(--colour-border));
+      color: var(--colour-warning-text);
+    }
+
+    .admin-readiness-status--blocked {
+      background: var(--colour-danger-bg);
+      border-color: color-mix(in srgb, var(--colour-danger-text) 55%, var(--colour-border));
+      color: var(--colour-danger-text);
     }
 
     .admin-search-bar mat-form-field {
@@ -1169,6 +1378,7 @@ const QUOTA_FIELDS: Array<{
       }
 
       .admin-metric-grid,
+      .admin-operations-grid,
       .admin-plan-grid,
       .admin-plan-price-row,
       .admin-quota-grid {
@@ -1192,6 +1402,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     { id: "users", label: "Users & access", icon: "group" },
     { id: "billing", label: "Plans & quotas", icon: "payments" },
     { id: "announcements", label: "Announcements", icon: "campaign" },
+    { id: "operations", label: "Operations", icon: "monitor_heart" },
     { id: "stripe", label: "Stripe sync", icon: "sync" },
   ];
   readonly activeSection = signal<AdminSection>("overview");
@@ -1218,6 +1429,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   readonly minDateTimeLocal = this.toDateTimeLocal(new Date().toISOString());
 
   overview: AdminOverview | null = null;
+  operations: AdminOperationsReadiness | null = null;
   users: EditableAdminUser[] = [];
   plans: EditablePlan[] = [];
   announcements: AdminAnnouncement[] = [];
@@ -1243,6 +1455,9 @@ export class AdminPlanCatalogueComponent implements OnInit {
   setSection(section: AdminSection): void {
     this.activeSection.set(section);
     this.clearFeedback();
+    if (section === "operations" && !this.operations) {
+      this.loadOperations();
+    }
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams: { section },
@@ -1253,6 +1468,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   loadAll(): void {
     this.errorMessage = "";
     this.loadOverview();
+    this.loadOperations(true);
     this.loadUsers();
     this.loadPlans();
     this.loadAnnouncements();
@@ -1264,6 +1480,17 @@ export class AdminPlanCatalogueComponent implements OnInit {
       error: (error) => {
         if (!silent) {
           this.showError(error, "Admin overview could not be loaded.");
+        }
+      },
+    });
+  }
+
+  loadOperations(silent = false): void {
+    this.adminService.getOperations().subscribe({
+      next: (operations) => (this.operations = operations),
+      error: (error) => {
+        if (!silent) {
+          this.showError(error, "Operations readiness could not be loaded.");
         }
       },
     });
@@ -1545,6 +1772,21 @@ export class AdminPlanCatalogueComponent implements OnInit {
       .split(/\s+/)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
+  }
+
+  readinessIcon(status?: string): string {
+    switch (status) {
+      case "ok":
+        return "check_circle";
+      case "blocked":
+        return "error";
+      default:
+        return "warning";
+    }
+  }
+
+  readinessStatusClass(status?: string): string {
+    return `admin-readiness-status--${status || "warning"}`;
   }
 
   quotaText(used?: number, limit?: number | null): string {

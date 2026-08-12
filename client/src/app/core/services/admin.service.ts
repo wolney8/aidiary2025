@@ -34,6 +34,47 @@ export interface AdminOverview {
   }>;
 }
 
+export type AdminReadinessStatus = "ok" | "warning" | "blocked";
+
+export interface AdminOperationsReadiness {
+  app: {
+    environment: string;
+    production: boolean;
+    database_provider: string;
+    runtime_migrations_enabled: boolean;
+  };
+  database: {
+    provider: string;
+    ok: boolean;
+    read_ok: boolean;
+    write_ok?: boolean | null;
+    latency_ms?: number | null;
+    error_type?: string;
+    message?: string;
+  };
+  auth: {
+    cookie_mode: boolean;
+    csrf_protect: boolean;
+    frontend_cookie_only: boolean | null;
+  };
+  rate_limits: {
+    storage: "shared" | "memory" | string;
+    configured: boolean;
+  };
+  stripe: {
+    configured: boolean;
+    checkout_tiers: string[];
+    checkout_periods: Record<string, string[]>;
+  };
+  process: Record<string, boolean>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: AdminReadinessStatus;
+    detail: string;
+  }>;
+}
+
 export interface AdminBillingUser {
   id: number;
   username: string;
@@ -114,6 +155,12 @@ export class AdminService {
 
   getOverview(): Observable<AdminOverview> {
     return this.http.get<AdminOverview>(`${this.apiUrl}/overview`, {
+      headers: this.headers(),
+    });
+  }
+
+  getOperations(): Observable<AdminOperationsReadiness> {
+    return this.http.get<AdminOperationsReadiness>(`${this.apiUrl}/operations`, {
       headers: this.headers(),
     });
   }
