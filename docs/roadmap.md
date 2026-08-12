@@ -55,10 +55,10 @@ new broad product surfaces.
    - Do not wire paid plans directly to Stripe product names. Stripe should update
      OpenMynd-owned entitlements through verified webhooks.
 4. Chat and AI context validation
-   - Chat already has bounded user-scoped Daily/Dream context. It still needs a product
-     pass to respect AI-history privacy settings explicitly and to decide whether Chat
-     should include Thought Records, Important Days, attachment-derived text, and
-     reflection summaries.
+   - Chat has bounded user-scoped context and now reports when prior-entry context is
+     enabled or disabled by the user's Customisation privacy setting.
+   - Remaining product decisions: whether Chat should include Thought Records,
+     Important Days, attachment-derived text, and reflection summaries.
    - Entry AI analysis already uses related-entry memory and optional attachment
      context. Keep making source use visible and bounded.
 5. Import and portability validation
@@ -92,9 +92,10 @@ new broad product surfaces.
   context should remain opt-in and source-visible.
 - Legal/compliance: privacy policy, terms, cookie consent, data deletion, export, and
   AI data-processing disclosures need production review.
-- Payments/entitlements: billing, subscription state, free-tier limits, and AI-cost
-  controls are not yet implemented. The initial delivery lane is captured in
-  [public-saas-readiness-plan.md](./operations/public-saas-readiness-plan.md).
+- Payments/entitlements: internal entitlements, Stripe Checkout/Portal, verified
+  webhook sync, admin plan editing, first AI-cost gate, production preflight, and
+  authenticated billing disclosures now exist. Remaining work is Stripe test-mode/live
+  operational evidence and broader feature-gate coverage.
 - Operations: production monitoring, backup alerts, database capacity alerts, and
   incident runbooks remain required.
 
