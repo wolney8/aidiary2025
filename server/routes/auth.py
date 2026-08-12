@@ -35,6 +35,7 @@ from services.auth_sessions import (
     record_auth_session,
     revoke_session_by_jti,
 )
+from services.legacy_passwords import bcrypt_password, password_is_bcrypt_hash
 from services.media_storage import resolve_image_url, store_profile_image
 from services.security_audit import record_security_event
 from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
@@ -494,7 +495,7 @@ def register():
         return jsonify({'error': validation_error}), 400
     
     # Hash password with bcrypt
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    password_hash = bcrypt_password(password)
     
     try:
         with get_db() as conn:
@@ -529,7 +530,7 @@ def register():
             insert_columns = ['username', 'password', 'first_name', 'last_name']
             insert_values = [
                 username,
-                password_hash.decode('utf-8'),
+                password_hash,
                 first_name,
                 last_name,
             ]
@@ -630,7 +631,7 @@ def login():
 
     # Check password (handle both bcrypt and legacy plaintext)
     stored_password = user['password'] or ''
-    if stored_password.startswith('$2b$'):  # bcrypt hash
+    if password_is_bcrypt_hash(stored_password):
         try:
             password_matches = bcrypt.checkpw(
                 password.encode('utf-8'),
@@ -668,11 +669,11 @@ def login():
             )
             return jsonify({'error': 'Invalid credentials'}), 401
         # Migrate legacy plaintext password to bcrypt on successful login.
-        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        password_hash = bcrypt_password(password)
         with get_db() as conn:
             conn.execute(
                 _sql('UPDATE users SET password = ? WHERE id = ?'),
-                (password_hash.decode('utf-8'), user['id']),
+                (password_hash, user['id']),
             )
             _audit_security_event(
                 conn,
@@ -833,7 +834,7 @@ def confirm_password_reset():
             )
             return jsonify({'error': 'Reset link is invalid or expired'}), 400
         user_id = int(token_row['user_id'])
-        password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        password_hash = bcrypt_password(new_password)
         conn.execute(
             _sql(
                 '''
@@ -842,7 +843,7 @@ def confirm_password_reset():
                 WHERE id = ?
                 '''
             ),
-            (password_hash.decode('utf-8'), user_id),
+            (password_hash, user_id),
         )
         _audit_security_event(conn, 'password_reset_success', user_id=user_id)
 
@@ -1247,7 +1248,7 @@ def _get_or_create_oauth_user(provider_id: str, profile: dict[str, object]) -> t
             return user_id, False
 
         username = _unique_oauth_username(conn, provider_id, email, display_name, provider_subject)
-        password_hash = bcrypt.hashpw(secrets.token_urlsafe(32).encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        password_hash = bcrypt_password(secrets.token_urlsafe(32))
         user_columns = _database_adapter().table_columns(conn, 'users')
         insert_columns = ['username', 'password', 'first_name', 'last_name']
         insert_values = [username, password_hash, first_name, last_name]

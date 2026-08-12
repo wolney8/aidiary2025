@@ -19,6 +19,7 @@ from services.ai_config import ALLOWED_ANALYSIS_MODELS
 from services.auth_sessions import revoke_user_sessions
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
+from services.legacy_passwords import password_is_bcrypt_hash
 from services.media_storage import (
     delete_image,
     resolve_image_url,
@@ -662,6 +663,6 @@ def delete_account():
 
 
 def _password_matches(password: str, stored_password: str) -> bool:
-    if stored_password.startswith('$2b$'):
+    if password_is_bcrypt_hash(stored_password):
         return bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8'))
     return password == stored_password
