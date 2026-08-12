@@ -54,9 +54,9 @@ Remaining risks requiring dedicated delivery work:
   server-side revocation.
 - **Medium:** legacy plaintext-password fallback remains available unless explicitly
   disabled after running the audited migration/report command.
-- **Medium:** account recovery, verification, audit review/reporting surfaces, and
-  consent policy are not implemented. Define the account identity model before adding
-  email recovery.
+- **Medium:** account recovery and verification have local flows, but still need
+  production SMTP validation and operational evidence before public launch. Security
+  audit review is now visible in the Admin console.
 - **Low:** duplicate registration confirms that a username exists. Decide whether that
   usability tradeoff is acceptable alongside rate limiting and monitoring.
 
