@@ -77,6 +77,10 @@ class _FakePostgresAdapter:
         assert table_name == "auth_identities"
         return True
 
+    def table_columns(self, _conn, table_name):
+        assert table_name == "users"
+        return {"id", "account_status"}
+
 
 @pytest.fixture
 def client_with_legacy_user_schema():

@@ -1,0 +1,97 @@
+name: Release gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend dependencies
+        working-directory: server
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run backend tests
+        working-directory: server
+        env:
+          PYTHONPATH: .
+          JWT_SECRET: ci-test-secret-ci-test-secret-ci-test
+        run: pytest
+
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: client
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: client
+        run: npm run build
+
+  browser-e2e:
+    name: Browser smoke gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      - name: Run shell smoke tests
+        working-directory: client
+        run: npm run test:e2e:smoke
+
+      - name: Run accessibility smoke tests
+        working-directory: client
+        run: npm run test:e2e:a11y
+
+      - name: Run inactivity smoke tests
+        working-directory: client
+        run: npm run test:e2e:inactivity
+
+      - name: Run cookie-auth smoke tests
+        working-directory: client
+        run: npm run test:e2e:cookie-auth
