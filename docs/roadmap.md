@@ -70,9 +70,9 @@ new broad product surfaces.
    - Backend unit/integration coverage is strong. Browser smoke coverage now includes
      login, registration, legal/cookie pages, auth recovery, OAuth onboarding,
      Dashboard, account deletion/restricted access, import review/commit/revert,
-     Account/Customisation settings updates, and Chat route scope/starter chips. The
-     remaining highest-risk browser gaps are deeper Chat context assertions and
-     dark/light accessibility sweeps.
+     Account/Customisation settings updates, Chat route scope/starter chips, and Chat
+     context/stat/reply behavior. The remaining highest-risk browser gap is broader
+     dark/light accessibility coverage.
    - Keep `npm run lint`, `npm run build`, `npm run test:e2e:smoke`, and
      `npm run test:e2e:a11y` as release-boundary frontend gates.
 

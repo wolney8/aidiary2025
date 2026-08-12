@@ -105,6 +105,137 @@ async function seedAuthenticatedSession(
   });
 }
 
+async function seedChatContextSession(page: Page) {
+  await seedLocalSession(page, {
+    id: 1,
+    username: "chat-context-e2e",
+    display_name: "Alex",
+    chat_enabled: true,
+    allow_ai_history: true,
+  });
+
+  let statsRequestCount = 0;
+
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+
+    if (path.endsWith("/api/profile")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 1,
+          username: "chat-context-e2e",
+          display_name: "Alex",
+          chat_enabled: true,
+          allow_ai_history: true,
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/context-status")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          history_enabled: true,
+          sources: [
+            { key: "daily", label: "Diary entries", count: 8, enabled: true },
+            { key: "dream", label: "Dream entries", count: 3, enabled: true },
+            {
+              key: "thought_record",
+              label: "Thought records",
+              count: 4,
+              enabled: true,
+            },
+            {
+              key: "important_day",
+              label: "Important days",
+              count: 2,
+              enabled: true,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/history")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversation_id: "chat-context-e2e",
+          messages: [
+            {
+              role: "assistant",
+              message: "Previous reflection is available.",
+              created_at: "2026-08-11T10:00:00Z",
+              token_count: 12,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/stats")) {
+      statsRequestCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversation_id: "chat-context-e2e",
+          message_count: statsRequestCount > 1 ? 3 : 1,
+          user_message_count: statsRequestCount > 1 ? 1 : 0,
+          assistant_message_count: statsRequestCount > 1 ? 2 : 1,
+          token_count: statsRequestCount > 1 ? 146 : 12,
+          started_at: "2026-08-11T10:00:00Z",
+          last_message_at: "2026-08-11T10:03:00Z",
+          active_seconds: 180,
+          conversation_count: 2,
+          limits: {
+            max_message_length: 2000,
+            max_messages_per_conversation: 100,
+            model_history_limit: 20,
+            history_response_limit: 50,
+            daily_token_budget: 8000,
+            monthly_chat: {
+              used: 1,
+              limit: 10,
+              remaining: 9,
+              unlimited: false,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/api/chat/message") && request.method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: [
+          'data: {"chunk":"Your diary context shows a recurring therapy theme."}',
+          "",
+          'data: {"done":true}',
+          "",
+        ].join("\n"),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+}
+
 function encodeBase64Url(value: object): string {
   return btoa(JSON.stringify(value))
     .replace(/=/g, "")
@@ -1163,6 +1294,46 @@ test("chat companion is limited to diary content routes", async ({ page }) => {
 
   await page.goto("/dashboard");
   await expect(page.getByTestId("chat-open-button")).toHaveCount(0);
+});
+
+test("chat companion exposes context, stats, and streams a contextual reply", async ({ page }) => {
+  await seedChatContextSession(page);
+
+  await page.goto("/entries");
+  await page.getByRole("button", { name: "Reject optional" }).click();
+  await page.getByTestId("chat-open-button").click();
+
+  await expect(page.getByTestId("chat-panel")).toBeVisible();
+  await expect(page.getByTestId("chat-message-thread")).toContainText(
+    "Previous reflection is available.",
+  );
+  await expect(page.getByTestId("chat-composer-meta")).toContainText("May reference");
+
+  await page.getByTestId("chat-context-toggle").click();
+  await expect(page.getByTestId("chat-context-drawer")).toBeVisible();
+  await expect(page.getByTestId("chat-context-drawer")).toContainText("Diary entries");
+  await expect(page.getByTestId("chat-context-drawer")).toContainText("Thought records");
+
+  await page.getByTestId("chat-stats-toggle").click();
+  await expect(page.getByTestId("chat-stats-panel")).toBeVisible();
+  await expect(page.getByTestId("chat-stats-panel")).toContainText("Conversation tokens");
+  await expect(page.getByTestId("chat-stats-panel")).toContainText("1 / 10 chats this month");
+
+  await page.getByTestId("chat-message-input").fill("What patterns are visible?");
+  await page.getByTestId("chat-send-button").click();
+
+  await expect(page.getByTestId("chat-message-thread")).toContainText(
+    "What patterns are visible?",
+  );
+  await expect(page.getByTestId("chat-message-thread")).toContainText(
+    "Your diary context shows a recurring therapy theme.",
+  );
+
+  await page.getByTestId("chat-tools-button").click();
+  await expect(page.getByTestId("chat-tools-drawer")).toBeVisible();
+  await expect(page.getByTestId("chat-session-button")).toBeVisible();
+  await expect(page.getByTestId("chat-create-entry-button")).toBeVisible();
+  await expect(page.getByTestId("chat-download-button")).toBeVisible();
 });
 
 test("chat companion shows route-aware starter chips", async ({ page }) => {
