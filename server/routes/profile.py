@@ -16,6 +16,7 @@ from services.account_deletion import (
     delete_user_media,
 )
 from services.ai_config import ALLOWED_ANALYSIS_MODELS
+from services.auth_sessions import revoke_user_sessions
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.media_storage import (
@@ -647,6 +648,7 @@ def delete_account():
                 return jsonify({'error': 'Password did not match.'}), 400
 
         _audit_security_event(conn, 'account_delete_requested', user_id=user_id)
+        revoke_user_sessions(conn, user_id, reason='account_deleted')
         media_storage_keys = collect_user_media_storage_keys(conn, user_id)
         delete_user_account_data(conn, user_id)
         _audit_security_event(

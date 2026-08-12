@@ -823,6 +823,140 @@ def test_cookie_auth_mode_with_csrf_sets_csrf_cookie(client):
     assert any('csrf_access_token=' in header for header in set_cookie_headers)
 
 
+def test_login_records_auth_session(client):
+    client.post('/api/register',
+        data=json.dumps({
+            'username': 'sessionuser',
+            'password': 'password123',
+            'first_name': 'Session',
+            'last_name': 'User',
+        }),
+        content_type='application/json'
+    )
+
+    response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'sessionuser',
+            'password': 'password123',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT user_id, jwt_jti, expires_at, revoked_at
+            FROM auth_sessions
+            ORDER BY id
+            """
+        ).fetchall()
+    assert len(rows) >= 2
+    latest = rows[-1]
+    assert latest["user_id"] == 1
+    assert latest["jwt_jti"]
+    assert latest["expires_at"]
+    assert latest["revoked_at"] is None
+
+
+def test_logout_revokes_current_auth_session(client):
+    client.post('/api/register',
+        data=json.dumps({
+            'username': 'logoutsession',
+            'password': 'password123',
+            'first_name': 'Logout',
+            'last_name': 'Session',
+        }),
+        content_type='application/json'
+    )
+    login_response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'logoutsession',
+            'password': 'password123',
+        }),
+        content_type='application/json'
+    )
+    token = json.loads(login_response.data)['token']
+
+    logout_response = client.post(
+        '/api/logout',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    protected_response = client.post(
+        '/api/auth/email/verification/request',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert logout_response.status_code == 200
+    assert protected_response.status_code == 401
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT revoked_at, revoked_reason
+            FROM auth_sessions
+            WHERE revoked_reason = 'logout'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    assert row is not None
+    assert row["revoked_at"]
+    assert row["revoked_reason"] == "logout"
+
+
+def test_account_delete_revokes_user_sessions_before_deleting_account(client):
+    client.post('/api/register',
+        data=json.dumps({
+            'username': 'deletesession',
+            'password': 'password123',
+            'first_name': 'Delete',
+            'last_name': 'Session',
+        }),
+        content_type='application/json'
+    )
+    login_response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'deletesession',
+            'password': 'password123',
+        }),
+        content_type='application/json'
+    )
+    token = json.loads(login_response.data)['token']
+
+    delete_response = client.delete(
+        '/api/profile/account',
+        data=json.dumps({
+            'password': 'password123',
+            'confirmation': 'DELETE MY ACCOUNT',
+        }),
+        content_type='application/json',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert delete_response.status_code == 200
+    import sqlite3
+    with sqlite3.connect(os.environ["DB_PATH"]) as conn:
+        conn.row_factory = sqlite3.Row
+        user = conn.execute(
+            "SELECT id FROM users WHERE username = 'deletesession'"
+        ).fetchone()
+        revoked = conn.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM auth_sessions
+            WHERE user_id = 1
+              AND revoked_reason = 'account_deleted'
+              AND revoked_at IS NOT NULL
+            """
+        ).fetchone()
+    assert user is None
+    assert revoked["total"] >= 1
+
+
 def test_login_invalid_credentials(client):
     """Test login with invalid credentials."""
     response = client.post('/api/login',

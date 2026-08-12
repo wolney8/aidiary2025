@@ -1,6 +1,6 @@
 # Public Launch Security And Privacy Baseline
 
-Updated: 8 August 2026  
+Updated: 12 August 2026  
 Scope: GitHub issue `#113`, public beta / SaaS readiness for OpenMynd.
 
 This is a public-safe audit record. Do not add real database URLs, API keys, user
@@ -50,7 +50,7 @@ SaaS path.
 | Severity | Area | Risk | Current status | Tracking |
 | --- | --- | --- | --- | --- |
 | Blocking | Sensitive route rate limiting | Login/register/OAuth, AI, import/export, and destructive actions need limiter controls that work across app instances. | Route-level limits are in place; production still requires shared limiter storage such as Redis. | `#113` or new auth-hardening issue |
-| Blocking | Session storage | Browser bearer tokens are still stored in localStorage, increasing exposure if XSS occurs. | Additive `HttpOnly` cookie issuance, credentialed API requests, cookie logout, and CSRF header forwarding now exist. Final cookie-only cutover still needs server-side session/revocation storage and browser smoke evidence. | `#113`; later auth redesign |
+| Blocking | Session storage | Browser bearer tokens are still stored in localStorage, increasing exposure if XSS occurs. | Additive `HttpOnly` cookie issuance, credentialed API requests, CSRF header forwarding, tracked JWT sessions, logout revocation, and account-deletion revocation now exist. Final cookie-only cutover still needs browser smoke evidence and removal of localStorage bearer persistence. | `#113`; later auth redesign |
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Backup/snapshot/restore tooling exists and maintenance evidence can now be validated; production scheduling and real-provider evidence still need owner sign-off. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth; removal needs a migration window. | `#113` or auth-hardening issue |

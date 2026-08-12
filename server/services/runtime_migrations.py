@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS account_security_tokens (
 )
 """
 
+_AUTH_SESSIONS_DDL = """
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    jwt_jti        TEXT NOT NULL UNIQUE,
+    created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at     TEXT,
+    revoked_at     TEXT,
+    revoked_reason TEXT
+)
+"""
+
 _BILLING_CUSTOMERS_DDL = """
 CREATE TABLE IF NOT EXISTS billing_customers (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -696,6 +708,33 @@ def ensure_auth_identities_table(
 
     if log:
         log('Runtime migration ensured table exists: %s', 'auth_identities')
+
+    return True
+
+
+def ensure_auth_sessions_table(
+    database_path: str,
+    log: Callable[[str, object], None] | None = None,
+) -> bool:
+    """Ensure runtime JWT session tracking table exists."""
+    with sqlite3.connect(database_path, timeout=10) as conn:
+        cursor = conn.cursor()
+        cursor.execute(_AUTH_SESSIONS_DDL)
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_created
+            ON auth_sessions(user_id, created_at DESC)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_auth_sessions_jti_revoked
+            ON auth_sessions(jwt_jti, revoked_at)
+            """
+        )
+
+    if log:
+        log('Runtime migration ensured table exists: %s', 'auth_sessions')
 
     return True
 
