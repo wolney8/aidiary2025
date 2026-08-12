@@ -34,6 +34,7 @@ IDENTITY_ID_TABLES = {
     "admin_announcements",
     "admin_announcement_targets",
     "admin_announcement_user_state",
+    "admin_audit_events",
     "configurations",
     "dailydiary_entries",
     "dreamdiary_entries",

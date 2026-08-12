@@ -147,6 +147,20 @@ export interface AdminAnnouncementPayload {
   targets: AdminAnnouncementTarget[];
 }
 
+export interface AdminAuditEvent {
+  id: number;
+  actor_user_id?: number | null;
+  actor_name: string;
+  target_user_id?: number | null;
+  target_name?: string | null;
+  action: string;
+  resource_type: string;
+  resource_id?: string | null;
+  outcome: "success" | "failure" | string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 @Injectable({ providedIn: "root" })
 export class AdminService {
   private readonly http = inject(HttpClient);
@@ -255,6 +269,12 @@ export class AdminService {
       {},
       { headers: this.headers() },
     );
+  }
+
+  getAuditEvents(): Observable<{ events: AdminAuditEvent[] }> {
+    return this.http.get<{ events: AdminAuditEvent[] }>(`${this.apiUrl}/audit`, {
+      headers: this.headers(),
+    });
   }
 
   private headers(): HttpHeaders {

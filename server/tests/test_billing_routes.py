@@ -325,6 +325,20 @@ def test_administrator_can_use_unified_admin_console_routes(client):
     assert plans.status_code == 200
     assert "administrator" in [plan["tier"] for plan in plans.get_json()["plans"]]
 
+    audit = client.get("/api/admin/audit", headers=_headers(client.application))
+    assert audit.status_code == 200
+    audit_actions = [event["action"] for event in audit.get_json()["events"]]
+    assert "user_entitlement_updated" in audit_actions
+    assert "user_access_updated" in audit_actions
+    assert audit.get_json()["events"][0]["actor_name"] == "Tester"
+
+
+def test_admin_audit_route_requires_administrator_entitlement(client):
+    response = client.get("/api/admin/audit", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
 
 def test_admin_announcements_target_users_and_track_state(client):
     db_path = client.application.config["DATABASE_PATH"]
@@ -360,6 +374,15 @@ def test_admin_announcements_target_users_and_track_state(client):
     )
     assert create_response.status_code == 201
     announcement = create_response.get_json()["announcement"]
+
+    audit_after_create = client.get(
+        "/api/admin/audit",
+        headers=_headers(client.application),
+    )
+    assert audit_after_create.status_code == 200
+    latest_event = audit_after_create.get_json()["events"][0]
+    assert latest_event["action"] == "announcement_created"
+    assert latest_event["resource_type"] == "announcement"
 
     admin_active = client.get(
         "/api/announcements/active",

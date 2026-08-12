@@ -284,6 +284,23 @@ CREATE TABLE IF NOT EXISTS admin_announcement_user_state (
 )
 """
 
+_ADMIN_AUDIT_EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS admin_audit_events (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id  INTEGER,
+    target_user_id INTEGER,
+    action         TEXT NOT NULL,
+    resource_type  TEXT NOT NULL,
+    resource_id    TEXT,
+    outcome        TEXT NOT NULL DEFAULT 'success'
+                   CHECK(outcome IN ('success', 'failure')),
+    metadata_json  TEXT NOT NULL DEFAULT '{}',
+    created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL
+)
+"""
+
 _EXPORT_HISTORY_DDL = """
 CREATE TABLE IF NOT EXISTS export_history (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -837,6 +854,7 @@ def ensure_admin_announcement_tables(
         conn.execute(_ADMIN_ANNOUNCEMENTS_DDL)
         conn.execute(_ADMIN_ANNOUNCEMENT_TARGETS_DDL)
         conn.execute(_ADMIN_ANNOUNCEMENT_USER_STATE_DDL)
+        conn.execute(_ADMIN_AUDIT_EVENTS_DDL)
         columns = {
             row[1] for row in conn.execute('PRAGMA table_info(admin_announcements)').fetchall()
         }
@@ -862,9 +880,21 @@ def ensure_admin_announcement_tables(
             ON admin_announcement_user_state(user_id, dismissed_at, read_at)
             """
         )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_audit_events_created
+            ON admin_audit_events(created_at DESC, id DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_audit_events_actor
+            ON admin_audit_events(actor_user_id, created_at DESC)
+            """
+        )
 
     if log:
-        log('Runtime migration ensured admin announcement tables exist')
+        log('Runtime migration ensured admin announcement and audit tables exist')
 
     return True
 

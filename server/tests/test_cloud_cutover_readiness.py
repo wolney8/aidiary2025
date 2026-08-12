@@ -76,6 +76,7 @@ def _write_export(export_dir):
         "admin_announcements",
         "admin_announcement_targets",
         "admin_announcement_user_state",
+        "admin_audit_events",
     ]:
         (export_dir / f"{table_name}.jsonl").write_text("", encoding="utf-8")
     _write_manifest(export_dir)

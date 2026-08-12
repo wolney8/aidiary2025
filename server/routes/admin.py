@@ -463,6 +463,114 @@ def _serialise_admin_user(conn, row) -> dict[str, object]:
     }
 
 
+def _user_label(row) -> str:
+    if row is None:
+        return "Unknown user"
+    return (
+        _row_get(row, "display_name")
+        or " ".join(
+            part for part in [
+                str(_row_get(row, "first_name") or "").strip(),
+                str(_row_get(row, "last_name") or "").strip(),
+            ] if part
+        )
+        or _row_get(row, "username")
+        or _row_get(row, "email")
+        or f"User {_row_get(row, 'id')}"
+    )
+
+
+def _record_admin_audit(
+    conn,
+    *,
+    actor_user_id: int,
+    action: str,
+    resource_type: str,
+    resource_id: object | None = None,
+    target_user_id: int | None = None,
+    outcome: str = "success",
+    metadata: dict[str, object] | None = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO admin_audit_events (
+            actor_user_id, target_user_id, action, resource_type,
+            resource_id, outcome, metadata_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            actor_user_id,
+            target_user_id,
+            action[:120],
+            resource_type[:80],
+            None if resource_id is None else str(resource_id)[:120],
+            outcome,
+            json.dumps(metadata or {}, separators=(",", ":")),
+        ),
+    )
+
+
+def _serialise_admin_audit_event(row) -> dict[str, object]:
+    metadata_raw = _row_get(row, "metadata_json") or "{}"
+    try:
+        metadata = json.loads(metadata_raw)
+    except (TypeError, json.JSONDecodeError):
+        metadata = {}
+    return {
+        "id": int(_row_get(row, "id")),
+        "actor_user_id": _row_get(row, "actor_user_id"),
+        "actor_name": _user_label({
+            "id": _row_get(row, "actor_user_id"),
+            "display_name": _row_get(row, "actor_display_name"),
+            "first_name": _row_get(row, "actor_first_name"),
+            "last_name": _row_get(row, "actor_last_name"),
+            "username": _row_get(row, "actor_username"),
+            "email": _row_get(row, "actor_email"),
+        }),
+        "target_user_id": _row_get(row, "target_user_id"),
+        "target_name": _user_label({
+            "id": _row_get(row, "target_user_id"),
+            "display_name": _row_get(row, "target_display_name"),
+            "first_name": _row_get(row, "target_first_name"),
+            "last_name": _row_get(row, "target_last_name"),
+            "username": _row_get(row, "target_username"),
+            "email": _row_get(row, "target_email"),
+        }) if _row_get(row, "target_user_id") is not None else None,
+        "action": _row_get(row, "action"),
+        "resource_type": _row_get(row, "resource_type"),
+        "resource_id": _row_get(row, "resource_id"),
+        "outcome": _row_get(row, "outcome"),
+        "metadata": metadata,
+        "created_at": _row_get(row, "created_at"),
+    }
+
+
+def _list_admin_audit_events(conn) -> list[dict[str, object]]:
+    rows = conn.execute(
+        """
+        SELECT e.id, e.actor_user_id, e.target_user_id, e.action,
+               e.resource_type, e.resource_id, e.outcome, e.metadata_json, e.created_at,
+               actor.username AS actor_username,
+               actor.email AS actor_email,
+               actor.display_name AS actor_display_name,
+               actor.first_name AS actor_first_name,
+               actor.last_name AS actor_last_name,
+               target.username AS target_username,
+               target.email AS target_email,
+               target.display_name AS target_display_name,
+               target.first_name AS target_first_name,
+               target.last_name AS target_last_name
+        FROM admin_audit_events e
+        LEFT JOIN users actor ON actor.id = e.actor_user_id
+        LEFT JOIN users target ON target.id = e.target_user_id
+        ORDER BY e.created_at DESC, e.id DESC
+        LIMIT 100
+        """
+    ).fetchall()
+    return [_serialise_admin_audit_event(row) for row in rows]
+
+
 def _list_admin_users(conn, *, search: str = "", tier: str = "", status: str = "", page: int = 1) -> dict[str, object]:
     user_columns = _table_columns(conn, "users")
     registered_expr = "registered_at" if "registered_at" in user_columns else "NULL AS registered_at"
@@ -854,6 +962,7 @@ def admin_update_user_entitlement(target_user_id: int):
         ).fetchone()
         if row is None:
             return jsonify({"error": "User not found."}), 404
+        previous = resolve_user_entitlement(conn, target_user_id)
         upsert_user_entitlement(
             conn,
             user_id=target_user_id,
@@ -861,6 +970,20 @@ def admin_update_user_entitlement(target_user_id: int):
             source="manual",
             status=status,
             valid_until=valid_until_text,
+        )
+        _record_admin_audit(
+            conn,
+            actor_user_id=user_id,
+            target_user_id=target_user_id,
+            action="user_entitlement_updated",
+            resource_type="user_entitlement",
+            resource_id=target_user_id,
+            metadata={
+                "previous_tier": previous.get("tier"),
+                "previous_status": previous.get("status"),
+                "new_tier": tier,
+                "new_status": status,
+            },
         )
         return jsonify({"user": _serialise_admin_user(conn, row)}), 200
 
@@ -884,9 +1007,22 @@ def admin_update_user_access(target_user_id: int):
         row = _select_admin_user(conn, target_user_id)
         if row is None:
             return jsonify({"error": "User not found."}), 404
+        previous_status = _row_get(row, "account_status") or "active"
         conn.execute(
             "UPDATE users SET account_status = ? WHERE id = ?",
             (account_status, target_user_id),
+        )
+        _record_admin_audit(
+            conn,
+            actor_user_id=user_id,
+            target_user_id=target_user_id,
+            action="user_access_updated",
+            resource_type="user",
+            resource_id=target_user_id,
+            metadata={
+                "previous_account_status": previous_status,
+                "new_account_status": account_status,
+            },
         )
         refreshed = _select_admin_user(conn, target_user_id)
         return jsonify({"user": _serialise_admin_user(conn, refreshed)}), 200
@@ -916,6 +1052,19 @@ def admin_update_billing_plan(tier: str):
             if forbidden:
                 return forbidden
             plan = upsert_plan(conn, payload)
+            _record_admin_audit(
+                conn,
+                actor_user_id=user_id,
+                action="plan_updated",
+                resource_type="billing_plan",
+                resource_id=tier,
+                metadata={
+                    "tier": tier,
+                    "public_name": plan.get("public_name"),
+                    "is_public": plan.get("is_public"),
+                    "is_paid": plan.get("is_paid"),
+                },
+            )
             return jsonify({"plan": plan}), 200
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -968,6 +1117,18 @@ def admin_create_announcement():
             )
             announcement_id = inserted_id(cursor, _database_provider())
             _write_announcement_targets(conn, announcement_id, payload["targets"])
+            _record_admin_audit(
+                conn,
+                actor_user_id=user_id,
+                action="announcement_created",
+                resource_type="announcement",
+                resource_id=announcement_id,
+                metadata={
+                    "title": payload["title"],
+                    "status": payload["status"],
+                    "placement": payload["placement"],
+                },
+            )
             row = _get_announcement(conn, announcement_id)
             return jsonify({
                 "announcement": _serialise_announcement(row, _announcement_targets(conn, announcement_id)),
@@ -1010,6 +1171,18 @@ def admin_update_announcement(announcement_id: int):
                 ),
             )
             _write_announcement_targets(conn, announcement_id, payload["targets"])
+            _record_admin_audit(
+                conn,
+                actor_user_id=user_id,
+                action="announcement_updated",
+                resource_type="announcement",
+                resource_id=announcement_id,
+                metadata={
+                    "title": payload["title"],
+                    "status": payload["status"],
+                    "placement": payload["placement"],
+                },
+            )
             row = _get_announcement(conn, announcement_id)
             return jsonify({
                 "announcement": _serialise_announcement(row, _announcement_targets(conn, announcement_id)),
@@ -1036,10 +1209,28 @@ def admin_archive_announcement(announcement_id: int):
             """,
             (announcement_id,),
         )
+        _record_admin_audit(
+            conn,
+            actor_user_id=user_id,
+            action="announcement_archived",
+            resource_type="announcement",
+            resource_id=announcement_id,
+        )
         row = _get_announcement(conn, announcement_id)
         return jsonify({
             "announcement": _serialise_announcement(row, _announcement_targets(conn, announcement_id)),
         }), 200
+
+
+@admin_bp.route("/admin/audit", methods=["GET"])
+@jwt_required()
+def admin_audit_events():
+    user_id = _current_user_id()
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+        return jsonify({"events": _list_admin_audit_events(conn)}), 200
 
 
 @admin_bp.route("/announcements/active", methods=["GET"])

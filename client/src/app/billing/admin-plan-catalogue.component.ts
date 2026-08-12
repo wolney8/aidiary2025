@@ -15,6 +15,7 @@ import {
   AdminAnnouncementPlacement,
   AdminAnnouncementSeverity,
   AdminAnnouncementStatus,
+  AdminAuditEvent,
   AdminBillingUser,
   AdminOverview,
   AdminOperationsReadiness,
@@ -23,7 +24,7 @@ import {
 import { BillingPlan, BillingTier } from "../core/services/billing.service";
 import { AnnouncementService } from "../core/services/announcement.service";
 
-type AdminSection = "overview" | "users" | "billing" | "announcements" | "operations" | "stripe";
+type AdminSection = "overview" | "users" | "billing" | "announcements" | "operations" | "audit" | "stripe";
 
 interface EditableAdminUser extends AdminBillingUser {
   selectedTier: BillingTier;
@@ -727,6 +728,69 @@ const QUOTA_FIELDS: Array<{
             <p class="admin-empty" *ngIf="!overview?.recent_billing_events?.length">No Stripe events recorded yet.</p>
           </div>
         </section>
+
+        <section
+          *ngSwitchCase="'audit'"
+          class="admin-section"
+          aria-labelledby="admin-audit-heading"
+          data-testid="admin-audit-section"
+        >
+          <div class="admin-section-heading">
+            <div>
+              <p class="admin-eyebrow">Audit</p>
+              <h2 id="admin-audit-heading">Admin activity</h2>
+              <p>Recent privileged changes across users, plans, and announcements.</p>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              class="admin-pill-button"
+              (click)="loadAuditEvents()"
+              data-testid="admin-audit-refresh"
+            >
+              <mat-icon aria-hidden="true">refresh</mat-icon>
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          <div class="admin-audit-list" *ngIf="auditEvents.length; else auditEmpty">
+            <article
+              class="admin-audit-row"
+              *ngFor="let event of auditEvents"
+              [attr.data-testid]="'admin-audit-event-' + event.id"
+            >
+              <span class="admin-readiness-icon admin-audit-icon" aria-hidden="true">
+                <mat-icon>{{ auditIcon(event.action) }}</mat-icon>
+              </span>
+              <div class="admin-audit-main">
+                <div class="admin-audit-title-row">
+                  <h3>{{ formatEnumLabel(event.action) }}</h3>
+                  <span class="admin-chip admin-chip--strong">{{ formatEnumLabel(event.outcome) }}</span>
+                </div>
+                <p>
+                  <strong>{{ event.actor_name }}</strong>
+                  <ng-container *ngIf="event.target_name">
+                    changed <strong>{{ event.target_name }}</strong>
+                  </ng-container>
+                  <ng-container *ngIf="!event.target_name">
+                    changed {{ formatEnumLabel(event.resource_type) }}
+                  </ng-container>
+                </p>
+                <span class="admin-muted">
+                  {{ formatDateTime(event.created_at) }} · {{ formatEnumLabel(event.resource_type) }}
+                  <ng-container *ngIf="event.resource_id"> · {{ event.resource_id }}</ng-container>
+                </span>
+              </div>
+              <div class="admin-audit-meta" *ngIf="auditSummary(event)">
+                {{ auditSummary(event) }}
+              </div>
+            </article>
+          </div>
+
+          <ng-template #auditEmpty>
+            <p class="admin-empty">No admin activity recorded yet.</p>
+          </ng-template>
+        </section>
       </ng-container>
     </section>
   `,
@@ -747,6 +811,7 @@ const QUOTA_FIELDS: Array<{
     .admin-plan-card,
     .admin-announcement-form,
     .admin-announcement-row,
+    .admin-audit-row,
     .admin-readiness-card,
     .admin-readiness-check {
       border: 1px solid var(--colour-border);
@@ -812,6 +877,8 @@ const QUOTA_FIELDS: Array<{
     .admin-plan-card p,
     .admin-announcement-row h3,
     .admin-announcement-row p,
+    .admin-audit-row h3,
+    .admin-audit-row p,
     .admin-feedback {
       margin: 0;
     }
@@ -1002,6 +1069,45 @@ const QUOTA_FIELDS: Array<{
     .admin-readiness-check-list {
       display: grid;
       gap: var(--spacing-sm);
+    }
+
+    .admin-audit-list {
+      display: grid;
+      gap: var(--spacing-sm);
+    }
+
+    .admin-audit-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) minmax(10rem, 18rem);
+      align-items: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-md);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-muted);
+    }
+
+    .admin-audit-main {
+      display: grid;
+      gap: 0.25rem;
+      min-width: 0;
+    }
+
+    .admin-audit-title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      flex-wrap: wrap;
+    }
+
+    .admin-audit-meta {
+      color: var(--colour-text-secondary);
+      font-size: 0.88rem;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .admin-audit-icon {
+      background: color-mix(in srgb, var(--colour-primary) 26%, var(--colour-surface-elevated));
     }
 
     .admin-readiness-check {
@@ -1377,6 +1483,14 @@ const QUOTA_FIELDS: Array<{
         flex-direction: column;
       }
 
+      .admin-audit-row {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-audit-meta {
+        text-align: left;
+      }
+
       .admin-metric-grid,
       .admin-operations-grid,
       .admin-plan-grid,
@@ -1403,6 +1517,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     { id: "billing", label: "Plans & quotas", icon: "payments" },
     { id: "announcements", label: "Announcements", icon: "campaign" },
     { id: "operations", label: "Operations", icon: "monitor_heart" },
+    { id: "audit", label: "Audit", icon: "manage_history" },
     { id: "stripe", label: "Stripe sync", icon: "sync" },
   ];
   readonly activeSection = signal<AdminSection>("overview");
@@ -1433,6 +1548,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   users: EditableAdminUser[] = [];
   plans: EditablePlan[] = [];
   announcements: AdminAnnouncement[] = [];
+  auditEvents: AdminAuditEvent[] = [];
   userSearch = "";
   usersLoading = false;
   savingUserId: number | null = null;
@@ -1458,6 +1574,9 @@ export class AdminPlanCatalogueComponent implements OnInit {
     if (section === "operations" && !this.operations) {
       this.loadOperations();
     }
+    if (section === "audit" && !this.auditEvents.length) {
+      this.loadAuditEvents();
+    }
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams: { section },
@@ -1472,6 +1591,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     this.loadUsers();
     this.loadPlans();
     this.loadAnnouncements();
+    this.loadAuditEvents(true);
   }
 
   loadOverview(silent = false): void {
@@ -1535,6 +1655,17 @@ export class AdminPlanCatalogueComponent implements OnInit {
     });
   }
 
+  loadAuditEvents(silent = false): void {
+    this.adminService.getAuditEvents().subscribe({
+      next: (response) => (this.auditEvents = response.events),
+      error: (error) => {
+        if (!silent) {
+          this.showError(error, "Admin activity could not be loaded.");
+        }
+      },
+    });
+  }
+
   saveUserEntitlement(user: EditableAdminUser): void {
     if (!this.isUserEntitlementDirty(user)) return;
     this.savingUserId = user.id;
@@ -1558,6 +1689,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
           this.savingUserId = null;
           this.successMessage = `${this.getUserDisplayName(updated)} access updated.`;
           this.loadOverview(true);
+          this.loadAuditEvents(true);
           window.setTimeout(() => this.clearUserSavedFeedback(updated.id), 1800);
         },
         error: (error) => {
@@ -1587,6 +1719,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
           this.savingUserId = null;
           this.successMessage = `${this.getUserDisplayName(updated)} ${nextStatus === "restricted" ? "restricted" : "restored"}.`;
           this.loadOverview(true);
+          this.loadAuditEvents(true);
           window.setTimeout(() => this.clearUserSavedFeedback(updated.id), 1800);
         },
         error: (error) => {
@@ -1654,6 +1787,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
 	        this.announcementService.refresh().subscribe({ error: () => undefined });
 	        this.loadAnnouncements(true);
 	        this.loadOverview(true);
+	        this.loadAuditEvents(true);
 	      },
       error: (error) => {
         this.savingAnnouncement = false;
@@ -1668,6 +1802,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
         this.successMessage = "Announcement archived.";
         this.loadAnnouncements(true);
         this.loadOverview(true);
+        this.loadAuditEvents(true);
       },
       error: (error) => this.showError(error, "Announcement could not be archived."),
     });
@@ -1787,6 +1922,35 @@ export class AdminPlanCatalogueComponent implements OnInit {
 
   readinessStatusClass(status?: string): string {
     return `admin-readiness-status--${status || "warning"}`;
+  }
+
+  auditIcon(action?: string): string {
+    if (action?.includes("announcement")) return "campaign";
+    if (action?.includes("plan")) return "payments";
+    if (action?.includes("access")) return "lock_person";
+    return "admin_panel_settings";
+  }
+
+  auditSummary(event: AdminAuditEvent): string {
+    const metadata = event.metadata || {};
+    const newTier = metadata["new_tier"];
+    const newStatus = metadata["new_status"];
+    const accountStatus = metadata["new_account_status"];
+    const publicName = metadata["public_name"];
+    const announcementStatus = metadata["status"];
+    if (newTier || newStatus) {
+      return [newTier, newStatus].filter(Boolean).map((item) => this.formatEnumLabel(String(item))).join(" · ");
+    }
+    if (accountStatus) {
+      return this.formatEnumLabel(String(accountStatus));
+    }
+    if (publicName) {
+      return String(publicName);
+    }
+    if (announcementStatus) {
+      return this.formatEnumLabel(String(announcementStatus));
+    }
+    return "";
   }
 
   quotaText(used?: number, limit?: number | null): string {
@@ -1913,7 +2077,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
 	    return value ? value : null;
 	  }
 
-	  private formatDateTime(value?: string | null): string {
+	  formatDateTime(value?: string | null): string {
 	    if (!value) return "";
 	    const date = new Date(value);
 	    if (Number.isNaN(date.getTime())) return value;

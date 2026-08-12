@@ -152,6 +152,7 @@ def test_runtime_sqlite_managed_columns_exist_in_postgres_schema(tmp_path):
         "admin_announcements",
         "admin_announcement_targets",
         "admin_announcement_user_state",
+        "admin_audit_events",
         "dailydiary_entries",
         "dreamdiary_entries",
         "entry_ai_metadata",
