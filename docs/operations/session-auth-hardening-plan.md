@@ -17,6 +17,8 @@ incident logs, or user records.
 - Sensitive public routes have configurable rate limits.
 - Legacy plaintext-password fallback can be disabled with
   `OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK=true`.
+- Production registration can require email verification by setting
+  `OPENMYND_REQUIRE_REGISTRATION_EMAIL=true`.
 
 ## Public Launch Target
 
@@ -55,6 +57,9 @@ The safest migration is dual-mode, then cutover:
   must be recorded.
 - `OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK=true` should only be used for a documented
   limited beta while cookie-mode work is pending.
+- `OPENMYND_ACCEPT_LEGACY_PASSWORD_FALLBACK=true` should only be used for a short,
+  documented migration window. Prefer disabling fallback once old local accounts have
+  logged in and migrated to bcrypt.
 - OAuth redirect URIs and CORS origins must be production HTTPS origins.
 
 ## Follow-On Issue Body
