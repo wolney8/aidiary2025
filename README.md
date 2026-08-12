@@ -57,6 +57,25 @@ source venv/bin/activate
 python -m flask --app app.py --debug run -p 5001
 ```
 
+### Production API Process
+
+Do not run `python app.py` or the Flask debug server in production. Hosted API
+deployments should use the root `Procfile`, which starts the existing WSGI app with
+Gunicorn:
+
+```bash
+web: cd server && gunicorn "wsgi:app" --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-2} --threads ${WEB_THREADS:-4} --timeout ${WEB_TIMEOUT:-120}
+```
+
+Before promoting a deploy, run the production preflight and explicit Postgres
+migrations described in `docs/adr/0005-production-saas-hosting-architecture.md`.
+The runtime health checks are:
+
+```bash
+curl -f https://<api-host>/health
+curl -f https://<api-host>/api/health/database
+```
+
 ### Testing
 
 ```bash
