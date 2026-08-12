@@ -69,8 +69,8 @@ new broad product surfaces.
 6. Testing and release gates
    - Backend unit/integration coverage is strong. Browser smoke coverage now includes
      login, registration, legal/cookie pages, auth recovery, OAuth onboarding,
-     Dashboard, account deletion/restricted access, and Chat route scope/starter chips.
-     The remaining highest-risk browser gaps are import review/commit/revert,
+     Dashboard, account deletion/restricted access, import review/commit/revert, and
+     Chat route scope/starter chips. The remaining highest-risk browser gaps are
      deeper Chat context assertions, account settings updates, and dark/light
      accessibility sweeps.
    - Keep `npm run lint`, `npm run build`, `npm run test:e2e:smoke`, and
