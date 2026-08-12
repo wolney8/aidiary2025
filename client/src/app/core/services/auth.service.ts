@@ -25,6 +25,7 @@ export class AuthService {
   private legacyTokenKey = "ai_diary_token";
   private userKey = "openmynd_user";
   private legacyUserKey = "ai_diary_user";
+  private cookieOnlyAuth = Boolean(environment.cookieOnlyAuth);
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   private sessionExpiredSinceLastCheck = false;
 
@@ -180,10 +181,17 @@ export class AuthService {
   }
 
   getToken(): string | null {
+    if (this.cookieOnlyAuth) {
+      return null;
+    }
     return localStorage.getItem(this.tokenKey) ?? localStorage.getItem(this.legacyTokenKey);
   }
 
   isAuthenticated(): boolean {
+    if (this.cookieOnlyAuth) {
+      return this.currentUserSubject.value !== null;
+    }
+
     const token = this.getToken();
     if (!token) {
       return false;
@@ -205,7 +213,7 @@ export class AuthService {
   }
 
   syncCurrentUser(user: User): void {
-    if (!this.getToken()) {
+    if (!this.cookieOnlyAuth && !this.getToken()) {
       return;
     }
     localStorage.setItem(this.userKey, JSON.stringify(user));
@@ -238,13 +246,24 @@ export class AuthService {
   }
 
   private storeSession(response: AuthResponse): void {
-    localStorage.setItem(this.tokenKey, response.token);
+    if (this.cookieOnlyAuth) {
+      localStorage.removeItem(this.tokenKey);
+    } else {
+      localStorage.setItem(this.tokenKey, response.token);
+    }
     localStorage.setItem(this.userKey, JSON.stringify(response.user));
     localStorage.removeItem(this.legacyTokenKey);
     localStorage.removeItem(this.legacyUserKey);
   }
 
   private migrateLegacySession(): void {
+    if (this.cookieOnlyAuth) {
+      localStorage.removeItem(this.tokenKey);
+      localStorage.removeItem(this.legacyTokenKey);
+      localStorage.removeItem(this.legacyUserKey);
+      return;
+    }
+
     const legacyToken = localStorage.getItem(this.legacyTokenKey);
     const legacyUser = localStorage.getItem(this.legacyUserKey);
     if (legacyToken && !localStorage.getItem(this.tokenKey)) {

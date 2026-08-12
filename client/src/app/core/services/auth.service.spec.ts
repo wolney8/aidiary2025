@@ -1,6 +1,7 @@
 import { TestBed } from "@angular/core/testing";
 import { HttpClient } from "@angular/common/http";
 import { Router } from "@angular/router";
+import { of } from "rxjs";
 import { AuthService } from "./auth.service";
 
 describe("AuthService session handling", () => {
@@ -21,7 +22,10 @@ describe("AuthService session handling", () => {
     TestBed.configureTestingModule({
       providers: [
         AuthService,
-        { provide: HttpClient, useValue: { post: jasmine.createSpy("post") } },
+        {
+          provide: HttpClient,
+          useValue: { post: jasmine.createSpy("post").and.returnValue(of({})) },
+        },
         { provide: Router, useValue: routerMock },
       ],
     });
@@ -138,5 +142,19 @@ describe("AuthService session handling", () => {
     service.syncCurrentUser({ id: 1, username: "active-user" });
 
     expect(localStorage.getItem("openmynd_user")).toContain("active-user");
+  });
+
+  it("does not persist bearer tokens when cookie-only auth is enabled", () => {
+    (service as unknown as { cookieOnlyAuth: boolean }).cookieOnlyAuth = true;
+
+    service.completeOAuthLogin({
+      token: createToken(Math.floor(Date.now() / 1000) + 60),
+      user: { id: 1, username: "cookie-user" },
+    });
+
+    expect(localStorage.getItem("openmynd_token")).toBeNull();
+    expect(localStorage.getItem("openmynd_user")).toContain("cookie-user");
+    expect(service.getToken()).toBeNull();
+    expect(service.isAuthenticated()).toBeTrue();
   });
 });
