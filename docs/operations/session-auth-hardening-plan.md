@@ -14,8 +14,10 @@ incident logs, or user records.
 - JWT access tokens expire after 24 hours.
 - `OPENMYND_AUTH_COOKIE_MODE=true` can now issue the access token as an additional
   `HttpOnly` cookie while preserving bearer-token compatibility.
-- Cookie mode is not the final production cutover until CSRF protection and frontend
-  cookie-only smoke coverage are complete.
+- `OPENMYND_AUTH_COOKIE_CSRF_PROTECT=true` enables the framework CSRF cookie/header
+  path for unsafe methods in cookie mode.
+- Cookie mode is not the final production cutover until frontend cookie-only smoke
+  coverage and server-side session revocation are complete.
 - Frontend guards clear malformed or expired tokens before protected navigation.
 - Backend routes remain the source of truth for authentication and ownership checks.
 - Sensitive public routes have configurable rate limits.
@@ -48,7 +50,8 @@ The safest migration is dual-mode, then cutover:
    tokens is in place.
 2. Frontend API calls can send credentials, and logout clears cookie auth state where
    present.
-3. Add CSRF token issuance and enforcement for unsafe methods in cookie mode.
+3. CSRF token issuance and frontend header forwarding for unsafe API methods are in
+   place when cookie mode CSRF protection is enabled.
 4. Add server-side session/revocation storage.
 5. Run browser smoke tests for password login, Google login, onboarding, logout,
    session expiry, account deletion, import, export, Chat, and AI analysis.

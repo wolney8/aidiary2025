@@ -793,6 +793,36 @@ def test_cookie_auth_mode_sets_and_clears_access_cookie(client):
         for header in logout_cookie_headers
     )
 
+
+def test_cookie_auth_mode_with_csrf_sets_csrf_cookie(client):
+    client.application.config['OPENMYND_AUTH_COOKIE_MODE'] = True
+    client.application.config['JWT_TOKEN_LOCATION'] = ['headers', 'cookies']
+    client.application.config['JWT_COOKIE_CSRF_PROTECT'] = True
+
+    client.post('/api/register',
+        data=json.dumps({
+            'username': 'csrfcookieuser',
+            'password': 'password123',
+            'first_name': 'Cookie',
+            'last_name': 'Csrf',
+        }),
+        content_type='application/json'
+    )
+
+    response = client.post('/api/login',
+        data=json.dumps({
+            'username': 'csrfcookieuser',
+            'password': 'password123',
+        }),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    set_cookie_headers = response.headers.getlist('Set-Cookie')
+    assert any('access_token_cookie=' in header for header in set_cookie_headers)
+    assert any('csrf_access_token=' in header for header in set_cookie_headers)
+
+
 def test_login_invalid_credentials(client):
     """Test login with invalid credentials."""
     response = client.post('/api/login',

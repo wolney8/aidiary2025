@@ -336,6 +336,26 @@ def test_preflight_warns_when_cookie_auth_lacks_csrf(tmp_path):
     assert report["summary"]["cookie_auth_csrf_protect"] is False
 
 
+def test_preflight_records_cookie_auth_with_csrf(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["OPENMYND_AUTH_COOKIE_MODE"] = "true"
+    env["OPENMYND_AUTH_COOKIE_CSRF_PROTECT"] = "true"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert report["ready_for_production"] is True
+    assert "cookie_auth_csrf" not in warning_gates
+    assert report["summary"]["cookie_auth_mode"] is True
+    assert report["summary"]["cookie_auth_csrf_protect"] is True
+
+
 def test_preflight_records_accepted_session_and_password_risks(tmp_path):
     env = _base_env()
     env["DATABASE_PROVIDER"] = "postgres"
