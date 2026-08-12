@@ -58,7 +58,7 @@ SaaS path.
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
 | Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Entitlement tables, Stripe Checkout, Customer Portal session creation, verified webhook entitlement sync, and the first AI-analysis plan gate exist. Production preflight checks and billing disclosures remain. | `#131`, `#132` |
-| Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists for public auth, legal/cookie, OAuth onboarding, Dashboard, account deletion/restricted access, import review/commit/revert, and Chat route scope. Deeper Chat context assertions, settings updates, and broader dark/light a11y remain. | testing issue |
+| Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists for public auth, legal/cookie, OAuth onboarding, Dashboard, account deletion/restricted access, import review/commit/revert, Account/Customisation settings updates, and Chat route scope. Deeper Chat context assertions and broader dark/light a11y remain. | testing issue |
 
 ## Privacy Boundary Review
 
