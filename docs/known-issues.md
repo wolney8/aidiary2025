@@ -31,6 +31,8 @@ Immediate hardening completed:
 - Legacy plaintext-password fallback can now be disabled with
   `OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK=true` once old local accounts have been
   migrated or intentionally abandoned.
+- Legacy plaintext-password rows can now be audited or bulk-converted with
+  `server/scripts/migrate_legacy_password_hashes.py`.
 - Chat is blocked at the backend when disabled and omits prior-entry context when
   `allow_ai_history` is disabled.
 - Login, registration, OAuth start/callback, AI analysis, import/export, import
@@ -51,8 +53,7 @@ Remaining risks requiring dedicated delivery work:
   should evaluate secure HttpOnly cookies, CSRF protection, refresh/rotation, and
   server-side revocation.
 - **Medium:** legacy plaintext-password fallback remains available unless explicitly
-  disabled. Provide an audited migration/report command before permanently removing
-  the fallback from code.
+  disabled after running the audited migration/report command.
 - **Medium:** account recovery, verification, audit review/reporting surfaces, and
   consent policy are not implemented. Define the account identity model before adding
   email recovery.

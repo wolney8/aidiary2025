@@ -29,6 +29,8 @@ incident logs, or user records.
 - Sensitive public routes have configurable rate limits.
 - Legacy plaintext-password fallback can be disabled with
   `OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK=true`.
+- Dormant legacy plaintext-password rows can be audited or converted with
+  `server/scripts/migrate_legacy_password_hashes.py`.
 - Production registration can require email verification by setting
   `OPENMYND_REQUIRE_REGISTRATION_EMAIL=true`.
 
@@ -77,6 +79,30 @@ The safest migration is dual-mode, then cutover:
   documented migration window. Prefer disabling fallback once old local accounts have
   logged in and migrated to bcrypt.
 - OAuth redirect URIs and CORS origins must be production HTTPS origins.
+
+## Legacy Password Migration
+
+Audit remaining plaintext-password rows without writing changes:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/migrate_legacy_password_hashes.py --json
+```
+
+Convert remaining plaintext-password rows to bcrypt:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/migrate_legacy_password_hashes.py --apply --json
+```
+
+After the migration reports no legacy rows, set:
+
+```bash
+OPENMYND_DISABLE_LEGACY_PASSWORD_FALLBACK=true
+```
 
 ## Follow-On Issue Body
 
