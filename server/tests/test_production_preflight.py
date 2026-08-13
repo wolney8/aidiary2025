@@ -754,3 +754,22 @@ def test_preflight_blocks_repo_local_media_root_in_production(tmp_path):
     assert report["ready_for_production"] is False
     assert "media_storage_path" in blocker_gates
     assert report["summary"]["media_root_inside_repo"] is True
+
+
+def test_preflight_blocks_http_cors_origin_in_production(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env["CORS_ORIGINS"] = "http://openmynd.example"
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "cors_origins" in blocker_gates

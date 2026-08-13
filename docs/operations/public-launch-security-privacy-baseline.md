@@ -35,6 +35,7 @@ Current automated evidence:
 - Production startup and preflight now require `MEDIA_ROOT` to be an explicit absolute
   path outside the repository source tree, so public media does not fall back to
   `server/media`.
+- Production startup and preflight now reject non-HTTPS CORS frontend origins.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.

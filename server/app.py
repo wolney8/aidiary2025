@@ -195,6 +195,10 @@ def _production_runtime_blockers(
         blockers.append(
             'CORS_ORIGINS must contain only production frontend origins when APP_ENV=production.'
         )
+    elif any(not origin.startswith('https://') for origin in cors_origins):
+        blockers.append(
+            'CORS_ORIGINS must contain only HTTPS frontend origins when APP_ENV=production.'
+        )
 
     if email_provider == 'console':
         blockers.append(

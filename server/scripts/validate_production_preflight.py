@@ -313,6 +313,14 @@ def build_production_preflight(
             gate="cors_origins",
             message="CORS_ORIGINS must not use wildcard or localhost origins for production.",
         )
+    elif app_env == "production" and any(
+        not _looks_like_https_url(origin) for origin in cors_origins
+    ):
+        _add_gate(
+            blockers,
+            gate="cors_origins",
+            message="CORS_ORIGINS must contain only HTTPS frontend origins for production.",
+        )
 
     frontend_base_url = (env.get("FRONTEND_BASE_URL") or "").strip()
     if app_env == "production":
