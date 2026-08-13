@@ -25,6 +25,8 @@ Current automated evidence:
 - Login, registration, email verification, password reset, OAuth start/callback,
   AI analysis, import/export, import revert, and account deletion routes have
   explicit rate limits, with preflight visibility for production configuration.
+- Production startup now fails closed if `RATELIMIT_STORAGE_URI=memory://`, with
+  regression coverage proving public production requires shared limiter storage.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.
@@ -51,7 +53,7 @@ SaaS path.
 
 | Severity | Area | Risk | Current status | Tracking |
 | --- | --- | --- | --- | --- |
-| Blocking | Sensitive route rate limiting | Login/register/OAuth, AI, import/export, and destructive actions need limiter controls that work across app instances. | Route-level limits are in place; production still requires shared limiter storage such as Redis. | `#113` or new auth-hardening issue |
+| Blocking | Sensitive route rate limiting | Login/register/OAuth, AI, import/export, and destructive actions need limiter controls that work across app instances. | Route-level limits and production startup blockers are in place; deployment still needs real shared-limiter configuration evidence such as Redis. | `#113` or new auth-hardening issue |
 | Blocking | Session storage | Browser bearer tokens are still stored in localStorage, increasing exposure if XSS occurs. | Additive `HttpOnly` cookie issuance, credentialed API requests, CSRF header forwarding, tracked JWT sessions, logout revocation, and account-deletion revocation now exist. Final cookie-only cutover still needs browser smoke evidence and removal of localStorage bearer persistence. | `#113`; later auth redesign |
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Backup/snapshot/restore tooling exists and maintenance evidence can now be validated; production scheduling and real-provider evidence still need owner sign-off. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
