@@ -30,6 +30,8 @@ Current automated evidence:
 - API responses now include conservative security headers for content sniffing,
   clickjacking, referrer leakage, permissions policy, and API CSP; production responses
   also include HSTS.
+- Production preflight now treats missing or placeholder OpenAI API keys as an AI launch
+  blocker, and Admin Operations reports AI-provider readiness without exposing secrets.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.
@@ -63,7 +65,7 @@ SaaS path.
 | Major | HTTP response headers | Public API responses should set baseline browser security headers. | Default security headers and production HSTS are now applied and covered by backend tests; Admin Operations reports the check. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth, and an operator migration command can now bulk-convert dormant plaintext rows. Public launch should run that command and then disable fallback. | `#113` or auth-hardening issue |
 | Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and operational validation. | Local account token flows exist; browser smoke covers verification/reset screens; preflight blocks console email in production; security audit capture is now reviewable in the Admin console. | `#113` or auth-hardening issue |
-| Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |
+| Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; production preflight blocks missing/placeholder OpenAI keys; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
 | Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Entitlement tables, Stripe Checkout, Customer Portal session creation, verified webhook entitlement sync, the first AI-analysis plan gate, production preflight checks, and authenticated billing disclosures exist. Remaining work is Stripe test-mode/live operational evidence. | `#132` |
 | Major | Browser E2E coverage | Critical user journeys need automated browser gates before launch. | Playwright smoke/a11y exists for public auth, legal/cookie, OAuth onboarding, Dashboard, account deletion/restricted access, import review/commit/revert, Account/Customisation settings updates, Chat route scope, Chat context/stat/reply behavior, and light/dark critical-surface accessibility checks. Remaining work is broader regression expansion rather than a single known uncovered route class. | testing issue |

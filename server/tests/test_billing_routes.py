@@ -251,6 +251,10 @@ def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch)
     monkeypatch.delenv("OAUTH_GOOGLE_CLIENT_ID", raising=False)
     monkeypatch.delenv("OAUTH_GOOGLE_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("OAUTH_GOOGLE_REDIRECT_URI", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "your_openai_api_key_here")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-test-analysis")
+    monkeypatch.setenv("CHAT_MODEL", "gpt-test-chat")
+    monkeypatch.setenv("OPENAI_IMAGE_MODEL", "gpt-test-image")
     db_path = client.application.config["DATABASE_PATH"]
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -282,6 +286,14 @@ def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch)
     assert operations_body["email"]["ready"] is False
     assert operations_body["oauth"]["google"]["ready"] is False
     assert set(operations_body["oauth"]["google"].values()) <= {False}
+    assert operations_body["ai_provider"] == {
+        "analysis_model": "gpt-test-analysis",
+        "chat_model": "gpt-test-chat",
+        "image_model": "gpt-test-image",
+        "openai_api_key_configured": False,
+        "ready": False,
+    }
+    assert "your_openai_api_key_here" not in json.dumps(operations_body)
     assert operations_body["security_headers"]["enabled"] is True
     assert operations_body["process"]["health_routes"] is True
     assert {check["key"] for check in operations_body["checks"]} >= {
@@ -289,6 +301,7 @@ def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch)
         "cookie_auth",
         "transactional_email",
         "google_oauth",
+        "ai_provider",
         "security_headers",
         "process_supervision",
         "stripe",

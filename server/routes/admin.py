@@ -58,6 +58,7 @@ ANNOUNCEMENT_TIMEZONES = {
 }
 ACCOUNT_STATUSES = {"active", "restricted"}
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+PLACEHOLDER_CONFIG_MARKERS = ("your_", "your-", "replace-", "example", "changeme")
 
 
 def _database_adapter() -> DatabaseAdapter:
@@ -73,6 +74,13 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _configured_non_placeholder(value: str | None) -> bool:
+    normalised = (value or "").strip().lower()
+    return bool(normalised) and not any(
+        marker in normalised for marker in PLACEHOLDER_CONFIG_MARKERS
+    )
 
 
 def get_db():
@@ -852,6 +860,11 @@ def _operations_readiness() -> dict[str, object]:
         and google_redirect_configured
         and (app_environment != "production" or not google_redirect_is_local)
     )
+    openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    openai_api_key_configured = _configured_non_placeholder(openai_api_key)
+    analysis_model = (os.getenv("OPENAI_MODEL") or "default").strip() or "default"
+    chat_model = (os.getenv("CHAT_MODEL") or "default").strip() or "default"
+    image_model = (os.getenv("OPENAI_IMAGE_MODEL") or "default").strip() or "default"
 
     checks = [
         _readiness_check(
@@ -945,6 +958,16 @@ def _operations_readiness() -> dict[str, object]:
             ),
         ),
         _readiness_check(
+            "ai_provider",
+            "AI provider",
+            "ok" if openai_api_key_configured else "warning",
+            (
+                "OpenAI backend key is configured. Model names are visible for operations."
+                if openai_api_key_configured
+                else "Configure a non-placeholder OPENAI_API_KEY before public AI access."
+            ),
+        ),
+        _readiness_check(
             "security_headers",
             "Security response headers",
             "ok",
@@ -1002,6 +1025,13 @@ def _operations_readiness() -> dict[str, object]:
                 "redirect_uri_local": google_redirect_is_local,
                 "ready": google_oauth_ready,
             },
+        },
+        "ai_provider": {
+            "openai_api_key_configured": openai_api_key_configured,
+            "analysis_model": analysis_model,
+            "chat_model": chat_model,
+            "image_model": image_model,
+            "ready": openai_api_key_configured,
         },
         "security_headers": {
             "enabled": True,

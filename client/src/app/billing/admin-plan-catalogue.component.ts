@@ -689,6 +689,21 @@ const QUOTA_FIELDS: Array<{
 
             <article class="admin-readiness-card">
               <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>auto_awesome</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">AI provider</p>
+                <h3>{{ ops.ai_provider.ready ? "AI ready" : "AI incomplete" }}</h3>
+                <span class="admin-muted">
+                  Analysis {{ ops.ai_provider.analysis_model }}
+                  · Chat {{ ops.ai_provider.chat_model }}
+                  · Images {{ ops.ai_provider.image_model }}
+                </span>
+              </div>
+            </article>
+
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
                 <mat-icon>monitor_heart</mat-icon>
               </span>
               <div>

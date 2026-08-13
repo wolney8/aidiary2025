@@ -665,12 +665,16 @@ def build_production_preflight(
             )
 
     openai_key = (env.get("OPENAI_API_KEY") or "").strip()
-    if not openai_key:
+    openai_key_configured = bool(openai_key) and not _looks_like_placeholder(openai_key)
+    if not openai_key_configured:
         _add_gate(
-            warnings,
+            blockers if app_env == "production" else warnings,
             gate="openai_api_key",
-            severity="warning",
-            message="OPENAI_API_KEY is not configured; AI features will fail.",
+            severity="blocker" if app_env == "production" else "warning",
+            message=(
+                "OPENAI_API_KEY must be configured with a non-placeholder backend "
+                "secret before AI features can run."
+            ),
         )
 
     missing_process_supervision_files = [
@@ -746,7 +750,7 @@ def build_production_preflight(
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
             "sensitive_rate_limits_configured": configured_sensitive_rate_limits,
             "security_audit_retention_days": security_audit_retention_days,
-            "openai_api_key_configured": bool(openai_key),
+            "openai_api_key_configured": openai_key_configured,
             "process_supervision_files_present": not missing_process_supervision_files,
             "missing_process_supervision_files": missing_process_supervision_files,
             "health_routes_present": health_routes_present,

@@ -207,6 +207,27 @@ Smoke test:
 4. Stripe webhook should update local entitlements.
 5. Customer Portal should open for an existing Stripe customer.
 
+## AI Provider Setup
+
+AI features use a backend OpenAI key. Do not put this key in frontend files.
+
+Server env:
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1-mini
+CHAT_MODEL=gpt-4.1-mini
+OPENAI_IMAGE_MODEL=gpt-image-1
+```
+
+Smoke test:
+
+1. Restart server.
+2. Open Admin -> Operations.
+3. Confirm AI provider is ready.
+4. Run one entry analysis, one chat message, and one image generation test if those
+   features are enabled for the account tier.
+
 ## Admin Operations Smoke Test
 
 After changing any setup:

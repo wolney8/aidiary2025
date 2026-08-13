@@ -673,3 +673,23 @@ def test_preflight_records_process_supervision_readiness(tmp_path):
     assert report["summary"]["process_supervision_files_present"] is True
     assert report["summary"]["missing_process_supervision_files"] == []
     assert report["summary"]["health_routes_present"] is True
+
+
+def test_preflight_blocks_placeholder_openai_key_in_production(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env["OPENAI_API_KEY"] = "your_openai_api_key_here"
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "openai_api_key" in blocker_gates
+    assert report["summary"]["openai_api_key_configured"] is False

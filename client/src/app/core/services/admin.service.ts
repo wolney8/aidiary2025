@@ -82,6 +82,13 @@ export interface AdminOperationsReadiness {
       ready: boolean;
     };
   };
+  ai_provider: {
+    openai_api_key_configured: boolean;
+    analysis_model: string;
+    chat_model: string;
+    image_model: string;
+    ready: boolean;
+  };
   security_headers: {
     enabled: boolean;
     hsts: boolean;
