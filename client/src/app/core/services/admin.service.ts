@@ -82,6 +82,20 @@ export interface AdminOperationsReadiness {
   }>;
 }
 
+export interface AdminPreflightGate {
+  gate: string;
+  severity: "blocker" | "warning" | string;
+  message: string;
+}
+
+export interface AdminProductionPreflight {
+  ready_for_production: boolean;
+  require_postgres: boolean;
+  blockers: AdminPreflightGate[];
+  warnings: AdminPreflightGate[];
+  summary: Record<string, unknown>;
+}
+
 export interface AdminBillingUser {
   id: number;
   username: string;
@@ -225,6 +239,13 @@ export class AdminService {
       { to_address: toAddress || null },
       { headers: this.headers() },
     );
+  }
+
+  getProductionPreflight(requirePostgres = false): Observable<AdminProductionPreflight> {
+    const query = requirePostgres ? "?require_postgres=true" : "";
+    return this.http.get<AdminProductionPreflight>(`${this.apiUrl}/preflight${query}`, {
+      headers: this.headers(),
+    });
   }
 
   getUsers(options: {

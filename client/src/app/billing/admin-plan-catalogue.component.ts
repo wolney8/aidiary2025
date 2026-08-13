@@ -19,6 +19,7 @@ import {
   AdminBillingUser,
   AdminOverview,
   AdminOperationsReadiness,
+  AdminProductionPreflight,
   AdminSecurityAuditReport,
   AdminService,
 } from "../core/services/admin.service";
@@ -604,7 +605,7 @@ const QUOTA_FIELDS: Array<{
               mat-stroked-button
               type="button"
               class="admin-pill-button"
-              (click)="loadOperations()"
+              (click)="refreshOperationsReadiness()"
               data-testid="admin-operations-refresh"
             >
               <mat-icon aria-hidden="true">refresh</mat-icon>
@@ -741,6 +742,65 @@ const QUOTA_FIELDS: Array<{
               </button>
             </form>
           </article>
+
+          <article class="admin-operation-action-card admin-preflight-card" data-testid="admin-preflight-card">
+            <span class="admin-readiness-icon" aria-hidden="true">
+              <mat-icon>{{ preflight?.ready_for_production ? "task_alt" : "rule_settings" }}</mat-icon>
+            </span>
+            <div>
+              <p class="admin-eyebrow">Production preflight</p>
+              <h3>{{ preflight?.ready_for_production ? "Ready" : "Needs review" }}</h3>
+              <p>
+                {{ getPreflightSummaryText() }}
+              </p>
+            </div>
+            <div class="admin-preflight-actions">
+              <mat-checkbox
+                [(ngModel)]="preflightRequiresPostgres"
+                name="admin_preflight_requires_postgres"
+                data-testid="admin-preflight-require-postgres"
+              >
+                Require Postgres
+              </mat-checkbox>
+              <button
+                mat-stroked-button
+                type="button"
+                class="admin-pill-button"
+                (click)="loadPreflight()"
+                [disabled]="preflightLoading"
+                data-testid="admin-preflight-refresh"
+              >
+                <mat-icon aria-hidden="true">{{ preflightLoading ? "hourglass_top" : "refresh" }}</mat-icon>
+                <span>{{ preflightLoading ? "Checking" : "Run check" }}</span>
+              </button>
+            </div>
+          </article>
+
+          <div
+            class="admin-readiness-check-list admin-preflight-list"
+            *ngIf="preflight && getPreflightGates().length"
+            data-testid="admin-preflight-gates"
+          >
+            <article
+              class="admin-readiness-check"
+              *ngFor="let gate of getPreflightGates(); trackBy: trackPreflightGate"
+              [attr.data-testid]="'admin-preflight-gate-' + gate.gate"
+            >
+              <span
+                class="admin-readiness-status"
+                [ngClass]="readinessStatusClass(gate.severity === 'blocker' ? 'blocked' : 'warning')"
+              >
+                <mat-icon aria-hidden="true">
+                  {{ gate.severity === "blocker" ? "block" : "warning" }}
+                </mat-icon>
+                <span>{{ gate.severity === "blocker" ? "Blocker" : "Warning" }}</span>
+              </span>
+              <div>
+                <h3>{{ formatPreflightGateLabel(gate.gate) }}</h3>
+                <p>{{ gate.message }}</p>
+              </div>
+            </article>
+          </div>
         </section>
 
         <section
@@ -1359,6 +1419,27 @@ const QUOTA_FIELDS: Array<{
       min-width: 12rem;
     }
 
+    .admin-preflight-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--spacing-sm);
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .admin-preflight-actions mat-checkbox {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--colour-text-primary);
+      font-weight: 850;
+    }
+
+    .admin-preflight-list {
+      margin-top: calc(var(--spacing-sm) * -1);
+    }
+
     .admin-readiness-status {
       min-height: 34px;
       padding: 0 var(--spacing-sm);
@@ -1808,6 +1889,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
 
   overview: AdminOverview | null = null;
   operations: AdminOperationsReadiness | null = null;
+  preflight: AdminProductionPreflight | null = null;
   securityReport: AdminSecurityAuditReport | null = null;
   users: EditableAdminUser[] = [];
   plans: EditablePlan[] = [];
@@ -1819,6 +1901,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   savingTier: BillingTier | null = null;
   savingAnnouncement = false;
   sendingTestEmail = false;
+  preflightLoading = false;
   errorMessage = "";
   successMessage = "";
   testEmailAddress = "";
@@ -1826,6 +1909,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   securityOutcome = "";
   securityEventType = "";
   securityUserId: number | null = null;
+  preflightRequiresPostgres = false;
   announcementDraft: AnnouncementDraft = this.emptyAnnouncementDraft();
 
   ngOnInit(): void {
@@ -1844,6 +1928,9 @@ export class AdminPlanCatalogueComponent implements OnInit {
     if (section === "operations" && !this.operations) {
       this.loadOperations();
     }
+    if (section === "operations" && !this.preflight) {
+      this.loadPreflight(true);
+    }
     if (section === "security" && !this.securityReport) {
       this.loadSecurityReport();
     }
@@ -1861,6 +1948,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     this.errorMessage = "";
     this.loadOverview();
     this.loadOperations(true);
+    this.loadPreflight(true);
     this.loadUsers();
     this.loadPlans();
     this.loadAnnouncements();
@@ -1885,6 +1973,27 @@ export class AdminPlanCatalogueComponent implements OnInit {
       error: (error) => {
         if (!silent) {
           this.showError(error, "Operations readiness could not be loaded.");
+        }
+      },
+    });
+  }
+
+  refreshOperationsReadiness(): void {
+    this.loadOperations();
+    this.loadPreflight();
+  }
+
+  loadPreflight(silent = false): void {
+    this.preflightLoading = true;
+    this.adminService.getProductionPreflight(this.preflightRequiresPostgres).subscribe({
+      next: (preflight) => {
+        this.preflight = preflight;
+        this.preflightLoading = false;
+      },
+      error: (error) => {
+        this.preflightLoading = false;
+        if (!silent) {
+          this.showError(error, "Production preflight could not be loaded.");
         }
       },
     });
@@ -2226,6 +2335,39 @@ export class AdminPlanCatalogueComponent implements OnInit {
       .split(/\s+/)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
+  }
+
+  getPreflightGates(): Array<{ gate: string; severity: string; message: string }> {
+    if (!this.preflight) {
+      return [];
+    }
+    return [...this.preflight.blockers, ...this.preflight.warnings];
+  }
+
+  getPreflightSummaryText(): string {
+    if (this.preflightLoading && !this.preflight) {
+      return "Running production readiness checks.";
+    }
+    if (!this.preflight) {
+      return "Run the preflight check before deployment.";
+    }
+    const blockerCount = this.preflight.blockers.length;
+    const warningCount = this.preflight.warnings.length;
+    if (!blockerCount && !warningCount) {
+      return "No blockers or warnings found.";
+    }
+    return `${blockerCount} blockers · ${warningCount} warnings`;
+  }
+
+  formatPreflightGateLabel(gate: string): string {
+    return this.formatEnumLabel(gate);
+  }
+
+  trackPreflightGate(
+    _index: number,
+    gate: { gate: string; severity: string; message: string },
+  ): string {
+    return `${gate.severity}-${gate.gate}`;
   }
 
   readinessIcon(status?: string): string {

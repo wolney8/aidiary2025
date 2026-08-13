@@ -30,6 +30,7 @@ from services.stripe_billing import (
     configured_checkout_tiers,
     load_stripe_billing_config,
 )
+from scripts.validate_production_preflight import build_production_preflight
 from services.usage_limits import get_user_usage_summary
 
 
@@ -1036,6 +1037,28 @@ def admin_send_test_email():
                 },
             )
             return jsonify({"error": str(exc)}), 502
+
+
+@admin_bp.route("/admin/preflight", methods=["GET"])
+@jwt_required()
+def admin_production_preflight():
+    user_id = _current_user_id()
+    require_postgres = str(request.args.get("require_postgres") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+    return jsonify(
+        build_production_preflight(
+            root_path=Path(current_app.root_path),
+            require_postgres=require_postgres,
+        )
+    ), 200
 
 
 @admin_bp.route("/admin/users", methods=["GET"])

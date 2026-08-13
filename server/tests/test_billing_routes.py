@@ -484,6 +484,38 @@ def test_admin_test_email_requires_administrator_entitlement(client):
     assert response.get_json()["error"] == "Administrator access is required."
 
 
+def test_administrator_can_view_production_preflight(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.get(
+        "/api/admin/preflight?require_postgres=true",
+        headers=_headers(client.application),
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["require_postgres"] is True
+    assert "blockers" in body
+    assert "warnings" in body
+    assert "summary" in body
+    assert "jwt_secret" not in body["summary"]
+
+
+def test_admin_preflight_requires_administrator_entitlement(client):
+    response = client.get("/api/admin/preflight", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
 def test_admin_announcements_target_users_and_track_state(client):
     db_path = client.application.config["DATABASE_PATH"]
     with sqlite3.connect(db_path) as conn:
