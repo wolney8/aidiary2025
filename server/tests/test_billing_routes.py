@@ -282,12 +282,14 @@ def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch)
     assert operations_body["email"]["ready"] is False
     assert operations_body["oauth"]["google"]["ready"] is False
     assert set(operations_body["oauth"]["google"].values()) <= {False}
+    assert operations_body["security_headers"]["enabled"] is True
     assert operations_body["process"]["health_routes"] is True
     assert {check["key"] for check in operations_body["checks"]} >= {
         "database",
         "cookie_auth",
         "transactional_email",
         "google_oauth",
+        "security_headers",
         "process_supervision",
         "stripe",
     }

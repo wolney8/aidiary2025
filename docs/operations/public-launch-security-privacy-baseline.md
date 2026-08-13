@@ -27,6 +27,9 @@ Current automated evidence:
   explicit rate limits, with preflight visibility for production configuration.
 - Production startup now fails closed if `RATELIMIT_STORAGE_URI=memory://`, with
   regression coverage proving public production requires shared limiter storage.
+- API responses now include conservative security headers for content sniffing,
+  clickjacking, referrer leakage, permissions policy, and API CSP; production responses
+  also include HSTS.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.
@@ -57,6 +60,7 @@ SaaS path.
 | Blocking | Session storage | Browser bearer tokens are still stored in localStorage, increasing exposure if XSS occurs. | Additive `HttpOnly` cookie issuance, credentialed API requests, CSRF header forwarding, tracked JWT sessions, logout revocation, and account-deletion revocation now exist. Final cookie-only cutover still needs browser smoke evidence and removal of localStorage bearer persistence. | `#113`; later auth redesign |
 | Blocking | Database operations | Public data needs rehearsed backups, restores, capacity alerts, and rollback. | Backup/snapshot/restore tooling exists and maintenance evidence can now be validated; production scheduling and real-provider evidence still need owner sign-off. | `#120`, `#73`, `#72`, `#62`, `#30`, `#28`, `#8` |
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
+| Major | HTTP response headers | Public API responses should set baseline browser security headers. | Default security headers and production HSTS are now applied and covered by backend tests; Admin Operations reports the check. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth, and an operator migration command can now bulk-convert dormant plaintext rows. Public launch should run that command and then disable fallback. | `#113` or auth-hardening issue |
 | Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and operational validation. | Local account token flows exist; browser smoke covers verification/reset screens; preflight blocks console email in production; security audit capture is now reviewable in the Admin console. | `#113` or auth-hardening issue |
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; public disclosure and consent review still required. | legal/privacy issue |

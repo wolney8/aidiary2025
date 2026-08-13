@@ -46,6 +46,27 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _apply_security_headers(response, *, app_environment: str):
+    """Apply conservative API security headers without exposing app internals."""
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'no-referrer')
+    response.headers.setdefault(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=(), payment=()',
+    )
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    )
+    if app_environment == 'production':
+        response.headers.setdefault(
+            'Strict-Transport-Security',
+            'max-age=31536000; includeSubDomains',
+        )
+    return response
+
+
 def _ensure_nltk_data() -> None:
     """Check local NLTK resources without blocking app startup on network downloads."""
     resources = {
@@ -377,6 +398,10 @@ def create_app():
     # --- DEBUG: helpful JWT logging for local development ---
     # These handlers will log common JWT errors so the developer can
     # see why a token was rejected (missing, expired, invalid signature).
+
+    @app.after_request
+    def _set_security_headers(response):
+        return _apply_security_headers(response, app_environment=app_environment)
 
     @app.errorhandler(401)
     def _handle_401(err):

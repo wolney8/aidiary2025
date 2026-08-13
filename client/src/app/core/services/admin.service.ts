@@ -82,6 +82,10 @@ export interface AdminOperationsReadiness {
       ready: boolean;
     };
   };
+  security_headers: {
+    enabled: boolean;
+    hsts: boolean;
+  };
   process: Record<string, boolean>;
   checks: Array<{
     key: string;

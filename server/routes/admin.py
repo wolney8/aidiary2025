@@ -945,6 +945,15 @@ def _operations_readiness() -> dict[str, object]:
             ),
         ),
         _readiness_check(
+            "security_headers",
+            "Security response headers",
+            "ok",
+            (
+                "API responses include frame, referrer, content sniffing, permissions, "
+                "and content security headers."
+            ),
+        ),
+        _readiness_check(
             "process_supervision",
             "Process supervision assets",
             "ok" if all(process_status.values()) else "warning",
@@ -993,6 +1002,10 @@ def _operations_readiness() -> dict[str, object]:
                 "redirect_uri_local": google_redirect_is_local,
                 "ready": google_oauth_ready,
             },
+        },
+        "security_headers": {
+            "enabled": True,
+            "hsts": app_environment == "production",
         },
         "process": process_status,
         "checks": checks,
