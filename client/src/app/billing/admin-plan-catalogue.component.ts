@@ -692,6 +692,40 @@ const QUOTA_FIELDS: Array<{
               </div>
             </article>
           </div>
+
+          <article class="admin-operation-action-card" data-testid="admin-test-email-card">
+            <span class="admin-readiness-icon" aria-hidden="true">
+              <mat-icon>outgoing_mail</mat-icon>
+            </span>
+            <div>
+              <p class="admin-eyebrow">Transactional email</p>
+              <h3>Send test email</h3>
+              <p>Verify the configured provider can deliver account emails.</p>
+            </div>
+            <form class="admin-operation-action-form" (ngSubmit)="sendTestEmail()">
+              <mat-form-field appearance="outline">
+                <mat-label>Recipient</mat-label>
+                <input
+                  matInput
+                  type="email"
+                  [(ngModel)]="testEmailAddress"
+                  name="admin_test_email_address"
+                  placeholder="admin@example.com"
+                />
+              </mat-form-field>
+              <button
+                mat-raised-button
+                color="primary"
+                type="submit"
+                class="admin-pill-button"
+                [disabled]="sendingTestEmail"
+                data-testid="admin-send-test-email"
+              >
+                <mat-icon aria-hidden="true">{{ sendingTestEmail ? "hourglass_top" : "send" }}</mat-icon>
+                <span>{{ sendingTestEmail ? "Sending" : "Send test" }}</span>
+              </button>
+            </form>
+          </article>
         </section>
 
         <section
@@ -1275,6 +1309,41 @@ const QUOTA_FIELDS: Array<{
       font-weight: 760;
     }
 
+    .admin-operation-action-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) minmax(18rem, 30rem);
+      align-items: center;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      border: 1px solid var(--colour-border);
+      border-radius: var(--radius-lg);
+      background: var(--colour-surface-muted);
+      box-shadow: 0 14px 34px var(--colour-shadow-soft);
+    }
+
+    .admin-operation-action-card h3,
+    .admin-operation-action-card p {
+      margin: 0;
+    }
+
+    .admin-operation-action-card p:not(.admin-eyebrow) {
+      color: var(--colour-text-secondary);
+      font-weight: 760;
+    }
+
+    .admin-operation-action-form {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--spacing-sm);
+      min-width: 0;
+    }
+
+    .admin-operation-action-form mat-form-field {
+      flex: 1 1 14rem;
+      min-width: 12rem;
+    }
+
     .admin-readiness-status {
       min-height: 34px;
       padding: 0 var(--spacing-sm);
@@ -1656,6 +1725,15 @@ const QUOTA_FIELDS: Array<{
         grid-template-columns: 1fr;
       }
 
+      .admin-operation-action-card {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-operation-action-form {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
       .admin-audit-meta {
         text-align: left;
       }
@@ -1725,8 +1803,10 @@ export class AdminPlanCatalogueComponent implements OnInit {
   savingUserId: number | null = null;
   savingTier: BillingTier | null = null;
   savingAnnouncement = false;
+  sendingTestEmail = false;
   errorMessage = "";
   successMessage = "";
+  testEmailAddress = "";
   securityDays = 30;
   securityOutcome = "";
   securityEventType = "";
@@ -1870,6 +1950,24 @@ export class AdminPlanCatalogueComponent implements OnInit {
     this.securityEventType = "";
     this.securityUserId = null;
     this.loadSecurityReport();
+  }
+
+  sendTestEmail(): void {
+    this.sendingTestEmail = true;
+    this.clearFeedback();
+    this.adminService.sendTestEmail(this.testEmailAddress).subscribe({
+      next: (response) => {
+        this.sendingTestEmail = false;
+        this.testEmailAddress = response.to_address;
+        this.successMessage = `Test email sent to ${response.to_address}.`;
+        this.loadAuditEvents(true);
+      },
+      error: (error) => {
+        this.sendingTestEmail = false;
+        this.showError(error, "Test email could not be sent.");
+        this.loadAuditEvents(true);
+      },
+    });
   }
 
   saveUserEntitlement(user: EditableAdminUser): void {

@@ -210,6 +210,16 @@ export class AdminService {
     });
   }
 
+  sendTestEmail(
+    toAddress?: string,
+  ): Observable<{ ok: boolean; message: string; to_address: string; provider: string }> {
+    return this.http.post<{ ok: boolean; message: string; to_address: string; provider: string }>(
+      `${this.apiUrl}/operations/test-email`,
+      { to_address: toAddress || null },
+      { headers: this.headers() },
+    );
+  }
+
   getUsers(options: {
     search?: string;
     tier?: string;

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from services.billing_entitlements import (
 )
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
+from services.email_delivery import EmailDeliveryError, send_transactional_email
 from services.plan_catalogue import list_plan_catalogue, seed_default_plan_catalogue, upsert_plan
 from services.security_audit_report import build_security_audit_report
 from services.sql_compat import append_returning_id, inserted_id
@@ -47,6 +49,7 @@ ANNOUNCEMENT_TIMEZONES = {
     "Australia/Sydney",
 }
 ACCOUNT_STATUSES = {"active", "restricted"}
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _database_adapter() -> DatabaseAdapter:
@@ -580,6 +583,23 @@ def _bounded_int(value: object, *, default: int, minimum: int, maximum: int) -> 
     return max(minimum, min(parsed, maximum))
 
 
+def _current_admin_email(conn, user_id: int) -> str:
+    row = conn.execute(
+        "SELECT email FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    return str(_row_get(row, "email") or "").strip().lower()
+
+
+def _normalise_test_email_recipient(raw_email: object, fallback_email: str) -> str:
+    email = str(raw_email or fallback_email or "").strip().lower()
+    if not email:
+        raise ValueError("Add an email address to receive the test message.")
+    if len(email) > 254 or not EMAIL_PATTERN.fullmatch(email):
+        raise ValueError("Use a valid email address for the test message.")
+    return email
+
+
 def _list_admin_users(conn, *, search: str = "", tier: str = "", status: str = "", page: int = 1) -> dict[str, object]:
     user_columns = _table_columns(conn, "users")
     registered_expr = "registered_at" if "registered_at" in user_columns else "NULL AS registered_at"
@@ -925,6 +945,63 @@ def admin_operations():
         if forbidden:
             return forbidden
     return jsonify(_operations_readiness()), 200
+
+
+@admin_bp.route("/admin/operations/test-email", methods=["POST"])
+@jwt_required()
+def admin_send_test_email():
+    user_id = _current_user_id()
+    payload = request.get_json(silent=True) or {}
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+        try:
+            recipient = _normalise_test_email_recipient(
+                payload.get("to_address"),
+                _current_admin_email(conn, user_id),
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        try:
+            send_transactional_email(
+                to_address=recipient,
+                subject="OpenMynd email delivery test",
+                text_body=(
+                    "This is an OpenMynd transactional email test. "
+                    "If you received this, the configured email provider can deliver messages."
+                ),
+                logger=current_app.logger,
+            )
+            _record_admin_audit(
+                conn,
+                actor_user_id=user_id,
+                action="test_email_sent",
+                resource_type="email_delivery",
+                metadata={
+                    "delivery_provider": os.getenv("EMAIL_PROVIDER") or "console",
+                    "recipient_domain": recipient.rsplit("@", maxsplit=1)[-1],
+                },
+            )
+            return jsonify({
+                "ok": True,
+                "message": "Test email sent.",
+                "to_address": recipient,
+                "provider": os.getenv("EMAIL_PROVIDER") or "console",
+            }), 200
+        except EmailDeliveryError as exc:
+            _record_admin_audit(
+                conn,
+                actor_user_id=user_id,
+                action="test_email_failed",
+                resource_type="email_delivery",
+                outcome="failure",
+                metadata={
+                    "delivery_provider": os.getenv("EMAIL_PROVIDER") or "console",
+                    "error": str(exc),
+                },
+            )
+            return jsonify({"error": str(exc)}), 502
 
 
 @admin_bp.route("/admin/users", methods=["GET"])

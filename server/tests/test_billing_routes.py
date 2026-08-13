@@ -11,6 +11,8 @@ import pytest
 from flask_jwt_extended import create_access_token
 
 from app import create_app
+from routes import admin
+from services.email_delivery import EmailDeliveryError
 
 
 @pytest.fixture
@@ -385,6 +387,95 @@ def test_admin_security_route_reports_privacy_safe_events(client):
 
 def test_admin_security_route_requires_administrator_entitlement(client):
     response = client.get("/api/admin/security", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
+def test_administrator_can_send_test_email(client, monkeypatch):
+    sent_messages = []
+
+    def fake_send(**kwargs):
+        sent_messages.append(kwargs)
+
+    monkeypatch.setattr(admin, "send_transactional_email", fake_send)
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.post(
+        "/api/admin/operations/test-email",
+        headers=_headers(client.application),
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["to_address"] == "tester@example.com"
+    assert sent_messages[0]["subject"] == "OpenMynd email delivery test"
+    audit = client.get("/api/admin/audit", headers=_headers(client.application))
+    assert audit.get_json()["events"][0]["action"] == "test_email_sent"
+
+
+def test_admin_test_email_validates_recipient(client):
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.post(
+        "/api/admin/operations/test-email",
+        headers=_headers(client.application),
+        json={"to_address": "not-email"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Use a valid email address for the test message."
+
+
+def test_admin_test_email_reports_delivery_failure(client, monkeypatch):
+    def fake_send(**_kwargs):
+        raise EmailDeliveryError("SMTP email delivery failed")
+
+    monkeypatch.setattr(admin, "send_transactional_email", fake_send)
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.post(
+        "/api/admin/operations/test-email",
+        headers=_headers(client.application),
+        json={"to_address": "ops@example.com"},
+    )
+
+    assert response.status_code == 502
+    assert response.get_json()["error"] == "SMTP email delivery failed"
+    audit = client.get("/api/admin/audit", headers=_headers(client.application))
+    assert audit.get_json()["events"][0]["action"] == "test_email_failed"
+
+
+def test_admin_test_email_requires_administrator_entitlement(client):
+    response = client.post(
+        "/api/admin/operations/test-email",
+        headers=_headers(client.application),
+        json={"to_address": "ops@example.com"},
+    )
 
     assert response.status_code == 403
     assert response.get_json()["error"] == "Administrator access is required."

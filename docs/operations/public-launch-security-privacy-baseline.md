@@ -141,8 +141,9 @@ emit non-blocking capacity warnings when thresholds are supplied.
 
 ## Security Audit Review
 
-Security audit capture is intentionally backend/operator-only until OpenMynd has
-admin roles and an authorization model for support tooling.
+Security audit capture is available to administrators in the Admin console under
+Security. The command-line report remains useful for release evidence and incident
+review bundles.
 
 Run a recent audit summary:
 
@@ -208,7 +209,8 @@ AUTH_EMAIL_VERIFICATION_RATE_LIMIT="5 per hour"
 
 Verification and reset links use `FRONTEND_BASE_URL`. The preflight blocks
 console email in production and warns if local registration does not require an
-email address.
+email address. After configuring SMTP, use Admin → Operations → Send test email to
+verify provider delivery before relying on account verification or password reset.
 
 ## Minimum Public-Beta Exit Criteria
 
