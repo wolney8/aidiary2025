@@ -66,6 +66,13 @@ export interface AdminOperationsReadiness {
     checkout_tiers: string[];
     checkout_periods: Record<string, string[]>;
   };
+  email: {
+    provider: string;
+    from_configured: boolean;
+    smtp_host_configured: boolean;
+    registration_email_required: boolean;
+    ready: boolean;
+  };
   process: Record<string, boolean>;
   checks: Array<{
     key: string;

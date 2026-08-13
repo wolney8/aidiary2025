@@ -60,6 +60,13 @@ def _database_provider() -> str:
     return current_app.config.get("DATABASE_PROVIDER", SQLITE_PROVIDER)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_db():
     return _database_adapter().connect(timeout=10)
 
@@ -813,6 +820,16 @@ def _operations_readiness() -> dict[str, object]:
     )
     stripe_config = load_stripe_billing_config()
     process_status = _process_supervision_status()
+    email_provider = (os.getenv("EMAIL_PROVIDER") or "console").strip().lower()
+    email_from_address = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip()
+    smtp_host = (os.getenv("SMTP_HOST") or "").strip()
+    registration_email_required = _env_flag("OPENMYND_REQUIRE_REGISTRATION_EMAIL")
+    email_ready = (
+        email_provider == "smtp"
+        and bool(email_from_address)
+        and bool(smtp_host)
+        and registration_email_required
+    )
 
     checks = [
         _readiness_check(
@@ -886,6 +903,16 @@ def _operations_readiness() -> dict[str, object]:
             ),
         ),
         _readiness_check(
+            "transactional_email",
+            "Transactional email",
+            "ok" if email_ready else "warning",
+            (
+                "SMTP, sender, and registration email verification are configured."
+                if email_ready
+                else "Configure SMTP, sender address, and registration email verification before public launch."
+            ),
+        ),
+        _readiness_check(
             "process_supervision",
             "Process supervision assets",
             "ok" if all(process_status.values()) else "warning",
@@ -918,6 +945,13 @@ def _operations_readiness() -> dict[str, object]:
             "configured": stripe_config.configured,
             "checkout_tiers": configured_checkout_tiers(stripe_config),
             "checkout_periods": configured_checkout_periods(stripe_config),
+        },
+        "email": {
+            "provider": email_provider,
+            "from_configured": bool(email_from_address),
+            "smtp_host_configured": bool(smtp_host),
+            "registration_email_required": registration_email_required,
+            "ready": email_ready,
         },
         "process": process_status,
         "checks": checks,

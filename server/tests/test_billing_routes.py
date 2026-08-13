@@ -275,10 +275,13 @@ def test_administrator_can_use_unified_admin_console_routes(client):
     operations_body = operations.get_json()
     assert operations_body["database"]["ok"] is True
     assert operations_body["auth"]["cookie_mode"] in {True, False}
+    assert operations_body["email"]["provider"] == "console"
+    assert operations_body["email"]["ready"] is False
     assert operations_body["process"]["health_routes"] is True
     assert {check["key"] for check in operations_body["checks"]} >= {
         "database",
         "cookie_auth",
+        "transactional_email",
         "process_supervision",
         "stripe",
     }

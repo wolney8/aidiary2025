@@ -657,6 +657,21 @@ const QUOTA_FIELDS: Array<{
 
             <article class="admin-readiness-card">
               <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>mark_email_read</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">Email</p>
+                <h3>{{ ops.email.ready ? "Email ready" : "Email incomplete" }}</h3>
+                <span class="admin-muted">
+                  {{ formatEnumLabel(ops.email.provider) }}
+                  · SMTP {{ ops.email.smtp_host_configured ? "set" : "missing" }}
+                  · Verification {{ ops.email.registration_email_required ? "on" : "off" }}
+                </span>
+              </div>
+            </article>
+
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
                 <mat-icon>monitor_heart</mat-icon>
               </span>
               <div>
