@@ -674,6 +674,21 @@ const QUOTA_FIELDS: Array<{
 
             <article class="admin-readiness-card">
               <span class="admin-readiness-icon" aria-hidden="true">
+                <mat-icon>verified_user</mat-icon>
+              </span>
+              <div>
+                <p class="admin-eyebrow">Google OAuth</p>
+                <h3>{{ ops.oauth.google.ready ? "OAuth ready" : "OAuth incomplete" }}</h3>
+                <span class="admin-muted">
+                  Client {{ ops.oauth.google.client_id_configured ? "set" : "missing" }}
+                  · Secret {{ ops.oauth.google.client_secret_configured ? "set" : "missing" }}
+                  · Redirect {{ ops.oauth.google.redirect_uri_configured ? "set" : "missing" }}
+                </span>
+              </div>
+            </article>
+
+            <article class="admin-readiness-card">
+              <span class="admin-readiness-icon" aria-hidden="true">
                 <mat-icon>monitor_heart</mat-icon>
               </span>
               <div>

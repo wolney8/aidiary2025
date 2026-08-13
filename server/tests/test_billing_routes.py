@@ -247,7 +247,10 @@ def test_unified_admin_routes_require_administrator_entitlement(client):
     assert operations.get_json()["error"] == "Administrator access is required."
 
 
-def test_administrator_can_use_unified_admin_console_routes(client):
+def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch):
+    monkeypatch.delenv("OAUTH_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("OAUTH_GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("OAUTH_GOOGLE_REDIRECT_URI", raising=False)
     db_path = client.application.config["DATABASE_PATH"]
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -277,11 +280,14 @@ def test_administrator_can_use_unified_admin_console_routes(client):
     assert operations_body["auth"]["cookie_mode"] in {True, False}
     assert operations_body["email"]["provider"] == "console"
     assert operations_body["email"]["ready"] is False
+    assert operations_body["oauth"]["google"]["ready"] is False
+    assert set(operations_body["oauth"]["google"].values()) <= {False}
     assert operations_body["process"]["health_routes"] is True
     assert {check["key"] for check in operations_body["checks"]} >= {
         "database",
         "cookie_auth",
         "transactional_email",
+        "google_oauth",
         "process_supervision",
         "stripe",
     }

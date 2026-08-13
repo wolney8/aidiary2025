@@ -838,6 +838,20 @@ def _operations_readiness() -> dict[str, object]:
         and bool(smtp_host)
         and registration_email_required
     )
+    google_client_id_configured = bool((os.getenv("OAUTH_GOOGLE_CLIENT_ID") or "").strip())
+    google_client_secret_configured = bool((os.getenv("OAUTH_GOOGLE_CLIENT_SECRET") or "").strip())
+    google_redirect_uri = (os.getenv("OAUTH_GOOGLE_REDIRECT_URI") or "").strip()
+    google_redirect_configured = bool(google_redirect_uri)
+    google_redirect_is_local = any(
+        marker in google_redirect_uri
+        for marker in ("localhost", "127.0.0.1", "0.0.0.0")
+    )
+    google_oauth_ready = (
+        google_client_id_configured
+        and google_client_secret_configured
+        and google_redirect_configured
+        and (app_environment != "production" or not google_redirect_is_local)
+    )
 
     checks = [
         _readiness_check(
@@ -921,6 +935,16 @@ def _operations_readiness() -> dict[str, object]:
             ),
         ),
         _readiness_check(
+            "google_oauth",
+            "Google OAuth",
+            "ok" if google_oauth_ready else "warning",
+            (
+                "Google client credentials and redirect URI are configured."
+                if google_oauth_ready
+                else "Configure Google client ID, secret, and a matching redirect URI."
+            ),
+        ),
+        _readiness_check(
             "process_supervision",
             "Process supervision assets",
             "ok" if all(process_status.values()) else "warning",
@@ -960,6 +984,15 @@ def _operations_readiness() -> dict[str, object]:
             "smtp_host_configured": bool(smtp_host),
             "registration_email_required": registration_email_required,
             "ready": email_ready,
+        },
+        "oauth": {
+            "google": {
+                "client_id_configured": google_client_id_configured,
+                "client_secret_configured": google_client_secret_configured,
+                "redirect_uri_configured": google_redirect_configured,
+                "redirect_uri_local": google_redirect_is_local,
+                "ready": google_oauth_ready,
+            },
         },
         "process": process_status,
         "checks": checks,

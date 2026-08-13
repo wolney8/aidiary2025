@@ -73,6 +73,15 @@ export interface AdminOperationsReadiness {
     registration_email_required: boolean;
     ready: boolean;
   };
+  oauth: {
+    google: {
+      client_id_configured: boolean;
+      client_secret_configured: boolean;
+      redirect_uri_configured: boolean;
+      redirect_uri_local: boolean;
+      ready: boolean;
+    };
+  };
   process: Record<string, boolean>;
   checks: Array<{
     key: string;
