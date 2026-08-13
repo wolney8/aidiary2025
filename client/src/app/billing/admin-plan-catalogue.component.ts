@@ -17,6 +17,7 @@ import {
   AdminAnnouncementStatus,
   AdminAuditEvent,
   AdminBillingUser,
+  AdminDatabaseMaintenanceReport,
   AdminOverview,
   AdminOperationsReadiness,
   AdminProductionPreflight,
@@ -797,6 +798,65 @@ const QUOTA_FIELDS: Array<{
               </span>
               <div>
                 <h3>{{ formatPreflightGateLabel(gate.gate) }}</h3>
+                <p>{{ gate.message }}</p>
+              </div>
+            </article>
+          </div>
+
+          <article class="admin-operation-action-card" data-testid="admin-maintenance-card">
+            <span class="admin-readiness-icon" aria-hidden="true">
+              <mat-icon>
+                {{ maintenance?.ready_for_database_maintenance ? "backup_table" : "database_off" }}
+              </mat-icon>
+            </span>
+            <div>
+              <p class="admin-eyebrow">Database maintenance</p>
+              <h3>{{ maintenance?.ready_for_database_maintenance ? "Evidence current" : "Evidence needs review" }}</h3>
+              <p>{{ getMaintenanceSummaryText() }}</p>
+            </div>
+            <div class="admin-preflight-actions">
+              <mat-checkbox
+                [(ngModel)]="maintenanceRequiresFullEvidence"
+                name="admin_maintenance_requires_full_evidence"
+                data-testid="admin-maintenance-require-full"
+              >
+                Require launch evidence
+              </mat-checkbox>
+              <button
+                mat-stroked-button
+                type="button"
+                class="admin-pill-button"
+                (click)="loadMaintenance()"
+                [disabled]="maintenanceLoading"
+                data-testid="admin-maintenance-refresh"
+              >
+                <mat-icon aria-hidden="true">{{ maintenanceLoading ? "hourglass_top" : "refresh" }}</mat-icon>
+                <span>{{ maintenanceLoading ? "Checking" : "Run check" }}</span>
+              </button>
+            </div>
+          </article>
+
+          <div
+            class="admin-readiness-check-list admin-preflight-list"
+            *ngIf="maintenance && getMaintenanceGates().length"
+            data-testid="admin-maintenance-gates"
+          >
+            <article
+              class="admin-readiness-check"
+              *ngFor="let gate of getMaintenanceGates(); trackBy: trackMaintenanceGate"
+              [attr.data-testid]="'admin-maintenance-gate-' + gate.gate"
+            >
+              <span
+                class="admin-readiness-status"
+                [ngClass]="readinessStatusClass(gate.severity === 'blocker' ? 'blocked' : 'warning')"
+              >
+                <mat-icon aria-hidden="true">
+                  {{ gate.severity === "blocker" ? "block" : "warning" }}
+                </mat-icon>
+                <span>{{ gate.severity === "blocker" ? "Blocker" : "Warning" }}</span>
+              </span>
+              <div>
+                <h3>{{ formatEnumLabel(gate.gate) }}</h3>
                 <p>{{ gate.message }}</p>
               </div>
             </article>
@@ -1890,6 +1950,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   overview: AdminOverview | null = null;
   operations: AdminOperationsReadiness | null = null;
   preflight: AdminProductionPreflight | null = null;
+  maintenance: AdminDatabaseMaintenanceReport | null = null;
   securityReport: AdminSecurityAuditReport | null = null;
   users: EditableAdminUser[] = [];
   plans: EditablePlan[] = [];
@@ -1902,6 +1963,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   savingAnnouncement = false;
   sendingTestEmail = false;
   preflightLoading = false;
+  maintenanceLoading = false;
   errorMessage = "";
   successMessage = "";
   testEmailAddress = "";
@@ -1910,6 +1972,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   securityEventType = "";
   securityUserId: number | null = null;
   preflightRequiresPostgres = false;
+  maintenanceRequiresFullEvidence = false;
   announcementDraft: AnnouncementDraft = this.emptyAnnouncementDraft();
 
   ngOnInit(): void {
@@ -1931,6 +1994,9 @@ export class AdminPlanCatalogueComponent implements OnInit {
     if (section === "operations" && !this.preflight) {
       this.loadPreflight(true);
     }
+    if (section === "operations" && !this.maintenance) {
+      this.loadMaintenance(true);
+    }
     if (section === "security" && !this.securityReport) {
       this.loadSecurityReport();
     }
@@ -1949,6 +2015,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
     this.loadOverview();
     this.loadOperations(true);
     this.loadPreflight(true);
+    this.loadMaintenance(true);
     this.loadUsers();
     this.loadPlans();
     this.loadAnnouncements();
@@ -1981,6 +2048,7 @@ export class AdminPlanCatalogueComponent implements OnInit {
   refreshOperationsReadiness(): void {
     this.loadOperations();
     this.loadPreflight();
+    this.loadMaintenance();
   }
 
   loadPreflight(silent = false): void {
@@ -1994,6 +2062,22 @@ export class AdminPlanCatalogueComponent implements OnInit {
         this.preflightLoading = false;
         if (!silent) {
           this.showError(error, "Production preflight could not be loaded.");
+        }
+      },
+    });
+  }
+
+  loadMaintenance(silent = false): void {
+    this.maintenanceLoading = true;
+    this.adminService.getDatabaseMaintenance(this.maintenanceRequiresFullEvidence).subscribe({
+      next: (maintenance) => {
+        this.maintenance = maintenance;
+        this.maintenanceLoading = false;
+      },
+      error: (error) => {
+        this.maintenanceLoading = false;
+        if (!silent) {
+          this.showError(error, "Database maintenance evidence could not be loaded.");
         }
       },
     });
@@ -2364,6 +2448,33 @@ export class AdminPlanCatalogueComponent implements OnInit {
   }
 
   trackPreflightGate(
+    _index: number,
+    gate: { gate: string; severity: string; message: string },
+  ): string {
+    return `${gate.severity}-${gate.gate}`;
+  }
+
+  getMaintenanceGates(): Array<{ gate: string; severity: string; message: string }> {
+    if (!this.maintenance) {
+      return [];
+    }
+    return [...this.maintenance.blockers, ...this.maintenance.warnings];
+  }
+
+  getMaintenanceSummaryText(): string {
+    if (this.maintenanceLoading && !this.maintenance) {
+      return "Checking backup and restore evidence.";
+    }
+    if (!this.maintenance) {
+      return "Run the maintenance check before relying on backup evidence.";
+    }
+    const evidenceCount = Object.keys(this.maintenance.evidence || {}).length;
+    const blockerCount = this.maintenance.blockers.length;
+    const warningCount = this.maintenance.warnings.length;
+    return `${evidenceCount} evidence items · ${blockerCount} blockers · ${warningCount} warnings`;
+  }
+
+  trackMaintenanceGate(
     _index: number,
     gate: { gate: string; severity: string; message: string },
   ): string {

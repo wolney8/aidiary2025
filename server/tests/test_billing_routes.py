@@ -516,6 +516,73 @@ def test_admin_preflight_requires_administrator_entitlement(client):
     assert response.get_json()["error"] == "Administrator access is required."
 
 
+def test_administrator_can_view_database_maintenance_without_paths(
+    client,
+    monkeypatch,
+    tmp_path,
+):
+    evidence_dir = tmp_path / "backups"
+    evidence_dir.mkdir()
+    created_at = "2026-08-13T12:00:00Z"
+    (evidence_dir / "database-backup-bundle-20260813T120000Z.json").write_text(
+        json.dumps(
+            {
+                "created_at": created_at,
+                "ok": True,
+                "counts": {"completed": 2, "failed": 0, "skipped": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (evidence_dir / "openmynd-sqlite-20260813T120000Z-daily.manifest.json").write_text(
+        json.dumps(
+            {
+                "created_at": created_at,
+                "provider": "sqlite",
+                "total_rows": 12,
+                "byte_size": 2048,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OPENMYND_BACKUP_SUMMARY_DIR", str(evidence_dir))
+    monkeypatch.setenv("OPENMYND_SQLITE_BACKUP_DIR", str(evidence_dir))
+    monkeypatch.setenv("OPENMYND_POSTGRES_SNAPSHOT_DIR", str(tmp_path / "postgres"))
+    monkeypatch.setenv("OPENMYND_MEDIA_BACKUP_DIR", str(tmp_path / "media"))
+    monkeypatch.delenv("OPENMYND_RESTORE_REPORT", raising=False)
+    db_path = client.application.config["DATABASE_PATH"]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entitlements (user_id, tier, source, status)
+            VALUES (1, 'administrator', 'manual', 'active')
+            ON CONFLICT(user_id) DO UPDATE SET tier = 'administrator'
+            """
+        )
+
+    response = client.get(
+        "/api/admin/maintenance?max_age_hours=99999",
+        headers=_headers(client.application),
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["blockers"] == []
+    assert body["ready_for_database_maintenance"] is True
+    assert body["summary"]["required"]["backup_bundle"] is True
+    assert body["evidence"]["sqlite_backup"]["total_rows"] == 12
+    assert "path" not in body["evidence"]["sqlite_backup"]
+    assert all("path" not in gate for gate in body["blockers"])
+    assert all("directory" not in gate for gate in body["warnings"])
+
+
+def test_admin_database_maintenance_requires_administrator_entitlement(client):
+    response = client.get("/api/admin/maintenance", headers=_headers(client.application))
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "Administrator access is required."
+
+
 def test_admin_announcements_target_users_and_track_state(client):
     db_path = client.application.config["DATABASE_PATH"]
     with sqlite3.connect(db_path) as conn:

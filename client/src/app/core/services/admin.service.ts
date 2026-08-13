@@ -96,6 +96,28 @@ export interface AdminProductionPreflight {
   summary: Record<string, unknown>;
 }
 
+export interface AdminMaintenanceGate {
+  gate: string;
+  severity: "blocker" | "warning" | string;
+  message: string;
+  [key: string]: unknown;
+}
+
+export interface AdminDatabaseMaintenanceReport {
+  checked_at: string;
+  ready_for_database_maintenance: boolean;
+  max_age_hours: number;
+  require_full: boolean;
+  blockers: AdminMaintenanceGate[];
+  warnings: AdminMaintenanceGate[];
+  evidence: Record<string, Record<string, unknown>>;
+  summary: {
+    blocker_count: number;
+    warning_count: number;
+    required: Record<string, boolean>;
+  };
+}
+
 export interface AdminBillingUser {
   id: number;
   username: string;
@@ -244,6 +266,13 @@ export class AdminService {
   getProductionPreflight(requirePostgres = false): Observable<AdminProductionPreflight> {
     const query = requirePostgres ? "?require_postgres=true" : "";
     return this.http.get<AdminProductionPreflight>(`${this.apiUrl}/preflight${query}`, {
+      headers: this.headers(),
+    });
+  }
+
+  getDatabaseMaintenance(requireFull = false): Observable<AdminDatabaseMaintenanceReport> {
+    const query = requireFull ? "?require_full=true" : "";
+    return this.http.get<AdminDatabaseMaintenanceReport>(`${this.apiUrl}/maintenance${query}`, {
       headers: this.headers(),
     });
   }

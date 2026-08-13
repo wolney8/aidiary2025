@@ -30,6 +30,13 @@ from services.stripe_billing import (
     configured_checkout_tiers,
     load_stripe_billing_config,
 )
+from scripts.validate_database_maintenance import (
+    DEFAULT_MAX_AGE_HOURS as DEFAULT_DATABASE_MAINTENANCE_MAX_AGE_HOURS,
+    build_database_maintenance_report,
+)
+from scripts.create_sqlite_backup import DEFAULT_BACKUP_DIR
+from scripts.export_postgres_snapshot import DEFAULT_SNAPSHOT_DIR
+from scripts.run_database_backup_bundle import DEFAULT_MEDIA_BACKUP_DIR
 from scripts.validate_production_preflight import build_production_preflight
 from services.usage_limits import get_user_usage_summary
 
@@ -1058,6 +1065,86 @@ def admin_production_preflight():
             root_path=Path(current_app.root_path),
             require_postgres=require_postgres,
         )
+    ), 200
+
+
+def _bool_arg(name: str) -> bool:
+    return str(request.args.get(name) or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _int_arg(name: str, default: int) -> int:
+    try:
+        parsed = int(str(request.args.get(name) or "").strip())
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _maintenance_path(env_name: str, default: Path) -> Path:
+    configured = (os.getenv(env_name) or "").strip()
+    return Path(configured).expanduser() if configured else default
+
+
+def _scrub_maintenance_gate(gate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in gate.items()
+        if key not in {"path", "directory"}
+    }
+
+
+def _scrub_maintenance_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        name: {
+            key: value
+            for key, value in details.items()
+            if key != "path"
+        }
+        for name, details in evidence.items()
+        if isinstance(details, dict)
+    }
+
+
+@admin_bp.route("/admin/maintenance", methods=["GET"])
+@jwt_required()
+def admin_database_maintenance():
+    user_id = _current_user_id()
+    require_full = _bool_arg("require_full")
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+
+    restore_report_value = (os.getenv("OPENMYND_RESTORE_REPORT") or "").strip()
+    report = build_database_maintenance_report(
+        backup_summary_dir=_maintenance_path("OPENMYND_BACKUP_SUMMARY_DIR", DEFAULT_BACKUP_DIR),
+        sqlite_backup_dir=_maintenance_path("OPENMYND_SQLITE_BACKUP_DIR", DEFAULT_BACKUP_DIR),
+        postgres_snapshot_dir=_maintenance_path(
+            "OPENMYND_POSTGRES_SNAPSHOT_DIR",
+            DEFAULT_SNAPSHOT_DIR,
+        ),
+        media_backup_dir=_maintenance_path("OPENMYND_MEDIA_BACKUP_DIR", DEFAULT_MEDIA_BACKUP_DIR),
+        restore_report=Path(restore_report_value).expanduser() if restore_report_value else None,
+        max_age_hours=_int_arg("max_age_hours", DEFAULT_DATABASE_MAINTENANCE_MAX_AGE_HOURS),
+        require_backup_bundle=True,
+        require_sqlite_backup=True,
+        require_postgres_snapshot=require_full,
+        require_media_archive=require_full,
+        require_restore_rehearsal=require_full,
+    )
+    return jsonify(
+        {
+            **report,
+            "blockers": [_scrub_maintenance_gate(gate) for gate in report["blockers"]],
+            "warnings": [_scrub_maintenance_gate(gate) for gate in report["warnings"]],
+            "evidence": _scrub_maintenance_evidence(report["evidence"]),
+            "require_full": require_full,
+        }
     ), 200
 
 
