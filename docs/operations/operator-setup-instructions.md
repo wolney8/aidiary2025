@@ -117,6 +117,22 @@ APP_ENV=production PYTHONPATH=. python scripts/validate_production_preflight.py 
 Do not run destructive Postgres reset/import commands against a live database unless
 that is the explicit cutover rehearsal being performed.
 
+## Media Storage Setup
+
+Public production must use an explicit media root outside the repository source tree.
+`MEDIA_BASE_URL` may expose media through a CDN/proxy later, but it does not replace the
+server-side storage location.
+
+Server env:
+
+```bash
+MEDIA_ROOT=/var/lib/openmynd/media
+MEDIA_BASE_URL=https://your-api-domain.com/media
+```
+
+Local development can omit `MEDIA_ROOT`, but production startup and preflight now block
+that fallback.
+
 ## Backup And Restore Evidence
 
 Admin -> Operations -> Database maintenance reads backup evidence from these locations

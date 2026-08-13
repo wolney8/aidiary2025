@@ -693,3 +693,64 @@ def test_preflight_blocks_placeholder_openai_key_in_production(tmp_path):
     assert report["ready_for_production"] is False
     assert "openai_api_key" in blocker_gates
     assert report["summary"]["openai_api_key_configured"] is False
+
+
+def test_preflight_blocks_media_base_url_without_media_root_in_production(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env.pop("MEDIA_ROOT")
+    env["MEDIA_BASE_URL"] = "https://cdn.openmynd.example/media"
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "media_storage" in blocker_gates
+    assert report["summary"]["media_root_configured"] is False
+
+
+def test_preflight_blocks_relative_media_root_in_production(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env["MEDIA_ROOT"] = "media"
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "media_storage_path" in blocker_gates
+    assert report["summary"]["media_root_absolute"] is False
+
+
+def test_preflight_blocks_repo_local_media_root_in_production(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env["MEDIA_ROOT"] = str(tmp_path / "media")
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert report["ready_for_production"] is False
+    assert "media_storage_path" in blocker_gates
+    assert report["summary"]["media_root_inside_repo"] is True

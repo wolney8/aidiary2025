@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, get_jwt_identity, verify_jwt_in_request
@@ -44,6 +45,14 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _path_is_within(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def _apply_security_headers(response, *, app_environment: str):
@@ -118,8 +127,9 @@ def _production_runtime_blockers(
     *,
     database_provider: str,
     runtime_migrations_enabled: bool,
-    media_root_configured: bool,
-    media_base_url_configured: bool,
+    media_root_value: str | None,
+    resolved_media_root: str,
+    app_root_path: str,
     cors_origins: list[str],
     rate_limit_storage_uri: str,
     email_provider: str,
@@ -152,10 +162,23 @@ def _production_runtime_blockers(
             'controlled emergency fallback.'
         )
 
-    if not media_root_configured and not media_base_url_configured:
+    media_root_value = (media_root_value or '').strip()
+    media_root_path = Path(resolved_media_root)
+    repo_root = Path(app_root_path).resolve().parent
+    media_root_inside_repo = _path_is_within(media_root_path, repo_root)
+    if not media_root_value:
         blockers.append(
-            'MEDIA_ROOT or MEDIA_BASE_URL must be explicit when APP_ENV=production; '
-            'do not use the repository-local media directory for public production.'
+            'MEDIA_ROOT must be explicit when APP_ENV=production; do not use the '
+            'repository-local media directory for public production.'
+        )
+    elif not Path(media_root_value).expanduser().is_absolute():
+        blockers.append(
+            'MEDIA_ROOT must be an absolute path when APP_ENV=production.'
+        )
+    elif media_root_inside_repo:
+        blockers.append(
+            'MEDIA_ROOT must not point inside the repository source tree when '
+            'APP_ENV=production.'
         )
 
     if rate_limit_storage_uri == 'memory://':
@@ -367,8 +390,9 @@ def create_app():
         production_blockers = _production_runtime_blockers(
             database_provider=database_settings.provider,
             runtime_migrations_enabled=database_settings.runtime_migrations_enabled,
-            media_root_configured=bool((media_root or '').strip()),
-            media_base_url_configured=bool(app.config['MEDIA_BASE_URL']),
+            media_root_value=media_root,
+            resolved_media_root=resolved_media_root,
+            app_root_path=app.root_path,
             cors_origins=cors_origins,
             rate_limit_storage_uri=app.config['RATELIMIT_STORAGE_URI'],
             email_provider=email_provider,

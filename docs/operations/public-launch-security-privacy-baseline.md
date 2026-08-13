@@ -32,6 +32,9 @@ Current automated evidence:
   also include HSTS.
 - Production preflight now treats missing or placeholder OpenAI API keys as an AI launch
   blocker, and Admin Operations reports AI-provider readiness without exposing secrets.
+- Production startup and preflight now require `MEDIA_ROOT` to be an explicit absolute
+  path outside the repository source tree, so public media does not fall back to
+  `server/media`.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.

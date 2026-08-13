@@ -118,6 +118,14 @@ def _looks_like_placeholder(value: str | None) -> bool:
     return not normalised or any(marker in normalised for marker in PLACEHOLDER_MARKERS)
 
 
+def _path_is_within(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def _looks_like_prefixed_secret(value: str | None, prefix: str) -> bool:
     normalised = (value or "").strip()
     return normalised.startswith(prefix) and not _looks_like_placeholder(normalised)
@@ -590,12 +598,34 @@ def build_production_preflight(
 
     media_root = (env.get("MEDIA_ROOT") or "").strip()
     media_base_url = (env.get("MEDIA_BASE_URL") or "").strip()
-    if app_env == "production" and not media_root and not media_base_url:
+    media_root_path = Path(media_root).expanduser() if media_root else None
+    repo_root = root_path.resolve().parent
+    media_root_is_absolute = bool(media_root_path and media_root_path.is_absolute())
+    media_root_inside_repo = bool(
+        media_root_path and media_root_is_absolute and _path_is_within(media_root_path, repo_root)
+    )
+    if app_env == "production" and not media_root:
         _add_gate(
             blockers,
             gate="media_storage",
             message=(
-                "MEDIA_ROOT or MEDIA_BASE_URL must be explicit before production deployment."
+                "MEDIA_ROOT must be explicit before production deployment; do not use "
+                "the repository-local media directory."
+            ),
+        )
+    elif app_env == "production" and not media_root_is_absolute:
+        _add_gate(
+            blockers,
+            gate="media_storage_path",
+            message="MEDIA_ROOT must be an absolute path for production deployment.",
+        )
+    elif app_env == "production" and media_root_inside_repo:
+        _add_gate(
+            blockers,
+            gate="media_storage_path",
+            message=(
+                "MEDIA_ROOT must not point inside the repository source tree for "
+                "production deployment."
             ),
         )
     elif not media_root and not media_base_url:
@@ -746,6 +776,8 @@ def build_production_preflight(
             "stripe_price_plus_monthly_configured": bool(stripe_price_plus_monthly),
             "stripe_price_plus_annual_configured": bool(stripe_price_plus_annual),
             "media_root_configured": bool(media_root),
+            "media_root_absolute": media_root_is_absolute,
+            "media_root_inside_repo": media_root_inside_repo,
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
             "sensitive_rate_limits_configured": configured_sensitive_rate_limits,
