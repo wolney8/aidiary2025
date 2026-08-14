@@ -190,6 +190,69 @@ def test_app_blocks_missing_media_root_when_app_env_is_production(monkeypatch, t
         create_app()
 
 
+def test_app_allows_r2_media_backend_without_media_root_when_app_env_is_production(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.delenv("MEDIA_ROOT", raising=False)
+    monkeypatch.setenv("MEDIA_STORAGE_BACKEND", "r2")
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://abc123.r2.cloudflarestorage.com")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "r2-access-key")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "r2-secret-key")
+    monkeypatch.setenv("R2_BUCKET_NAME", "openmynd-media")
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+    monkeypatch.setenv("EMAIL_FROM_ADDRESS", "OpenMynd <no-reply@openmynd.app>")
+    monkeypatch.setenv("SMTP_HOST", "smtp.openmynd.app")
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+
+    assert app.config["MEDIA_STORAGE_BACKEND"] == "r2"
+    assert app.config["R2_BUCKET_NAME"] == "openmynd-media"
+
+
+def test_app_blocks_incomplete_r2_media_backend_when_app_env_is_production(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.delenv("MEDIA_ROOT", raising=False)
+    monkeypatch.setenv("MEDIA_STORAGE_BACKEND", "r2")
+    monkeypatch.setenv("R2_BUCKET_NAME", "openmynd-media")
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+    monkeypatch.setenv("EMAIL_FROM_ADDRESS", "OpenMynd <no-reply@openmynd.app>")
+    monkeypatch.setenv("SMTP_HOST", "smtp.openmynd.app")
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    with pytest.raises(RuntimeError, match="R2_ENDPOINT_URL"):
+        create_app()
+
+
 def test_app_blocks_repo_local_media_root_when_app_env_is_production(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")

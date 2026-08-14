@@ -1,4 +1,4 @@
-"""Local media storage helpers for entry images.
+"""Media storage helpers for entry images and attachments.
 
 This module intentionally stores only storage keys in the database and resolves
 them to browser-usable URLs at response time, so the backend can later swap the
@@ -8,15 +8,19 @@ storage backend without changing the entry contracts again.
 from __future__ import annotations
 
 import base64
+import mimetypes
 import os
 from pathlib import Path, PurePosixPath
 from typing import Final
 from uuid import uuid4
 
-from flask import current_app, request
+from flask import Response, current_app, request
 
 
 DEFAULT_MEDIA_URL_PREFIX: Final[str] = "/media"
+LOCAL_MEDIA_BACKEND: Final[str] = "local"
+R2_MEDIA_BACKEND: Final[str] = "r2"
+SUPPORTED_MEDIA_BACKENDS: Final[set[str]] = {LOCAL_MEDIA_BACKEND, R2_MEDIA_BACKEND}
 _MIME_TO_EXTENSION: Final[dict[str, str]] = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -38,6 +42,8 @@ _ALLOWED_EXTENSIONS: Final[set[str]] = {
 
 
 def ensure_media_root(media_root: str) -> None:
+    if _backend_from_env() == R2_MEDIA_BACKEND:
+        return
     os.makedirs(media_root, exist_ok=True)
 
 
@@ -69,9 +75,7 @@ def store_profile_image(image_bytes: bytes, *, user_id: int) -> str:
         raise ValueError("No image bytes were provided for storage.")
 
     storage_key = f"profiles/{user_id}/{uuid4().hex}.jpg"
-    image_path = _storage_key_to_path(storage_key)
-    image_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(image_bytes)
+    _write_media_bytes(storage_key, image_bytes)
     return storage_key
 
 
@@ -142,13 +146,16 @@ def delete_image(storage_key: str | None) -> None:
     if not storage_key:
         return
 
+    if _active_backend() == R2_MEDIA_BACKEND:
+        _r2_client().delete_object(Bucket=_r2_bucket_name(), Key=_safe_storage_key(storage_key))
+        return
+
     image_path = _storage_key_to_path(storage_key)
     try:
         image_path.unlink(missing_ok=True)
     except TypeError:
         if image_path.exists():
             image_path.unlink()
-
     _cleanup_empty_parent_dirs(image_path.parent)
 
 
@@ -156,24 +163,46 @@ def resolve_image_url(storage_key: str | None) -> str | None:
     if not storage_key:
         return None
 
+    safe_key = "/".join(PurePosixPath(storage_key).parts)
+    r2_public_base_url = (current_app.config.get("R2_PUBLIC_BASE_URL") or "").rstrip("/")
+    if _active_backend() == R2_MEDIA_BACKEND and r2_public_base_url:
+        return f"{r2_public_base_url}/{safe_key}"
+
     base_url = (current_app.config.get("MEDIA_BASE_URL") or "").rstrip("/")
     if not base_url:
         base_url = request.url_root.rstrip("/")
 
     media_prefix = current_app.config.get("MEDIA_URL_PREFIX", DEFAULT_MEDIA_URL_PREFIX).rstrip("/")
-    safe_key = "/".join(PurePosixPath(storage_key).parts)
+    if base_url.endswith(media_prefix):
+        return f"{base_url}/{safe_key}"
     return f"{base_url}{media_prefix}/{safe_key}"
 
 
 def media_path_exists(storage_key: str | None) -> bool:
     if not storage_key:
         return False
+    if _active_backend() == R2_MEDIA_BACKEND:
+        try:
+            _r2_client().head_object(Bucket=_r2_bucket_name(), Key=_safe_storage_key(storage_key))
+            return True
+        except Exception:  # noqa: BLE001
+            return False
     return _storage_key_to_path(storage_key).exists()
 
 
 def read_media_bytes(storage_key: str | None) -> bytes | None:
     if not storage_key:
         return None
+    if _active_backend() == R2_MEDIA_BACKEND:
+        try:
+            response = _r2_client().get_object(Bucket=_r2_bucket_name(), Key=_safe_storage_key(storage_key))
+        except Exception:  # noqa: BLE001
+            return None
+        body = response.get("Body")
+        if body is None:
+            return None
+        return body.read()
+
     image_path = _storage_key_to_path(storage_key)
     if not image_path.exists():
         return None
@@ -182,6 +211,14 @@ def read_media_bytes(storage_key: str | None) -> bytes | None:
 
 def read_image_bytes(storage_key: str | None) -> bytes | None:
     return read_media_bytes(storage_key)
+
+
+def build_media_response(storage_key: str):
+    media_bytes = read_media_bytes(storage_key)
+    if media_bytes is None:
+        return None
+    mimetype, _encoding = mimetypes.guess_type(storage_key)
+    return Response(media_bytes, mimetype=mimetype or "application/octet-stream")
 
 
 def _store_image_bytes(
@@ -195,19 +232,93 @@ def _store_image_bytes(
         raise ValueError("No image bytes were provided for storage.")
 
     storage_key = f"entries/{entry_kind}/{user_id}/{uuid4().hex}.{extension}"
-    image_path = _storage_key_to_path(storage_key)
-    image_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(image_bytes)
+    _write_media_bytes(storage_key, image_bytes)
     return storage_key
 
 
+def _write_media_bytes(storage_key: str, media_bytes: bytes) -> None:
+    if _active_backend() == R2_MEDIA_BACKEND:
+        _r2_client().put_object(
+            Bucket=_r2_bucket_name(),
+            Key=_safe_storage_key(storage_key),
+            Body=media_bytes,
+            ContentType=mimetypes.guess_type(storage_key)[0] or "application/octet-stream",
+        )
+        return
+
+    image_path = _storage_key_to_path(storage_key)
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(media_bytes)
+
+
 def _storage_key_to_path(storage_key: str) -> Path:
-    posix_key = PurePosixPath(storage_key)
-    if posix_key.is_absolute() or ".." in posix_key.parts:
-        raise ValueError("Invalid media storage key.")
+    safe_key = _safe_storage_key(storage_key)
 
     media_root = Path(current_app.config["MEDIA_ROOT"])
-    return media_root.joinpath(*posix_key.parts)
+    return media_root.joinpath(*PurePosixPath(safe_key).parts)
+
+
+def _safe_storage_key(storage_key: str) -> str:
+    posix_key = PurePosixPath(str(storage_key or "").strip())
+    if not posix_key.parts or posix_key.is_absolute() or ".." in posix_key.parts:
+        raise ValueError("Invalid media storage key.")
+    return "/".join(posix_key.parts)
+
+
+def _backend_from_env() -> str:
+    backend = (os.getenv("MEDIA_STORAGE_BACKEND") or LOCAL_MEDIA_BACKEND).strip().lower()
+    return backend if backend in SUPPORTED_MEDIA_BACKENDS else LOCAL_MEDIA_BACKEND
+
+
+def _active_backend() -> str:
+    backend = (
+        current_app.config.get("MEDIA_STORAGE_BACKEND")
+        or os.getenv("MEDIA_STORAGE_BACKEND")
+        or LOCAL_MEDIA_BACKEND
+    )
+    backend = str(backend).strip().lower()
+    if backend not in SUPPORTED_MEDIA_BACKENDS:
+        raise RuntimeError(f"Unsupported MEDIA_STORAGE_BACKEND: {backend}")
+    return backend
+
+
+def _r2_bucket_name() -> str:
+    bucket_name = str(current_app.config.get("R2_BUCKET_NAME") or "").strip()
+    if not bucket_name:
+        raise RuntimeError("R2_BUCKET_NAME must be configured when MEDIA_STORAGE_BACKEND=r2")
+    return bucket_name
+
+
+def _r2_client():
+    client = current_app.config.get("R2_CLIENT")
+    if client is not None:
+        return client
+
+    endpoint_url = str(current_app.config.get("R2_ENDPOINT_URL") or "").strip()
+    access_key_id = str(current_app.config.get("R2_ACCESS_KEY_ID") or "").strip()
+    secret_access_key = str(current_app.config.get("R2_SECRET_ACCESS_KEY") or "").strip()
+    if not endpoint_url or not access_key_id or not secret_access_key:
+        raise RuntimeError(
+            "R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be "
+            "configured when MEDIA_STORAGE_BACKEND=r2"
+        )
+
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise RuntimeError("boto3 is required when MEDIA_STORAGE_BACKEND=r2") from exc
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    current_app.config["R2_CLIENT"] = client
+    return client
 
 
 def _cleanup_empty_parent_dirs(path: Path) -> None:

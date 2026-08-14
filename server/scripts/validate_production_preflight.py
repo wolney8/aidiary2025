@@ -619,6 +619,11 @@ def build_production_preflight(
                     message=f"{tier_key} must look like a Stripe Price ID.",
                 )
 
+    media_storage_backend = (env.get("MEDIA_STORAGE_BACKEND") or "local").strip().lower()
+    r2_endpoint_url = (env.get("R2_ENDPOINT_URL") or "").strip()
+    r2_access_key_id = (env.get("R2_ACCESS_KEY_ID") or "").strip()
+    r2_secret_access_key = (env.get("R2_SECRET_ACCESS_KEY") or "").strip()
+    r2_bucket_name = (env.get("R2_BUCKET_NAME") or "").strip()
     media_root = (env.get("MEDIA_ROOT") or "").strip()
     media_base_url = (env.get("MEDIA_BASE_URL") or "").strip()
     media_root_path = Path(media_root).expanduser() if media_root else None
@@ -627,7 +632,33 @@ def build_production_preflight(
     media_root_inside_repo = bool(
         media_root_path and media_root_is_absolute and _path_is_within(media_root_path, repo_root)
     )
-    if app_env == "production" and not media_root:
+    if media_storage_backend not in {"local", "r2"}:
+        _add_gate(
+            blockers,
+            gate="media_storage_backend",
+            message="MEDIA_STORAGE_BACKEND must be either local or r2.",
+        )
+    elif app_env == "production" and media_storage_backend == "r2":
+        missing_r2 = [
+            key
+            for key, value in {
+                "R2_ENDPOINT_URL": r2_endpoint_url,
+                "R2_ACCESS_KEY_ID": r2_access_key_id,
+                "R2_SECRET_ACCESS_KEY": r2_secret_access_key,
+                "R2_BUCKET_NAME": r2_bucket_name,
+            }.items()
+            if not value
+        ]
+        if missing_r2:
+            _add_gate(
+                blockers,
+                gate="r2_media_storage",
+                message=(
+                    "R2 media storage is selected but required R2 configuration is missing: "
+                    + ", ".join(missing_r2)
+                ),
+            )
+    elif app_env == "production" and not media_root:
         _add_gate(
             blockers,
             gate="media_storage",
@@ -814,10 +845,17 @@ def build_production_preflight(
             ),
             "stripe_price_plus_monthly_configured": bool(stripe_price_plus_monthly),
             "stripe_price_plus_annual_configured": bool(stripe_price_plus_annual),
+            "media_storage_backend": media_storage_backend,
             "media_root_configured": bool(media_root),
             "media_root_absolute": media_root_is_absolute,
             "media_root_inside_repo": media_root_inside_repo,
             "media_base_url_configured": bool(media_base_url),
+            "r2_media_configured": bool(
+                r2_endpoint_url
+                and r2_access_key_id
+                and r2_secret_access_key
+                and r2_bucket_name
+            ),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
             "shared_rate_limiting_deferred": shared_rate_limiting_deferred,
             "sensitive_rate_limits_configured": configured_sensitive_rate_limits,

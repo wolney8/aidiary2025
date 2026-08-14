@@ -758,6 +758,57 @@ def test_preflight_blocks_media_base_url_without_media_root_in_production(tmp_pa
     assert report["summary"]["media_root_configured"] is False
 
 
+def test_preflight_accepts_r2_media_without_media_root_in_production(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env.pop("MEDIA_ROOT")
+    env["MEDIA_STORAGE_BACKEND"] = "r2"
+    env["R2_ENDPOINT_URL"] = "https://abc123.r2.cloudflarestorage.com"
+    env["R2_ACCESS_KEY_ID"] = "r2-access-key"
+    env["R2_SECRET_ACCESS_KEY"] = "r2-secret-key"
+    env["R2_BUCKET_NAME"] = "openmynd-media"
+    env["MEDIA_BASE_URL"] = "https://api.openmynd.example/media"
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert "media_storage" not in blocker_gates
+    assert "media_storage_path" not in blocker_gates
+    assert "r2_media_storage" not in blocker_gates
+    assert report["summary"]["media_storage_backend"] == "r2"
+    assert report["summary"]["r2_media_configured"] is True
+
+
+def test_preflight_blocks_r2_media_when_required_settings_are_missing(tmp_path):
+    server_root = tmp_path / "server"
+    server_root.mkdir()
+    _write_frontend_sources(tmp_path, include_cookies=True)
+    env = _base_env()
+    env.pop("MEDIA_ROOT")
+    env["MEDIA_STORAGE_BACKEND"] = "r2"
+    env["R2_ENDPOINT_URL"] = "https://abc123.r2.cloudflarestorage.com"
+    env["R2_BUCKET_NAME"] = "openmynd-media"
+    env["OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK"] = "true"
+    env["OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION"] = "true"
+
+    report = build_production_preflight(
+        root_path=server_root,
+        environ=env,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    assert "r2_media_storage" in blocker_gates
+    assert report["summary"]["media_storage_backend"] == "r2"
+    assert report["summary"]["r2_media_configured"] is False
+
+
 def test_preflight_blocks_relative_media_root_in_production(tmp_path):
     server_root = tmp_path / "server"
     server_root.mkdir()

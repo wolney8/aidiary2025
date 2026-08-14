@@ -118,6 +118,24 @@ OPENMYND_DEFER_SHARED_RATE_LIMITING=true
 Use that only while validating hosted accounts and non-media entry storage. It keeps the
 remaining public-launch blocker visible as a warning in preflight and Admin Operations.
 
+## Cloudflare R2 Media Storage
+
+Use R2 when deploying on a host without durable local disk, such as Render Free:
+
+```bash
+MEDIA_STORAGE_BACKEND=r2
+R2_ENDPOINT_URL=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<r2-access-key-id>
+R2_SECRET_ACCESS_KEY=<r2-secret-access-key>
+R2_BUCKET_NAME=openmynd-media
+R2_PUBLIC_BASE_URL=
+MEDIA_BASE_URL=https://your-render-service.onrender.com/media
+```
+
+With `R2_PUBLIC_BASE_URL` blank, OpenMynd proxies `/media/...` through the API. That is
+simple for private testing. For public launch, configure a public/custom R2 domain and
+set `R2_PUBLIC_BASE_URL` to that URL.
+
 ## Neon/Postgres Setup
 
 Required env for a Postgres rehearsal or cutover:

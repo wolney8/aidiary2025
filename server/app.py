@@ -34,7 +34,14 @@ from services.runtime_migrations import (
     ensure_security_audit_events_table,
     ensure_user_settings_columns,
 )
-from services.media_storage import DEFAULT_MEDIA_URL_PREFIX, ensure_media_root
+from services.media_storage import (
+    DEFAULT_MEDIA_URL_PREFIX,
+    LOCAL_MEDIA_BACKEND,
+    R2_MEDIA_BACKEND,
+    SUPPORTED_MEDIA_BACKENDS,
+    build_media_response,
+    ensure_media_root,
+)
 from services.auth_sessions import token_is_revoked
 
 # Load environment variables
@@ -144,6 +151,11 @@ def _production_runtime_blockers(
     runtime_migrations_enabled: bool,
     media_root_value: str | None,
     resolved_media_root: str,
+    media_storage_backend: str,
+    r2_endpoint_url: str,
+    r2_access_key_id: str,
+    r2_secret_access_key: str,
+    r2_bucket_name: str,
     app_root_path: str,
     cors_origins: list[str],
     frontend_base_url: str,
@@ -183,24 +195,45 @@ def _production_runtime_blockers(
             'controlled emergency fallback.'
         )
 
-    media_root_value = (media_root_value or '').strip()
-    media_root_path = Path(resolved_media_root)
-    repo_root = Path(app_root_path).resolve().parent
-    media_root_inside_repo = _path_is_within(media_root_path, repo_root)
-    if not media_root_value:
+    media_storage_backend = (media_storage_backend or LOCAL_MEDIA_BACKEND).strip().lower()
+    if media_storage_backend not in SUPPORTED_MEDIA_BACKENDS:
         blockers.append(
-            'MEDIA_ROOT must be explicit when APP_ENV=production; do not use the '
-            'repository-local media directory for public production.'
+            'MEDIA_STORAGE_BACKEND must be one of: '
+            f"{', '.join(sorted(SUPPORTED_MEDIA_BACKENDS))}."
         )
-    elif not Path(media_root_value).expanduser().is_absolute():
-        blockers.append(
-            'MEDIA_ROOT must be an absolute path when APP_ENV=production.'
-        )
-    elif media_root_inside_repo:
-        blockers.append(
-            'MEDIA_ROOT must not point inside the repository source tree when '
-            'APP_ENV=production.'
-        )
+    elif media_storage_backend == R2_MEDIA_BACKEND:
+        if not all(
+            value.strip()
+            for value in (
+                r2_endpoint_url,
+                r2_access_key_id,
+                r2_secret_access_key,
+                r2_bucket_name,
+            )
+        ):
+            blockers.append(
+                'R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and '
+                'R2_BUCKET_NAME must be configured when MEDIA_STORAGE_BACKEND=r2.'
+            )
+    else:
+        media_root_value = (media_root_value or '').strip()
+        media_root_path = Path(resolved_media_root)
+        repo_root = Path(app_root_path).resolve().parent
+        media_root_inside_repo = _path_is_within(media_root_path, repo_root)
+        if not media_root_value:
+            blockers.append(
+                'MEDIA_ROOT must be explicit when APP_ENV=production; do not use the '
+                'repository-local media directory for public production.'
+            )
+        elif not Path(media_root_value).expanduser().is_absolute():
+            blockers.append(
+                'MEDIA_ROOT must be an absolute path when APP_ENV=production.'
+            )
+        elif media_root_inside_repo:
+            blockers.append(
+                'MEDIA_ROOT must not point inside the repository source tree when '
+                'APP_ENV=production.'
+            )
 
     if rate_limit_storage_uri == 'memory://' and not shared_rate_limiting_deferred:
         blockers.append(
@@ -428,6 +461,14 @@ def create_app():
     if database_settings.provider == SQLITE_PROVIDER and not os.path.exists(database_path):
         app.logger.warning('Database file not found at %s', database_path)
 
+    media_storage_backend = (os.getenv('MEDIA_STORAGE_BACKEND') or LOCAL_MEDIA_BACKEND).strip().lower()
+    app.config['MEDIA_STORAGE_BACKEND'] = media_storage_backend
+    app.config['R2_ENDPOINT_URL'] = (os.getenv('R2_ENDPOINT_URL') or '').strip()
+    app.config['R2_ACCESS_KEY_ID'] = (os.getenv('R2_ACCESS_KEY_ID') or '').strip()
+    app.config['R2_SECRET_ACCESS_KEY'] = (os.getenv('R2_SECRET_ACCESS_KEY') or '').strip()
+    app.config['R2_BUCKET_NAME'] = (os.getenv('R2_BUCKET_NAME') or '').strip()
+    app.config['R2_PUBLIC_BASE_URL'] = (os.getenv('R2_PUBLIC_BASE_URL') or '').strip() or None
+
     media_root = os.getenv('MEDIA_ROOT')
     fallback_media_root = os.path.join(app.root_path, 'media')
     if media_root:
@@ -456,6 +497,11 @@ def create_app():
             runtime_migrations_enabled=database_settings.runtime_migrations_enabled,
             media_root_value=media_root,
             resolved_media_root=resolved_media_root,
+            media_storage_backend=media_storage_backend,
+            r2_endpoint_url=app.config['R2_ENDPOINT_URL'],
+            r2_access_key_id=app.config['R2_ACCESS_KEY_ID'],
+            r2_secret_access_key=app.config['R2_SECRET_ACCESS_KEY'],
+            r2_bucket_name=app.config['R2_BUCKET_NAME'],
             app_root_path=app.root_path,
             cors_origins=cors_origins,
             frontend_base_url=frontend_base_url,
@@ -712,6 +758,11 @@ def create_app():
 
     @app.route(f'{DEFAULT_MEDIA_URL_PREFIX}/<path:storage_key>')
     def serve_media(storage_key: str):
+        if app.config.get('MEDIA_STORAGE_BACKEND') == R2_MEDIA_BACKEND:
+            response = build_media_response(storage_key)
+            if response is None:
+                return jsonify({'error': 'Media not found'}), 404
+            return response
         return send_from_directory(app.config['MEDIA_ROOT'], storage_key, conditional=True)
 
     # Check NLTK data and optionally backfill entries imported before enrichment was available.

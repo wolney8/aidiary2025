@@ -92,7 +92,13 @@ DATABASE_USES_POOLER=true
 OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=false
 CORS_ORIGINS=https://your-vercel-frontend.vercel.app,https://your-domain.com
 FRONTEND_BASE_URL=https://your-domain.com
-MEDIA_ROOT=/var/lib/openmynd/media
+MEDIA_STORAGE_BACKEND=r2
+R2_ENDPOINT_URL=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<cloudflare-r2-access-key-id>
+R2_SECRET_ACCESS_KEY=<cloudflare-r2-secret-access-key>
+R2_BUCKET_NAME=openmynd-media
+R2_PUBLIC_BASE_URL=
+MEDIA_ROOT=
 MEDIA_BASE_URL=https://your-api-domain.com/media
 RATELIMIT_STORAGE_URI=redis://...
 OPENMYND_DEFER_SHARED_RATE_LIMITING=false
@@ -109,6 +115,11 @@ bash scripts/start_render.sh
 The wrapper applies pending Postgres migrations when `DATABASE_PROVIDER=postgres`, then
 starts Gunicorn. This prevents a fresh Neon database from deploying successfully but
 failing login with `UndefinedTable`.
+
+For the first private Vercel + Render + Neon rehearsal, R2 can proxy through the API by
+leaving `R2_PUBLIC_BASE_URL` blank and setting `MEDIA_BASE_URL` to
+`https://your-render-service.onrender.com/media`. For public launch, prefer a public or
+custom R2 media URL in `R2_PUBLIC_BASE_URL` so media does not stream through the API.
 
 For a private Render + Neon non-media storage rehearsal where email and shared rate
 limiting are intentionally deferred, use this temporary block instead:
