@@ -5,6 +5,9 @@ Updated: 13 August 2026
 Purpose: this is the practical checklist for configuring OpenMynd while development
 continues. Do not paste real secrets into this document.
 
+For the Vercel frontend + Neon Postgres path, see
+[vercel-neon-deployment-readiness.md](./vercel-neon-deployment-readiness.md).
+
 ## Local Run Commands
 
 Run these in two separate terminals from the repository root.
