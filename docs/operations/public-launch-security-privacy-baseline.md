@@ -38,6 +38,8 @@ Current automated evidence:
 - Production startup and preflight now reject non-HTTPS CORS frontend origins.
 - Production startup now also rejects non-HTTPS `FRONTEND_BASE_URL` values and unsafe
   Google OAuth callback configuration when OAuth is enabled.
+- Production startup now rejects short or development JWT secrets, matching the
+  production preflight rule.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.

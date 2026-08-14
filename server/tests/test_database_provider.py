@@ -123,6 +123,22 @@ def test_app_blocks_sqlite_when_app_env_is_production(monkeypatch, tmp_path):
         create_app()
 
 
+def test_app_blocks_short_jwt_secret_when_app_env_is_production(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("JWT_SECRET", "short-secret")
+
+    with pytest.raises(RuntimeError, match="JWT_SECRET must not use"):
+        create_app()
+
+
+def test_app_blocks_development_jwt_secret_when_app_env_is_production(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("JWT_SECRET", "dev-secret-key")
+
+    with pytest.raises(RuntimeError, match="JWT_SECRET must not use"):
+        create_app()
+
+
 def test_app_allows_explicit_sqlite_production_fallback(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")

@@ -378,6 +378,13 @@ def create_app():
     jwt_secret = os.getenv('JWT_SECRET')
     if not jwt_secret and app_environment == 'production':
         raise RuntimeError('JWT_SECRET must be configured when APP_ENV=production')
+    if app_environment == 'production' and (
+        jwt_secret == 'dev-secret-key' or len(jwt_secret or '') < 32
+    ):
+        raise RuntimeError(
+            'JWT_SECRET must not use the development fallback and must be at least '
+            '32 characters when APP_ENV=production'
+        )
     if not jwt_secret:
         app.logger.warning('JWT_SECRET is not configured; using local development secret')
     app.config['JWT_SECRET_KEY'] = jwt_secret or 'dev-secret-key'
