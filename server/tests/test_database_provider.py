@@ -16,6 +16,16 @@ from services.import_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_external_provider_env(monkeypatch):
+    for name in (
+        "OAUTH_GOOGLE_CLIENT_ID",
+        "OAUTH_GOOGLE_CLIENT_SECRET",
+        "OAUTH_GOOGLE_REDIRECT_URI",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_database_settings_default_to_sqlite(tmp_path):
     settings = resolve_database_settings(
         str(tmp_path),
@@ -102,6 +112,7 @@ def test_app_blocks_sqlite_when_app_env_is_production(monkeypatch, tmp_path):
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
     monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
@@ -120,6 +131,7 @@ def test_app_allows_explicit_sqlite_production_fallback(monkeypatch, tmp_path):
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
     monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
@@ -145,6 +157,7 @@ def test_app_blocks_missing_media_root_when_app_env_is_production(monkeypatch, t
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.delenv("MEDIA_ROOT", raising=False)
     monkeypatch.setenv("MEDIA_BASE_URL", "https://cdn.openmynd.example/media")
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
@@ -169,6 +182,7 @@ def test_app_blocks_repo_local_media_root_when_app_env_is_production(monkeypatch
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(app_module.Path(app_module.__file__).resolve().parent / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
     monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
@@ -192,6 +206,7 @@ def test_app_blocks_console_email_when_app_env_is_production(monkeypatch, tmp_pa
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
     monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
@@ -214,6 +229,7 @@ def test_app_blocks_http_cors_origin_when_app_env_is_production(monkeypatch, tmp
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "http://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
     monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
@@ -229,6 +245,99 @@ def test_app_blocks_http_cors_origin_when_app_env_is_production(monkeypatch, tmp
         create_app()
 
 
+def test_app_blocks_http_frontend_base_url_when_app_env_is_production(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "http://openmynd.example")
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+    monkeypatch.setenv("EMAIL_FROM_ADDRESS", "OpenMynd <no-reply@openmynd.example>")
+    monkeypatch.setenv("SMTP_HOST", "smtp.openmynd.example")
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    with pytest.raises(RuntimeError, match="FRONTEND_BASE_URL must be an HTTPS"):
+        create_app()
+
+
+def test_app_blocks_placeholder_google_oauth_when_app_env_is_production(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+    monkeypatch.setenv("EMAIL_FROM_ADDRESS", "OpenMynd <no-reply@openmynd.example>")
+    monkeypatch.setenv("SMTP_HOST", "smtp.openmynd.example")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "your_google_client_id")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "real-secret")
+    monkeypatch.setenv(
+        "OAUTH_GOOGLE_REDIRECT_URI",
+        "https://api.openmynd.example/api/oauth/google/callback",
+    )
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    with pytest.raises(RuntimeError, match="Google OAuth production configuration"):
+        create_app()
+
+
+def test_app_blocks_local_google_oauth_redirect_when_app_env_is_production(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+    monkeypatch.setenv("EMAIL_FROM_ADDRESS", "OpenMynd <no-reply@openmynd.example>")
+    monkeypatch.setenv("SMTP_HOST", "smtp.openmynd.example")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "real-secret")
+    monkeypatch.setenv(
+        "OAUTH_GOOGLE_REDIRECT_URI",
+        "http://localhost:5001/api/oauth/google/callback",
+    )
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    with pytest.raises(RuntimeError, match="OAUTH_GOOGLE_REDIRECT_URI must be an HTTPS"):
+        create_app()
+
+
 def test_app_blocks_memory_rate_limit_storage_when_app_env_is_production(
     monkeypatch,
     tmp_path,
@@ -240,6 +349,7 @@ def test_app_blocks_memory_rate_limit_storage_when_app_env_is_production(
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "memory://")
     monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
@@ -306,6 +416,7 @@ def test_app_applies_hsts_when_app_env_is_production(monkeypatch, tmp_path):
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)
     monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
     monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
     monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
     monkeypatch.setenv("EMAIL_PROVIDER", "smtp")

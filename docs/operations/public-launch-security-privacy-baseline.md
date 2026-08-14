@@ -36,6 +36,8 @@ Current automated evidence:
   path outside the repository source tree, so public media does not fall back to
   `server/media`.
 - Production startup and preflight now reject non-HTTPS CORS frontend origins.
+- Production startup now also rejects non-HTTPS `FRONTEND_BASE_URL` values and unsafe
+  Google OAuth callback configuration when OAuth is enabled.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
   must configure SMTP.

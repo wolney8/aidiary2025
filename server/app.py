@@ -1,6 +1,7 @@
 import os
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, get_jwt_identity, verify_jwt_in_request
@@ -39,6 +40,9 @@ from services.auth_sessions import token_is_revoked
 # Load environment variables
 load_dotenv()
 
+LOCAL_ORIGIN_MARKERS = {'localhost', '127.0.0.1', '0.0.0.0'}
+PLACEHOLDER_CONFIG_MARKERS = ('your_', 'your-', 'replace-', 'example', 'changeme')
+
 
 def _env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -53,6 +57,17 @@ def _path_is_within(child: Path, parent: Path) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _is_https_public_url(value: str | None) -> bool:
+    parsed = urlparse((value or '').strip())
+    host = (parsed.hostname or '').lower()
+    return parsed.scheme == 'https' and bool(parsed.netloc) and host not in LOCAL_ORIGIN_MARKERS
+
+
+def _looks_like_placeholder_config(value: str | None) -> bool:
+    normalised = (value or '').strip().lower()
+    return not normalised or any(marker in normalised for marker in PLACEHOLDER_CONFIG_MARKERS)
 
 
 def _apply_security_headers(response, *, app_environment: str):
@@ -131,6 +146,10 @@ def _production_runtime_blockers(
     resolved_media_root: str,
     app_root_path: str,
     cors_origins: list[str],
+    frontend_base_url: str,
+    oauth_google_client_id: str,
+    oauth_google_client_secret: str,
+    oauth_google_redirect_uri: str,
     rate_limit_storage_uri: str,
     email_provider: str,
     email_from_configured: bool,
@@ -199,6 +218,26 @@ def _production_runtime_blockers(
         blockers.append(
             'CORS_ORIGINS must contain only HTTPS frontend origins when APP_ENV=production.'
         )
+
+    if not _is_https_public_url(frontend_base_url):
+        blockers.append(
+            'FRONTEND_BASE_URL must be an HTTPS production URL when APP_ENV=production.'
+        )
+
+    oauth_google_values = (
+        oauth_google_client_id.strip(),
+        oauth_google_client_secret.strip(),
+        oauth_google_redirect_uri.strip(),
+    )
+    if any(oauth_google_values):
+        if any(_looks_like_placeholder_config(value) for value in oauth_google_values):
+            blockers.append(
+                'Google OAuth production configuration must not be blank or placeholder values.'
+            )
+        elif not _is_https_public_url(oauth_google_redirect_uri):
+            blockers.append(
+                'OAUTH_GOOGLE_REDIRECT_URI must be an HTTPS production callback URL.'
+            )
 
     if email_provider == 'console':
         blockers.append(
@@ -389,6 +428,10 @@ def create_app():
         for origin in os.getenv('CORS_ORIGINS', 'http://localhost:4200').split(',')
         if origin.strip()
     ]
+    frontend_base_url = (os.getenv('FRONTEND_BASE_URL') or '').strip()
+    oauth_google_client_id = (os.getenv('OAUTH_GOOGLE_CLIENT_ID') or '').strip()
+    oauth_google_client_secret = (os.getenv('OAUTH_GOOGLE_CLIENT_SECRET') or '').strip()
+    oauth_google_redirect_uri = (os.getenv('OAUTH_GOOGLE_REDIRECT_URI') or '').strip()
     email_provider = (os.getenv('EMAIL_PROVIDER') or 'console').strip().lower()
     if app_environment == 'production':
         production_blockers = _production_runtime_blockers(
@@ -398,6 +441,10 @@ def create_app():
             resolved_media_root=resolved_media_root,
             app_root_path=app.root_path,
             cors_origins=cors_origins,
+            frontend_base_url=frontend_base_url,
+            oauth_google_client_id=oauth_google_client_id,
+            oauth_google_client_secret=oauth_google_client_secret,
+            oauth_google_redirect_uri=oauth_google_redirect_uri,
             rate_limit_storage_uri=app.config['RATELIMIT_STORAGE_URI'],
             email_provider=email_provider,
             email_from_configured=bool((os.getenv('EMAIL_FROM_ADDRESS') or '').strip()),
