@@ -718,7 +718,12 @@ const QUOTA_FIELDS: Array<{
                 <p class="admin-eyebrow">Runtime</p>
                 <h3>{{ formatEnumLabel(ops.app.environment) }}</h3>
                 <span class="admin-muted">
-                  Rate limits: {{ formatEnumLabel(ops.rate_limits.storage) }}
+                  Rate limits:
+                  {{
+                    ops.rate_limits.deferred
+                      ? "Deferred"
+                      : formatEnumLabel(ops.rate_limits.storage)
+                  }}
                 </span>
               </div>
             </article>

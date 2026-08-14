@@ -834,6 +834,7 @@ def _operations_readiness() -> dict[str, object]:
     rate_limit_storage = str(
         current_app.config.get("RATELIMIT_STORAGE_URI") or "memory://"
     )
+    shared_rate_limiting_deferred = _env_flag("OPENMYND_DEFER_SHARED_RATE_LIMITING")
     stripe_config = load_stripe_billing_config()
     process_status = _process_supervision_status()
     email_provider = (os.getenv("EMAIL_PROVIDER") or "console").strip().lower()
@@ -925,6 +926,8 @@ def _operations_readiness() -> dict[str, object]:
             (
                 "Rate-limit storage is configured outside process memory."
                 if rate_limit_storage != "memory://"
+                else "Shared rate limiting is deferred for private/beta storage rehearsal."
+                if shared_rate_limiting_deferred
                 else "Use Redis or another shared limiter backend for multi-worker production."
             ),
         ),
@@ -1007,6 +1010,7 @@ def _operations_readiness() -> dict[str, object]:
         "rate_limits": {
             "storage": "shared" if rate_limit_storage != "memory://" else "memory",
             "configured": rate_limit_storage != "memory://",
+            "deferred": shared_rate_limiting_deferred,
         },
         "stripe": {
             "configured": stripe_config.configured,

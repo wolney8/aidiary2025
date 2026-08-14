@@ -25,8 +25,9 @@ Current automated evidence:
 - Login, registration, email verification, password reset, OAuth start/callback,
   AI analysis, import/export, import revert, and account deletion routes have
   explicit rate limits, with preflight visibility for production configuration.
-- Production startup now fails closed if `RATELIMIT_STORAGE_URI=memory://`, with
-  regression coverage proving public production requires shared limiter storage.
+- Production startup now fails closed if `RATELIMIT_STORAGE_URI=memory://` unless the
+  owner explicitly sets `OPENMYND_DEFER_SHARED_RATE_LIMITING=true` for a private
+  deployment rehearsal. Public production still requires shared limiter storage.
 - API responses now include conservative security headers for content sniffing,
   clickjacking, referrer leakage, permissions policy, and API CSP; production responses
   also include HSTS.

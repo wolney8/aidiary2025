@@ -60,6 +60,7 @@ export interface AdminOperationsReadiness {
   rate_limits: {
     storage: "shared" | "memory" | string;
     configured: boolean;
+    deferred: boolean;
   };
   stripe: {
     configured: boolean;

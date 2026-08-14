@@ -151,6 +151,7 @@ def _production_runtime_blockers(
     oauth_google_client_secret: str,
     oauth_google_redirect_uri: str,
     rate_limit_storage_uri: str,
+    shared_rate_limiting_deferred: bool,
     email_provider: str,
     email_delivery_deferred: bool,
     email_from_configured: bool,
@@ -201,7 +202,7 @@ def _production_runtime_blockers(
             'APP_ENV=production.'
         )
 
-    if rate_limit_storage_uri == 'memory://':
+    if rate_limit_storage_uri == 'memory://' and not shared_rate_limiting_deferred:
         blockers.append(
             'RATELIMIT_STORAGE_URI=memory:// is blocked when APP_ENV=production. '
             'Use Redis or another shared limiter backend.'
@@ -417,6 +418,10 @@ def create_app():
         app.logger.warning('Invalid CHAT_DAILY_TOKEN_BUDGET; using 50000')
         app.config['CHAT_DAILY_TOKEN_BUDGET'] = 50000
     app.config['RATELIMIT_STORAGE_URI'] = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
+    shared_rate_limiting_deferred = _env_flag(
+        'OPENMYND_DEFER_SHARED_RATE_LIMITING',
+        default=False,
+    )
     database_settings = configure_app_database(app)
     app.config['DATABASE_ADAPTER'] = DatabaseAdapter.from_settings(database_settings)
     database_path = database_settings.sqlite_path
@@ -458,6 +463,7 @@ def create_app():
             oauth_google_client_secret=oauth_google_client_secret,
             oauth_google_redirect_uri=oauth_google_redirect_uri,
             rate_limit_storage_uri=app.config['RATELIMIT_STORAGE_URI'],
+            shared_rate_limiting_deferred=shared_rate_limiting_deferred,
             email_provider=email_provider,
             email_delivery_deferred=email_delivery_deferred,
             email_from_configured=bool((os.getenv('EMAIL_FROM_ADDRESS') or '').strip()),

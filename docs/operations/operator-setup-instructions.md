@@ -94,6 +94,7 @@ Public production must use shared storage, normally Redis:
 
 ```bash
 RATELIMIT_STORAGE_URI=redis://username:password@host:6379/0
+OPENMYND_DEFER_SHARED_RATE_LIMITING=false
 ```
 
 Why this matters: `memory://` only protects one Python process. Multiple production
@@ -106,6 +107,16 @@ Smoke test:
 3. Set a Redis URL.
 4. Admin -> Operations -> Production preflight should no longer report memory limiter
    storage as the blocker.
+
+Temporary private Render + Neon rehearsal:
+
+```bash
+RATELIMIT_STORAGE_URI=memory://
+OPENMYND_DEFER_SHARED_RATE_LIMITING=true
+```
+
+Use that only while validating hosted accounts and non-media entry storage. It keeps the
+remaining public-launch blocker visible as a warning in preflight and Admin Operations.
 
 ## Neon/Postgres Setup
 

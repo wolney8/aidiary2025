@@ -78,7 +78,7 @@ The backend host must support:
 - env vars
 - outbound HTTPS to OpenAI, Stripe, Google, SMTP, and Neon
 - a persistent media directory or object storage integration
-- Redis or another shared rate-limit backend
+- Redis or another shared rate-limit backend for public launch
 - scheduled backup/maintenance commands
 
 Minimum backend env shape:
@@ -95,22 +95,25 @@ FRONTEND_BASE_URL=https://your-domain.com
 MEDIA_ROOT=/var/lib/openmynd/media
 MEDIA_BASE_URL=https://your-api-domain.com/media
 RATELIMIT_STORAGE_URI=redis://...
+OPENMYND_DEFER_SHARED_RATE_LIMITING=false
 EMAIL_PROVIDER=smtp
 OPENMYND_REQUIRE_REGISTRATION_EMAIL=true
 ```
 
-For a private Render + Neon storage rehearsal where email is intentionally deferred,
-use this temporary email block instead:
+For a private Render + Neon non-media storage rehearsal where email and shared rate
+limiting are intentionally deferred, use this temporary block instead:
 
 ```bash
+RATELIMIT_STORAGE_URI=memory://
+OPENMYND_DEFER_SHARED_RATE_LIMITING=true
 EMAIL_PROVIDER=console
 OPENMYND_DEFER_EMAIL_DELIVERY=true
 OPENMYND_REQUIRE_REGISTRATION_EMAIL=false
 ```
 
 That mode is for proving user accounts and non-media entries can be stored and recalled
-from Neon. It is not public-launch ready because verification and password recovery are
-disabled/deferred.
+from Neon. It is not public-launch ready because verification, password recovery, and
+distributed rate limiting are disabled/deferred.
 
 Run before deployment:
 

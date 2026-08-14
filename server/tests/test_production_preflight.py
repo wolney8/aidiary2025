@@ -508,6 +508,26 @@ def test_preflight_warns_when_sensitive_rate_limits_are_not_explicit(tmp_path):
     }
 
 
+def test_preflight_warns_when_shared_rate_limiting_is_deferred(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["RATELIMIT_STORAGE_URI"] = "memory://"
+    env["OPENMYND_DEFER_SHARED_RATE_LIMITING"] = "true"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert "rate_limit_storage" not in blocker_gates
+    assert "rate_limit_storage_deferred" in warning_gates
+    assert report["summary"]["shared_rate_limiting_deferred"] is True
+
+
 def test_preflight_warns_when_security_audit_retention_is_missing(tmp_path):
     env = _base_env()
     env["DATABASE_PROVIDER"] = "postgres"

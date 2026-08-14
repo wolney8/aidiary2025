@@ -660,12 +660,27 @@ def build_production_preflight(
         )
 
     rate_limit_storage_uri = (env.get("RATELIMIT_STORAGE_URI") or "memory://").strip()
-    if app_env == "production" and rate_limit_storage_uri == "memory://":
+    shared_rate_limiting_deferred = _env_flag(env, "OPENMYND_DEFER_SHARED_RATE_LIMITING")
+    if (
+        app_env == "production"
+        and rate_limit_storage_uri == "memory://"
+        and not shared_rate_limiting_deferred
+    ):
         _add_gate(
             blockers,
             gate="rate_limit_storage",
             message=(
                 "RATELIMIT_STORAGE_URI=memory:// is not safe for production; use Redis or another shared limiter backend."
+            ),
+        )
+    elif app_env == "production" and rate_limit_storage_uri == "memory://":
+        _add_gate(
+            warnings,
+            gate="rate_limit_storage_deferred",
+            severity="warning",
+            message=(
+                "Shared rate limiting is explicitly deferred. This is acceptable for "
+                "private Render storage rehearsal, but not public onboarding."
             ),
         )
 
@@ -804,6 +819,7 @@ def build_production_preflight(
             "media_root_inside_repo": media_root_inside_repo,
             "media_base_url_configured": bool(media_base_url),
             "rate_limit_storage_configured": rate_limit_storage_uri != "memory://",
+            "shared_rate_limiting_deferred": shared_rate_limiting_deferred,
             "sensitive_rate_limits_configured": configured_sensitive_rate_limits,
             "security_audit_retention_days": security_audit_retention_days,
             "openai_api_key_configured": openai_key_configured,
