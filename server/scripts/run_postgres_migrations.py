@@ -18,6 +18,19 @@ from scripts.load_cloud_migration import _split_sql_statements
 
 SERVER_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS_DIR = SERVER_ROOT / "migrations" / "postgres"
+BASELINE_VERSION = "0001_initial_schema"
+BASELINE_REQUIRED_TABLES = (
+    "users",
+    "auth_identities",
+    "billing_customers",
+    "subscriptions",
+    "entitlements",
+    "dailydiary_entries",
+    "dreamdiary_entries",
+    "important_days",
+    "cbt_worksheets",
+    "billing_plans",
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +67,15 @@ def fetch_applied_versions(cursor) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
+def fetch_missing_baseline_tables(cursor) -> list[str]:
+    missing = []
+    for table_name in BASELINE_REQUIRED_TABLES:
+        row = cursor.execute("SELECT to_regclass(%s)", (f"public.{table_name}",)).fetchone()
+        if not row or row[0] is None:
+            missing.append(table_name)
+    return missing
+
+
 def build_migration_plan(
     *,
     applied_versions: Iterable[str],
@@ -86,8 +108,15 @@ def apply_pending_migrations(
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cursor:
             applied_versions = fetch_applied_versions(cursor)
+            missing_baseline_tables = fetch_missing_baseline_tables(cursor)
+            repaired_applied_versions = set(applied_versions)
+            if BASELINE_VERSION in applied_versions and missing_baseline_tables:
+                # Earlier failed/manual rehearsals can leave the migration ledger ahead
+                # of the actual schema. Current migrations are idempotent, so replaying
+                # them is safer than booting an app with missing core tables.
+                repaired_applied_versions = set()
             plan = build_migration_plan(
-                applied_versions=applied_versions,
+                applied_versions=repaired_applied_versions,
                 migrations_dir=migrations_dir,
             )
             pending_versions = set(plan["pending_versions"])
@@ -113,6 +142,12 @@ def apply_pending_migrations(
         "migrations_dir": str(migrations_dir.resolve()),
         "applied_versions": applied_now,
         "applied_count": len(applied_now),
+        "repair": {
+            "baseline_tables_missing_before_apply": missing_baseline_tables,
+            "replayed_from_baseline": bool(
+                BASELINE_VERSION in applied_versions and missing_baseline_tables
+            ),
+        },
     }
 
 
