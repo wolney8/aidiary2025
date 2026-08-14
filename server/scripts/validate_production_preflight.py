@@ -376,8 +376,19 @@ def build_production_preflight(
     email_provider = _email_provider(env)
     email_from_address = (env.get("EMAIL_FROM_ADDRESS") or "").strip()
     smtp_host = (env.get("SMTP_HOST") or "").strip()
+    email_delivery_deferred = _env_flag(env, "OPENMYND_DEFER_EMAIL_DELIVERY")
     if app_env == "production":
-        if email_provider == "console":
+        if email_delivery_deferred:
+            _add_gate(
+                warnings,
+                gate="transactional_email_deferred",
+                severity="warning",
+                message=(
+                    "Email delivery is explicitly deferred. This is acceptable for a "
+                    "private Neon storage rehearsal, but not for public onboarding."
+                ),
+            )
+        elif email_provider == "console":
             _add_gate(
                 blockers,
                 gate="transactional_email_provider",
@@ -392,13 +403,17 @@ def build_production_preflight(
                 gate="transactional_email_provider",
                 message="EMAIL_PROVIDER must be smtp for production account recovery.",
             )
-        if _looks_like_placeholder(email_from_address):
+        if not email_delivery_deferred and _looks_like_placeholder(email_from_address):
             _add_gate(
                 blockers,
                 gate="transactional_email_from",
                 message="EMAIL_FROM_ADDRESS must be a real sender before production deployment.",
             )
-        if email_provider == "smtp" and _looks_like_placeholder(smtp_host):
+        if (
+            not email_delivery_deferred
+            and email_provider == "smtp"
+            and _looks_like_placeholder(smtp_host)
+        ):
             _add_gate(
                 blockers,
                 gate="transactional_email_smtp_host",
@@ -760,6 +775,7 @@ def build_production_preflight(
             "email_from_configured": bool(email_from_address),
             "smtp_host_configured": bool(smtp_host),
             "registration_email_required": _env_flag(env, "OPENMYND_REQUIRE_REGISTRATION_EMAIL"),
+            "email_delivery_deferred": email_delivery_deferred,
             "localstorage_jwt_risk_accepted": _env_flag(env, "OPENMYND_ACCEPT_LOCALSTORAGE_JWT_RISK"),
             "cookie_auth_mode": cookie_auth_mode,
             "cookie_auth_csrf_protect": cookie_csrf_protect,

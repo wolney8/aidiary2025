@@ -42,7 +42,8 @@ Current automated evidence:
   production preflight rule.
 - Local account email verification and password reset now use provider-neutral
   transactional email. `EMAIL_PROVIDER=console` is development-only; production
-  must configure SMTP.
+  must configure SMTP unless `OPENMYND_DEFER_EMAIL_DELIVERY=true` is explicitly set for
+  a private storage rehearsal.
 - Database maintenance validation now checks recent backup bundle, SQLite fallback,
   Postgres snapshot, media archive, and restore rehearsal evidence before public
   cutover/launch decisions.
@@ -72,7 +73,7 @@ SaaS path.
 | Blocking | Secrets/config | Production must not run with local CORS, weak JWT secret, memory limiter, repo-local media, runtime migrations, or local OAuth callback URLs. | Preflight blocks these conditions. | `#113` |
 | Major | HTTP response headers | Public API responses should set baseline browser security headers. | Default security headers and production HSTS are now applied and covered by backend tests; Admin Operations reports the check. | `#113` |
 | Major | Legacy password fallback | Plaintext-password fallback still exists for old local databases. | Login upgrades legacy hashes after successful auth, and an operator migration command can now bulk-convert dormant plaintext rows. Public launch should run that command and then disable fallback. | `#113` or auth-hardening issue |
-| Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and operational validation. | Local account token flows exist; browser smoke covers verification/reset screens; preflight blocks console email in production; security audit capture is now reviewable in the Admin console. | `#113` or auth-hardening issue |
+| Major | Account recovery and verification | Email verification and recovery need production SMTP configuration and operational validation. | Local account token flows exist; browser smoke covers verification/reset screens; email can be explicitly deferred for private storage rehearsal only; security audit capture is now reviewable in the Admin console. | `#113` or auth-hardening issue |
 | Major | AI data processing | AI features process sensitive diary data through configured model providers. | User controls exist for history and attachment context; production preflight blocks missing/placeholder OpenAI keys; public disclosure and consent review still required. | legal/privacy issue |
 | Major | Export/delete promises | The product must only promise what export/delete actually removes or preserves. | Account deletion and export exist; final public wording needs review against implementation. | legal/privacy issue |
 | Major | Billing and entitlements | Public SaaS requires a payment provider, local entitlement model, subscription lifecycle handling, upgrade prompts, and billing disclosures. | Entitlement tables, Stripe Checkout, Customer Portal session creation, verified webhook entitlement sync, the first AI-analysis plan gate, production preflight checks, and authenticated billing disclosures exist. Remaining work is Stripe test-mode/live operational evidence. | `#132` |

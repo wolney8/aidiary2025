@@ -5,6 +5,7 @@
     "coverage/**/*",
     "test-results/**/*",
     "node_modules/**/*",
+    "src/environments/environment.hosted.ts",
     "src/app/core/services/autosave.service.ts"
   ],
   "overrides": [

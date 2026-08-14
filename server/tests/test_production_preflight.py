@@ -562,6 +562,28 @@ def test_preflight_blocks_console_email_in_production(tmp_path):
     assert report["summary"]["email_provider"] == "console"
 
 
+def test_preflight_warns_when_email_is_explicitly_deferred(tmp_path):
+    env = _base_env()
+    env["DATABASE_PROVIDER"] = "postgres"
+    env["DATABASE_URL"] = "postgresql://example-pooler/rehearsal?sslmode=require"
+    env["EMAIL_PROVIDER"] = "console"
+    env["EMAIL_FROM_ADDRESS"] = ""
+    env.pop("SMTP_HOST")
+    env["OPENMYND_DEFER_EMAIL_DELIVERY"] = "true"
+
+    report = build_production_preflight(
+        root_path=tmp_path,
+        environ=env,
+        require_postgres=True,
+    )
+
+    blocker_gates = {blocker["gate"] for blocker in report["blockers"]}
+    warning_gates = {warning["gate"] for warning in report["warnings"]}
+    assert "transactional_email_provider" not in blocker_gates
+    assert "transactional_email_deferred" in warning_gates
+    assert report["summary"]["email_delivery_deferred"] is True
+
+
 def test_preflight_blocks_missing_smtp_host_in_production(tmp_path):
     env = _base_env()
     env["DATABASE_PROVIDER"] = "postgres"

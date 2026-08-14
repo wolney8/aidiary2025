@@ -99,6 +99,19 @@ EMAIL_PROVIDER=smtp
 OPENMYND_REQUIRE_REGISTRATION_EMAIL=true
 ```
 
+For a private Render + Neon storage rehearsal where email is intentionally deferred,
+use this temporary email block instead:
+
+```bash
+EMAIL_PROVIDER=console
+OPENMYND_DEFER_EMAIL_DELIVERY=true
+OPENMYND_REQUIRE_REGISTRATION_EMAIL=false
+```
+
+That mode is for proving user accounts and non-media entries can be stored and recalled
+from Neon. It is not public-launch ready because verification and password recovery are
+disabled/deferred.
+
 Run before deployment:
 
 ```bash

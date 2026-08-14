@@ -663,7 +663,15 @@ const QUOTA_FIELDS: Array<{
               </span>
               <div>
                 <p class="admin-eyebrow">Email</p>
-                <h3>{{ ops.email.ready ? "Email ready" : "Email incomplete" }}</h3>
+                <h3>
+                  {{
+                    ops.email.ready
+                      ? "Email ready"
+                      : ops.email.deferred
+                        ? "Email deferred"
+                        : "Email incomplete"
+                  }}
+                </h3>
                 <span class="admin-muted">
                   {{ formatEnumLabel(ops.email.provider) }}
                   · SMTP {{ ops.email.smtp_host_configured ? "set" : "missing" }}

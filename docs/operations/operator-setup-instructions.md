@@ -54,6 +54,17 @@ For production, replace `FRONTEND_BASE_URL` with the real HTTPS frontend URL:
 FRONTEND_BASE_URL=https://your-openmynd-domain.com
 ```
 
+For a private Render/Neon storage rehearsal only, email can be deferred:
+
+```bash
+EMAIL_PROVIDER=console
+OPENMYND_DEFER_EMAIL_DELIVERY=true
+OPENMYND_REQUIRE_REGISTRATION_EMAIL=false
+```
+
+Do not use that deferred mode for public onboarding because users cannot verify email or
+recover passwords.
+
 Smoke test:
 
 1. Restart the server.

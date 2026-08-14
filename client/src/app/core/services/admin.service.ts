@@ -71,6 +71,7 @@ export interface AdminOperationsReadiness {
     from_configured: boolean;
     smtp_host_configured: boolean;
     registration_email_required: boolean;
+    deferred: boolean;
     ready: boolean;
   };
   oauth: {

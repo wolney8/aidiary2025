@@ -237,6 +237,33 @@ def test_app_blocks_console_email_when_app_env_is_production(monkeypatch, tmp_pa
         create_app()
 
 
+def test_app_allows_deferred_email_for_private_production_rehearsal(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "console")
+    monkeypatch.setenv("OPENMYND_DEFER_EMAIL_DELIVERY", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+
+    assert app.config["DATABASE_PROVIDER"] == "sqlite"
+
+
 def test_app_blocks_http_cors_origin_when_app_env_is_production(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")

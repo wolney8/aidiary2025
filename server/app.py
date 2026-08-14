@@ -152,6 +152,7 @@ def _production_runtime_blockers(
     oauth_google_redirect_uri: str,
     rate_limit_storage_uri: str,
     email_provider: str,
+    email_delivery_deferred: bool,
     email_from_configured: bool,
     smtp_host_configured: bool,
 ) -> list[str]:
@@ -238,6 +239,9 @@ def _production_runtime_blockers(
             blockers.append(
                 'OAUTH_GOOGLE_REDIRECT_URI must be an HTTPS production callback URL.'
             )
+
+    if email_delivery_deferred:
+        return blockers
 
     if email_provider == 'console':
         blockers.append(
@@ -440,6 +444,7 @@ def create_app():
     oauth_google_client_secret = (os.getenv('OAUTH_GOOGLE_CLIENT_SECRET') or '').strip()
     oauth_google_redirect_uri = (os.getenv('OAUTH_GOOGLE_REDIRECT_URI') or '').strip()
     email_provider = (os.getenv('EMAIL_PROVIDER') or 'console').strip().lower()
+    email_delivery_deferred = _env_flag('OPENMYND_DEFER_EMAIL_DELIVERY', default=False)
     if app_environment == 'production':
         production_blockers = _production_runtime_blockers(
             database_provider=database_settings.provider,
@@ -454,6 +459,7 @@ def create_app():
             oauth_google_redirect_uri=oauth_google_redirect_uri,
             rate_limit_storage_uri=app.config['RATELIMIT_STORAGE_URI'],
             email_provider=email_provider,
+            email_delivery_deferred=email_delivery_deferred,
             email_from_configured=bool((os.getenv('EMAIL_FROM_ADDRESS') or '').strip()),
             smtp_host_configured=bool((os.getenv('SMTP_HOST') or '').strip()),
         )

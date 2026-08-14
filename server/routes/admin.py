@@ -840,6 +840,7 @@ def _operations_readiness() -> dict[str, object]:
     email_from_address = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip()
     smtp_host = (os.getenv("SMTP_HOST") or "").strip()
     registration_email_required = _env_flag("OPENMYND_REQUIRE_REGISTRATION_EMAIL")
+    email_delivery_deferred = _env_flag("OPENMYND_DEFER_EMAIL_DELIVERY")
     email_ready = (
         email_provider == "smtp"
         and bool(email_from_address)
@@ -944,6 +945,8 @@ def _operations_readiness() -> dict[str, object]:
             (
                 "SMTP, sender, and registration email verification are configured."
                 if email_ready
+                else "Email delivery is deferred for private/beta storage rehearsal."
+                if email_delivery_deferred
                 else "Configure SMTP, sender address, and registration email verification before public launch."
             ),
         ),
@@ -1015,6 +1018,7 @@ def _operations_readiness() -> dict[str, object]:
             "from_configured": bool(email_from_address),
             "smtp_host_configured": bool(smtp_host),
             "registration_email_required": registration_email_required,
+            "deferred": email_delivery_deferred,
             "ready": email_ready,
         },
         "oauth": {
