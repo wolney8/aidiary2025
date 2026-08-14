@@ -126,7 +126,7 @@ pip install -r requirements.txt
 Start command:
 
 ```bash
-gunicorn -c gunicorn.conf.py wsgi:app
+bash scripts/start_render.sh
 ```
 
 The API process must be supervised by the managed host or by systemd on a VPS. The
@@ -142,8 +142,8 @@ APP_ENV=production PYTHONPATH=. python scripts/validate_production_preflight.py 
 PYTHONPATH=. python scripts/run_postgres_migrations.py --apply
 ```
 
-Run migrations as an explicit deploy step before the web process starts. Do not rely on
-runtime SQLite migration helpers in public production.
+The Render start wrapper applies explicit Postgres migrations before the web process
+starts. Do not rely on runtime SQLite migration helpers in public production.
 
 ## Required Environment Variables
 

@@ -425,7 +425,7 @@ def create_app():
     database_settings = configure_app_database(app)
     app.config['DATABASE_ADAPTER'] = DatabaseAdapter.from_settings(database_settings)
     database_path = database_settings.sqlite_path
-    if not os.path.exists(database_path):
+    if database_settings.provider == SQLITE_PROVIDER and not os.path.exists(database_path):
         app.logger.warning('Database file not found at %s', database_path)
 
     media_root = os.getenv('MEDIA_ROOT')

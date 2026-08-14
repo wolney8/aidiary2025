@@ -100,6 +100,16 @@ EMAIL_PROVIDER=smtp
 OPENMYND_REQUIRE_REGISTRATION_EMAIL=true
 ```
 
+Recommended Render start command:
+
+```bash
+bash scripts/start_render.sh
+```
+
+The wrapper applies pending Postgres migrations when `DATABASE_PROVIDER=postgres`, then
+starts Gunicorn. This prevents a fresh Neon database from deploying successfully but
+failing login with `UndefinedTable`.
+
 For a private Render + Neon non-media storage rehearsal where email and shared rate
 limiting are intentionally deferred, use this temporary block instead:
 
