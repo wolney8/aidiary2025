@@ -76,6 +76,32 @@ Adjust timings after the first real Neon branch rehearsal.
 2. Stop or avoid local write activity.
 3. Create SQLite backup:
 
+Shortcut for a local-only rehearsal package:
+
+```bash
+cd server
+source venv/bin/activate
+PYTHONPATH=. python scripts/run_neon_cutover_rehearsal.py \
+  --source-db db/app.db \
+  --work-dir ~/OpenMyndBackups/neon-rehearsals/manual
+```
+
+Shortcut to apply the backed-up/exported data to an approved Neon rehearsal target:
+
+```bash
+cd server
+source venv/bin/activate
+DATABASE_URL="postgresql://..." PYTHONPATH=. python scripts/run_neon_cutover_rehearsal.py \
+  --source-db db/app.db \
+  --work-dir ~/OpenMyndBackups/neon-rehearsals/manual \
+  --apply
+```
+
+Use `--reset-first --confirm-reset RESET_NON_EMPTY_POSTGRES` only for a disposable
+rehearsal database or an explicitly approved reset.
+
+Manual step-by-step commands are retained below for evidence gathering and debugging.
+
 ```bash
 cd server
 source venv/bin/activate
