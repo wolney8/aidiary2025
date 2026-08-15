@@ -88,9 +88,15 @@ def _startup_failure_app(exc: BaseException) -> Flask:
     return fallback
 
 
-try:
-    from app import create_app  # noqa: E402
+def _build_vercel_app() -> Flask:
+    try:
+        from app import create_app  # noqa: E402
 
-    app = create_app()
-except Exception as startup_exc:  # noqa: BLE001
-    app = _startup_failure_app(startup_exc)
+        return create_app()
+    except Exception as startup_exc:  # noqa: BLE001
+        return _startup_failure_app(startup_exc)
+
+
+# Vercel's Python builder scans for a top-level `app` symbol. Keep the fallback
+# inside the builder function so startup errors return structured JSON at runtime.
+app = _build_vercel_app()
