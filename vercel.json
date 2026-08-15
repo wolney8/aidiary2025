@@ -3,11 +3,6 @@
   "installCommand": "cd client && npm install",
   "buildCommand": "cd client && npm run build:vercel",
   "outputDirectory": "client/dist/openmynd",
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 300
-    }
-  },
   "rewrites": [
     {
       "source": "/api/(.*)",
