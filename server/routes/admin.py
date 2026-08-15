@@ -19,6 +19,11 @@ from services.billing_entitlements import (
     resolve_user_entitlement,
     upsert_user_entitlement,
 )
+from services.account_deletion import (
+    collect_user_media_storage_keys,
+    delete_user_account_data,
+    delete_user_media,
+)
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.email_delivery import EmailDeliveryError, send_transactional_email
@@ -1340,6 +1345,51 @@ def admin_update_user_access(target_user_id: int):
         )
         refreshed = _select_admin_user(conn, target_user_id)
         return jsonify({"user": _serialise_admin_user(conn, refreshed)}), 200
+
+
+@admin_bp.route("/admin/users/<int:target_user_id>", methods=["DELETE"])
+@jwt_required()
+def admin_delete_user(target_user_id: int):
+    user_id = _current_user_id()
+    if target_user_id == user_id:
+        return jsonify({"error": "You cannot delete your own administrator account."}), 400
+
+    media_storage_keys: set[str] = set()
+    deleted_label = f"User {target_user_id}"
+    with get_db() as conn:
+        forbidden = _forbid_non_admin(conn, user_id)
+        if forbidden:
+            return forbidden
+
+        row = _select_admin_user(conn, target_user_id)
+        if row is None:
+            return jsonify({"error": "User not found."}), 404
+
+        deleted_label = _user_label(row)
+        media_storage_keys = collect_user_media_storage_keys(conn, target_user_id)
+        _record_admin_audit(
+            conn,
+            actor_user_id=user_id,
+            target_user_id=target_user_id,
+            action="user_deleted",
+            resource_type="user",
+            resource_id=target_user_id,
+            metadata={
+                "deleted_user": deleted_label,
+                "username": _row_get(row, "username"),
+                "email": _row_get(row, "email"),
+                "media_assets": len(media_storage_keys),
+            },
+        )
+        delete_user_account_data(conn, target_user_id)
+
+    delete_user_media(media_storage_keys)
+    return jsonify(
+        {
+            "message": f"{deleted_label} and their OpenMynd data were deleted.",
+            "deleted_user_id": target_user_id,
+        }
+    ), 200
 
 
 @admin_bp.route("/admin/billing/plans", methods=["GET"])

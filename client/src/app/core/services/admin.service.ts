@@ -338,6 +338,13 @@ export class AdminService {
     );
   }
 
+  deleteUser(userId: number): Observable<{ message: string; deleted_user_id: number }> {
+    return this.http.delete<{ message: string; deleted_user_id: number }>(
+      `${this.apiUrl}/users/${userId}`,
+      { headers: this.headers() },
+    );
+  }
+
   getPlans(): Observable<{ plans: BillingPlan[] }> {
     return this.http.get<{ plans: BillingPlan[] }>(`${this.apiUrl}/billing/plans`, {
       headers: this.headers(),

@@ -356,6 +356,21 @@ def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch)
     assert restore.status_code == 200
     assert restore.get_json()["user"]["account_status"] == "active"
 
+    self_delete = client.delete("/api/admin/users/1", headers=_headers(client.application))
+    assert self_delete.status_code == 400
+    assert self_delete.get_json()["error"] == "You cannot delete your own administrator account."
+
+    delete = client.delete("/api/admin/users/2", headers=_headers(client.application))
+    assert delete.status_code == 200
+    assert delete.get_json()["deleted_user_id"] == 2
+
+    deleted_user = client.get(
+        "/api/admin/users?search=member",
+        headers=_headers(client.application),
+    )
+    assert deleted_user.status_code == 200
+    assert deleted_user.get_json()["users"] == []
+
     plans = client.get("/api/admin/billing/plans", headers=_headers(client.application))
     assert plans.status_code == 200
     assert "administrator" in [plan["tier"] for plan in plans.get_json()["plans"]]
@@ -365,6 +380,7 @@ def test_administrator_can_use_unified_admin_console_routes(client, monkeypatch)
     audit_actions = [event["action"] for event in audit.get_json()["events"]]
     assert "user_entitlement_updated" in audit_actions
     assert "user_access_updated" in audit_actions
+    assert "user_deleted" in audit_actions
     assert audit.get_json()["events"][0]["actor_name"] == "Tester"
 
 

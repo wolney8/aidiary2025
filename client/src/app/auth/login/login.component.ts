@@ -108,15 +108,16 @@ import { OAuthProvider } from "../../core/models/user.model";
           </div>
 
           <div class="oauth-actions" aria-label="External sign-in options">
-            <button
+            <a
               *ngFor="let provider of oauthProviders"
               mat-stroked-button
-              type="button"
               class="oauth-button"
               [class.is-loading]="oauthLoadingProviderId === provider.id"
-              [disabled]="!provider.enabled || isLoading || !!oauthLoadingProviderId"
+              [class.is-disabled]="!provider.enabled || isLoading || !!oauthLoadingProviderId"
+              [attr.aria-disabled]="!provider.enabled || isLoading || !!oauthLoadingProviderId"
+              [attr.href]="getOAuthHref(provider) || null"
               [attr.data-testid]="'login-' + provider.id + '-oauth'"
-              (click)="startOAuth(provider)"
+              (click)="onOAuthClick($event, provider)"
             >
               <svg class="oauth-mark oauth-mark--google" viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.58c2.09-1.93 3.27-4.78 3.27-8.09z" />
@@ -131,7 +132,7 @@ import { OAuthProvider } from "../../core/models/user.model";
                     : "Continue with " + provider.label
                 }}
               </span>
-            </button>
+            </a>
           </div>
 
           <p class="register-link">
@@ -296,15 +297,25 @@ import { OAuthProvider } from "../../core/models/user.model";
       }
 
       .oauth-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
         width: 100%;
         min-height: 44px;
         border-radius: var(--radius-pill);
         border-color: var(--colour-border);
         color: var(--colour-text-primary);
+        text-decoration: none;
       }
 
       .oauth-button.is-loading {
         background: color-mix(in srgb, var(--colour-primary) 14%, transparent);
+      }
+
+      .oauth-button.is-disabled {
+        opacity: 0.56;
+        pointer-events: none;
       }
 
       .oauth-mark {
@@ -543,12 +554,25 @@ export class LoginComponent implements OnInit {
     return returnUrl;
   }
 
-  startOAuth(provider: OAuthProvider): void {
+  getOAuthHref(provider: OAuthProvider): string {
+    if (!provider.enabled || isLoadingDisabled(this.isLoading, this.oauthLoadingProviderId)) {
+      return "";
+    }
+    return this.authService.getOAuthStartUrl(provider, this.getSafeReturnUrl());
+  }
+
+  onOAuthClick(event: MouseEvent, provider: OAuthProvider): void {
     const startUrl = this.authService.getOAuthStartUrl(
       provider,
       this.getSafeReturnUrl(),
     );
-    if (!provider.enabled || !startUrl) {
+    if (
+      !provider.enabled ||
+      !startUrl ||
+      this.isLoading ||
+      Boolean(this.oauthLoadingProviderId)
+    ) {
+      event.preventDefault();
       this.errorMessage =
         "Google sign-in is not available yet. Check OAuth configuration and try again.";
       return;
@@ -556,8 +580,6 @@ export class LoginComponent implements OnInit {
 
     this.oauthLoadingProviderId = provider.id;
     this.errorMessage = "";
-    this.authService.clearLocalSession();
-    window.location.assign(startUrl);
   }
 
   private defaultOAuthProviders(): OAuthProvider[] {
@@ -577,4 +599,8 @@ export class LoginComponent implements OnInit {
     const supported = providers.filter((provider) => provider.id === "google");
     return supported.length ? supported : this.defaultOAuthProviders();
   }
+}
+
+function isLoadingDisabled(isLoading: boolean, oauthLoadingProviderId: string): boolean {
+  return isLoading || Boolean(oauthLoadingProviderId);
 }

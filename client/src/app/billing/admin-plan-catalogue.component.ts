@@ -26,6 +26,8 @@ import {
 } from "../core/services/admin.service";
 import { BillingPlan, BillingTier } from "../core/services/billing.service";
 import { AnnouncementService } from "../core/services/announcement.service";
+import { AppDialogService } from "../core/services/app-dialog.service";
+import { AuthService } from "../core/services/auth.service";
 
 type AdminSection =
   | "overview"
@@ -307,6 +309,17 @@ const QUOTA_FIELDS: Array<{
                         <mat-icon aria-hidden="true">
                           {{ isUserRestricted(user) ? "lock_open" : "block" }}
                         </mat-icon>
+                      </button>
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="admin-icon-pill admin-icon-pill--danger"
+                        [disabled]="savingUserId === user.id || isCurrentAdminUser(user)"
+                        (click)="deleteUser(user)"
+                        [attr.aria-label]="'Delete user and data for ' + getUserDisplayName(user)"
+                        [matTooltip]="isCurrentAdminUser(user) ? 'You cannot delete your own account here' : 'Delete user and data'"
+                      >
+                        <mat-icon aria-hidden="true">delete</mat-icon>
                       </button>
                     </div>
                   </td>
@@ -1954,6 +1967,8 @@ const QUOTA_FIELDS: Array<{
 export class AdminPlanCatalogueComponent implements OnInit {
   private readonly adminService = inject(AdminService);
   private readonly announcementService = inject(AnnouncementService);
+  private readonly appDialog = inject(AppDialogService);
+  private readonly authService = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -2284,6 +2299,35 @@ export class AdminPlanCatalogueComponent implements OnInit {
       });
   }
 
+  async deleteUser(user: EditableAdminUser): Promise<void> {
+    if (this.isCurrentAdminUser(user)) return;
+
+    const confirmed = await this.appDialog.confirm({
+      title: "Delete this user?",
+      message: `This permanently deletes ${this.getUserDisplayName(user)} and their OpenMynd data. Use Restrict instead if they may need to export or recover data later.`,
+      confirmText: "Delete user",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    this.savingUserId = user.id;
+    this.clearFeedback();
+    this.adminService.deleteUser(user.id).subscribe({
+      next: (response) => {
+        this.users = this.users.filter((item) => item.id !== user.id);
+        this.savingUserId = null;
+        this.successMessage = response.message || `${this.getUserDisplayName(user)} deleted.`;
+        this.loadOverview(true);
+        this.loadAuditEvents(true);
+      },
+      error: (error) => {
+        this.savingUserId = null;
+        this.showError(error, "User could not be deleted.");
+      },
+    });
+  }
+
   savePlan(plan: EditablePlan): void {
     this.savingTier = plan.tier;
     this.clearFeedback();
@@ -2439,6 +2483,10 @@ export class AdminPlanCatalogueComponent implements OnInit {
 
   isUserRestricted(user: AdminBillingUser): boolean {
     return String(user.account_status || "active").toLowerCase() === "restricted";
+  }
+
+  isCurrentAdminUser(user: AdminBillingUser): boolean {
+    return this.authService.getCurrentUser()?.id === user.id;
   }
 
   private clearUserSavedFeedback(userId: number): void {
