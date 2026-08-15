@@ -412,7 +412,8 @@ def create_app():
     app = Flask(__name__)
     
     # Configuration
-    app_environment = (os.getenv('APP_ENV') or 'development').strip().lower()
+    default_app_environment = 'production' if os.getenv('VERCEL') else 'development'
+    app_environment = (os.getenv('APP_ENV') or default_app_environment).strip().lower()
     jwt_secret = os.getenv('JWT_SECRET')
     if not jwt_secret and app_environment == 'production':
         raise RuntimeError('JWT_SECRET must be configured when APP_ENV=production')

@@ -38,6 +38,17 @@ def test_database_settings_default_to_sqlite(tmp_path):
     assert settings.runtime_migrations_enabled is True
 
 
+def test_database_settings_infer_postgres_provider_from_database_url(tmp_path):
+    settings = resolve_database_settings(
+        str(tmp_path),
+        environ={"DATABASE_URL": "postgresql://example/openmynd"},
+    )
+
+    assert settings.provider == "postgres"
+    assert settings.database_url == "postgresql://example/openmynd"
+    assert settings.runtime_migrations_enabled is False
+
+
 def test_database_settings_resolve_relative_db_path(tmp_path):
     db_dir = tmp_path / "data"
     db_dir.mkdir()
@@ -108,6 +119,26 @@ def test_app_blocks_sqlite_when_app_env_is_production(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    with pytest.raises(RuntimeError, match="DATABASE_PROVIDER=sqlite is blocked"):
+        create_app()
+
+
+def test_app_treats_vercel_as_production_by_default(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
     monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
     monkeypatch.setenv("DB_PATH", str(db_path))
     monkeypatch.setenv("JWT_SECRET", "x" * 40)

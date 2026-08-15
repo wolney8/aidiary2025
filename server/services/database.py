@@ -40,13 +40,19 @@ def resolve_database_settings(
     environ: Mapping[str, str] | None = None,
 ) -> DatabaseSettings:
     env = os.environ if environ is None else environ
-    provider = (env.get("DATABASE_PROVIDER") or SQLITE_PROVIDER).strip().lower()
+    database_url = (env.get("DATABASE_URL") or "").strip() or None
+    configured_provider = (env.get("DATABASE_PROVIDER") or "").strip().lower()
+    if configured_provider:
+        provider = configured_provider
+    elif database_url and database_url.lower().startswith(("postgres://", "postgresql://")):
+        provider = POSTGRES_PROVIDER
+    else:
+        provider = SQLITE_PROVIDER
     if provider not in SUPPORTED_DATABASE_PROVIDERS:
         supported = ", ".join(sorted(SUPPORTED_DATABASE_PROVIDERS))
         raise RuntimeError(f"Unsupported DATABASE_PROVIDER '{provider}'. Use one of: {supported}")
 
     sqlite_path = _resolve_sqlite_path(root_path, env.get("DB_PATH"))
-    database_url = (env.get("DATABASE_URL") or "").strip() or None
 
     if provider == "postgres" and not database_url:
         raise RuntimeError("DATABASE_URL must be configured when DATABASE_PROVIDER=postgres")

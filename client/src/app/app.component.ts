@@ -39,7 +39,7 @@ import { User } from "./core/models/user.model";
   ],
   template: `
     <a class="skip-link" href="#main-content">Skip to main content</a>
-    <ng-container *ngIf="isAuthenticated; else publicLayout">
+    <ng-container *ngIf="showAuthenticatedShell; else publicLayout">
       <mat-sidenav-container
         class="authenticated-app-shell"
         data-testid="authenticated-app-shell"
@@ -176,6 +176,7 @@ export class AppComponent {
   title = "OpenMynd";
   readonly versionLabel = APP_VERSION;
   isAuthenticated = this.authService.isAuthenticated();
+  showAuthenticatedShell = this.shouldShowAuthenticatedShell(this.router.url);
   currentUser = this.authService.getCurrentUser();
   isOnboardingRoute = this.isOnboardingUrl(this.router.url);
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
@@ -190,6 +191,9 @@ export class AppComponent {
       )
       .subscribe((event) => {
         this.isOnboardingRoute = this.isOnboardingUrl(event.urlAfterRedirects);
+        this.showAuthenticatedShell = this.shouldShowAuthenticatedShell(
+          event.urlAfterRedirects,
+        );
         this.showChatCompanion = this.shouldShowChatCompanion(
           event.urlAfterRedirects,
         );
@@ -200,6 +204,9 @@ export class AppComponent {
       .subscribe((user) => {
         this.currentUser = user;
         this.isAuthenticated = !!user && this.authService.isAuthenticated();
+        this.showAuthenticatedShell = this.shouldShowAuthenticatedShell(
+          this.router.url,
+        );
         this.isOnboardingRoute = this.isOnboardingUrl(this.router.url);
         this.showChatCompanion = this.shouldShowChatCompanion(this.router.url);
 
@@ -290,6 +297,24 @@ export class AppComponent {
       this.isAuthenticated &&
       this.isChatEnabled(this.currentUser) &&
       this.isDiaryChatRoute(url)
+    );
+  }
+
+  private shouldShowAuthenticatedShell(url: string): boolean {
+    return this.isAuthenticated && !this.isPublicShellUrl(url);
+  }
+
+  private isPublicShellUrl(url: string): boolean {
+    return (
+      /^\/login(?:\/|\?|#|$)/.test(url) ||
+      /^\/register(?:\/|\?|#|$)/.test(url) ||
+      /^\/forgot-password(?:\/|\?|#|$)/.test(url) ||
+      /^\/reset-password(?:\/|\?|#|$)/.test(url) ||
+      /^\/verify-email(?:\/|\?|#|$)/.test(url) ||
+      /^\/oauth\/callback(?:\/|\?|#|$)/.test(url) ||
+      /^\/privacy(?:\/|\?|#|$)/.test(url) ||
+      /^\/terms(?:\/|\?|#|$)/.test(url) ||
+      /^\/cookies(?:\/|\?|#|$)/.test(url)
     );
   }
 
