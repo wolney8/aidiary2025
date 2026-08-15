@@ -7,23 +7,82 @@ production hardening already added for public readiness.
 
 ## Recommended First Deployment Shape
 
-Use Vercel for the Angular frontend first.
+Use Vercel for the Angular frontend first. A single-project Vercel rehearsal is now
+available for testing the Flask API through Vercel Python Functions, backed by Neon and
+Cloudflare R2.
 
-Use a separate Python-capable backend host for Flask until the API has been deliberately
-adapted for serverless constraints. Suitable backend hosts include Render, Fly.io,
-Railway, a small VPS, or another always-on Python service.
+Keep a separate Python-capable backend host such as Render, Fly.io, Railway, or a small
+VPS as the fallback path until the Vercel serverless rehearsal has passed real smoke
+tests.
 
 Use Neon as the hosted Postgres database.
 
 Do not rely on Vercel local filesystem persistence for OpenMynd media, imports, OCR
 assets, backups, or restore evidence. Vercel can run Flask through Python functions, but
-that is a stateless/serverless shape and is not the same operational model as the current
-Flask app.
+that is a stateless/serverless shape and is not the same operational model as an
+always-on Flask process.
 
-## Why Not Full Flask On Vercel First
+## Single-Project Vercel Rehearsal
 
-The current backend expects operational behaviours that are better suited to an
-always-on API service:
+Root-level Vercel support exists for a controlled rehearsal:
+
+- `api/index.py` imports the existing Flask app factory.
+- root `requirements.txt` forwards to `server/requirements.txt`.
+- root `vercel.json` builds `client`, serves Angular, and routes `/api`, `/media`, and
+  `/health` to the Flask function.
+
+Create the Vercel project from the repository root, not from `client`, when testing this
+single-project shape.
+
+Suggested Vercel project settings:
+
+- Framework Preset: Other
+- Root Directory: repository root
+- Install Command: use `vercel.json`
+- Build Command: use `vercel.json`
+- Output Directory: use `vercel.json`
+
+Required rehearsal env:
+
+```bash
+APP_ENV=production
+JWT_SECRET=<strong 32+ char secret>
+DATABASE_PROVIDER=postgres
+DATABASE_URL=<Neon pooled connection string>
+DATABASE_USES_POOLER=true
+OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION=false
+CORS_ORIGINS=https://your-vercel-project.vercel.app
+FRONTEND_BASE_URL=https://your-vercel-project.vercel.app
+MEDIA_STORAGE_BACKEND=r2
+R2_ENDPOINT_URL=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=<cloudflare-r2-access-key-id>
+R2_SECRET_ACCESS_KEY=<cloudflare-r2-secret-access-key>
+R2_BUCKET_NAME=openmynd-media
+R2_PUBLIC_BASE_URL=
+MEDIA_BASE_URL=https://your-vercel-project.vercel.app/media
+RATELIMIT_STORAGE_URI=memory://
+OPENMYND_DEFER_SHARED_RATE_LIMITING=true
+EMAIL_PROVIDER=console
+OPENMYND_DEFER_EMAIL_DELIVERY=true
+OPENMYND_REQUIRE_REGISTRATION_EMAIL=false
+```
+
+Before first deploy, apply the Postgres migrations from a trusted local/admin machine:
+
+```bash
+cd server
+source venv/bin/activate
+DATABASE_URL="<Neon pooled connection string>" \
+PYTHONPATH=. python scripts/run_postgres_migrations.py
+```
+
+This is a private rehearsal profile, not a public-launch profile. Public launch still
+needs shared rate limiting, email delivery, Stripe evidence, and backup/restore evidence.
+
+## Why Vercel API Remains A Rehearsal First
+
+The backend still has operational behaviours that are usually better suited to an
+always-on API service or a separate worker:
 
 - authenticated file uploads and generated images
 - media reads through `/media/...`
@@ -32,13 +91,14 @@ always-on API service:
 - database backup/restore evidence checks
 - rate-limiting storage outside process memory
 
-Before placing the Flask API on Vercel Functions, we would need a dedicated serverless
-adaptation pass:
+Before making Vercel Functions the primary production API, prove:
 
-- move all media to object storage, such as S3/R2/Supabase Storage
-- replace filesystem backup evidence with external backup evidence
-- ensure long-running import/OCR work uses a durable external queue
-- confirm Vercel function limits are compatible with image/PDF/OCR workloads
+- media works through R2
+- explicit migrations run cleanly before deploy
+- long-running import/OCR work behaves within serverless limits or moves to a durable
+  worker path
+- backup evidence comes from Neon/R2/export evidence, not Vercel filesystem state
+- rate limiting uses a shared provider before public launch
 
 ## Frontend On Vercel
 
@@ -185,8 +245,11 @@ After frontend and backend are deployed:
 
 ## Current Decision
 
-Proceed with frontend-on-Vercel readiness now.
+Proceed with a single-project Vercel + Neon + R2 private rehearsal.
 
-Do not deploy the current Flask backend to Vercel Functions as the primary public API
-until media storage, durable jobs, and backup evidence have been moved off local
-filesystem assumptions.
+Do not treat Vercel Functions as the final public API architecture until login, entry
+save/load, R2 media, import review, backup evidence, and long-running AI/OCR/import paths
+have passed hosted smoke tests.
+
+Keep Render or another always-on Python host as the fallback architecture until that
+evidence exists.
