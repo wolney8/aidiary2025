@@ -1325,8 +1325,8 @@ def update_daily_entry(entry_id):
     
     # Update allowed fields
     allowed_fields = [
-        'title', 'user_message', 'ai_response', 'daily_people_names', 'daily_places',
-        'tags', 'mood', 'ai_style', 'image_prompt', 'recycled_image_prompt',
+        'title', 'user_message', 'ai_response',
+        'mood', 'ai_style', 'image_prompt', 'recycled_image_prompt',
         'image_url', 'image_position_x', 'image_position_y', 'analysis_attachment_refs'
     ]
     updates = []
@@ -1913,7 +1913,7 @@ def update_dream_entry(entry_id):
         'title', 'cast', 'location', 'period', 'emotion', 'plot',
         'symbols_and_imagery', 'insight', 'action', 'other',
         'summary', 'interpretation', 'image_prompt', 'image_url',
-        'dream_people_names', 'dream_places', 'tags', 'mood', 'ai_style',
+        'mood', 'ai_style',
         'image_position_x', 'image_position_y', 'analysis_attachment_refs',
     ]
     
