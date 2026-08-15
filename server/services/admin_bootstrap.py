@@ -9,7 +9,17 @@ from services.billing_entitlements import upsert_user_entitlement
 
 
 def configured_admin_identifiers() -> set[str]:
-    raw_users = (os.getenv("OPENMYND_BOOTSTRAP_ADMIN_USERS") or "").strip()
+    raw_users = ",".join(
+        value
+        for value in (
+            os.getenv("OPENMYND_BOOTSTRAP_ADMIN_USERS"),
+            os.getenv("OPENMYND_ADMIN_USERS"),
+            os.getenv("OPENMYND_ADMIN_EMAILS"),
+            os.getenv("BOOTSTRAP_ADMIN_USERS"),
+            os.getenv("ADMIN_USERS"),
+        )
+        if value
+    ).strip()
     return {
         item.strip().lower()
         for item in raw_users.split(",")

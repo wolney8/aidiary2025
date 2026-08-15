@@ -13,6 +13,7 @@ from flask_jwt_extended import create_access_token
 from app import create_app
 from routes import admin
 from services.email_delivery import EmailDeliveryError
+from services.admin_bootstrap import configured_admin_identifiers
 
 
 @pytest.fixture
@@ -105,6 +106,14 @@ def test_billing_status_defaults_to_free_when_stripe_not_configured(client):
     assert body["usage"]["ai_analysis"]["limit"] == 10
     assert [plan["public_name"] for plan in body["plans"]] == ["Free", "Plus", "Premier"]
     assert body["is_admin"] is False
+
+
+def test_admin_bootstrap_accepts_hosted_env_aliases(monkeypatch):
+    monkeypatch.delenv("OPENMYND_BOOTSTRAP_ADMIN_USERS", raising=False)
+    monkeypatch.setenv("OPENMYND_ADMIN_USERS", "willtest")
+    monkeypatch.setenv("OPENMYND_ADMIN_EMAILS", "will@example.com")
+
+    assert configured_admin_identifiers() == {"willtest", "will@example.com"}
 
 
 def test_public_plan_catalogue_requires_auth(client):

@@ -14,6 +14,7 @@ from services.billing_entitlements import (
     resolve_user_entitlement,
     upsert_user_entitlement,
 )
+from services.admin_bootstrap import ensure_bootstrap_admin_for_user
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
 from services.sql_compat import adapt_placeholders
@@ -576,6 +577,11 @@ def _update_billing_event_metadata(
 def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
     config = load_stripe_billing_config()
     customer = _get_billing_customer(conn, user_id)
+    user = conn.execute(
+        _sql("SELECT id, username, email FROM users WHERE id = ?"),
+        (user_id,),
+    ).fetchone()
+    ensure_bootstrap_admin_for_user(conn, user, current_app.logger)
     entitlement = resolve_user_entitlement(conn, user_id)
     seed_default_plan_catalogue(conn)
     return {
