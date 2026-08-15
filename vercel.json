@@ -29,11 +29,11 @@
     },
     {
       "src": "/(.*\\.(?:js|css|ico|png|jpg|jpeg|webp|svg|gif|woff|woff2|ttf|eot|map|json|txt))",
-      "dest": "/client/dist/openmynd/$1"
+      "dest": "/client/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/client/dist/openmynd/index.html"
+      "dest": "/client/index.html"
     }
   ]
 }
