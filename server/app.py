@@ -763,6 +763,8 @@ def create_app():
         report['environment'] = {
             'app_env': app_environment,
             'vercel': bool(os.getenv('VERCEL')),
+            'vercel_env': (os.getenv('VERCEL_ENV') or '').strip() or None,
+            'vercel_git_commit_sha': (os.getenv('VERCEL_GIT_COMMIT_SHA') or '').strip()[:12] or None,
             'database_provider_env': (os.getenv('DATABASE_PROVIDER') or '').strip() or None,
             'database_url_present': bool((os.getenv('DATABASE_URL') or '').strip()),
             'database_url_is_postgres': (os.getenv('DATABASE_URL') or '')

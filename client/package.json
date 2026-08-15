@@ -6,6 +6,7 @@
     "start": "ng serve",
     "build": "ng build",
     "build:vercel": "node scripts/write-vercel-environment.mjs && ng build --configuration hosted",
+    "vercel-build": "npm run build:vercel",
     "test": "ng test",
     "lint": "eslint \"src/**/*.{ts,html}\" --max-warnings=0",
     "test:e2e:a11y": "PLAYWRIGHT_PORT=4211 playwright test tests/e2e/accessibility.spec.ts",

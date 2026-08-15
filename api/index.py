@@ -23,6 +23,9 @@ def _safe_env_snapshot() -> dict[str, object]:
     return {
         "app_env": (os.getenv("APP_ENV") or "").strip() or None,
         "vercel": bool(os.getenv("VERCEL")),
+        "vercel_env": (os.getenv("VERCEL_ENV") or "").strip() or None,
+        "vercel_git_commit_sha": (os.getenv("VERCEL_GIT_COMMIT_SHA") or "").strip()[:12]
+        or None,
         "database_provider_env": (os.getenv("DATABASE_PROVIDER") or "").strip() or None,
         "database_url_present": bool((os.getenv("DATABASE_URL") or "").strip()),
         "database_url_is_postgres": (os.getenv("DATABASE_URL") or "")
@@ -70,8 +73,9 @@ def _startup_failure_app(exc: BaseException) -> Flask:
     def health():
         return jsonify(startup_error), 503
 
+    @fallback.route("/api", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     @fallback.route("/api/<path:_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-    def api_unavailable(_path: str):
+    def api_unavailable(_path: str = ""):
         return jsonify(startup_error), 503
 
     @fallback.route("/", defaults={"_path": ""})
