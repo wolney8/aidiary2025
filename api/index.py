@@ -19,6 +19,37 @@ SERVER_ROOT = REPO_ROOT / "server"
 if str(SERVER_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVER_ROOT))
 
+
+def _should_apply_postgres_migrations_on_startup() -> bool:
+    configured = (
+        os.getenv("OPENMYND_APPLY_POSTGRES_MIGRATIONS_ON_STARTUP") or ""
+    ).strip().lower()
+    if configured in {"0", "false", "no", "off"}:
+        return False
+    database_provider = (os.getenv("DATABASE_PROVIDER") or "").strip().lower()
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    return (
+        bool(os.getenv("VERCEL"))
+        and database_provider == "postgres"
+        and database_url.lower().startswith(("postgres://", "postgresql://"))
+    )
+
+
+def _apply_postgres_migrations_for_vercel() -> dict[str, object] | None:
+    if not _should_apply_postgres_migrations_on_startup():
+        return None
+
+    from scripts.run_postgres_migrations import (  # noqa: E402
+        MIGRATIONS_DIR,
+        apply_pending_migrations,
+    )
+
+    return apply_pending_migrations(
+        database_url=(os.getenv("DATABASE_URL") or "").strip(),
+        migrations_dir=MIGRATIONS_DIR,
+    )
+
+
 def _safe_env_snapshot() -> dict[str, object]:
     return {
         "app_env": (os.getenv("APP_ENV") or "").strip() or None,
@@ -90,9 +121,13 @@ def _startup_failure_app(exc: BaseException) -> Flask:
 
 def _build_vercel_app() -> Flask:
     try:
+        migration_result = _apply_postgres_migrations_for_vercel()
         from app import create_app  # noqa: E402
 
-        return create_app()
+        flask_app = create_app()
+        if migration_result is not None:
+            flask_app.config["POSTGRES_STARTUP_MIGRATION_RESULT"] = migration_result
+        return flask_app
     except Exception as startup_exc:  # noqa: BLE001
         return _startup_failure_app(startup_exc)
 

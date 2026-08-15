@@ -39,7 +39,7 @@ REQUIRED_RUNTIME_SCHEMA: dict[str, set[str]] = {
     },
     "auth_identities": {"id", "user_id", "provider", "provider_subject"},
     "auth_sessions": {"id", "user_id", "jwt_jti"},
-    "billing_customers": {"user_id", "stripe_customer_id"},
+    "billing_customers": {"user_id", "provider", "provider_customer_id"},
     "subscriptions": {"user_id", "tier", "status"},
     "entitlements": {"user_id", "tier", "status"},
     "billing_plans": {"tier", "public_name", "quotas_json"},

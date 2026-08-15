@@ -31,6 +31,16 @@ BASELINE_REQUIRED_TABLES = (
     "cbt_worksheets",
     "billing_plans",
 )
+USER_REPAIR_COLUMNS_VERSION = "0007_repair_partial_cloud_user_schema"
+USER_REPAIR_REQUIRED_COLUMNS = (
+    "email",
+    "email_verified",
+    "chat_enabled",
+    "password_auth_enabled",
+    "onboarding_completed",
+    "account_status",
+    "registered_at",
+)
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,27 @@ def fetch_missing_baseline_tables(cursor) -> list[str]:
     return missing
 
 
+def fetch_missing_user_repair_columns(cursor) -> list[str]:
+    row = cursor.execute("SELECT to_regclass(%s)", ("public.users",)).fetchone()
+    if not row or row[0] is None:
+        return list(USER_REPAIR_REQUIRED_COLUMNS)
+
+    rows = cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+        """
+    ).fetchall()
+    existing_columns = {str(row[0]) for row in rows}
+    return [
+        column_name
+        for column_name in USER_REPAIR_REQUIRED_COLUMNS
+        if column_name not in existing_columns
+    ]
+
+
 def build_migration_plan(
     *,
     applied_versions: Iterable[str],
@@ -109,12 +140,20 @@ def apply_pending_migrations(
         with conn.cursor() as cursor:
             applied_versions = fetch_applied_versions(cursor)
             missing_baseline_tables = fetch_missing_baseline_tables(cursor)
+            missing_user_repair_columns = fetch_missing_user_repair_columns(cursor)
             repaired_applied_versions = set(applied_versions)
             if BASELINE_VERSION in applied_versions and missing_baseline_tables:
                 # Earlier failed/manual rehearsals can leave the migration ledger ahead
                 # of the actual schema. Current migrations are idempotent, so replaying
                 # them is safer than booting an app with missing core tables.
                 repaired_applied_versions = set()
+            elif (
+                USER_REPAIR_COLUMNS_VERSION in applied_versions
+                and missing_user_repair_columns
+            ):
+                # If a host has a partial schema but the repair migration is marked
+                # applied, replay only the repair migration.
+                repaired_applied_versions.discard(USER_REPAIR_COLUMNS_VERSION)
             plan = build_migration_plan(
                 applied_versions=repaired_applied_versions,
                 migrations_dir=migrations_dir,
@@ -144,8 +183,14 @@ def apply_pending_migrations(
         "applied_count": len(applied_now),
         "repair": {
             "baseline_tables_missing_before_apply": missing_baseline_tables,
+            "user_columns_missing_before_apply": missing_user_repair_columns,
             "replayed_from_baseline": bool(
                 BASELINE_VERSION in applied_versions and missing_baseline_tables
+            ),
+            "replayed_user_column_repair": bool(
+                USER_REPAIR_COLUMNS_VERSION in applied_versions
+                and missing_user_repair_columns
+                and not missing_baseline_tables
             ),
         },
     }

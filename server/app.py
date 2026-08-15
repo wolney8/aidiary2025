@@ -782,6 +782,9 @@ def create_app():
             .startswith(('postgres://', 'postgresql://')),
             'media_storage_backend': app.config.get('MEDIA_STORAGE_BACKEND'),
         }
+        startup_migration_result = app.config.get('POSTGRES_STARTUP_MIGRATION_RESULT')
+        if startup_migration_result is not None:
+            report['startup_migrations'] = startup_migration_result
         return report, 200 if report.get('ok') is True else 503
 
     @app.route(f'{DEFAULT_MEDIA_URL_PREFIX}/<path:storage_key>')
