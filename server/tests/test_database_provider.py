@@ -6,6 +6,7 @@ import types
 import app as app_module
 import routes.import_routes as import_routes_module
 from app import create_app
+from services.database_adapter import DatabaseAdapter
 from services.database import DatabaseSettings
 from services.database import connect_sqlite_path, resolve_database_settings, table_columns, table_info
 from services.import_service import (
@@ -619,6 +620,57 @@ def test_database_health_endpoint_can_probe_write_readiness(monkeypatch, tmp_pat
     assert payload["ok"] is True
     assert payload["read_ok"] is True
     assert payload["write_ok"] is True
+
+
+def test_database_schema_readiness_reports_missing_runtime_columns(tmp_path):
+    db_path = tmp_path / "app.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
+    conn.commit()
+    conn.close()
+
+    adapter = DatabaseAdapter(provider="sqlite", sqlite_path=str(db_path))
+
+    report = adapter.schema_readiness()
+
+    assert report["ok"] is False
+    assert "auth_identities" in report["missing_tables"]
+    assert "users" in report["missing_columns"]
+    assert "email" in report["missing_columns"]["users"]
+    assert "onboarding_completed" in report["missing_columns"]["users"]
+
+
+def test_database_health_endpoint_checks_schema_in_production(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "x" * 40)
+    monkeypatch.setenv("CORS_ORIGINS", "https://openmynd.example")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://openmynd.example")
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    monkeypatch.setenv("EMAIL_PROVIDER", "console")
+    monkeypatch.setenv("OPENMYND_DEFER_EMAIL_DELIVERY", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_SQLITE_PRODUCTION_FALLBACK", "true")
+    monkeypatch.setenv("OPENMYND_ALLOW_RUNTIME_MIGRATIONS_IN_PRODUCTION", "true")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+    response = app.test_client().get("/api/health/database")
+
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["read_ok"] is True
+    assert payload["schema"]["ok"] is False
+    assert "auth_identities" in payload["schema"]["missing_tables"]
 
 
 def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, tmp_path):

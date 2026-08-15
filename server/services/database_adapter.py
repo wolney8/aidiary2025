@@ -24,6 +24,34 @@ from services.sql_compat import adapt_placeholders
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+REQUIRED_RUNTIME_SCHEMA: dict[str, set[str]] = {
+    "users": {
+        "id",
+        "username",
+        "password",
+        "email",
+        "email_verified",
+        "chat_enabled",
+        "password_auth_enabled",
+        "onboarding_completed",
+        "account_status",
+        "registered_at",
+    },
+    "auth_identities": {"id", "user_id", "provider", "provider_subject"},
+    "auth_sessions": {"id", "user_id", "jwt_jti"},
+    "billing_customers": {"user_id", "stripe_customer_id"},
+    "subscriptions": {"user_id", "tier", "status"},
+    "entitlements": {"user_id", "tier", "status"},
+    "billing_plans": {"tier", "public_name", "quotas_json"},
+    "admin_announcements": {"id", "title", "message", "status"},
+    "dailydiary_entries": {"id", "user_id", "entry_date", "user_message"},
+    "dreamdiary_entries": {"id", "user_id", "entry_date", "plot"},
+    "important_days": {"id", "user_id", "label", "starts_on"},
+    "cbt_worksheets": {"id", "user_id", "worksheet_type", "record_date"},
+    "cbt_thought_record_data": {"worksheet_id"},
+    "entry_assets": {"id", "user_id", "entry_type", "storage_key"},
+}
+
 
 class _SqlCompatCursor:
     def __init__(self, cursor, provider: str):
@@ -196,6 +224,39 @@ class DatabaseAdapter:
 
         report["ok"] = True
         report["latency_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+        return report
+
+    def schema_readiness(self) -> dict[str, object]:
+        """Check critical runtime tables/columns without exposing row data."""
+        started_at = time.perf_counter()
+        report: dict[str, object] = {
+            "ok": False,
+            "missing_tables": [],
+            "missing_columns": {},
+            "checked_tables": sorted(REQUIRED_RUNTIME_SCHEMA),
+            "latency_ms": None,
+        }
+        try:
+            with self.connect(timeout=5) as conn:
+                missing_tables: list[str] = []
+                missing_columns: dict[str, list[str]] = {}
+                for table_name, required_columns in REQUIRED_RUNTIME_SCHEMA.items():
+                    if not self.table_exists(conn, table_name):
+                        missing_tables.append(table_name)
+                        continue
+                    existing_columns = self.table_columns(conn, table_name)
+                    missing = sorted(required_columns - existing_columns)
+                    if missing:
+                        missing_columns[table_name] = missing
+
+                report["missing_tables"] = sorted(missing_tables)
+                report["missing_columns"] = missing_columns
+                report["ok"] = not missing_tables and not missing_columns
+                report["latency_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+        except Exception as exc:
+            report["error_type"] = exc.__class__.__name__
+            report["message"] = "Database schema readiness check failed."
+
         return report
 
     def table_exists(self, conn, table_name: str) -> bool:

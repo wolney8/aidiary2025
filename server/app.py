@@ -759,7 +759,16 @@ def create_app():
     @app.route('/api/health/database')
     def database_health():
         write = str(request.args.get('write') or '').strip().lower() in {'1', 'true', 'yes'}
+        include_schema = (
+            app_environment == 'production'
+            or str(request.args.get('schema') or '').strip().lower() in {'1', 'true', 'yes'}
+        )
         report = app.config['DATABASE_ADAPTER'].health_check(write=write)
+        if include_schema and hasattr(app.config['DATABASE_ADAPTER'], 'schema_readiness'):
+            schema_report = app.config['DATABASE_ADAPTER'].schema_readiness()
+            report['schema'] = schema_report
+            if schema_report.get('ok') is not True:
+                report['ok'] = False
         report['environment'] = {
             'app_env': app_environment,
             'vercel': bool(os.getenv('VERCEL')),
