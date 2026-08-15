@@ -28,11 +28,12 @@
       "dest": "/api/index.py"
     },
     {
-      "handle": "filesystem"
+      "src": "/(.*\\.(?:js|css|ico|png|jpg|jpeg|webp|svg|gif|woff|woff2|ttf|eot|map|json|txt))",
+      "dest": "/client/dist/openmynd/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/client/dist/openmynd/index.html"
     }
   ]
 }
