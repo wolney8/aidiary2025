@@ -19,6 +19,7 @@ import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { distinctUntilChanged } from "rxjs";
 import { AuthService } from "./core/services/auth.service";
 import { InactivityService } from "./core/services/inactivity.service";
+import { LoadingService } from "./core/services/loading.service";
 import { ThemeService } from "./core/services/theme.service";
 import {
   InactivityWarningComponent,
@@ -50,7 +51,7 @@ import { User } from "./core/models/user.model";
   template: `
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <div
-      *ngIf="isRouteLoading"
+      *ngIf="showGlobalLoading"
       class="route-loading"
       role="status"
       aria-live="polite"
@@ -224,6 +225,7 @@ import { User } from "./core/models/user.model";
 export class AppComponent {
   private readonly authService = inject(AuthService);
   private readonly inactivityService = inject(InactivityService);
+  private readonly loadingService = inject(LoadingService);
   private readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
@@ -245,6 +247,11 @@ export class AppComponent {
   isOnboardingRoute = this.isOnboardingUrl(this.router.url);
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
   isRouteLoading = false;
+  readonly isApiLoading = this.loadingService.isLoading;
+
+  get showGlobalLoading(): boolean {
+    return this.isRouteLoading || this.isApiLoading();
+  }
 
   constructor() {
     this.themeService.mode();
