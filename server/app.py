@@ -760,6 +760,17 @@ def create_app():
     def database_health():
         write = str(request.args.get('write') or '').strip().lower() in {'1', 'true', 'yes'}
         report = app.config['DATABASE_ADAPTER'].health_check(write=write)
+        report['environment'] = {
+            'app_env': app_environment,
+            'vercel': bool(os.getenv('VERCEL')),
+            'database_provider_env': (os.getenv('DATABASE_PROVIDER') or '').strip() or None,
+            'database_url_present': bool((os.getenv('DATABASE_URL') or '').strip()),
+            'database_url_is_postgres': (os.getenv('DATABASE_URL') or '')
+            .strip()
+            .lower()
+            .startswith(('postgres://', 'postgresql://')),
+            'media_storage_backend': app.config.get('MEDIA_STORAGE_BACKEND'),
+        }
         return report, 200 if report.get('ok') is True else 503
 
     @app.route(f'{DEFAULT_MEDIA_URL_PREFIX}/<path:storage_key>')

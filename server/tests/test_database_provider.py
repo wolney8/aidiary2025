@@ -646,13 +646,14 @@ def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, t
     response = app.test_client().get("/api/health/database")
 
     assert response.status_code == 503
-    assert response.get_json() == {
-        "provider": "postgres",
-        "ok": False,
-        "latency_ms": None,
-        "error_type": "OperationalError",
-        "message": "Database connection check failed.",
-    }
+    payload = response.get_json()
+    assert payload["provider"] == "postgres"
+    assert payload["ok"] is False
+    assert payload["latency_ms"] is None
+    assert payload["error_type"] == "OperationalError"
+    assert payload["message"] == "Database connection check failed."
+    assert payload["environment"]["database_provider_env"] == "sqlite"
+    assert payload["environment"]["database_url_present"] is False
 
 
 def test_database_write_failure_returns_sanitized_api_error(monkeypatch, tmp_path):
