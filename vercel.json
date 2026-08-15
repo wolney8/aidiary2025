@@ -32,7 +32,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/client/dist/openmynd/index.html"
+      "dest": "/index.html"
     }
   ]
 }
