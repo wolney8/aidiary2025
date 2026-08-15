@@ -1,6 +1,9 @@
 // Route guard to protect authenticated views
 import { inject } from "@angular/core";
 import {
+  HttpErrorResponse,
+} from "@angular/common/http";
+import {
   ActivatedRouteSnapshot,
   CanActivateFn,
   CanMatchFn,
@@ -22,6 +25,26 @@ function loginRedirect(router: Router, authService: AuthService, returnUrl: stri
   }
 
   return router.createUrlTree(["/login"], { queryParams });
+}
+
+function serviceUnavailableRedirect(router: Router, returnUrl: string): UrlTree {
+  return router.createUrlTree(["/login"], {
+    queryParams: {
+      reason: "service-unavailable",
+      returnUrl: returnUrl || "/dashboard",
+    },
+  });
+}
+
+function isDatabaseServiceFailure(error: unknown): boolean {
+  return (
+    error instanceof HttpErrorResponse &&
+    error.status >= 500 &&
+    (error.error?.category === "database" ||
+      error.error?.category === "connection" ||
+      error.error?.category === "storage_or_quota" ||
+      String(error.error?.code || "").startsWith("database_"))
+  );
 }
 
 function requireAuthenticated(
@@ -72,7 +95,10 @@ function requireAuthenticated(
         }
         return true;
       }),
-      catchError(() => {
+      catchError((error) => {
+        if (isDatabaseServiceFailure(error)) {
+          return of(serviceUnavailableRedirect(router, returnUrl));
+        }
         authService.clearLocalSession();
         return of(loginRedirect(router, authService, returnUrl));
       }),

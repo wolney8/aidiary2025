@@ -73,7 +73,7 @@ Before first deploy, apply the Postgres migrations from a trusted local/admin ma
 cd server
 source venv/bin/activate
 DATABASE_URL="<Neon pooled connection string>" \
-PYTHONPATH=. python scripts/run_postgres_migrations.py
+PYTHONPATH=. python scripts/run_postgres_migrations.py --apply
 ```
 
 This is a private rehearsal profile, not a public-launch profile. Public launch still

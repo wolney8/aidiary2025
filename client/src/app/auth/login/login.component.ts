@@ -454,6 +454,9 @@ export class LoginComponent implements OnInit {
       this.sessionInfoMessage = "Your account has been deleted.";
     } else if (reason === "password-reset") {
       this.sessionInfoMessage = "Password reset. Sign in with your new password.";
+    } else if (reason === "service-unavailable") {
+      this.errorMessage =
+        "OpenMynd is connected, but the database is not ready. Please try again after the service check is fixed.";
     }
 
     this.authService.getOAuthProviders().subscribe({
@@ -493,6 +496,16 @@ export class LoginComponent implements OnInit {
         } else if (err.status === 0) {
           this.errorMessage =
             "Unable to connect to server. Please check your connection.";
+        } else if (
+          err.status >= 500 &&
+          (err.error?.category === "database" ||
+            err.error?.category === "connection" ||
+            err.error?.category === "storage_or_quota" ||
+            String(err.error?.code || "").startsWith("database_"))
+        ) {
+          this.errorMessage =
+            err.error?.error ||
+            "OpenMynd is connected, but the database is not ready. Please try again after the service check is fixed.";
         } else {
           this.errorMessage = "Login failed. Please try again.";
         }

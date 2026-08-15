@@ -649,6 +649,32 @@ def test_database_write_failure_returns_sanitized_api_error(monkeypatch, tmp_pat
     assert "database or disk is full" not in str(payload)
 
 
+def test_database_read_failure_returns_read_specific_api_error(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+
+    @app.route("/api/test-database-read-failure", methods=["GET"])
+    def test_database_read_failure():
+        raise sqlite3.OperationalError("relation subscriptions does not exist")
+
+    response = app.test_client().get("/api/test-database-read-failure")
+
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["code"] == "database_read_failed"
+    assert payload["category"] == "database"
+    assert "write" not in payload["error"].lower()
+    assert "relation subscriptions" not in str(payload)
+
+
 def test_app_runs_runtime_migration_hook_for_sqlite(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")

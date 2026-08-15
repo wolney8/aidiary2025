@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from extensions import limiter
 from services.database_adapter import DatabaseAdapter
 from services.database import POSTGRES_PROVIDER, SQLITE_PROVIDER, configure_app_database
-from services.database_resilience import classify_database_exception
+from services.database_resilience import READ_METHODS, classify_database_exception
 from services.runtime_migrations import (
     ensure_account_security_tokens_table,
     ensure_admin_announcement_tables,
@@ -563,12 +563,17 @@ def create_app():
         if isinstance(err, HTTPException):
             return err
 
-        database_failure = classify_database_exception(err)
+        database_operation = 'read' if request.method in READ_METHODS else 'write'
+        database_failure = classify_database_exception(
+            err,
+            operation=database_operation,
+        )
         if database_failure:
             app.logger.error(
-                'Database failure classified: category=%s code=%s provider=%s path=%s error_type=%s',
+                'Database failure classified: category=%s code=%s operation=%s provider=%s path=%s error_type=%s',
                 database_failure.category,
                 database_failure.code,
+                database_operation,
                 app.config.get('DATABASE_PROVIDER', 'unknown'),
                 request.path,
                 err.__class__.__name__,

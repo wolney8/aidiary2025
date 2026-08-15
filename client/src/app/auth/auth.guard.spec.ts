@@ -1,4 +1,5 @@
 import { TestBed } from "@angular/core/testing";
+import { HttpErrorResponse } from "@angular/common/http";
 import {
   ActivatedRouteSnapshot,
   provideRouter,
@@ -8,7 +9,7 @@ import {
   UrlSegment,
   UrlTree,
 } from "@angular/router";
-import { firstValueFrom, isObservable, Observable, of } from "rxjs";
+import { firstValueFrom, isObservable, Observable, of, throwError } from "rxjs";
 import { authGuard, authMatchGuard } from "./auth.guard";
 import { AuthService } from "../core/services/auth.service";
 import { ProfileService } from "../core/services/profile.service";
@@ -179,6 +180,36 @@ describe("authGuard", () => {
     const resolved = await resolveGuardResult(result);
     expect(resolved instanceof UrlTree).toBeTrue();
     expect(router.serializeUrl(resolved as UrlTree)).toBe("/account-restricted");
+  });
+
+  it("keeps the local session and explains database service failures", async () => {
+    isAuthenticated = true;
+    profileServiceMock.getProfile = () =>
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 503,
+            error: {
+              category: "database",
+              code: "database_read_failed",
+              error: "OpenMynd could not read from the database. Try again in a moment.",
+            },
+          }),
+      );
+
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard(
+        {} as ActivatedRouteSnapshot,
+        { url: "/dashboard" } as RouterStateSnapshot,
+      ),
+    );
+
+    const resolved = await resolveGuardResult(result);
+    expect(resolved instanceof UrlTree).toBeTrue();
+    expect(router.serializeUrl(resolved as UrlTree)).toBe(
+      "/login?reason=service-unavailable&returnUrl=%2Fdashboard",
+    );
+    expect(authServiceMock.clearLocalSession).not.toHaveBeenCalled();
   });
 
   it("allows restricted users to access the limited account page", async () => {

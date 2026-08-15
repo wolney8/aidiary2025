@@ -14,6 +14,9 @@ class DatabaseFailure:
     user_message: str
 
 
+READ_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
 _CONNECTION_MARKERS = (
     "connection",
     "connect",
@@ -52,12 +55,17 @@ _WRITE_LOCK_MARKERS = (
 )
 
 
-def classify_database_exception(exc: BaseException) -> DatabaseFailure | None:
+def classify_database_exception(
+    exc: BaseException,
+    *,
+    operation: str = "write",
+) -> DatabaseFailure | None:
     """Return a sanitized failure classification for database infrastructure errors."""
 
     if not _looks_like_database_exception(exc):
         return None
 
+    is_read = operation == "read"
     text = f"{exc.__class__.__module__} {exc.__class__.__name__} {exc}".lower()
     if any(marker in text for marker in _STORAGE_MARKERS):
         return DatabaseFailure(
@@ -85,14 +93,20 @@ def classify_database_exception(exc: BaseException) -> DatabaseFailure | None:
             category="connection",
             status_code=503,
             user_message=(
-                "OpenMynd could not reach the database. Your changes were not saved."
+                "OpenMynd could not reach the database. Try again in a moment."
+                if is_read
+                else "OpenMynd could not reach the database. Your changes were not saved."
             ),
         )
     return DatabaseFailure(
-        code="database_write_failed",
+        code="database_read_failed" if is_read else "database_write_failed",
         category="database",
         status_code=503,
-        user_message="OpenMynd could not complete the database write. Your changes were not saved.",
+        user_message=(
+            "OpenMynd could not read from the database. Try again in a moment."
+            if is_read
+            else "OpenMynd could not complete the database write. Your changes were not saved."
+        ),
     )
 
 
