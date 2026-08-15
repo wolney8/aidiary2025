@@ -65,6 +65,26 @@ def adapt_placeholders(sql: str, provider: str, *, start: int = 1) -> str:
             continue
         parts.append(character)
         position += 1
+    return _escape_psycopg_percent_literals("".join(parts))
+
+
+def _escape_psycopg_percent_literals(sql: str) -> str:
+    """Escape literal percent signs while preserving psycopg placeholders."""
+    parts: list[str] = []
+    position = 0
+    while position < len(sql):
+        character = sql[position]
+        if character != "%":
+            parts.append(character)
+            position += 1
+            continue
+
+        next_character = sql[position + 1] if position + 1 < len(sql) else ""
+        if next_character in {"s", "b", "t", "%"}:
+            parts.append(character)
+        else:
+            parts.append("%%")
+        position += 1
     return "".join(parts)
 
 

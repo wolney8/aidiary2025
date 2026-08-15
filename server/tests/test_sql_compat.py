@@ -69,6 +69,15 @@ def test_adapt_placeholders_handles_escaped_single_quotes():
     )
 
 
+def test_adapt_placeholders_escapes_literal_percent_for_psycopg():
+    sql = "SELECT * FROM billing_plans WHERE features_json LIKE '%AI analyses%' AND tier = ?"
+
+    assert (
+        adapt_placeholders(sql, "postgres")
+        == "SELECT * FROM billing_plans WHERE features_json LIKE '%%AI analyses%%' AND tier = %s"
+    )
+
+
 def test_append_returning_id_only_for_postgres():
     sql = "INSERT INTO users (username) VALUES (?)"
 
