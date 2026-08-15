@@ -3349,6 +3349,12 @@ export class DetailComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (warningCode === "ai-unavailable") {
+      this.analysisWarningMessage =
+        "Your entry was saved, but AI analysis is temporarily unavailable. Try analysing again later.";
+      return;
+    }
+
     this.analysisWarningMessage = "";
   }
 

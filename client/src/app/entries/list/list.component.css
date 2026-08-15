@@ -828,6 +828,46 @@
   background: transparent;
 }
 
+.entries-loading-panel,
+.entries-error-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin: 0 0 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-elevated);
+  color: var(--colour-text-primary);
+  box-shadow: 0 14px 36px var(--colour-shadow-soft);
+}
+
+.entries-loading-panel strong,
+.entries-error-panel strong {
+  display: block;
+  font-weight: 800;
+}
+
+.entries-loading-panel span,
+.entries-error-panel span {
+  display: block;
+  color: var(--colour-text-secondary);
+}
+
+.entries-error-panel {
+  border-color: color-mix(in srgb, var(--colour-warning-text) 30%, var(--colour-border));
+  background: var(--colour-warning-bg);
+  color: var(--colour-warning-text);
+}
+
+.entries-error-panel mat-icon {
+  color: var(--colour-warning-text);
+}
+
+.entries-error-panel button {
+  margin-left: auto;
+}
+
 .no-entries-message {
   display: flex;
   justify-content: center;
@@ -2232,6 +2272,16 @@
 }
 
 @media (max-width: 720px) {
+  .entries-loading-panel,
+  .entries-error-panel {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .entries-error-panel button {
+    margin-left: 0;
+  }
+
   .monthly-important-day-preview .calendar-important-day-preview-cards {
     grid-template-columns: 1fr;
   }

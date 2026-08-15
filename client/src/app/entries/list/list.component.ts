@@ -14,6 +14,7 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatTooltipModule } from "@angular/material/tooltip";
+import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
 import { CbtService } from "../../core/services/cbt.service";
@@ -187,6 +188,7 @@ type OnThisDayPreviewState = {
     MatPaginatorModule,
     MatChipsModule,
     MatTooltipModule,
+    MatProgressSpinnerModule,
     SearchResultsComponent,
   ],
   styleUrl: "./list.component.css",
@@ -283,6 +285,37 @@ type OnThisDayPreviewState = {
               New Entry
             </button>
           </div>
+
+          <section
+            class="entries-loading-panel"
+            *ngIf="isLoadingEntries"
+            role="status"
+            aria-live="polite"
+            data-testid="entries-loading-panel"
+          >
+            <mat-progress-spinner mode="indeterminate" diameter="34" />
+            <div>
+              <strong>Loading your entries…</strong>
+              <span>Connecting to your journal data. This can take a moment on first load.</span>
+            </div>
+          </section>
+
+          <section
+            class="entries-error-panel"
+            *ngIf="!isLoadingEntries && entriesLoadError"
+            role="alert"
+            data-testid="entries-load-error"
+          >
+            <mat-icon aria-hidden="true">error</mat-icon>
+            <div>
+              <strong>Entries could not be loaded.</strong>
+              <span>{{ entriesLoadError }}</span>
+            </div>
+            <button mat-stroked-button type="button" (click)="loadEntries()">
+              <mat-icon aria-hidden="true">refresh</mat-icon>
+              Retry
+            </button>
+          </section>
 
           <section
             *ngIf="getWritingRhythmStats() as rhythm"
@@ -731,7 +764,7 @@ type OnThisDayPreviewState = {
             </div>
 
             <!-- No entries message -->
-            <div class="no-entries-message" *ngIf="paginatedEntries.length === 0">
+            <div class="no-entries-message" *ngIf="!isLoadingEntries && !entriesLoadError && paginatedEntries.length === 0">
               <mat-card class="no-entries-card">
                 <mat-card-content>
                   <mat-icon class="no-entries-icon">calendar_today</mat-icon>
@@ -1560,6 +1593,8 @@ export class ListComponent implements OnInit, OnDestroy {
     "important-days",
   ]);
   private hasExplicitContentFilters = false;
+  isLoadingEntries = false;
+  entriesLoadError = "";
   dailyEntries: EntryItem[] = [];
   dreamEntries: EntryItem[] = [];
   thoughtRecords: CbtWorksheet[] = [];
@@ -1984,11 +2019,18 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   loadEntries(): void {
+    this.isLoadingEntries = true;
+    this.entriesLoadError = "";
     let dailyLoaded = false;
     let dreamLoaded = false;
     let thoughtRecordsLoaded = false;
     let importantDaysLoaded = false;
     let holidaySettingsLoaded = false;
+
+    const markLoadFailure = (): void => {
+      this.entriesLoadError =
+        "Some journal data is temporarily unavailable. Retry once the connection settles.";
+    };
 
     this.onThisDayService.getFeed().subscribe({
       next: (feed) => {
@@ -2014,19 +2056,36 @@ export class ListComponent implements OnInit, OnDestroy {
         this.syncPublicHolidaysForSelectedYear();
         this.filterEntries();
         this.updatePaginatedEntries();
+        this.isLoadingEntries = false;
       }
     };
 
-    this.entriesService.getDailyEntries().subscribe((entries) => {
-      this.dailyEntries = entries.map((e) => ({ ...e, type: "daily" }));
-      dailyLoaded = true;
-      checkAndGenerateTimeline();
+    this.entriesService.getDailyEntries().subscribe({
+      next: (entries) => {
+        this.dailyEntries = entries.map((e) => ({ ...e, type: "daily" }));
+        dailyLoaded = true;
+        checkAndGenerateTimeline();
+      },
+      error: () => {
+        this.dailyEntries = [];
+        markLoadFailure();
+        dailyLoaded = true;
+        checkAndGenerateTimeline();
+      },
     });
 
-    this.entriesService.getDreamEntries().subscribe((entries) => {
-      this.dreamEntries = entries.map((e) => ({ ...e, type: "dream" }));
-      dreamLoaded = true;
-      checkAndGenerateTimeline();
+    this.entriesService.getDreamEntries().subscribe({
+      next: (entries) => {
+        this.dreamEntries = entries.map((e) => ({ ...e, type: "dream" }));
+        dreamLoaded = true;
+        checkAndGenerateTimeline();
+      },
+      error: () => {
+        this.dreamEntries = [];
+        markLoadFailure();
+        dreamLoaded = true;
+        checkAndGenerateTimeline();
+      },
     });
 
     this.cbtService.listWorksheets().subscribe({
@@ -2037,6 +2096,7 @@ export class ListComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.thoughtRecords = [];
+        markLoadFailure();
         thoughtRecordsLoaded = true;
         checkAndGenerateTimeline();
       },
@@ -2050,6 +2110,7 @@ export class ListComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.importantDays = [];
+        markLoadFailure();
         importantDaysLoaded = true;
         checkAndGenerateTimeline();
       },
@@ -2076,6 +2137,7 @@ export class ListComponent implements OnInit, OnDestroy {
         this.publicHolidayCountryCode = "";
         this.publicHolidaysByYear.clear();
         this.loadedHolidayYears.clear();
+        markLoadFailure();
         holidaySettingsLoaded = true;
         checkAndGenerateTimeline();
       },

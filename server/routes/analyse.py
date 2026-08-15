@@ -949,7 +949,15 @@ def analyse_text():
         recent_context = _merge_analysis_context(related_context, attachment_context)
 
     try:
-        ai_service = OpenAIService()
+        try:
+            ai_service = OpenAIService()
+        except ValueError as exc:
+            current_app.logger.warning('AI provider is not configured for analysis: %s', exc)
+            return jsonify({
+                'error': 'AI analysis is not configured for this environment.',
+                'code': 'ai_provider_unavailable',
+            }), 503
+
         analysis_options = {
             'ai_style': ai_style,
             'ai_tone': analysis_settings.get('ai_tone', DEFAULT_ANALYSIS_SETTINGS['ai_tone']),

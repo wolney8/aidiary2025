@@ -2398,7 +2398,11 @@ export class CreateComponent implements OnInit, OnDestroy {
         return "ai-rate-limit";
       }
 
-      return undefined;
+      if (this.isTemporaryAnalysisError(error)) {
+        return "ai-unavailable";
+      }
+
+      return "ai-unavailable";
     }
   }
 
@@ -2457,7 +2461,11 @@ export class CreateComponent implements OnInit, OnDestroy {
         return "ai-rate-limit";
       }
 
-      return undefined;
+      if (this.isTemporaryAnalysisError(error)) {
+        return "ai-unavailable";
+      }
+
+      return "ai-unavailable";
     }
   }
 
@@ -2612,6 +2620,10 @@ export class CreateComponent implements OnInit, OnDestroy {
       );
     } else if (analysisWarning === "ai-rate-limit") {
       messages.push("AI analysis could not run because its usage limit was reached.");
+    } else if (analysisWarning === "ai-unavailable") {
+      messages.push(
+        "AI analysis could not run because the AI service is temporarily unavailable or not configured for this environment.",
+      );
     }
     return messages.join(" ");
   }
@@ -2640,6 +2652,14 @@ export class CreateComponent implements OnInit, OnDestroy {
       error.status === 402 &&
       error.error?.code === "upgrade_required"
     );
+  }
+
+  private isTemporaryAnalysisError(error: unknown): boolean {
+    if (!(error instanceof HttpErrorResponse)) {
+      return false;
+    }
+
+    return error.status === 500 || error.status === 502 || error.status === 503;
   }
 
   private handleError(message: string): void {
