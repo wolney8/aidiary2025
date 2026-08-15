@@ -1928,6 +1928,20 @@ def test_update_daily_entry_does_not_create_duplicate(client):
     assert entries[0]['title'] == 'Edited Title'
 
 
+def test_analysis_attachment_refs_update_value_is_json_encoded():
+    """Entry updates store attachment references as text, not raw Python lists."""
+    from routes.entries import _normalise_update_field_value
+
+    assert (
+        _normalise_update_field_value(
+            'analysis_attachment_refs',
+            ['attachment-one.pdf', 'attachment-two.pdf'],
+        )
+        == '["attachment-one.pdf", "attachment-two.pdf"]'
+    )
+    assert _normalise_update_field_value('title', 'Keep text values') == 'Keep text values'
+
+
 def test_update_daily_entry_not_found(client):
     """PUT for non-existent entry returns 404."""
     token = get_auth_token(client)

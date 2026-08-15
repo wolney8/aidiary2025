@@ -14,6 +14,7 @@ import bcrypt
 import base64
 import hashlib
 import hmac
+import json
 from io import BytesIO
 import sqlite3
 import re
@@ -35,6 +36,7 @@ from services.auth_sessions import (
     record_auth_session,
     revoke_session_by_jti,
 )
+from services.admin_bootstrap import ensure_bootstrap_admin_for_user
 from services.legacy_passwords import bcrypt_password, password_is_bcrypt_hash
 from services.media_storage import resolve_image_url, store_profile_image
 from services.security_audit import record_security_event
@@ -423,6 +425,7 @@ def oauth_callback(provider_id: str):
 
     with get_db() as conn:
         user = _load_user_for_auth(conn, user_id)
+        ensure_bootstrap_admin_for_user(conn, user, current_app.logger)
     if not user:
         _audit_security_event_for_request(
             'oauth_callback_failed',
@@ -693,6 +696,8 @@ def login():
     # Create JWT token
     access_token = _create_tracked_access_token(int(user['id']))
     _audit_security_event_for_request('login_success', user_id=int(user['id']))
+    with get_db() as conn:
+        ensure_bootstrap_admin_for_user(conn, user, current_app.logger)
     
     return _auth_json_response({
         'token': access_token,
@@ -1077,7 +1082,7 @@ def _redirect_oauth_success(
     onboarding_required: bool = False,
 ):
     encoded_user = base64.urlsafe_b64encode(
-        jsonify(user).get_data()
+        json.dumps(user, separators=(',', ':')).encode('utf-8')
     ).decode('ascii').rstrip('=')
     fragment = urlencode({
         'token': token,

@@ -65,19 +65,12 @@ availability.
 
 ## Delivery cadence
 
-Every project-work reply must include a compact status mini-table so the active
-direction is visible when multiple Codex windows or projects are open:
+Keep project-work updates short, milestone-based, and easy to act on. Prefer concise
+prose over status tables unless the user explicitly asks for a tabular summary.
 
-| Track | Previous | Current | Next | Completion | GitHub |
-| --- | --- | --- | --- | ---: | --- |
-| OpenMynd | previous track or branch | current stage | next planned stage | pragmatic percent | issue/milestone or `GitHub not verified` |
-
-Rules for this table:
-
-- Keep the table short and update it in every substantive response.
-- Treat completion percentages as practical delivery estimates, not guarantees.
-- Follow the table with simple reasoning in plain language: what changed, why it matters,
-  and what happens next.
+- State what is being worked on, why it matters, and the next action when useful.
+- Keep completion percentages for roadmap or milestone reviews only; do not include
+  them in every routine update.
 - If live GitHub state was not checked, say so explicitly instead of guessing.
 - When asked for roadmap or issue hygiene, identify closure candidates and gaps with
   copy-pasteable issue titles/bodies where new tracking is needed.

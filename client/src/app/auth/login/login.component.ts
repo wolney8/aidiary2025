@@ -113,7 +113,8 @@ import { OAuthProvider } from "../../core/models/user.model";
               mat-stroked-button
               type="button"
               class="oauth-button"
-              [disabled]="!provider.enabled || isLoading"
+              [class.is-loading]="oauthLoadingProviderId === provider.id"
+              [disabled]="!provider.enabled || isLoading || !!oauthLoadingProviderId"
               [attr.data-testid]="'login-' + provider.id + '-oauth'"
               (click)="startOAuth(provider)"
             >
@@ -123,7 +124,13 @@ import { OAuthProvider } from "../../core/models/user.model";
                 <path fill="#fbbc05" d="M5.88 14.13c-.22-.66-.35-1.36-.35-2.13s.13-1.47.35-2.13V7.03H2.18C1.43 8.53 1 10.22 1 12s.43 3.47 1.18 4.97l3.7-2.84z" />
                 <path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.68 1 3.99 3.47 2.18 7.03l3.7 2.84c.87-2.58 3.28-4.49 6.12-4.49z" />
               </svg>
-              <span>Continue with {{ provider.label }}</span>
+              <span>
+                {{
+                  oauthLoadingProviderId === provider.id
+                    ? "Opening Google..."
+                    : "Continue with " + provider.label
+                }}
+              </span>
             </button>
           </div>
 
@@ -296,6 +303,10 @@ import { OAuthProvider } from "../../core/models/user.model";
         color: var(--colour-text-primary);
       }
 
+      .oauth-button.is-loading {
+        background: color-mix(in srgb, var(--colour-primary) 14%, transparent);
+      }
+
       .oauth-mark {
         width: 24px;
         height: 24px;
@@ -442,6 +453,7 @@ export class LoginComponent implements OnInit {
   errorMessage = "";
   sessionInfoMessage = "";
   isLoading = false;
+  oauthLoadingProviderId = "";
   oauthProviders: OAuthProvider[] = this.defaultOAuthProviders();
 
   ngOnInit(): void {
@@ -537,9 +549,13 @@ export class LoginComponent implements OnInit {
       this.getSafeReturnUrl(),
     );
     if (!provider.enabled || !startUrl) {
+      this.errorMessage =
+        "Google sign-in is not available yet. Check OAuth configuration and try again.";
       return;
     }
 
+    this.oauthLoadingProviderId = provider.id;
+    this.errorMessage = "";
     this.authService.clearLocalSession();
     window.location.assign(startUrl);
   }

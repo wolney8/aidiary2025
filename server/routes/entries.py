@@ -2,6 +2,7 @@
 # CRUD routes for diary entries
 from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
+import json
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -200,6 +201,18 @@ def _normalise_entry_time(value):
             continue
 
     return None
+
+
+def _normalise_update_field_value(field: str, value):
+    if field == 'analysis_attachment_refs':
+        if value is None or value == '':
+            return '[]'
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (list, tuple)):
+            return json.dumps([str(item) for item in value if str(item).strip()])
+        return json.dumps([str(value)])
+    return value
 
 
 def _default_entry_time_for_kind(entry_kind: str) -> str:
@@ -1352,7 +1365,7 @@ def update_daily_entry(entry_id):
     for field in allowed_fields:
         if field in data:
             updates.append(f'{field} = ?')
-            values.append(data[field])
+            values.append(_normalise_update_field_value(field, data[field]))
 
     effective_title = data.get('title', entry['title'])
     effective_user_message = data.get('user_message', entry['user_message'])
@@ -1940,7 +1953,7 @@ def update_dream_entry(entry_id):
     for field in allowed_fields:
         if field in data:
             updates.append(f'{field} = ?')
-            values.append(data[field])
+            values.append(_normalise_update_field_value(field, data[field]))
 
     dream_row_data = {
         'title': data.get('title', entry['title']),

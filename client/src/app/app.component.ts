@@ -2,12 +2,21 @@
 import { Component, DestroyRef, inject, isDevMode } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { CommonModule } from "@angular/common";
-import { NavigationEnd, Router, RouterLink, RouterOutlet } from "@angular/router";
+import {
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationStart,
+  Router,
+  RouterLink,
+  RouterOutlet,
+} from "@angular/router";
 import { TopBarComponent } from "./core/components/top-bar/top-bar.component";
 import { SideNavComponent } from "./core/components/side-nav/side-nav.component";
 import { MatSidenavModule } from "@angular/material/sidenav";
 import { MatDialog, MatDialogRef } from "@angular/material/dialog";
-import { distinctUntilChanged, filter } from "rxjs";
+import { MatProgressBarModule } from "@angular/material/progress-bar";
+import { distinctUntilChanged } from "rxjs";
 import { AuthService } from "./core/services/auth.service";
 import { InactivityService } from "./core/services/inactivity.service";
 import { ThemeService } from "./core/services/theme.service";
@@ -33,12 +42,23 @@ import { User } from "./core/models/user.model";
     TopBarComponent,
     SideNavComponent,
     MatSidenavModule,
+    MatProgressBarModule,
     ChatCompanionComponent,
     CookieConsentComponent,
     AnnouncementBannerComponent,
   ],
   template: `
     <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div
+      *ngIf="isRouteLoading"
+      class="route-loading"
+      role="status"
+      aria-live="polite"
+      data-testid="route-loading-indicator"
+    >
+      <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      <span class="sr-only">Loading page</span>
+    </div>
     <ng-container *ngIf="showAuthenticatedShell; else publicLayout">
       <mat-sidenav-container
         class="authenticated-app-shell"
@@ -106,6 +126,50 @@ import { User } from "./core/models/user.model";
 
       .skip-link:focus {
         transform: translateY(0);
+      }
+
+      .route-loading {
+        position: fixed;
+        inset: 0 0 auto;
+        z-index: 2200;
+        pointer-events: none;
+      }
+
+      .route-loading mat-progress-bar {
+        height: 4px;
+        --mdc-linear-progress-active-indicator-color: var(--colour-primary);
+        --mdc-linear-progress-track-color: color-mix(
+          in srgb,
+          var(--colour-primary) 18%,
+          transparent
+        );
+      }
+
+      .route-loading::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background:
+          radial-gradient(
+            circle at 50% 0,
+            color-mix(in srgb, var(--colour-primary) 12%, transparent),
+            transparent 32rem
+          ),
+          color-mix(in srgb, var(--colour-background) 10%, transparent);
+        opacity: 0.72;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
 
       .main-content {
@@ -180,23 +244,38 @@ export class AppComponent {
   currentUser = this.authService.getCurrentUser();
   isOnboardingRoute = this.isOnboardingUrl(this.router.url);
   showChatCompanion = this.shouldShowChatCompanion(this.router.url);
+  isRouteLoading = false;
 
   constructor() {
     this.themeService.mode();
 
     this.router.events
       .pipe(
-        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((event) => {
-        this.isOnboardingRoute = this.isOnboardingUrl(event.urlAfterRedirects);
-        this.showAuthenticatedShell = this.shouldShowAuthenticatedShell(
-          event.urlAfterRedirects,
-        );
-        this.showChatCompanion = this.shouldShowChatCompanion(
-          event.urlAfterRedirects,
-        );
+        if (event instanceof NavigationStart) {
+          this.isRouteLoading = true;
+          return;
+        }
+
+        if (
+          event instanceof NavigationEnd ||
+          event instanceof NavigationCancel ||
+          event instanceof NavigationError
+        ) {
+          this.isRouteLoading = false;
+        }
+
+        if (event instanceof NavigationEnd) {
+          this.isOnboardingRoute = this.isOnboardingUrl(event.urlAfterRedirects);
+          this.showAuthenticatedShell = this.shouldShowAuthenticatedShell(
+            event.urlAfterRedirects,
+          );
+          this.showChatCompanion = this.shouldShowChatCompanion(
+            event.urlAfterRedirects,
+          );
+        }
       });
 
     this.authService.currentUser$

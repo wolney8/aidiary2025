@@ -43,7 +43,7 @@ from services.media_storage import (
     ensure_media_root,
 )
 from services.auth_sessions import token_is_revoked
-from services.billing_entitlements import upsert_user_entitlement
+from services.admin_bootstrap import ensure_configured_admins
 
 # Load environment variables
 load_dotenv()
@@ -148,48 +148,9 @@ def _ensure_nltk_data() -> None:
 
 def _bootstrap_admin_entitlements(app: Flask) -> None:
     """Grant administrator entitlement to explicitly configured usernames/emails."""
-    raw_users = (os.getenv('OPENMYND_BOOTSTRAP_ADMIN_USERS') or '').strip()
-    if not raw_users:
-        return
-
-    identifiers = [
-        item.strip().lower()
-        for item in raw_users.split(',')
-        if item.strip()
-    ]
-    if not identifiers:
-        return
-
     try:
         with app.config['DATABASE_ADAPTER'].connect(timeout=10) as conn:
-            for identifier in identifiers:
-                row = conn.execute(
-                    '''
-                    SELECT id, username, email
-                    FROM users
-                    WHERE LOWER(COALESCE(username, '')) = ?
-                       OR LOWER(COALESCE(email, '')) = ?
-                    LIMIT 1
-                    ''',
-                    (identifier, identifier),
-                ).fetchone()
-                if not row:
-                    app.logger.info(
-                        'Bootstrap admin target not found yet: %s',
-                        identifier,
-                    )
-                    continue
-                upsert_user_entitlement(
-                    conn,
-                    user_id=int(row['id']),
-                    tier='administrator',
-                    source='manual',
-                    status='active',
-                )
-                app.logger.info(
-                    'Bootstrap admin entitlement ensured for user_id=%s',
-                    row['id'],
-                )
+            ensure_configured_admins(conn, app.logger)
     except Exception as exc:  # noqa: BLE001
         app.logger.warning('Bootstrap admin entitlement skipped: %s', exc)
 
