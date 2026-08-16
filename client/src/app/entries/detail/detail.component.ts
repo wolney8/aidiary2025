@@ -2747,7 +2747,7 @@ export class DetailComponent implements OnInit, OnDestroy {
         if (this.isUpgradeRequiredError(error)) {
           void this.showUpgradeRequiredDialog(
             "AI image generation needs a higher plan",
-            "Your current plan has reached its AI image allowance for this month.",
+            this.extractUpgradeRequiredMessage(error),
           );
           return;
         }
@@ -2795,7 +2795,7 @@ export class DetailComponent implements OnInit, OnDestroy {
         if (this.isUpgradeRequiredError(error)) {
           void this.showUpgradeRequiredDialog(
             "AI image generation needs a higher plan",
-            "Your current plan has reached its AI image allowance for this month.",
+            this.extractUpgradeRequiredMessage(error),
           );
           return;
         }
@@ -2938,6 +2938,41 @@ export class DetailComponent implements OnInit, OnDestroy {
       error.status === 402 &&
       error.error?.code === "upgrade_required"
     );
+  }
+
+  private extractUpgradeRequiredMessage(error: unknown): string {
+    if (!(error instanceof HttpErrorResponse)) {
+      return "Your current plan does not include enough AI image allowance for this request.";
+    }
+
+    const message =
+      typeof error.error?.error === "string" && error.error.error.trim()
+        ? error.error.error.trim()
+        : "Your current plan does not include enough AI image allowance for this request.";
+    const usage = error.error?.usage?.ai_image;
+    const plan = this.formatPlanName(error.error?.usage?.plan);
+    if (!usage) {
+      return plan ? `${message} Current plan: ${plan}.` : message;
+    }
+
+    const used = Number(usage.used ?? 0);
+    const limit = usage.unlimited ? "unlimited" : String(usage.limit ?? 0);
+    const allowanceText = usage.unlimited
+      ? "AI images are unlimited on this plan."
+      : `AI images used this month: ${used} of ${limit}.`;
+    return plan
+      ? `${message} Current plan: ${plan}. ${allowanceText}`
+      : `${message} ${allowanceText}`;
+  }
+
+  private formatPlanName(value: unknown): string {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    return raw
+      .replace(/[_-]+/g, " ")
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
   }
 
   getUserParagraphs(): string[] {
