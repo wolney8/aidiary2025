@@ -206,7 +206,12 @@ const QUOTA_FIELDS: Array<{
                   placeholder="Email, username, or name"
                 />
               </mat-form-field>
-              <button mat-raised-button color="primary" type="submit" class="admin-pill-button">
+              <button
+                mat-raised-button
+                color="primary"
+                type="submit"
+                class="admin-pill-button admin-pill-button--search"
+              >
                 <mat-icon aria-hidden="true">search</mat-icon>
                 <span>Search</span>
               </button>
@@ -222,7 +227,7 @@ const QUOTA_FIELDS: Array<{
                   <th scope="col">Current access</th>
                   <th scope="col">Monthly use</th>
                   <th scope="col">Set access</th>
-                  <th scope="col">Action</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1635,34 +1640,34 @@ const QUOTA_FIELDS: Array<{
 	      text-transform: uppercase;
 	    }
 
-		    .admin-user-table th:nth-child(1),
+	    .admin-user-table th:nth-child(1),
 		    .admin-user-table td:nth-child(1) {
-		      width: 24%;
+		      width: 22%;
 		    }
 
 	    .admin-user-table th:nth-child(2),
 	    .admin-user-table td:nth-child(2) {
-	      width: 13%;
+	      width: 11%;
 	    }
 
 		    .admin-user-table th:nth-child(3),
 		    .admin-user-table td:nth-child(3) {
-		      width: 20%;
+		      width: 19%;
 		    }
 
 	    .admin-user-table th:nth-child(4),
 	    .admin-user-table td:nth-child(4) {
-	      width: 13%;
+	      width: 11%;
 	    }
 
 		    .admin-user-table th:nth-child(5),
 		    .admin-user-table td:nth-child(5) {
-		      width: 20%;
+		      width: 23%;
 		    }
 
 	    .admin-user-table th:nth-child(6),
 	    .admin-user-table td:nth-child(6) {
-	      width: 10%;
+	      width: 14%;
 	    }
 
     .admin-user-cell {
@@ -1694,8 +1699,9 @@ const QUOTA_FIELDS: Array<{
 	    }
 
 		    .admin-avatar {
-      display: grid;
-      place-items: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       flex: 0 0 40px;
       width: 40px;
       height: 40px;
@@ -1707,7 +1713,7 @@ const QUOTA_FIELDS: Array<{
       color: var(--colour-control-selected-text);
       font-size: 1rem;
 		      font-weight: 950;
-		      line-height: 1;
+		      line-height: 40px;
       text-align: center;
 		    }
 
@@ -1775,7 +1781,7 @@ const QUOTA_FIELDS: Array<{
       }
 
     .admin-inline-controls mat-form-field {
-      width: 9.5rem;
+      width: min(8.5rem, 100%);
     }
 
 	    .admin-pill-button {
@@ -1783,16 +1789,22 @@ const QUOTA_FIELDS: Array<{
 	      font-weight: 900;
 	    }
 
+      .admin-pill-button--search {
+        min-width: 7rem;
+      }
+
       .admin-icon-actions {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        gap: 0.35rem;
+        gap: 0.45rem;
+        min-width: 8.25rem;
       }
 
       .admin-icon-pill {
-        display: inline-grid;
-        place-items: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: 40px;
         height: 40px;
         min-width: 40px;
@@ -1800,6 +1812,22 @@ const QUOTA_FIELDS: Array<{
         border-radius: var(--radius-pill);
         background: var(--colour-surface-elevated);
         color: var(--colour-text-primary);
+        padding: 0;
+      }
+
+      .admin-icon-pill mat-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        font-size: 22px;
+        line-height: 22px;
+      }
+
+      .admin-icon-pill .mat-mdc-button-touch-target {
+        width: 40px;
+        height: 40px;
       }
 
       .admin-icon-pill--save:not(:disabled) {
