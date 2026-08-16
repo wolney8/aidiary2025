@@ -112,10 +112,24 @@ export class AuthService {
     if (!provider.start_url) {
       return "";
     }
-    const apiRoot = this.apiUrl.replace(/\/api\/?$/, "");
+    const apiRoot = this.resolveApiRoot();
     const url = new URL(provider.start_url, `${apiRoot}/`);
     url.searchParams.set("returnUrl", returnUrl);
     return url.toString();
+  }
+
+  private resolveApiRoot(): string {
+    const trimmedApiUrl = this.apiUrl.trim();
+    const withoutApiSuffix = trimmedApiUrl.replace(/\/api\/?$/, "");
+    if (/^https?:\/\//i.test(withoutApiSuffix)) {
+      return withoutApiSuffix;
+    }
+
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return new URL(withoutApiSuffix || "/", window.location.origin).origin;
+    }
+
+    return "http://localhost:5001";
   }
 
   logout(options: { reason?: string; replaceUrl?: boolean } = {}): void {

@@ -157,4 +157,40 @@ describe("AuthService session handling", () => {
     expect(service.getToken()).toBeNull();
     expect(service.isAuthenticated()).toBeTrue();
   });
+
+  it("builds OAuth start URLs when the API base is relative", () => {
+    (service as unknown as { apiUrl: string }).apiUrl = "/api";
+
+    const url = service.getOAuthStartUrl(
+      {
+        id: "google",
+        label: "Google",
+        enabled: true,
+        configured: true,
+        status: "enabled",
+        start_url: "/api/oauth/google/start",
+      },
+      "/dashboard",
+    );
+
+    expect(url).toBe(`${window.location.origin}/api/oauth/google/start?returnUrl=%2Fdashboard`);
+  });
+
+  it("builds OAuth start URLs when the API base is absolute", () => {
+    (service as unknown as { apiUrl: string }).apiUrl = "http://localhost:5001/api";
+
+    const url = service.getOAuthStartUrl(
+      {
+        id: "google",
+        label: "Google",
+        enabled: true,
+        configured: true,
+        status: "enabled",
+        start_url: "/api/oauth/google/start",
+      },
+      "/entries",
+    );
+
+    expect(url).toBe("http://localhost:5001/api/oauth/google/start?returnUrl=%2Fentries");
+  });
 });
