@@ -194,7 +194,7 @@ type OnThisDayPreviewState = {
   ],
   styleUrl: "./list.component.css",
   template: `
-    <div class="list-container">
+    <div class="list-container" [class.entries-are-loading]="isLoadingEntries">
       <h1 class="visually-hidden">Diary entries</h1>
       <ng-container *ngIf="searchService.results$ | async as searchState">
         <!-- Search Results View -->

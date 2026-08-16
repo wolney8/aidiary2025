@@ -854,6 +854,14 @@
   color: var(--colour-text-secondary);
 }
 
+.list-container.entries-are-loading .writing-rhythm-panel,
+.list-container.entries-are-loading .timeline-scroller,
+.list-container.entries-are-loading .pagination-container,
+.list-container.entries-are-loading .entries-grid,
+.list-container.entries-are-loading .calendar-shell {
+  display: none;
+}
+
 .entries-error-panel {
   border-color: color-mix(in srgb, var(--colour-warning-text) 30%, var(--colour-border));
   background: var(--colour-warning-bg);
