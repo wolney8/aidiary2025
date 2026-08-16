@@ -8,9 +8,11 @@ import tempfile
 import os
 import shutil
 import base64
+from datetime import date
 from io import BytesIO
 from unittest.mock import patch, MagicMock
 from routes.analyse import ANALYSE_TEXT_MAX_LENGTH
+from routes.entries import _parse_entry_date
 from services.openai_svc import AnalysisRateLimitError
 from PIL import Image
 
@@ -365,6 +367,38 @@ def seed_bulk_delete_entries(client, token: str) -> None:
         }),
         content_type='application/json'
     )
+
+
+def test_search_date_parser_accepts_postgres_date_objects():
+    parsed = _parse_entry_date(date(2026, 8, 16))
+
+    assert parsed is not None
+    assert parsed.date().isoformat() == '2026-08-16'
+
+
+def test_search_supports_multi_word_queries(client):
+    token = get_auth_token(client)
+    client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-08-16',
+            'title': 'Car reflection',
+            'user_message': 'A Daylio import mentioned the car journey home.',
+            'tags': 'Daylio, car',
+        }),
+        content_type='application/json'
+    )
+
+    response = client.get(
+        '/api/search?q=daylio%20car',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert body['results']
+    assert body['results'][0]['entry_date'] == '2026-08-16'
+
 
 def test_create_daily_entry(client):
     """Test creating a daily entry."""

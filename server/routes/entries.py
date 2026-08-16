@@ -5,7 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import re
 from html import escape
 from io import BytesIO
@@ -145,12 +145,14 @@ def _parse_entry_date(value):
         return None
     if isinstance(value, datetime):
         return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
     try:
-        return datetime.fromisoformat(value)
-    except ValueError:
+        return datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
         try:
-            return datetime.strptime(value, '%Y-%m-%d')
-        except ValueError:
+            return datetime.strptime(str(value), '%Y-%m-%d')
+        except (TypeError, ValueError):
             return None
 
 
@@ -2542,7 +2544,7 @@ def search_entries():
         tags_text = base_data.get('tags') or ''
         people_text = base_data.get('people') or ''
         entry_date_obj = base_data.get('date_obj')
-        entry_date_iso = base_data.get('entry_date')
+        entry_date_iso = entry_date_obj.date().isoformat() if entry_date_obj else str(base_data.get('entry_date') or '')
         title_plain = base_data.get('title_plain') or ''
 
         searchable_fields = [title_plain]
