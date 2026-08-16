@@ -125,7 +125,7 @@ import { OAuthProvider } from "../../core/models/user.model";
                 <path fill="#fbbc05" d="M5.88 14.13c-.22-.66-.35-1.36-.35-2.13s.13-1.47.35-2.13V7.03H2.18C1.43 8.53 1 10.22 1 12s.43 3.47 1.18 4.97l3.7-2.84z" />
                 <path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.68 1 3.99 3.47 2.18 7.03l3.7 2.84c.87-2.58 3.28-4.49 6.12-4.49z" />
               </svg>
-              <span>
+              <span class="oauth-button-label">
                 {{
                   oauthLoadingProviderId === provider.id
                     ? "Opening Google..."
@@ -251,12 +251,54 @@ import { OAuthProvider } from "../../core/models/user.model";
       .auth-form {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 10px;
       }
 
       .full-width {
         width: 100%;
-        margin-bottom: var(--spacing-sm);
+      }
+
+      :host ::ng-deep .auth-form .mat-mdc-form-field {
+        --mdc-outlined-text-field-container-shape: 18px;
+        --mdc-outlined-text-field-input-text-color: var(--colour-text-primary);
+        --mdc-outlined-text-field-label-text-color: var(--colour-text-secondary);
+        --mdc-outlined-text-field-hover-label-text-color: var(--colour-text-primary);
+        --mdc-outlined-text-field-focus-label-text-color: var(--colour-primary);
+        --mdc-outlined-text-field-outline-color: var(--colour-border);
+        --mdc-outlined-text-field-hover-outline-color: var(--colour-text-secondary);
+        --mdc-outlined-text-field-focus-outline-color: var(--colour-primary);
+        --mat-form-field-container-height: 56px;
+        --mat-form-field-container-vertical-padding: 16px;
+      }
+
+      :host ::ng-deep .auth-form .mat-mdc-text-field-wrapper {
+        background: color-mix(in srgb, var(--colour-surface) 82%, transparent) !important;
+        border-radius: 18px;
+      }
+
+      :host ::ng-deep .auth-form .mat-mdc-form-field-flex {
+        min-height: 56px;
+        align-items: center;
+      }
+
+      :host ::ng-deep .auth-form input.mat-mdc-input-element {
+        box-sizing: border-box;
+        width: 100%;
+        color: var(--colour-text-primary) !important;
+        caret-color: var(--colour-primary);
+        background: transparent !important;
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+      }
+
+      :host ::ng-deep .auth-form .mat-mdc-floating-label,
+      :host ::ng-deep .auth-form .mdc-floating-label {
+        color: var(--colour-text-secondary) !important;
+      }
+
+      :host ::ng-deep .auth-form .mdc-floating-label--float-above {
+        color: var(--colour-primary) !important;
       }
 
       button.full-width {
@@ -307,6 +349,21 @@ import { OAuthProvider } from "../../core/models/user.model";
         border-color: var(--colour-border);
         color: var(--colour-text-primary);
         text-decoration: none;
+      }
+
+      :host ::ng-deep .oauth-button .mdc-button__label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        color: var(--colour-text-primary);
+      }
+
+      .oauth-button-label {
+        color: var(--colour-text-primary);
+        font-weight: 800;
+        line-height: 1;
       }
 
       .oauth-button.is-loading {
@@ -562,13 +619,8 @@ export class LoginComponent implements OnInit {
   }
 
   onOAuthClick(event: MouseEvent, provider: OAuthProvider): void {
-    const startUrl = this.authService.getOAuthStartUrl(
-      provider,
-      this.getSafeReturnUrl(),
-    );
     if (
       !provider.enabled ||
-      !startUrl ||
       this.isLoading ||
       Boolean(this.oauthLoadingProviderId)
     ) {
