@@ -10,6 +10,7 @@ import { DailyEntry, DreamEntry } from "../models/entry.model";
 import { CbtWorksheet } from "../models/cbt.model";
 
 interface WritingReminderInternals {
+  evaluateForUser(user: User | null): unknown;
   shouldCheckReminderToday(user: User): boolean;
   getSelectedEntryTypes(user: User): string[];
   publishReminderIfDue(
@@ -138,5 +139,13 @@ describe("WritingReminderService", () => {
         message: "No entries in 16 days. Counted records this week: 0; this month: 1.",
       }),
     );
+  });
+
+  it("does not refetch records repeatedly for the same due reminder settings", () => {
+    (internals.evaluateForUser(reminderUser) as { subscribe: () => void }).subscribe();
+    (internals.evaluateForUser(reminderUser) as { subscribe: () => void }).subscribe();
+
+    expect(entriesService.getDailyEntries).toHaveBeenCalledTimes(1);
+    expect(entriesService.getDreamEntries).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { Injectable, inject } from "@angular/core";
-import { Observable } from "rxjs";
+import { Observable, shareReplay, tap } from "rxjs";
 import { environment } from "../../../environments/environment";
 import { AuthService } from "./auth.service";
 
@@ -111,12 +111,24 @@ export class BillingService {
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly apiUrl = `${environment.apiBaseUrl}/billing`;
+  private statusRequest$?: Observable<BillingStatus>;
+  private statusRequestKey?: string;
 
   getStatus(): Observable<BillingStatus> {
     this.ensureAuthenticated();
-    return this.http.get<BillingStatus>(`${this.apiUrl}/status`, {
-      headers: this.buildHeaders(),
-    });
+    const cacheKey = this.getStatusCacheKey();
+    if (this.statusRequest$ && this.statusRequestKey === cacheKey) {
+      return this.statusRequest$;
+    }
+    this.statusRequestKey = cacheKey;
+    this.statusRequest$ = this.http
+      .get<BillingStatus>(`${this.apiUrl}/status`, {
+        headers: this.buildHeaders(),
+      })
+      .pipe(
+        shareReplay({ bufferSize: 1, refCount: true }),
+      );
+    return this.statusRequest$;
   }
 
   startCheckout(
@@ -165,7 +177,7 @@ export class BillingService {
       `${this.apiUrl}/admin/plans/${tier}`,
       payload,
       { headers: this.buildHeaders() },
-    );
+    ).pipe(tap(() => this.clearStatusCache()));
   }
 
   getAdminUsers(search = ""): Observable<AdminBillingUsersResponse> {
@@ -192,13 +204,23 @@ export class BillingService {
       `${this.apiUrl}/admin/users/${userId}/entitlement`,
       payload,
       { headers: this.buildHeaders() },
-    );
+    ).pipe(tap(() => this.clearStatusCache()));
+  }
+
+  clearStatusCache(): void {
+    this.statusRequest$ = undefined;
+    this.statusRequestKey = undefined;
   }
 
   private ensureAuthenticated(): void {
     if (!this.authService.isAuthenticated()) {
       throw new Error("User not authenticated");
     }
+  }
+
+  private getStatusCacheKey(): string {
+    const userId = this.authService.getCurrentUser()?.id ?? "anonymous";
+    return `${userId}:${this.authService.getToken() ?? "cookie"}`;
   }
 
   private buildHeaders(): HttpHeaders {

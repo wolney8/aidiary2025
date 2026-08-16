@@ -28,6 +28,7 @@ export class WritingReminderService implements OnDestroy {
   private readonly notificationService = inject(ImportJobService);
   private readonly destroy$ = new Subject<void>();
   private started = false;
+  private readonly evaluatedReminderKeys = new Set<string>();
 
   start(): void {
     if (this.started) {
@@ -50,11 +51,29 @@ export class WritingReminderService implements OnDestroy {
   }
 
   private evaluateForUser(user: User | null) {
-    if (!user || !this.shouldCheckReminderToday(user)) {
+    if (!user) {
+      this.evaluatedReminderKeys.clear();
+      return of(null);
+    }
+
+    if (!this.shouldCheckReminderToday(user)) {
       return of(null);
     }
 
     const selectedTypes = this.getSelectedEntryTypes(user);
+    const todayKey = this.toDateKey(new Date());
+    const reminderKey = [
+      user.id,
+      todayKey,
+      user.writing_reminder_time || "19:00",
+      user.writing_reminder_silence_days || 3,
+      selectedTypes.join(","),
+    ].join(":");
+
+    if (this.evaluatedReminderKeys.has(reminderKey)) {
+      return of(null);
+    }
+    this.evaluatedReminderKeys.add(reminderKey);
 
     return forkJoin({
       dailyEntries: selectedTypes.includes("daily")

@@ -453,6 +453,8 @@ def _serialise_entry_row(
     table_name: str,
     entry_kind: str,
     include_import_metadata: bool = False,
+    include_attachment_details: bool = True,
+    attachment_summaries_by_id: dict[int, list[dict]] | None = None,
     verify_media_exists: bool = True,
 ) -> dict:
     entry = dict(row)
@@ -465,12 +467,25 @@ def _serialise_entry_row(
             verify_media_exists=verify_media_exists,
         )
     if entry.get('id') is not None and entry.get('user_id') is not None:
-        entry['attachments'] = _serialise_entry_assets(
-            conn,
-            user_id=int(entry['user_id']),
-            entry_type=entry_kind,
-            entry_id=int(entry['id']),
-            verify_media_exists=verify_media_exists,
+        entry['attachments'] = (
+            _serialise_entry_assets(
+                conn,
+                user_id=int(entry['user_id']),
+                entry_type=entry_kind,
+                entry_id=int(entry['id']),
+                verify_media_exists=verify_media_exists,
+            )
+            if include_attachment_details
+            else (
+                attachment_summaries_by_id.get(int(entry['id']), [])
+                if attachment_summaries_by_id is not None
+                else _serialise_entry_asset_summaries(
+                    conn,
+                    user_id=int(entry['user_id']),
+                    entry_type=entry_kind,
+                    entry_id=int(entry['id']),
+                )
+            )
         )
     entry['import_metadata'] = None
     if include_import_metadata and entry.get('import_id'):
@@ -483,6 +498,58 @@ def _serialise_entry_row(
         if history_row:
             entry['import_metadata'] = dict(history_row)
     return entry
+
+
+def _load_entry_asset_summary_map(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    entry_type: str,
+) -> dict[int, list[dict]]:
+    rows = conn.execute(
+        '''
+        SELECT entry_id, id, mime_type
+        FROM entry_assets
+        WHERE user_id = ? AND entry_type = ?
+        ORDER BY sort_order ASC, id ASC
+        ''',
+        (user_id, entry_type),
+    ).fetchall()
+    summaries: dict[int, list[dict]] = {}
+    for row in rows:
+        entry_id = int(row['entry_id'])
+        summaries.setdefault(entry_id, []).append(
+            {
+                'id': row['id'],
+                'mime_type': str(row['mime_type'] or '').strip().lower(),
+            }
+        )
+    return summaries
+
+
+def _serialise_entry_asset_summaries(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    entry_type: str,
+    entry_id: int,
+) -> list[dict]:
+    rows = conn.execute(
+        '''
+        SELECT id, mime_type
+        FROM entry_assets
+        WHERE user_id = ? AND entry_type = ? AND entry_id = ?
+        ORDER BY sort_order ASC, id ASC
+        ''',
+        (user_id, entry_type, entry_id),
+    ).fetchall()
+    return [
+        {
+            'id': row['id'],
+            'mime_type': str(row['mime_type'] or '').strip().lower(),
+        }
+        for row in rows
+    ]
 
 
 def _serialise_entry_assets(
@@ -1204,6 +1271,11 @@ def get_daily_entries():
         WHERE user_id = ?
         ORDER BY entry_date DESC, COALESCE(entry_time, '19:00') DESC, entry_number DESC
     ''', (user_id,)).fetchall()
+    attachment_summaries_by_id = _load_entry_asset_summary_map(
+        conn,
+        user_id=user_id,
+        entry_type='daily',
+    )
     
     payload = [
         _serialise_entry_row(
@@ -1211,6 +1283,8 @@ def get_daily_entries():
             entry,
             table_name='dailydiary_entries',
             entry_kind='daily',
+            include_attachment_details=False,
+            attachment_summaries_by_id=attachment_summaries_by_id,
             verify_media_exists=False,
         )
         for entry in entries
@@ -1772,6 +1846,11 @@ def get_dream_entries():
         WHERE user_id = ?
         ORDER BY entry_date DESC, COALESCE(entry_time, '08:00') DESC, entry_number DESC
     ''', (user_id,)).fetchall()
+    attachment_summaries_by_id = _load_entry_asset_summary_map(
+        conn,
+        user_id=user_id,
+        entry_type='dream',
+    )
     
     payload = [
         _serialise_entry_row(
@@ -1779,6 +1858,8 @@ def get_dream_entries():
             entry,
             table_name='dreamdiary_entries',
             entry_kind='dream',
+            include_attachment_details=False,
+            attachment_summaries_by_id=attachment_summaries_by_id,
             verify_media_exists=False,
         )
         for entry in entries

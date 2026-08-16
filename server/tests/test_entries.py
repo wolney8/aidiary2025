@@ -666,7 +666,7 @@ def test_daily_list_does_not_remote_check_media(client):
     data = json.loads(response.data)
     entry = next(item for item in data if item['id'] == entry_id)
     assert entry['image_url']
-    assert entry['attachments'][0]['url']
+    assert entry['attachments'] == [{'id': 1, 'mime_type': 'application/pdf'}]
 
 
 def test_startup_migration_adds_missing_columns_and_daily_update_allows_mood(client_schema_without_mood_columns):
