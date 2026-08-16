@@ -12,7 +12,7 @@ from datetime import date
 from io import BytesIO
 from unittest.mock import patch, MagicMock
 from routes.analyse import ANALYSE_TEXT_MAX_LENGTH
-from routes.entries import _parse_entry_date
+from routes.entries import _coerce_search_text, _parse_entry_date
 from services.openai_svc import AnalysisRateLimitError
 from PIL import Image
 
@@ -374,6 +374,12 @@ def test_search_date_parser_accepts_postgres_date_objects():
 
     assert parsed is not None
     assert parsed.date().isoformat() == '2026-08-16'
+
+
+def test_search_text_coercion_handles_structured_values():
+    assert _coerce_search_text(None) == ''
+    assert _coerce_search_text(['Daylio', 'car']) == 'Daylio, car'
+    assert _coerce_search_text({'source': 'Daylio'}) == '{"source": "Daylio"}'
 
 
 def test_search_supports_multi_word_queries(client):

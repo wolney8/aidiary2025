@@ -168,6 +168,16 @@ def _format_date_strings(date_obj):
     ]
 
 
+def _coerce_search_text(value) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, (list, tuple, set)):
+        return ', '.join(_coerce_search_text(item) for item in value if item is not None)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
 def _normalise_entry_date(value):
     if value is None:
         return None
@@ -1111,6 +1121,7 @@ def _build_bulk_delete_readiness(
 
 
 def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
+    source = _coerce_search_text(source)
     if not source:
         return None
     pattern = re.compile(re.escape(term), re.IGNORECASE)
@@ -1133,6 +1144,7 @@ def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
 
 
 def _highlight_inline(source: str, term: str, max_length: int = 80) -> str | None:
+    source = _coerce_search_text(source)
     if not source:
         return None
     
@@ -2507,21 +2519,22 @@ def search_entries():
     filters_display = 'All Entries' if include_all else ', '.join(filter_labels[f] for f in active_filters)
 
     conn = get_db()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    daily_rows = cursor.execute('''
-        SELECT id, entry_date, title, user_message, ai_response, tags, daily_people_names
-        FROM dailydiary_entries
-        WHERE user_id = ?
-    ''', (user_id,)).fetchall()
+        daily_rows = cursor.execute('''
+            SELECT id, entry_date, title, user_message, ai_response, tags, daily_people_names
+            FROM dailydiary_entries
+            WHERE user_id = ?
+        ''', (user_id,)).fetchall()
 
-    dream_rows = cursor.execute('''
-        SELECT id, entry_date, title, plot, interpretation, tags, dream_people_names
-        FROM dreamdiary_entries
-        WHERE user_id = ?
-    ''', (user_id,)).fetchall()
-
-    conn.close()
+        dream_rows = cursor.execute('''
+            SELECT id, entry_date, title, plot, interpretation, tags, dream_people_names
+            FROM dreamdiary_entries
+            WHERE user_id = ?
+        ''', (user_id,)).fetchall()
+    finally:
+        conn.close()
 
     results = []
     query_terms = [
@@ -2546,13 +2559,13 @@ def search_entries():
         return mapped in active_filters
 
     def process_entry(entry_type: str, base_data: dict) -> None:
-        text_body = base_data.get('body') or ''
-        ai_text = base_data.get('ai') or ''
-        tags_text = base_data.get('tags') or ''
-        people_text = base_data.get('people') or ''
+        text_body = _coerce_search_text(base_data.get('body'))
+        ai_text = _coerce_search_text(base_data.get('ai'))
+        tags_text = _coerce_search_text(base_data.get('tags'))
+        people_text = _coerce_search_text(base_data.get('people'))
         entry_date_obj = base_data.get('date_obj')
         entry_date_iso = entry_date_obj.date().isoformat() if entry_date_obj else str(base_data.get('entry_date') or '')
-        title_plain = base_data.get('title_plain') or ''
+        title_plain = _coerce_search_text(base_data.get('title_plain'))
 
         searchable_fields = [title_plain]
         if field_enabled('body'):
