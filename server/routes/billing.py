@@ -30,7 +30,12 @@ from services.stripe_billing import (
     load_stripe_billing_config,
     verify_stripe_webhook_event,
 )
-from services.plan_catalogue import list_plan_catalogue, seed_default_plan_catalogue, upsert_plan
+from services.plan_catalogue import (
+    list_default_plan_catalogue,
+    list_plan_catalogue,
+    seed_default_plan_catalogue,
+    upsert_plan,
+)
 from services.usage_limits import get_user_usage_summary
 
 
@@ -136,16 +141,21 @@ def _get_subscription_by_provider_id(conn, subscription_id: str):
 
 
 def _get_current_subscription_for_user(conn, user_id: int) -> dict[str, object] | None:
+    columns = _table_columns(conn, "subscriptions")
+
+    def select_expr(column_name: str) -> str:
+        return column_name if column_name in columns else f"NULL AS {column_name}"
+
     row = conn.execute(
         _sql(
-            """
-            SELECT provider_subscription_id,
+            f"""
+            SELECT {select_expr('provider_subscription_id')},
                    tier,
                    status,
-                   billing_period,
-                   current_period_start,
-                   current_period_end,
-                   cancel_at_period_end,
+                   {select_expr('billing_period')},
+                   {select_expr('current_period_start')},
+                   {select_expr('current_period_end')},
+                   {select_expr('cancel_at_period_end')},
                    updated_at
             FROM subscriptions
             WHERE user_id = ? AND provider = 'stripe'
@@ -581,9 +591,33 @@ def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
         _sql("SELECT id, username, email FROM users WHERE id = ?"),
         (user_id,),
     ).fetchone()
-    ensure_bootstrap_admin_for_user(conn, user, current_app.logger)
+    try:
+        ensure_bootstrap_admin_for_user(conn, user, current_app.logger)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning(
+            "Bootstrap admin check skipped for billing status user_id=%s: %s",
+            user_id,
+            exc,
+        )
     entitlement = resolve_user_entitlement(conn, user_id)
-    seed_default_plan_catalogue(conn)
+    try:
+        plans = list_plan_catalogue(conn, include_internal=False, seed_if_empty=False)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning(
+            "Billing status using default plan catalogue for user_id=%s: %s",
+            user_id,
+            exc,
+        )
+        plans = list_default_plan_catalogue(include_internal=False)
+    try:
+        usage = get_user_usage_summary(conn, user_id)
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning(
+            "Billing status using empty usage summary for user_id=%s: %s",
+            user_id,
+            exc,
+        )
+        usage = _empty_usage_summary(str(entitlement.get("tier") or "free"))
     return {
         "entitlement": entitlement,
         "provider": "stripe",
@@ -592,9 +626,23 @@ def _billing_status_payload(conn, user_id: int) -> dict[str, object]:
         "checkout_periods": configured_checkout_periods(config),
         "has_billing_customer": customer is not None,
         "current_subscription": _get_current_subscription_for_user(conn, user_id),
-        "usage": get_user_usage_summary(conn, user_id),
-        "plans": list_plan_catalogue(conn, include_internal=False),
+        "usage": usage,
+        "plans": plans,
         "is_admin": entitlement.get("tier") == "administrator",
+    }
+
+
+def _empty_usage_summary(tier: str) -> dict[str, object]:
+    empty = {"used": 0, "limit": None, "remaining": None, "unlimited": True}
+    return {
+        "plan": tier,
+        "window": "month",
+        "window_start": None,
+        "ai_analysis": dict(empty),
+        "ai_chat": dict(empty),
+        "ai_image": dict(empty),
+        "ocr_page": dict(empty),
+        "transcription_minute": dict(empty),
     }
 
 

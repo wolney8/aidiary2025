@@ -12,6 +12,7 @@ from flask_jwt_extended import create_access_token
 
 from app import create_app
 from routes import admin
+from routes import billing
 from services.email_delivery import EmailDeliveryError
 from services.admin_bootstrap import configured_admin_identifiers
 
@@ -106,6 +107,25 @@ def test_billing_status_defaults_to_free_when_stripe_not_configured(client):
     assert body["usage"]["ai_analysis"]["limit"] == 10
     assert [plan["public_name"] for plan in body["plans"]] == ["Free", "Plus", "Premier"]
     assert body["is_admin"] is False
+
+
+def test_billing_status_falls_back_when_catalogue_or_usage_unavailable(client, monkeypatch):
+    def fail_catalogue(*_args, **_kwargs):
+        raise RuntimeError("catalogue unavailable")
+
+    def fail_usage(*_args, **_kwargs):
+        raise RuntimeError("usage unavailable")
+
+    monkeypatch.setattr(billing, "list_plan_catalogue", fail_catalogue)
+    monkeypatch.setattr(billing, "get_user_usage_summary", fail_usage)
+
+    response = client.get("/api/billing/status", headers=_headers(client.application))
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [plan["public_name"] for plan in body["plans"]] == ["Free", "Plus", "Premier"]
+    assert body["usage"]["ai_analysis"]["used"] == 0
+    assert body["usage"]["ai_analysis"]["unlimited"] is True
 
 
 def test_admin_bootstrap_accepts_hosted_env_aliases(monkeypatch):

@@ -224,6 +224,15 @@ def default_plan_for_tier(tier: str) -> dict[str, Any]:
     raise ValueError(f"Unsupported tier: {tier}")
 
 
+def list_default_plan_catalogue(*, include_internal: bool = False) -> list[dict[str, Any]]:
+    plans = [
+        _serialise_default_plan(plan)
+        for plan in DEFAULT_PLAN_CATALOGUE
+        if include_internal or plan.get("is_public")
+    ]
+    return sorted(plans, key=lambda plan: (plan["sort_order"], plan["tier"]))
+
+
 def seed_default_plan_catalogue(conn) -> None:
     ensure_plan_catalogue_table(conn)
     for plan in DEFAULT_PLAN_CATALOGUE:
@@ -295,7 +304,12 @@ def seed_default_plan_catalogue(conn) -> None:
     )
 
 
-def list_plan_catalogue(conn, *, include_internal: bool = False) -> list[dict[str, Any]]:
+def list_plan_catalogue(
+    conn,
+    *,
+    include_internal: bool = False,
+    seed_if_empty: bool = True,
+) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT tier, public_name, strapline, description, monthly_price_gbp_pence,
@@ -308,7 +322,7 @@ def list_plan_catalogue(conn, *, include_internal: bool = False) -> list[dict[st
         """,
         (1 if include_internal else 0,),
     ).fetchall()
-    if not rows:
+    if not rows and seed_if_empty:
         seed_default_plan_catalogue(conn)
         rows = conn.execute(
             """
@@ -322,6 +336,8 @@ def list_plan_catalogue(conn, *, include_internal: bool = False) -> list[dict[st
             """,
             (1 if include_internal else 0,),
         ).fetchall()
+    if not rows:
+        return list_default_plan_catalogue(include_internal=include_internal)
     return [_serialise_plan(row) for row in rows]
 
 
@@ -507,6 +523,15 @@ def _serialise_plan(row: Any) -> dict[str, Any]:
         "sort_order": int(_row_get(row, "sort_order") or 0),
         "catalogue_version": int(_row_get(row, "catalogue_version") or PLAN_CATALOGUE_VERSION),
         "updated_at": _row_get(row, "updated_at"),
+    }
+
+
+def _serialise_default_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    sanitized = _sanitize_plan(plan)
+    return {
+        **sanitized,
+        "catalogue_version": PLAN_CATALOGUE_VERSION,
+        "updated_at": None,
     }
 
 
