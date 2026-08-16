@@ -136,7 +136,6 @@ export class SearchService {
         if (requestVersion !== this.requestVersion) {
           throw error;
         }
-        console.error("Search API Error:", error);
         let errorMessage: string;
 
         if (error instanceof TimeoutError) {
@@ -145,12 +144,16 @@ export class SearchService {
           errorMessage =
             "Network connection error. Please check your internet connection.";
         } else if (error.status >= 500) {
-          errorMessage = "Server error. Please try again in a moment.";
+          errorMessage =
+            error.error?.error ||
+            error.error?.message ||
+            "Search is temporarily unavailable. Please try again in a moment.";
         } else if (error.status === 401) {
           errorMessage =
             "Authentication error. Please refresh and log in again.";
         } else {
           errorMessage =
+            error.error?.error ||
             error.error?.message || "Search failed. Please try again.";
         }
 
