@@ -793,10 +793,7 @@ def create_app():
     @app.route('/api/health/database')
     def database_health():
         write = str(request.args.get('write') or '').strip().lower() in {'1', 'true', 'yes'}
-        include_schema = (
-            app_environment == 'production'
-            or str(request.args.get('schema') or '').strip().lower() in {'1', 'true', 'yes'}
-        )
+        include_schema = str(request.args.get('schema') or '').strip().lower() in {'1', 'true', 'yes'}
         report = app.config['DATABASE_ADAPTER'].health_check(write=write)
         if include_schema and hasattr(app.config['DATABASE_ADAPTER'], 'schema_readiness'):
             schema_report = app.config['DATABASE_ADAPTER'].schema_readiness()

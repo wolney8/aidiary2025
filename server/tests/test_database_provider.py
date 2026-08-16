@@ -640,7 +640,7 @@ def test_database_schema_readiness_reports_missing_runtime_columns(tmp_path):
     assert "onboarding_completed" in report["missing_columns"]["users"]
 
 
-def test_database_health_endpoint_checks_schema_in_production(monkeypatch, tmp_path):
+def test_database_health_endpoint_checks_schema_only_when_requested(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
@@ -665,12 +665,18 @@ def test_database_health_endpoint_checks_schema_in_production(monkeypatch, tmp_p
     app = create_app()
     response = app.test_client().get("/api/health/database")
 
-    assert response.status_code == 503
+    assert response.status_code == 200
     payload = response.get_json()
-    assert payload["ok"] is False
+    assert payload["ok"] is True
     assert payload["read_ok"] is True
-    assert payload["schema"]["ok"] is False
-    assert "auth_identities" in payload["schema"]["missing_tables"]
+    assert "schema" not in payload
+
+    schema_response = app.test_client().get("/api/health/database?schema=1")
+
+    assert schema_response.status_code == 503
+    schema_payload = schema_response.get_json()
+    assert schema_payload["schema"]["ok"] is False
+    assert "auth_identities" in schema_payload["schema"]["missing_tables"]
 
 
 def test_database_health_endpoint_returns_503_for_failed_provider(monkeypatch, tmp_path):
