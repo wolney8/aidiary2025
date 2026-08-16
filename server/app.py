@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from flask import Flask, jsonify, request, send_from_directory
@@ -551,9 +552,31 @@ def create_app():
     # These handlers will log common JWT errors so the developer can
     # see why a token was rejected (missing, expired, invalid signature).
 
+    @app.before_request
+    def _start_request_timer():
+        request._openmynd_started_at = time.perf_counter()
+
     @app.after_request
-    def _set_security_headers(response):
-        return _apply_security_headers(response, app_environment=app_environment)
+    def _set_security_and_timing_headers(response):
+        response = _apply_security_headers(response, app_environment=app_environment)
+        started_at = getattr(request, '_openmynd_started_at', None)
+        if started_at is not None:
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            response.headers['Server-Timing'] = f'app;dur={duration_ms}'
+            response.headers['X-OpenMynd-Request-Duration-Ms'] = str(duration_ms)
+            try:
+                slow_threshold_ms = int(os.getenv('SLOW_REQUEST_LOG_MS', '1500'))
+            except (TypeError, ValueError):
+                slow_threshold_ms = 1500
+            if request.path.startswith('/api/') and duration_ms >= slow_threshold_ms:
+                app.logger.warning(
+                    'Slow API request: method=%s path=%s status=%s duration_ms=%.2f',
+                    request.method,
+                    request.path,
+                    response.status_code,
+                    duration_ms,
+                )
+        return response
 
     @app.errorhandler(401)
     def _handle_401(err):

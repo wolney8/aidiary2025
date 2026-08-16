@@ -1686,9 +1686,7 @@ export class ListComponent implements OnInit, OnDestroy {
         this.searchService
           .search(searchQuery, this.parseSearchFilters(params.get("filters")))
           .subscribe({
-            next: (response) => {
-              console.log("Search completed successfully:", response);
-            },
+            next: () => {},
             error: (error) => {
               console.error("Search failed:", error);
             },

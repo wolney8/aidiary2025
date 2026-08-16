@@ -95,8 +95,7 @@ export class SearchService {
     const filtersDisplay =
       filtersArray.length > 0 ? filtersArray.join(", ") : "All Entries";
 
-    // Immediately set active state so the UI switches to search results (shows loading)
-    console.log("Starting search for:", query.trim(), "filters:", filtersArray);
+    // Immediately set active state so the UI switches to search results.
     this.resultsSubject.next({
       ...this.resultsSubject.getValue(),
       query: query.trim(),
@@ -106,7 +105,6 @@ export class SearchService {
       loading: true,
       error: undefined,
     });
-    console.log("Set loading state:", this.resultsSubject.getValue());
 
     let params = new HttpParams().set("q", query.trim());
     if (filtersArray.length > 0) {
@@ -124,7 +122,6 @@ export class SearchService {
         if (requestVersion !== this.requestVersion) {
           return;
         }
-        console.log("Search API Response:", response);
         // Add to search history on successful search
         this.addToHistory(query.trim());
 
@@ -134,10 +131,6 @@ export class SearchService {
           loading: false,
           error: undefined,
         });
-        console.log(
-          "Updated search state after success:",
-          this.resultsSubject.getValue(),
-        );
       }),
       catchError((error) => {
         if (requestVersion !== this.requestVersion) {
@@ -166,10 +159,6 @@ export class SearchService {
           loading: false,
           error: errorMessage,
         });
-        console.log(
-          "Updated search state after error:",
-          this.resultsSubject.getValue(),
-        );
 
         throw error;
       }),
