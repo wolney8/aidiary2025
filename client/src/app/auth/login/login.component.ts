@@ -587,10 +587,10 @@ export class LoginComponent implements OnInit {
       {
         id: "google",
         label: "Google",
-        enabled: false,
-        configured: false,
-        status: "not_configured",
-        start_url: null,
+        enabled: true,
+        configured: true,
+        status: "enabled",
+        start_url: "/api/oauth/google/start",
       },
     ];
   }

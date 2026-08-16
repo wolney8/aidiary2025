@@ -614,6 +614,55 @@ def test_get_daily_entries(client):
     assert len(data) > 0
 
 
+def test_daily_list_does_not_remote_check_media(client):
+    """List endpoints should not HEAD every media object; detail/download validates files."""
+    token = get_auth_token(client)
+
+    create_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-06-01',
+            'user_message': 'Entry with stored media references',
+        }),
+        content_type='application/json',
+    )
+    assert create_response.status_code == 201
+    entry_id = json.loads(create_response.data)['id']
+
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        conn.execute(
+            """
+            UPDATE dailydiary_entries
+            SET image_storage_key = 'daily/1/test-image.jpg'
+            WHERE id = ?
+            """,
+            (entry_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO entry_assets (
+                user_id, entry_type, entry_id, asset_role, storage_key,
+                original_filename, mime_type, file_size_bytes
+            )
+            VALUES (1, 'daily', ?, 'attachment', 'daily-assets/1/test.pdf',
+                    'test.pdf', 'application/pdf', 120)
+            """,
+            (entry_id,),
+        )
+
+    with patch('routes.entries.media_path_exists') as media_exists:
+        response = client.get('/api/daily',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+    assert response.status_code == 200
+    media_exists.assert_not_called()
+    data = json.loads(response.data)
+    entry = next(item for item in data if item['id'] == entry_id)
+    assert entry['image_url']
+    assert entry['attachments'][0]['url']
+
+
 def test_startup_migration_adds_missing_columns_and_daily_update_allows_mood(client_schema_without_mood_columns):
     """App startup should migrate missing daily mood/ai_style columns and allow PUT updates."""
     token = get_auth_token(client_schema_without_mood_columns)

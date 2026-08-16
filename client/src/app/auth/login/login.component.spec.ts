@@ -11,6 +11,7 @@ describe("LoginComponent returnUrl navigation", () => {
   let authServiceMock: {
     login: (...args: unknown[]) => unknown;
     getOAuthProviders: () => unknown;
+    getOAuthStartUrl: (...args: unknown[]) => string;
     clearLocalSession: () => void;
   };
   let routerMock: {
@@ -42,10 +43,10 @@ describe("LoginComponent returnUrl navigation", () => {
             {
               id: "google",
               label: "Google",
-              enabled: false,
-              configured: false,
-              status: "not_configured",
-              start_url: null,
+              enabled: true,
+              configured: true,
+              status: "enabled",
+              start_url: "/api/oauth/google/start",
             },
             {
               id: "microsoft",
@@ -58,6 +59,9 @@ describe("LoginComponent returnUrl navigation", () => {
           ],
         }),
       ),
+      getOAuthStartUrl: jasmine
+        .createSpy("getOAuthStartUrl")
+        .and.returnValue("/api/oauth/google/start?returnUrl=%2Fdashboard"),
       clearLocalSession: jasmine.createSpy("clearLocalSession"),
     };
 
@@ -171,9 +175,9 @@ describe("LoginComponent returnUrl navigation", () => {
       '[data-testid="login-microsoft-oauth"]',
     ) as HTMLButtonElement | null;
 
-    expect(googleButton?.disabled).toBeTrue();
     expect(microsoftButton).toBeNull();
     expect(googleButton?.textContent).toContain("Continue with Google");
+    expect(googleButton?.getAttribute("href")).toContain("/api/oauth/google/start");
     expect(googleButton?.querySelector("svg.oauth-mark--google")).not.toBeNull();
   });
 

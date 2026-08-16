@@ -310,12 +310,13 @@ def _resolve_entry_image_value(
     *,
     table_name: str,
     entry_kind: str,
+    verify_media_exists: bool = True,
 ) -> dict:
     storage_key = str(entry.get('image_storage_key') or '').strip()
     image_value = entry.get('image_url')
 
     if storage_key:
-        if media_path_exists(storage_key):
+        if not verify_media_exists or media_path_exists(storage_key):
             entry['image_url'] = resolve_image_url(storage_key)
         else:
             current_app.logger.warning('Entry image missing on disk for %s %s: %s', table_name, entry.get('id'), storage_key)
@@ -442,6 +443,7 @@ def _serialise_entry_row(
     table_name: str,
     entry_kind: str,
     include_import_metadata: bool = False,
+    verify_media_exists: bool = True,
 ) -> dict:
     entry = dict(row)
     if 'image_position_x' in entry or 'image_position_y' in entry:
@@ -450,6 +452,7 @@ def _serialise_entry_row(
             entry,
             table_name=table_name,
             entry_kind=entry_kind,
+            verify_media_exists=verify_media_exists,
         )
     if entry.get('id') is not None and entry.get('user_id') is not None:
         entry['attachments'] = _serialise_entry_assets(
@@ -457,6 +460,7 @@ def _serialise_entry_row(
             user_id=int(entry['user_id']),
             entry_type=entry_kind,
             entry_id=int(entry['id']),
+            verify_media_exists=verify_media_exists,
         )
     entry['import_metadata'] = None
     if include_import_metadata and entry.get('import_id'):
@@ -477,6 +481,7 @@ def _serialise_entry_assets(
     user_id: int,
     entry_type: str,
     entry_id: int,
+    verify_media_exists: bool = True,
 ) -> list[dict]:
     rows = conn.execute(
         '''
@@ -495,7 +500,7 @@ def _serialise_entry_assets(
         storage_key = str(row['storage_key'] or '').strip()
         if not storage_key:
             continue
-        if not media_path_exists(storage_key):
+        if verify_media_exists and not media_path_exists(storage_key):
             current_app.logger.warning(
                 'Entry attachment missing on disk for %s %s asset %s: %s',
                 entry_type,
@@ -1194,6 +1199,7 @@ def get_daily_entries():
             entry,
             table_name='dailydiary_entries',
             entry_kind='daily',
+            verify_media_exists=False,
         )
         for entry in entries
     ]
@@ -1761,6 +1767,7 @@ def get_dream_entries():
             entry,
             table_name='dreamdiary_entries',
             entry_kind='dream',
+            verify_media_exists=False,
         )
         for entry in entries
     ]
