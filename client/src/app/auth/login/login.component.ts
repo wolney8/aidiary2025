@@ -619,12 +619,17 @@ export class LoginComponent implements OnInit {
   }
 
   onOAuthClick(event: MouseEvent, provider: OAuthProvider): void {
+    event.preventDefault();
+    const startUrl = this.authService.getOAuthStartUrl(
+      provider,
+      this.getSafeReturnUrl(),
+    );
     if (
       !provider.enabled ||
+      !startUrl ||
       this.isLoading ||
       Boolean(this.oauthLoadingProviderId)
     ) {
-      event.preventDefault();
       this.errorMessage =
         "Google sign-in is not available yet. Check OAuth configuration and try again.";
       return;
@@ -632,6 +637,7 @@ export class LoginComponent implements OnInit {
 
     this.oauthLoadingProviderId = provider.id;
     this.errorMessage = "";
+    window.location.assign(startUrl);
   }
 
   private defaultOAuthProviders(): OAuthProvider[] {
