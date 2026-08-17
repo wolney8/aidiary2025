@@ -2686,35 +2686,43 @@
   width: 100%;
   min-width: 300px;
   max-width: 350px;
-  /* Force consistent height for all cards */
   height: 420px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-lg);
+  background: var(--colour-surface-elevated);
 }
 
 .entry-card .mat-mdc-card-header {
   position: relative;
   align-items: flex-start;
-  min-height: 4.2rem;
-  padding-right: 2.25rem;
-  padding-bottom: 0.25rem;
+  min-height: 4.8rem;
+  padding: 1rem 2.6rem 0.35rem 1rem;
 }
 
 .entry-card .mat-mdc-card-header .mat-mdc-card-avatar {
-  flex: 0 0 1rem;
-  margin-top: 0.08rem;
-  width: 1rem;
-  height: 1rem;
-  overflow: visible;
+  flex: 0 0 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin: 0.05rem 0.75rem 0 0;
+  border-radius: 50%;
+  background: var(--colour-surface-muted);
+  color: var(--colour-primary);
 }
 
 .entry-card .mat-mdc-card-header .mat-icon {
-  font-size: 1.15rem;
-  width: 1rem;
-  height: 1rem;
-  line-height: 1rem;
-  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  line-height: 1;
 }
 
 .entry-card .mat-mdc-card-title {
@@ -2731,10 +2739,13 @@
   position: absolute;
   top: 1rem;
   right: 1rem;
-  font-size: 0.95rem;
-  width: 0.95rem;
-  height: 0.95rem;
-  line-height: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  line-height: 1;
   color: var(--colour-text-secondary);
 }
 
@@ -2755,7 +2766,11 @@
   max-height: 132px;
   border-radius: var(--radius-md);
   overflow: hidden;
-  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  background: linear-gradient(
+    180deg,
+    var(--colour-surface-muted) 0%,
+    var(--colour-surface-strong) 100%
+  );
   flex-shrink: 0;
 }
 
@@ -2810,8 +2825,9 @@
   min-height: 24px;
   cursor: pointer;
   margin: 2px;
-  background-color: #dbeafe;
-  color: var(--colour-text-primary);
+  border-radius: var(--radius-pill);
+  background: var(--colour-chip-bg);
+  color: var(--colour-chip-text);
 }
 
 .entry-card mat-chip:hover {
@@ -2855,11 +2871,31 @@
 
 .entry-card .mat-mdc-card-actions {
   margin-top: auto;
+  padding: 0.25rem 1rem 1rem;
+}
+
+.entry-card-open-action {
+  min-height: 2.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--colour-primary);
+  color: var(--colour-on-primary);
+  font-weight: 700;
+}
+
+.entry-card-open-action .mat-icon {
+  margin-right: 0.45rem;
+  font-size: 1.1rem;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .entry-image-placeholder {
   height: 132px;
-  background: #f5f5f5;
+  background: linear-gradient(
+    180deg,
+    var(--colour-surface-muted) 0%,
+    var(--colour-surface-strong) 100%
+  );
   display: flex;
   align-items: center;
   justify-content: center;

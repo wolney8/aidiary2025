@@ -794,6 +794,7 @@ type OnThisDayPreviewState = {
               <mat-card
                 class="entry-card"
                 *ngFor="let entry of paginatedEntries"
+                data-testid="entry-card"
               >
                 <mat-card-header>
                   <mat-icon mat-card-avatar>
@@ -859,12 +860,13 @@ type OnThisDayPreviewState = {
 
                 <mat-card-actions>
                   <button
-                    mat-button
-                    color="primary"
+                    mat-flat-button
+                    class="entry-card-open-action"
                     (click)="openEntryDetail(entry, $event)"
                     [attr.aria-label]="'Open ' + getEntryTitle(entry)"
                   >
-                    {{ entry.type === "thought_record" ? "REVIEW RECORD" : "VIEW ENTRY" }}
+                    <mat-icon>open_in_new</mat-icon>
+                    <span>{{ entry.type === "thought_record" ? "Review record" : "View entry" }}</span>
                   </button>
                 </mat-card-actions>
               </mat-card>
