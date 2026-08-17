@@ -342,10 +342,11 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
                 <a
                   [routerLink]="['/entries', result.id]"
                   [queryParams]="getEntryQueryParams(result, searchState)"
-                  mat-button
-                  color="primary"
+                  mat-flat-button
+                  class="search-result-primary-action"
                 >
-                  VIEW ENTRY
+                  <mat-icon>open_in_new</mat-icon>
+                  <span>View entry</span>
                 </a>
                 <button
                   mat-icon-button
@@ -460,6 +461,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         background: var(--colour-surface-elevated);
         backdrop-filter: blur(8px);
         border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
         box-shadow: 0 8px 32px var(--colour-shadow-medium);
         max-width: 400px;
         pointer-events: auto;
@@ -492,7 +494,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       .skeleton-card {
         background: var(--colour-surface-elevated);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 16px;
         box-shadow: 0 2px 8px var(--colour-shadow-soft);
         /* Match actual entry-card dimensions exactly: 303 x 350 */
@@ -799,7 +801,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         margin-block: var(--spacing-sm);
         padding: var(--spacing-sm) var(--spacing-md);
         border: 1px solid var(--colour-border);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-pill);
         background: var(--colour-surface);
       }
       .selection-count {
@@ -875,6 +877,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         width: 100%;
         min-width: 0;
         max-width: none;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        overflow: hidden;
       }
 
       /* When expanded, make the expanded card appear below and span wider */
@@ -893,7 +899,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         /* Ensure it appears above other content */
         z-index: 20;
         box-shadow: 0 4px 20px var(--colour-shadow-medium);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         /* Position relative to maintain document flow */
         position: relative;
@@ -927,6 +933,24 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         flex-direction: column;
       }
 
+      .entry-card .mat-mdc-card-header {
+        align-items: flex-start;
+        min-height: 4.8rem;
+        padding: 1rem 1rem 0.5rem;
+      }
+
+      .entry-card .mat-mdc-card-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        margin-right: 0.8rem;
+        border-radius: 50%;
+        background: var(--colour-surface-muted);
+        color: var(--colour-primary);
+      }
+
       /* Highlight the selected/expanded card */
       .result-container:has(.expanded-details-card) .entry-card {
         border: 2px solid var(--colour-primary);
@@ -953,7 +977,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 8px;
+        border-radius: var(--radius-md);
         margin-bottom: 12px;
         flex-shrink: 0; /* Don't shrink, maintain fixed height */
 
@@ -1052,6 +1076,17 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         display: flex;
         gap: 12px;
         align-items: center;
+      }
+
+      .search-result-primary-action {
+        border-radius: var(--radius-pill);
+        background: var(--colour-primary);
+        color: var(--colour-on-primary);
+        min-height: 2.75rem;
+      }
+
+      .search-result-primary-action .mat-icon {
+        margin-right: 0.45rem;
       }
 
       .close-btn {
