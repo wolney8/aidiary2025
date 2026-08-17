@@ -78,7 +78,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           {{ getResultCountMessage(searchState) }}
         </h2>
         <h2 *ngIf="searchState.loading">
-          Searching for "{{ searchState.query }}" in
+          Searching records for "{{ searchState.query }}" in
           {{ searchState.filters_display }}...
         </h2>
       </div>
@@ -183,7 +183,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           </div>
           <h3>No results found</h3>
           <p class="no-results-message">
-            We couldn't find any entries matching "<strong>{{
+            We couldn't find any records matching "<strong>{{
               searchState.query
             }}</strong
             >" in {{ searchState.filters_display }}.
@@ -221,7 +221,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       <!-- Top Pagination (matching entries list exactly) -->
       <div
         class="selection-toolbar"
-        *ngIf="!searchState.loading && searchState.results.length > 0"
+        *ngIf="!searchState.loading && hasDeletableResults(searchState)"
         role="toolbar"
         aria-label="Select and delete matching entries"
       >
@@ -278,9 +278,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         <div
           *ngFor="let result of paginatedResults"
           class="result-container"
-          [attr.data-card-id]="result.id"
+          [attr.data-card-id]="selectionKey(result)"
         >
           <mat-checkbox
+            *ngIf="isDeletableResult(result)"
             class="result-selector"
             [checked]="isSelected(result)"
             (click)="$event.stopPropagation()"
@@ -292,16 +293,16 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
             class="entry-card"
             role="button"
             tabindex="0"
-            [attr.aria-expanded]="isExpanded(result.id)"
-            [attr.aria-label]="'Review search result ' + result.title"
+            [attr.aria-expanded]="isExpanded(result)"
+            [attr.aria-label]="'Review ' + getResultTypeLabel(result) + ' search result ' + result.title"
             data-testid="search-result-card"
-            (click)="toggleExpand(result.id); $event.stopPropagation()"
-            (keydown.enter)="toggleExpand(result.id); $event.stopPropagation()"
-            (keydown.space)="$event.preventDefault(); toggleExpand(result.id); $event.stopPropagation()"
+            (click)="toggleExpand(result); $event.stopPropagation()"
+            (keydown.enter)="toggleExpand(result); $event.stopPropagation()"
+            (keydown.space)="$event.preventDefault(); toggleExpand(result); $event.stopPropagation()"
           >
             <mat-card-header>
               <mat-icon mat-card-avatar>
-                {{ result.type === "dream" ? "nights_stay" : "book" }}
+                {{ getResultIcon(result) }}
               </mat-icon>
               <mat-card-title
                 [innerHTML]="getDisplayTitle(result)"
@@ -314,7 +315,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
             <mat-card-content>
               <div class="entry-image-placeholder">
-                <mat-icon>pie_chart</mat-icon>
+                <mat-icon>{{ getResultPlaceholderIcon(result) }}</mat-icon>
               </div>
               <div class="match-snippets">
                 <p
@@ -326,7 +327,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           </mat-card>
 
           <!-- Expanded Details Card (Separate Card Below) -->
-          <div *ngIf="isExpanded(result.id)" class="expanded-connector">
+          <div *ngIf="isExpanded(result)" class="expanded-connector">
             <!-- Visual connector arrow -->
             <div class="connector-arrow">
               <mat-icon>keyboard_arrow_down</mat-icon>
@@ -334,7 +335,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           </div>
 
           <mat-card
-            *ngIf="isExpanded(result.id)"
+            *ngIf="isExpanded(result)"
             class="expanded-details-card"
             [@slideInOut]
             (click)="$event.stopPropagation()"
@@ -343,13 +344,13 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
             <div class="expanded-header">
               <div class="expanded-actions">
                 <a
-                  [routerLink]="['/entries', result.id]"
-                  [queryParams]="getEntryQueryParams(result, searchState)"
+                  [routerLink]="getResultLink(result)"
+                  [queryParams]="getResultQueryParams(result, searchState)"
                   mat-flat-button
                   class="search-result-primary-action"
                 >
                   <mat-icon>open_in_new</mat-icon>
-                  <span>View entry</span>
+                  <span>View {{ getResultTypeLabel(result) }}</span>
                 </a>
                 <button
                   mat-icon-button
@@ -1295,7 +1296,7 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   private readonly entriesService = inject(EntriesService);
   private readonly appDialog = inject(AppDialogService);
   protected readonly results$ = this.searchService.results$;
-  private expandedId: number | null = null;
+  private expandedKey: string | null = null;
   protected isRetrying = false;
   private searchSubscription?: Subscription;
 
@@ -1330,15 +1331,16 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     this.searchSubscription?.unsubscribe();
   }
 
-  toggleExpand(id: number): void {
+  toggleExpand(result: SearchResult): void {
     // Clean up any previously expanded cards
     this.cleanupPreviousExpanded();
 
-    this.expandedId = this.expandedId === id ? null : id;
+    const key = this.selectionKey(result);
+    this.expandedKey = this.expandedKey === key ? null : key;
 
     // If expanding, scroll the card into view after a short delay for animation
-    if (this.expandedId !== null) {
-      setTimeout(() => this.scrollToCard(id), 300);
+    if (this.expandedKey !== null) {
+      setTimeout(() => this.scrollToCard(key), 300);
     }
   }
 
@@ -1362,9 +1364,9 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     });
   }
 
-  private scrollToCard(id: number): void {
+  private scrollToCard(key: string): void {
     const cardElement = this.elementRef.nativeElement.querySelector(
-      `[data-card-id="${id}"]`,
+      `[data-card-id="${key}"]`,
     );
     if (cardElement) {
       setTimeout(() => {
@@ -1421,8 +1423,8 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     }
   }
 
-  isExpanded(id: number): boolean {
-    return this.expandedId === id;
+  isExpanded(result: SearchResult): boolean {
+    return this.expandedKey === this.selectionKey(result);
   }
 
   getDisplayTitle(result: SearchResult): SafeHtml {
@@ -1500,13 +1502,13 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
 
   closeExpanded(event: Event): void {
     event.stopPropagation();
-    this.expandedId = null;
+    this.expandedKey = null;
   }
 
   closeExpandedIfClickingAway(event: Event): void {
     // Only close if we have an expanded card and the click wasn't on a card
-    if (this.expandedId !== null) {
-      this.expandedId = null;
+    if (this.expandedKey !== null) {
+      this.expandedKey = null;
     }
   }
 
@@ -1625,7 +1627,17 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     return Object.fromEntries(filtered);
   }
 
-  getEntryQueryParams(
+  getResultLink(result: SearchResult): unknown[] {
+    if (result.type === "thought_record") {
+      return ["/cbt", result.id];
+    }
+    if (result.type === "important_day") {
+      return ["/important-days"];
+    }
+    return ["/entries", result.id];
+  }
+
+  getResultQueryParams(
     result: SearchResult,
     state: SearchState,
   ): Record<string, string> {
@@ -1636,7 +1648,30 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     if (state.filters.length > 0) {
       params["filters"] = state.filters.join(",");
     }
+    if (result.type === "important_day") {
+      params["importantDayId"] = String(result.id);
+    }
     return params;
+  }
+
+  protected getResultIcon(result: SearchResult): string {
+    if (result.type === "dream") return "nights_stay";
+    if (result.type === "thought_record") return "psychology_alt";
+    if (result.type === "important_day") return "event";
+    return "book";
+  }
+
+  protected getResultPlaceholderIcon(result: SearchResult): string {
+    if (result.type === "thought_record") return "psychology_alt";
+    if (result.type === "important_day") return "event_note";
+    return "pie_chart";
+  }
+
+  protected getResultTypeLabel(result: SearchResult): string {
+    if (result.type === "dream") return "dream";
+    if (result.type === "thought_record") return "thought record";
+    if (result.type === "important_day") return "important day";
+    return "entry";
   }
 
   getSearchSuggestions(query: string): string[] {
@@ -1676,7 +1711,7 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     const context = searchState.filters_display;
 
     if (count === 0) {
-      return `No results found for "${query}" in ${context}`;
+      return `No records found for "${query}" in ${context}`;
     } else if (count === 1) {
       return `About 1 result for "${query}" in ${context}`;
     } else if (searchState.truncated) {
@@ -1718,8 +1753,18 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     this.updatePaginatedResults();
   }
 
-  private selectionKey(result: SearchResult): string {
+  protected selectionKey(result: SearchResult): string {
     return `${result.type}:${result.id}`;
+  }
+
+  protected isDeletableResult(
+    result: SearchResult,
+  ): result is SearchResult & { type: "daily" | "dream" } {
+    return result.type === "daily" || result.type === "dream";
+  }
+
+  protected hasDeletableResults(searchState: SearchState): boolean {
+    return searchState.results.some((result) => this.isDeletableResult(result));
   }
 
   protected isSelected(result: SearchResult): boolean {
@@ -1733,12 +1778,17 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   }
 
   protected isCurrentPageSelected(): boolean {
-    return this.paginatedResults.length > 0 && this.paginatedResults.every((item) => this.isSelected(item));
+    const deletableResults = this.paginatedResults.filter((item) =>
+      this.isDeletableResult(item),
+    );
+    return deletableResults.length > 0 && deletableResults.every((item) => this.isSelected(item));
   }
 
   protected toggleCurrentPageSelection(): void {
     const selected = !this.isCurrentPageSelected();
-    this.paginatedResults.forEach((item) => this.setSelected(item, selected));
+    this.paginatedResults
+      .filter((item) => this.isDeletableResult(item))
+      .forEach((item) => this.setSelected(item, selected));
   }
 
   protected async deleteSelected(searchState: SearchState): Promise<void> {
@@ -1754,7 +1804,14 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     if (!confirmed) return;
 
     this.deletingSelected = true;
-    const entries = Array.from(this.selectedEntries.values()).map(({ id, type }) => ({ id, type }));
+    const entries = Array.from(this.selectedEntries.values())
+      .filter(
+        (
+          result,
+        ): result is SearchResult & { type: "daily" | "dream" } =>
+          this.isDeletableResult(result),
+      )
+      .map(({ id, type }) => ({ id, type }));
     this.entriesService.deleteSelectedEntries(entries).subscribe({
       next: () => {
         this.selectedEntries.clear();

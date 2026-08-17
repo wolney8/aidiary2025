@@ -1272,12 +1272,28 @@ export class ImportantDaysComponent implements OnInit, OnDestroy {
         this.importantDays = importantDays;
         this.sortImportantDays();
         this.loading = false;
+        this.openLinkedImportantDay();
       },
       error: () => {
         this.errorMessage = "Unable to load important days.";
         this.loading = false;
       },
     });
+  }
+
+  private openLinkedImportantDay(): void {
+    const requestedId = Number(this.route.snapshot.queryParamMap.get("importantDayId"));
+    if (!Number.isInteger(requestedId) || requestedId <= 0) {
+      return;
+    }
+
+    const importantDay = this.importantDays.find((item) => item.id === requestedId);
+    if (!importantDay) {
+      this.errorMessage = "Important day not found.";
+      return;
+    }
+
+    this.startEditing(importantDay);
   }
 
   private persistPendingImageIfNeeded(importantDay: ImportantDay): void {

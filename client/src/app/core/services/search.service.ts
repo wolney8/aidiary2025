@@ -22,7 +22,7 @@ export interface SearchMatches {
 
 export interface SearchResult {
   id: number;
-  type: "daily" | "dream";
+  type: "daily" | "dream" | "thought_record" | "important_day";
   title: string;
   title_highlight: string;
   entry_date: string;
@@ -61,7 +61,7 @@ export class SearchService {
   private resultsSubject = new BehaviorSubject<SearchState>({
     query: "",
     filters: [],
-    filters_display: "All Entries",
+    filters_display: "All Records",
     results: [],
     active: false,
     loading: false,

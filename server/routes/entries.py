@@ -2836,7 +2836,7 @@ def bulk_delete_entries():
 @entries_bp.route('/search', methods=['GET'])
 @jwt_required()
 def search_entries():
-    """Search diary entries by content, tags, AI response, and metadata."""
+    """Search user-owned diary records by content, tags, AI response, and metadata."""
     user_id = int(get_jwt_identity())
     query = (request.args.get('q') or '').strip()
     filters_param = (request.args.get('filters') or '').strip()
@@ -2845,7 +2845,7 @@ def search_entries():
         return jsonify({
             'query': query,
             'filters': [],
-            'filters_display': 'All Entries',
+            'filters_display': 'All Records',
             'results': []
         }), 200
 
@@ -2860,7 +2860,7 @@ def search_entries():
         'keywords': 'Keywords',
         'people': "People's Names"
     }
-    filters_display = 'All Entries' if include_all else ', '.join(filter_labels[f] for f in active_filters)
+    filters_display = 'All Records' if include_all else ', '.join(filter_labels[f] for f in active_filters)
 
     conn = get_db()
     try:
@@ -2875,6 +2875,22 @@ def search_entries():
         dream_rows = cursor.execute(_sql('''
             SELECT id, entry_date, title, plot, interpretation, tags, dream_people_names
             FROM dreamdiary_entries
+            WHERE user_id = ?
+        '''), (user_id,)).fetchall()
+
+        thought_record_rows = cursor.execute(_sql('''
+            SELECT w.id, w.title, w.record_date, w.status,
+                   d.situation, d.unhelpful_thoughts, d.evidence_for,
+                   d.evidence_against, d.balanced_thought, d.next_step,
+                   d.ai_response
+            FROM cbt_worksheets w
+            JOIN cbt_thought_record_data d ON d.worksheet_id = w.id
+            WHERE w.user_id = ? AND w.worksheet_type = 'thought_record'
+        '''), (user_id,)).fetchall()
+
+        important_day_rows = cursor.execute(_sql('''
+            SELECT id, label, starts_on, category, recurrence, note
+            FROM important_days
             WHERE user_id = ?
         '''), (user_id,)).fetchall()
     finally:
@@ -3047,6 +3063,50 @@ def search_entries():
             'people': row['dream_people_names'] or ''
         }
         process_entry('dream', base_data)
+
+    for row in thought_record_rows:
+        entry_date_obj = _parse_entry_date(row['record_date'])
+        body_parts = [
+            row['situation'] or '',
+            row['unhelpful_thoughts'] or '',
+            row['evidence_for'] or '',
+            row['evidence_against'] or '',
+            row['balanced_thought'] or '',
+            row['next_step'] or '',
+        ]
+        base_data = {
+            'id': row['id'],
+            'entry_date': row['record_date'],
+            'date_obj': entry_date_obj,
+            'title_plain': (row['title'] or 'Thought Record').strip('" '),
+            'body': ' '.join(part for part in body_parts if part),
+            'ai': row['ai_response'] or '',
+            'tags': row['status'] or '',
+            'people': '',
+        }
+        process_entry('thought_record', base_data)
+
+    for row in important_day_rows:
+        entry_date_obj = _parse_entry_date(row['starts_on'])
+        tags = ', '.join(
+            value
+            for value in [
+                row['category'] or '',
+                row['recurrence'] or '',
+            ]
+            if value
+        )
+        base_data = {
+            'id': row['id'],
+            'entry_date': row['starts_on'],
+            'date_obj': entry_date_obj,
+            'title_plain': (row['label'] or 'Important Day').strip('" '),
+            'body': row['note'] or '',
+            'ai': '',
+            'tags': tags,
+            'people': '',
+        }
+        process_entry('important_day', base_data)
 
     results.sort(key=lambda item: (item.get('score', 0), item['entry_date']), reverse=True)
     truncated = len(results) > SEARCH_RESULT_LIMIT

@@ -592,6 +592,95 @@ def test_search_comma_queries_match_any_exact_token_and_rank_both_first(client):
     ]
 
 
+def test_search_includes_thought_records(client):
+    token = get_auth_token(client)
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        conn.execute(
+            """
+            INSERT INTO cbt_worksheets (
+                user_id, worksheet_type, title, status, current_step, record_date
+            )
+            VALUES (1, 'thought_record', 'Crowded train worry',
+                    'completed', 7, '2026-08-18')
+            """
+        )
+        worksheet_id = conn.execute('SELECT MAX(id) FROM cbt_worksheets').fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO cbt_thought_record_data (
+                worksheet_id, situation, unhelpful_thoughts,
+                evidence_for, evidence_against, balanced_thought,
+                next_step, ai_response
+            )
+            VALUES (
+                ?,
+                'I felt anxious on a crowded train.',
+                'Everyone could see I was uncomfortable.',
+                'The carriage was busy.',
+                'Most people were looking at their phones.',
+                'A busy train does not mean I am unsafe.',
+                'Use grounding before the next journey.',
+                'You identified a more balanced interpretation.'
+            )
+            """,
+            (worksheet_id,),
+        )
+
+    response = client.get(
+        '/api/search?q=grounding%20journey',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert len(body['results']) == 1
+    result = body['results'][0]
+    assert result['type'] == 'thought_record'
+    assert result['title'] == 'Crowded train worry'
+    assert 'grounding</span>' in result['matches']['body'].lower()
+    assert 'journey</span>' in result['matches']['body'].lower()
+
+
+def test_search_includes_important_days(client):
+    token = get_auth_token(client)
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        conn.execute(
+            """
+            INSERT INTO important_days (
+                user_id, label, starts_on, month, day, original_year,
+                category, recurrence, icon_name, accent_color, note
+            )
+            VALUES (
+                1,
+                'Mum letter',
+                '2026-07-20',
+                7,
+                20,
+                2026,
+                'milestone',
+                'yearly',
+                'event',
+                'blue',
+                'CBT letter writing exercise'
+            )
+            """
+        )
+
+    response = client.get(
+        '/api/search?q=letter%20writing',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert len(body['results']) == 1
+    result = body['results'][0]
+    assert result['type'] == 'important_day'
+    assert result['title'] == 'Mum letter'
+    assert 'letter</span>' in result['matches']['title'].lower()
+    assert 'writing</span>' in result['matches']['body'].lower()
+
+
 def test_search_caps_large_result_sets(client):
     token = get_auth_token(client)
     conn = sqlite3.connect(os.environ['DB_PATH'])
