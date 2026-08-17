@@ -18,8 +18,6 @@ import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { catchError, of } from "rxjs";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
-import { CbtService } from "../../core/services/cbt.service";
-import { ImportantDaysService } from "../../core/services/important-days.service";
 import { PublicHolidaysService } from "../../core/services/public-holidays.service";
 import { OnThisDayService } from "../../core/services/on-this-day.service";
 import { AppDialogService } from "../../core/services/app-dialog.service";
@@ -1539,8 +1537,6 @@ type OnThisDayPreviewState = {
 })
 export class ListComponent implements OnInit, OnDestroy {
   private entriesService = inject(EntriesService);
-  private cbtService = inject(CbtService);
-  private importantDaysService = inject(ImportantDaysService);
   private publicHolidaysService = inject(PublicHolidaysService);
   private onThisDayService = inject(OnThisDayService);
   private appDialog = inject(AppDialogService);
