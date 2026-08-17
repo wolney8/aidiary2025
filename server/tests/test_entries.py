@@ -672,6 +672,50 @@ def test_get_daily_entries(client):
     assert len(data) > 0
 
 
+def test_entries_overview_returns_primary_lists(client):
+    """GET /api/entries/overview should combine the primary Entries page data."""
+    token = get_auth_token(client)
+
+    daily_response = client.post('/api/daily',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-06-01',
+            'title': 'Overview daily',
+            'user_message': 'Daily overview entry'
+        }),
+        content_type='application/json'
+    )
+    assert daily_response.status_code == 201
+
+    dream_response = client.post('/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2024-06-02',
+            'title': 'Overview dream',
+            'plot': 'Dream overview entry'
+        }),
+        content_type='application/json'
+    )
+    assert dream_response.status_code == 201
+
+    response = client.get('/api/entries/overview',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert set(payload.keys()) == {
+        'daily',
+        'dreams',
+        'thought_records',
+        'important_days',
+    }
+    assert any(entry['title'] == 'Overview daily' for entry in payload['daily'])
+    assert any(entry['title'] == 'Overview dream' for entry in payload['dreams'])
+    assert isinstance(payload['thought_records'], list)
+    assert isinstance(payload['important_days'], list)
+
+
 def test_daily_list_does_not_remote_check_media(client):
     """List endpoints should not HEAD every media object; detail/download validates files."""
     token = get_auth_token(client)

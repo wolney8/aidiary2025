@@ -7,6 +7,8 @@ import {
   DreamEntry,
   EntryAsset,
 } from "../models/entry.model";
+import { CbtWorksheet } from "../models/cbt.model";
+import { ImportantDay } from "../models/important-day.model";
 import { AuthService } from "./auth.service";
 import { environment } from "../../../environments/environment";
 
@@ -32,6 +34,31 @@ export class EntriesService {
     }
 
     return new HttpHeaders(headers);
+  }
+
+  getEntriesOverview(): Observable<{
+    daily: DailyEntry[];
+    dreams: DreamEntry[];
+    thought_records: CbtWorksheet[];
+    important_days: ImportantDay[];
+  }> {
+    if (!this.authService.isAuthenticated()) {
+      return of({
+        daily: [],
+        dreams: [],
+        thought_records: [],
+        important_days: [],
+      });
+    }
+
+    return this.http.get<{
+      daily: DailyEntry[];
+      dreams: DreamEntry[];
+      thought_records: CbtWorksheet[];
+      important_days: ImportantDay[];
+    }>(`${this.apiUrl}/entries/overview`, {
+      headers: this.getHeaders(),
+    });
   }
 
   // Daily entries

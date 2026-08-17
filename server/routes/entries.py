@@ -51,6 +51,8 @@ from services.usage_limits import (
     enforce_usage_limit,
     record_usage_event,
 )
+from routes.cbt import _serialise_worksheet, _worksheet_query
+from routes.important_days import IMPORTANT_DAY_SELECT, _serialise_important_day
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 entries_bp = Blueprint('entries', __name__)
@@ -1298,6 +1300,92 @@ def _highlight_inline(source: str, term: str, max_length: int = 80) -> str | Non
         highlighted = highlighted + '…'
         
     return highlighted
+
+# Combined entries overview endpoint
+@entries_bp.route('/entries/overview', methods=['GET'])
+@jwt_required()
+def get_entries_overview():
+    """Return the primary data needed by the Entries cards/calendar view."""
+    user_id = int(get_jwt_identity())
+
+    conn = get_db()
+    try:
+        daily_rows = conn.execute(_sql('''
+            SELECT * FROM dailydiary_entries
+            WHERE user_id = ?
+            ORDER BY entry_date DESC, COALESCE(entry_time, '19:00') DESC, entry_number DESC
+        '''), (user_id,)).fetchall()
+        dream_rows = conn.execute(_sql('''
+            SELECT * FROM dreamdiary_entries
+            WHERE user_id = ?
+            ORDER BY entry_date DESC, COALESCE(entry_time, '08:00') DESC, entry_number DESC
+        '''), (user_id,)).fetchall()
+        thought_record_rows = conn.execute(
+            _sql(
+                _worksheet_query('w.user_id = ?') +
+                ' ORDER BY w.updated_at DESC, w.id DESC'
+            ),
+            (user_id,),
+        ).fetchall()
+        important_day_rows = conn.execute(
+            _sql(f'''
+            {IMPORTANT_DAY_SELECT}
+            WHERE user_id = ?
+            ORDER BY month ASC, day ASC, lower(label) ASC, id ASC
+            '''),
+            (user_id,),
+        ).fetchall()
+
+        daily_attachment_summaries = _load_entry_asset_summary_map(
+            conn,
+            user_id=user_id,
+            entry_type='daily',
+        )
+        dream_attachment_summaries = _load_entry_asset_summary_map(
+            conn,
+            user_id=user_id,
+            entry_type='dream',
+        )
+
+        payload = {
+            'daily': [
+                _serialise_entry_row(
+                    conn,
+                    row,
+                    table_name='dailydiary_entries',
+                    entry_kind='daily',
+                    include_attachment_details=False,
+                    attachment_summaries_by_id=daily_attachment_summaries,
+                    verify_media_exists=False,
+                )
+                for row in daily_rows
+            ],
+            'dreams': [
+                _serialise_entry_row(
+                    conn,
+                    row,
+                    table_name='dreamdiary_entries',
+                    entry_kind='dream',
+                    include_attachment_details=False,
+                    attachment_summaries_by_id=dream_attachment_summaries,
+                    verify_media_exists=False,
+                )
+                for row in dream_rows
+            ],
+            'thought_records': [
+                _serialise_worksheet(row)
+                for row in thought_record_rows
+            ],
+            'important_days': [
+                _serialise_important_day(row)
+                for row in important_day_rows
+            ],
+        }
+        conn.commit()
+        return jsonify(payload), 200
+    finally:
+        conn.close()
+
 
 # Daily entries endpoints
 @entries_bp.route('/daily', methods=['GET'])

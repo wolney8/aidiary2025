@@ -15,7 +15,7 @@ import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
-import { catchError, forkJoin, of } from "rxjs";
+import { catchError, of } from "rxjs";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
 import { CbtService } from "../../core/services/cbt.service";
@@ -2031,78 +2031,66 @@ export class ListComponent implements OnInit, OnDestroy {
       hadLoadFailure = true;
     };
 
-    forkJoin({
-      daily: this.entriesService.getDailyEntries().pipe(
+    this.entriesService
+      .getEntriesOverview()
+      .pipe(
         catchError(() => {
           markLoadFailure();
-          return of([]);
+          return of({
+            daily: [],
+            dreams: [],
+            thought_records: [],
+            important_days: [],
+          });
         }),
-      ),
-      dreams: this.entriesService.getDreamEntries().pipe(
-        catchError(() => {
-          markLoadFailure();
-          return of([]);
-        }),
-      ),
-      thoughtRecords: this.cbtService.listWorksheets().pipe(
-        catchError(() => {
-          markLoadFailure();
-          return of([]);
-        }),
-      ),
-      importantDays: this.importantDaysService.getImportantDays().pipe(
-        catchError(() => {
-          markLoadFailure();
-          return of([]);
-        }),
-      ),
-    }).subscribe({
-      next: ({ daily, dreams, thoughtRecords, importantDays }) => {
-        if (requestId !== this.entriesLoadRequestId) {
-          return;
-        }
+      )
+      .subscribe({
+        next: (overview) => {
+          if (requestId !== this.entriesLoadRequestId) {
+            return;
+          }
 
-        this.dailyEntries = daily.map((e) => ({ ...e, type: "daily" }));
-        this.dreamEntries = dreams.map((e) => ({ ...e, type: "dream" }));
-        this.thoughtRecords = thoughtRecords;
-        this.importantDays = importantDays;
+          this.dailyEntries = overview.daily.map((e) => ({ ...e, type: "daily" }));
+          this.dreamEntries = overview.dreams.map((e) => ({ ...e, type: "dream" }));
+          this.thoughtRecords = overview.thought_records;
+          this.importantDays = overview.important_days;
 
-        this.entriesLoadError = hadLoadFailure
-          ? "Some journal data is temporarily unavailable. Retry once the connection settles."
-          : "";
-        this.generateTimelineFromEntries();
-        this.applyInitialMonthSelection();
-        this.syncPublicHolidaysForSelectedYear();
-        this.filterEntries();
-        this.updatePaginatedEntries();
-        this.isLoadingEntries = false;
-        this.loadOnThisDayFeed(requestId);
-      },
-      error: () => {
-        if (requestId !== this.entriesLoadRequestId) {
-          return;
-        }
-        this.dailyEntries = [];
-        this.dreamEntries = [];
-        this.thoughtRecords = [];
-        this.importantDays = [];
-        this.publicHolidays = [];
-        this.publicHolidaysEnabled = false;
-        this.publicHolidayCountryCode = "";
-        this.publicHolidaysByYear.clear();
-        this.loadedHolidayYears.clear();
-        this.onThisDayFeed = null;
-        this.syncOnThisDayFilterAvailability(false);
-        this.entriesLoadError =
-          "Some journal data is temporarily unavailable. Retry once the connection settles.";
-        this.generateTimelineFromEntries();
-        this.applyInitialMonthSelection();
-        this.filterEntries();
-        this.updatePaginatedEntries();
-        this.isLoadingEntries = false;
-        this.loadOnThisDayFeed(requestId);
-      },
-    });
+          this.entriesLoadError = hadLoadFailure
+            ? "Some journal data is temporarily unavailable. Retry once the connection settles."
+            : "";
+          this.generateTimelineFromEntries();
+          this.applyInitialMonthSelection();
+          this.syncPublicHolidaysForSelectedYear();
+          this.filterEntries();
+          this.updatePaginatedEntries();
+          this.isLoadingEntries = false;
+          this.loadOnThisDayFeed(requestId);
+        },
+        error: () => {
+          if (requestId !== this.entriesLoadRequestId) {
+            return;
+          }
+          this.dailyEntries = [];
+          this.dreamEntries = [];
+          this.thoughtRecords = [];
+          this.importantDays = [];
+          this.publicHolidays = [];
+          this.publicHolidaysEnabled = false;
+          this.publicHolidayCountryCode = "";
+          this.publicHolidaysByYear.clear();
+          this.loadedHolidayYears.clear();
+          this.onThisDayFeed = null;
+          this.syncOnThisDayFilterAvailability(false);
+          this.entriesLoadError =
+            "Some journal data is temporarily unavailable. Retry once the connection settles.";
+          this.generateTimelineFromEntries();
+          this.applyInitialMonthSelection();
+          this.filterEntries();
+          this.updatePaginatedEntries();
+          this.isLoadingEntries = false;
+          this.loadOnThisDayFeed(requestId);
+        },
+      });
   }
 
   isContentFilterActive(filter: ContentFilter): boolean {
