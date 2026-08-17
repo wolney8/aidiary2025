@@ -553,6 +553,29 @@ def test_database_health_endpoint_reports_provider_status(monkeypatch, tmp_path)
     assert "DATABASE_URL" not in str(payload)
 
 
+def test_database_health_endpoint_can_include_media_storage_status(monkeypatch, tmp_path):
+    db_path = tmp_path / "app.db"
+    db_path.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("MEDIA_ROOT", str(tmp_path / "media"))
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setattr(app_module, "_run_sqlite_runtime_migrations", lambda *_args: None)
+    monkeypatch.setattr(app_module, "_ensure_nltk_data", lambda: None)
+    monkeypatch.setattr(import_routes_module, "recover_import_jobs", lambda _app: 0)
+
+    app = create_app()
+    response = app.test_client().get("/api/health/database?media=1&media_write=1")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["media_storage"]["backend"] == "local"
+    assert payload["media_storage"]["ok"] is True
+    assert payload["media_storage"]["write_ok"] is True
+    assert "MEDIA_ROOT" not in str(payload)
+
+
 def test_app_applies_default_security_headers(monkeypatch, tmp_path):
     db_path = tmp_path / "app.db"
     db_path.write_text("", encoding="utf-8")

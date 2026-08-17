@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import os
+import time
 from pathlib import Path, PurePosixPath
 from typing import Final
 from uuid import uuid4
@@ -219,6 +220,73 @@ def build_media_response(storage_key: str):
         return None
     mimetype, _encoding = mimetypes.guess_type(storage_key)
     return Response(media_bytes, mimetype=mimetype or "application/octet-stream")
+
+
+def health_check(*, write: bool = False) -> dict[str, object]:
+    """Return a sanitized media-storage readiness report."""
+    started_at = time.perf_counter()
+    report: dict[str, object] = {
+        "backend": None,
+        "ok": False,
+        "configured": False,
+        "read_ok": False,
+        "write_ok": None if not write else False,
+        "public_base_url_configured": False,
+        "latency_ms": None,
+    }
+    try:
+        backend = _active_backend()
+        report["backend"] = backend
+        report["public_base_url_configured"] = bool(
+            str(current_app.config.get("R2_PUBLIC_BASE_URL") or "").strip()
+            or str(current_app.config.get("MEDIA_BASE_URL") or "").strip()
+        )
+
+        if backend == R2_MEDIA_BACKEND:
+            report["configured"] = all(
+                str(current_app.config.get(name) or "").strip()
+                for name in (
+                    "R2_ENDPOINT_URL",
+                    "R2_ACCESS_KEY_ID",
+                    "R2_SECRET_ACCESS_KEY",
+                    "R2_BUCKET_NAME",
+                )
+            )
+            if not report["configured"]:
+                report["message"] = "R2 media storage configuration is incomplete."
+                return report
+            client = _r2_client()
+            report["read_ok"] = True
+            if write:
+                probe_key = f"health/{uuid4().hex}.txt"
+                client.put_object(
+                    Bucket=_r2_bucket_name(),
+                    Key=probe_key,
+                    Body=b"ok",
+                    ContentType="text/plain",
+                )
+                client.delete_object(Bucket=_r2_bucket_name(), Key=probe_key)
+                report["write_ok"] = True
+        else:
+            media_root = Path(current_app.config["MEDIA_ROOT"])
+            ensure_media_root(str(media_root))
+            report["configured"] = True
+            report["read_ok"] = media_root.exists() and media_root.is_dir()
+            if write:
+                probe_path = media_root / "health" / f"{uuid4().hex}.txt"
+                probe_path.parent.mkdir(parents=True, exist_ok=True)
+                probe_path.write_bytes(b"ok")
+                probe_path.unlink(missing_ok=True)
+                _cleanup_empty_parent_dirs(probe_path.parent)
+                report["write_ok"] = True
+    except Exception as exc:  # noqa: BLE001
+        report["error_type"] = exc.__class__.__name__
+        report["message"] = "Media storage check failed."
+        return report
+
+    report["ok"] = bool(report["configured"] and report["read_ok"] and (not write or report["write_ok"]))
+    report["latency_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
+    return report
 
 
 def _store_image_bytes(

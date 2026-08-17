@@ -35,6 +35,7 @@ from services.stripe_billing import (
     configured_checkout_tiers,
     load_stripe_billing_config,
 )
+from services.media_storage import health_check as media_storage_health_check
 from scripts.validate_database_maintenance import (
     DEFAULT_MAX_AGE_HOURS as DEFAULT_DATABASE_MAINTENANCE_MAX_AGE_HOURS,
     build_database_maintenance_report,
@@ -828,6 +829,7 @@ def _readiness_check(
 def _operations_readiness() -> dict[str, object]:
     adapter = _database_adapter()
     database_report = adapter.health_check(write=False)
+    media_report = media_storage_health_check(write=False)
     app_environment = (os.getenv("APP_ENV") or "development").strip().lower()
     database_provider = _database_provider()
     runtime_migrations_enabled = bool(
@@ -892,6 +894,16 @@ def _operations_readiness() -> dict[str, object]:
                 "Postgres-ready provider is active."
                 if database_provider != SQLITE_PROVIDER
                 else "SQLite is suitable for local development only unless using a documented fallback."
+            ),
+        ),
+        _readiness_check(
+            "media_storage",
+            "Media storage",
+            "ok" if media_report.get("ok") else "blocked",
+            (
+                f"{str(media_report.get('backend') or 'media').upper()} media storage is configured."
+                if media_report.get("ok")
+                else "Media storage check failed. Review local media or R2 configuration."
             ),
         ),
         _readiness_check(
@@ -1007,6 +1019,7 @@ def _operations_readiness() -> dict[str, object]:
             "runtime_migrations_enabled": runtime_migrations_enabled,
         },
         "database": database_report,
+        "media_storage": media_report,
         "auth": {
             "cookie_mode": cookie_mode,
             "csrf_protect": csrf_protect,

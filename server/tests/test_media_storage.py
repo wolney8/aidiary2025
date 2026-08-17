@@ -6,6 +6,7 @@ from services.media_storage import (
     R2_MEDIA_BACKEND,
     build_media_response,
     delete_image,
+    health_check,
     media_path_exists,
     read_media_bytes,
     resolve_image_url,
@@ -46,6 +47,9 @@ def _r2_app(fake_client):
         MEDIA_BASE_URL="https://api.openmynd.example/media",
         MEDIA_URL_PREFIX="/media",
         R2_BUCKET_NAME="openmynd-test-media",
+        R2_ENDPOINT_URL="https://abc123.r2.cloudflarestorage.com",
+        R2_ACCESS_KEY_ID="r2-access-key",
+        R2_SECRET_ACCESS_KEY="r2-secret-key",
         R2_CLIENT=fake_client,
     )
     return app
@@ -109,3 +113,19 @@ def test_r2_public_base_url_resolves_direct_object_url():
         assert resolve_image_url(storage_key).startswith(
             "https://media.openmynd.example/entries/dream/7/"
         )
+
+
+def test_r2_media_health_check_can_probe_write_without_leaking_config():
+    fake_client = FakeR2Client()
+    app = _r2_app(fake_client)
+
+    with app.test_request_context("/"):
+        report = health_check(write=True)
+
+        assert report["backend"] == "r2"
+        assert report["configured"] is True
+        assert report["ok"] is True
+        assert report["read_ok"] is True
+        assert report["write_ok"] is True
+        assert "R2_SECRET_ACCESS_KEY" not in str(report)
+        assert fake_client.deleted[0][0] == "openmynd-test-media"

@@ -42,6 +42,7 @@ from services.media_storage import (
     SUPPORTED_MEDIA_BACKENDS,
     build_media_response,
     ensure_media_root,
+    health_check as media_storage_health_check,
 )
 from services.auth_sessions import token_is_revoked
 from services.admin_bootstrap import ensure_configured_admins
@@ -794,11 +795,18 @@ def create_app():
     def database_health():
         write = str(request.args.get('write') or '').strip().lower() in {'1', 'true', 'yes'}
         include_schema = str(request.args.get('schema') or '').strip().lower() in {'1', 'true', 'yes'}
+        include_media = str(request.args.get('media') or '').strip().lower() in {'1', 'true', 'yes'}
+        media_write = str(request.args.get('media_write') or '').strip().lower() in {'1', 'true', 'yes'}
         report = app.config['DATABASE_ADAPTER'].health_check(write=write)
         if include_schema and hasattr(app.config['DATABASE_ADAPTER'], 'schema_readiness'):
             schema_report = app.config['DATABASE_ADAPTER'].schema_readiness()
             report['schema'] = schema_report
             if schema_report.get('ok') is not True:
+                report['ok'] = False
+        if include_media:
+            media_report = media_storage_health_check(write=media_write)
+            report['media_storage'] = media_report
+            if media_report.get('ok') is not True:
                 report['ok'] = False
         report['environment'] = {
             'app_env': app_environment,
