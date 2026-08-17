@@ -445,6 +445,187 @@ def test_search_supports_multi_word_queries(client):
     assert body['results'][0]['entry_date'] == '2026-08-16'
 
 
+def test_search_multi_word_queries_require_each_exact_token(client):
+    token = get_auth_token(client)
+    entries = [
+        {
+            'entry_date': '2026-08-16',
+            'title': 'Car day',
+            'user_message': 'This was a car day. The car was useful all day.',
+            'tags': 'car, day',
+        },
+        {
+            'entry_date': '2026-08-17',
+            'title': 'Day with the car',
+            'user_message': 'The day included a useful car journey.',
+            'tags': 'car, day',
+        },
+        {
+            'entry_date': '2026-08-15',
+            'title': 'Care day',
+            'user_message': 'Care plans took all day.',
+            'tags': 'care, day',
+        },
+        {
+            'entry_date': '2026-08-14',
+            'title': 'Card day',
+            'user_message': 'Card games took all day.',
+            'tags': 'card, day',
+        },
+        {
+            'entry_date': '2026-08-13',
+            'title': 'Carry day',
+            'user_message': 'Carry bags all day.',
+            'tags': 'carry, day',
+        },
+        {
+            'entry_date': '2026-08-12',
+            'title': 'Car only',
+            'user_message': 'The car was mentioned without the second term.',
+            'tags': 'car',
+        },
+    ]
+    for entry in entries:
+        client.post(
+            '/api/daily',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps(entry),
+            content_type='application/json',
+        )
+
+    response = client.get(
+        '/api/search?q=car%20day',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert [result['title'] for result in body['results']] == ['Car day', 'Day with the car']
+    title_match = body['results'][0]['matches']['title'].lower()
+    body_match = body['results'][0]['matches']['body'].lower()
+    assert 'car</span>' in title_match
+    assert 'day</span>' in title_match
+    assert 'car</span>' in body_match
+    assert 'day</span>' in body_match
+
+
+def test_search_quoted_phrase_requires_exact_phrase(client):
+    token = get_auth_token(client)
+    for entry in [
+        {
+            'entry_date': '2026-08-16',
+            'title': 'Car day',
+            'user_message': 'This was a car day.',
+            'tags': 'car, day',
+        },
+        {
+            'entry_date': '2026-08-17',
+            'title': 'Day with the car',
+            'user_message': 'The day included a useful car journey.',
+            'tags': 'car, day',
+        },
+    ]:
+        client.post(
+            '/api/daily',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps(entry),
+            content_type='application/json',
+        )
+
+    response = client.get(
+        '/api/search?q=%22car%20day%22',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert [result['title'] for result in body['results']] == ['Car day']
+    assert 'car day</span>' in body['results'][0]['matches']['body'].lower()
+
+
+def test_search_comma_queries_match_any_exact_token_and_rank_both_first(client):
+    token = get_auth_token(client)
+    for entry in [
+        {
+            'entry_date': '2026-08-16',
+            'title': 'Car day',
+            'user_message': 'This was a car day.',
+            'tags': 'car, day',
+        },
+        {
+            'entry_date': '2026-08-15',
+            'title': 'Car only',
+            'user_message': 'Only the car appears here.',
+            'tags': 'car',
+        },
+        {
+            'entry_date': '2026-08-17',
+            'title': 'Day only',
+            'user_message': 'Only the day appears here.',
+            'tags': 'day',
+        },
+        {
+            'entry_date': '2026-08-14',
+            'title': 'Care only',
+            'user_message': 'Care should not match the vehicle token.',
+            'tags': 'care',
+        },
+    ]:
+        client.post(
+            '/api/daily',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps(entry),
+            content_type='application/json',
+        )
+
+    response = client.get(
+        '/api/search?q=car,%20day',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert [result['title'] for result in body['results']] == [
+        'Car day',
+        'Day only',
+        'Car only',
+    ]
+
+
+def test_search_caps_large_result_sets(client):
+    token = get_auth_token(client)
+    conn = sqlite3.connect(os.environ['DB_PATH'])
+    conn.executemany(
+        '''
+        INSERT INTO dailydiary_entries (user_id, entry_date, title, user_message, tags)
+        VALUES (?, ?, ?, ?, ?)
+        ''',
+        [
+            (
+                1,
+                f'2026-01-{(index % 28) + 1:02d}',
+                f'Daylio import {index}',
+                'Daylio archive test entry',
+                'Daylio',
+            )
+            for index in range(260)
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    response = client.get(
+        '/api/search?q=daylio',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = json.loads(response.data)
+    assert body['truncated'] is True
+    assert body['result_limit'] == 250
+    assert len(body['results']) == 250
+
+
 def test_create_daily_entry(client):
     """Test creating a daily entry."""
     token = get_auth_token(client)

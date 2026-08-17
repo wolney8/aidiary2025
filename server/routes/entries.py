@@ -86,6 +86,7 @@ MAX_ENTRY_AUDIO_ATTACHMENT_BYTES = 25 * 1024 * 1024
 MAX_ATTACHMENTS_PER_ENTRY = 3
 ENTRY_IMAGE_TARGET_SIZE = (933, 705)
 ENTRY_IMAGE_JPEG_QUALITY = 85
+SEARCH_RESULT_LIMIT = 250
 
 
 def _quota_exceeded_payload(exc: UsageLimitExceeded, message: str) -> tuple[dict, int]:
@@ -1246,22 +1247,108 @@ def _build_bulk_delete_readiness(
     }
 
 
-def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
+def _build_search_pattern(term: str, *, phrase: bool = False) -> re.Pattern:
+    if phrase or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", term, re.IGNORECASE):
+        return re.compile(re.escape(term), re.IGNORECASE)
+    return re.compile(rf'(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])', re.IGNORECASE)
+
+
+def _search_term_matches(source: str, term: str, *, phrase: bool = False) -> bool:
+    source = _coerce_search_text(source)
+    if not source or not term:
+        return False
+    return bool(_build_search_pattern(term, phrase=phrase).search(source))
+
+
+def _parse_search_query(query: str) -> dict:
+    quoted_tokens = [
+        token.strip()
+        for token in re.findall(r'"([^"]+)"', query)
+        if token.strip()
+    ]
+    if quoted_tokens and query.strip().startswith('"') and query.strip().endswith('"'):
+        return {
+            'mode': 'phrase',
+            'terms': [{'text': token.lower(), 'phrase': True} for token in quoted_tokens],
+            'phrase_text': quoted_tokens[0].lower(),
+        }
+
+    has_comma = ',' in query
+    if has_comma:
+        raw_terms = [token.strip() for token in re.split(r',+', query) if token.strip()]
+    else:
+        raw_terms = [
+            token.strip('"')
+            for token in re.findall(r'"[^"]+"|\S+', query)
+            if token.strip('"').strip()
+        ]
+
+    terms = [
+        {
+            'text': token.lower(),
+            'phrase': ' ' in token,
+        }
+        for token in raw_terms
+        if token
+    ]
+    return {
+        'mode': 'or' if has_comma else 'and',
+        'terms': terms,
+        'phrase_text': ' '.join(term['text'] for term in terms).strip() if not has_comma else '',
+    }
+
+
+def _find_search_matches(source: str, query_terms: list[dict]) -> list[tuple[int, int]]:
+    matches: list[tuple[int, int]] = []
+    for term in query_terms:
+        text = str(term.get('text') or '')
+        if not text:
+            continue
+        pattern = _build_search_pattern(text, phrase=bool(term.get('phrase')))
+        matches.extend((match.start(), match.end()) for match in pattern.finditer(source))
+
+    selected: list[tuple[int, int]] = []
+    last_end = -1
+    for start, end in sorted(matches, key=lambda item: (item[0], -(item[1] - item[0]))):
+        if start < last_end:
+            continue
+        selected.append((start, end))
+        last_end = end
+    return selected
+
+
+def _render_highlighted_search_excerpt(excerpt: str, query_terms: list[dict]) -> str:
+    matches = _find_search_matches(excerpt, query_terms)
+    if not matches:
+        return escape(excerpt)
+
+    parts: list[str] = []
+    cursor = 0
+    for start, end in matches:
+        parts.append(escape(excerpt[cursor:start]))
+        parts.append(
+            '<span style="color: red; font-weight: bold;">'
+            f'{escape(excerpt[start:end])}'
+            '</span>'
+        )
+        cursor = end
+    parts.append(escape(excerpt[cursor:]))
+    return ''.join(parts)
+
+
+def _highlight_text_terms(source: str, query_terms: list[dict], context: int = 60) -> str | None:
     source = _coerce_search_text(source)
     if not source:
         return None
-    pattern = re.compile(re.escape(term), re.IGNORECASE)
-    match = pattern.search(source)
-    if not match:
+    matches = _find_search_matches(source, query_terms)
+    if not matches:
         return None
 
-    start = max(match.start() - context, 0)
-    end = min(match.end() + context, len(source))
+    first_start, first_end = matches[0]
+    start = max(first_start - context, 0)
+    end = min(first_end + context, len(source))
     excerpt = source[start:end]
-    escaped = escape(excerpt)
-    escaped_term = escape(term)
-    escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
-    highlighted = escaped_pattern.sub(lambda m: f'<span style="color: red; font-weight: bold;">{m.group(0)}</span>', escaped)
+    highlighted = _render_highlighted_search_excerpt(excerpt, query_terms)
     if start > 0:
         highlighted = '…' + highlighted
     if end < len(source):
@@ -1269,51 +1356,55 @@ def _highlight_text(source: str, term: str, context: int = 60) -> str | None:
     return highlighted
 
 
-def _highlight_inline(source: str, term: str, max_length: int = 80) -> str | None:
+def _highlight_inline_terms(source: str, query_terms: list[dict], max_length: int = 80) -> str | None:
     source = _coerce_search_text(source)
     if not source:
         return None
-    
-    pattern = re.compile(re.escape(term), re.IGNORECASE)
-    match = pattern.search(source)
-    if not match:
+    matches = _find_search_matches(source, query_terms)
+    if not matches:
         return None
-    
-    # If source is short enough, just highlight and return
+
     if len(source) <= max_length:
-        escaped = escape(source)
-        escaped_term = escape(term)
-        escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
-        return escaped_pattern.sub(lambda m: f'<span style="color: red; font-weight: bold;">{m.group(0)}</span>', escaped)
-    
-    # For longer text, truncate around the match
-    context = (max_length - len(term)) // 2
-    start = max(match.start() - context, 0)
-    end = min(match.end() + context, len(source))
-    
-    # Adjust to try to break at word boundaries
+        return _render_highlighted_search_excerpt(source, query_terms)
+
+    first_start, first_end = matches[0]
+    context = max((max_length - (first_end - first_start)) // 2, 0)
+    start = max(first_start - context, 0)
+    end = min(first_end + context, len(source))
+
     if start > 0:
         space_before = source.rfind(' ', 0, start + 10)
         if space_before > start - 10:
             start = space_before + 1
-    
+
     if end < len(source):
         space_after = source.find(' ', end - 10)
         if space_after != -1 and space_after < end + 10:
             end = space_after
-    
+
     excerpt = source[start:end]
-    escaped = escape(excerpt)
-    escaped_term = escape(term)
-    escaped_pattern = re.compile(re.escape(escaped_term), re.IGNORECASE)
-    highlighted = escaped_pattern.sub(lambda m: f'<span style="color: red; font-weight: bold;">{m.group(0)}</span>', escaped)
-    
+    highlighted = _render_highlighted_search_excerpt(excerpt, query_terms)
     if start > 0:
         highlighted = '…' + highlighted
     if end < len(source):
         highlighted = highlighted + '…'
-        
     return highlighted
+
+
+def _highlight_text(source: str, term: str, context: int = 60, *, phrase: bool = False) -> str | None:
+    return _highlight_text_terms(
+        source,
+        [{'text': term, 'phrase': phrase}],
+        context=context,
+    )
+
+
+def _highlight_inline(source: str, term: str, max_length: int = 80, *, phrase: bool = False) -> str | None:
+    return _highlight_inline_terms(
+        source,
+        [{'text': term, 'phrase': phrase}],
+        max_length=max_length,
+    )
 
 # Combined entries overview endpoint
 @entries_bp.route('/entries/overview', methods=['GET'])
@@ -2790,11 +2881,10 @@ def search_entries():
         conn.close()
 
     results = []
-    query_terms = [
-        token.strip('"').lower()
-        for token in re.findall(r'"[^"]+"|\S+', query)
-        if token.strip('"').strip()
-    ]
+    parsed_query = _parse_search_query(query)
+    query_terms = parsed_query['terms']
+    query_mode = parsed_query['mode']
+    phrase_text = parsed_query['phrase_text']
 
     def field_enabled(field_name: str) -> bool:
         if include_all:
@@ -2832,52 +2922,66 @@ def search_entries():
         date_strings = _format_date_strings(entry_date_obj) if field_enabled('date') and entry_date_obj else []
         searchable_fields.extend(date_strings)
         searchable_text = ' '.join(str(value).lower() for value in searchable_fields if value)
-        if not query_terms or not all(term in searchable_text for term in query_terms):
+        matched_terms = [
+            term
+            for term in query_terms
+            if _search_term_matches(searchable_text, term['text'], phrase=term['phrase'])
+        ]
+        exact_phrase_match = bool(
+            phrase_text
+            and _search_term_matches(searchable_text, phrase_text, phrase=True)
+        )
+        if not query_terms:
+            return
+        if query_mode in {'and', 'phrase'} and len(matched_terms) != len(query_terms):
+            return
+        if query_mode == 'or' and not matched_terms:
             return
 
-        highlight_term = next(
-            (term for term in query_terms if term in title_plain.lower()),
-            query_terms[0],
+        highlight_terms = (
+            [{'text': phrase_text, 'phrase': True}]
+            if query_mode == 'phrase' and phrase_text
+            else matched_terms
         )
 
         matches = {}
         matched = False
 
         # Check title match (always enabled as it's core content)
-        if title_plain:
-            highlighted = _highlight_inline(title_plain, highlight_term)
-            if highlighted:
-                matches['title'] = highlighted
-                matched = True
+        highlighted = _highlight_inline_terms(title_plain, highlight_terms)
+        if highlighted:
+            matches['title'] = highlighted
+            matched = True
 
         if field_enabled('body'):
-            highlighted = _highlight_text(text_body, highlight_term)
+            highlighted = _highlight_text_terms(text_body, highlight_terms)
             if highlighted:
                 matches['body'] = highlighted
                 matched = True
 
         if field_enabled('tags') and tags_text:
-            highlighted = _highlight_inline(tags_text, highlight_term)
+            highlighted = _highlight_inline_terms(tags_text, highlight_terms)
             if highlighted:
                 matches['tags'] = highlighted
                 matched = True
 
         if field_enabled('people') and people_text:
-            highlighted = _highlight_inline(people_text, highlight_term)
+            highlighted = _highlight_inline_terms(people_text, highlight_terms)
             if highlighted:
                 matches['people'] = highlighted
                 matched = True
 
         if field_enabled('ai') and ai_text:
-            highlighted = _highlight_text(ai_text, highlight_term)
+            highlighted = _highlight_text_terms(ai_text, highlight_terms)
             if highlighted:
                 matches['ai'] = highlighted
                 matched = True
 
         if field_enabled('date') and entry_date_obj:
             for date_str in date_strings:
-                if any(term in date_str.lower() for term in query_terms):
-                    matches['date'] = _highlight_inline(date_str, highlight_term) or escape(date_str)
+                highlighted = _highlight_inline_terms(date_str, highlight_terms)
+                if highlighted:
+                    matches['date'] = highlighted
                     matched = True
                     break
 
@@ -2896,7 +3000,13 @@ def search_entries():
             'entry_date': entry_date_iso,
             'entry_date_display': entry_date_display,
             'tags': tags_text,
-            'matches': matches
+            'matches': matches,
+            'score': (
+                (100 if exact_phrase_match else 0)
+                + (len(matched_terms) * 10)
+                + (5 if matches.get('title') else 0)
+                + (3 if matches.get('tags') else 0)
+            ),
         })
 
     for row in daily_rows:
@@ -2938,11 +3048,19 @@ def search_entries():
         }
         process_entry('dream', base_data)
 
-    results.sort(key=lambda item: item['entry_date'], reverse=True)
+    results.sort(key=lambda item: (item.get('score', 0), item['entry_date']), reverse=True)
+    truncated = len(results) > SEARCH_RESULT_LIMIT
+    if truncated:
+        results = results[:SEARCH_RESULT_LIMIT]
 
     return jsonify({
         'query': query,
         'filters': list(active_filters),
         'filters_display': filters_display,
-        'results': results
+        'results': [
+            {key: value for key, value in result.items() if key != 'score'}
+            for result in results
+        ],
+        'truncated': truncated,
+        'result_limit': SEARCH_RESULT_LIMIT,
     }), 200

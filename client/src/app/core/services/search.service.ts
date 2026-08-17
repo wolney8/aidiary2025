@@ -36,6 +36,8 @@ export interface SearchResponse {
   filters: string[];
   filters_display: string;
   results: SearchResult[];
+  truncated?: boolean;
+  result_limit?: number;
 }
 
 export interface SearchState extends SearchResponse {

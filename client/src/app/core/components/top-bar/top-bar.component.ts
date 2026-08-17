@@ -159,15 +159,27 @@ interface AnnouncementNotification {
             <input
               #searchInput
               class="search-input"
-              type="search"
+              type="text"
               placeholder="Search entries, tags, people, dates..."
               aria-label="Search entries, tags, people, and dates"
               formControlName="query"
               (keydown.enter)="$event.preventDefault(); filterResults()"
+              (keydown.escape)="clearSearchTerm($event)"
               (focus)="onSearchInputFocus()"
               (blur)="onSearchInputBlur()"
               (input)="onSearchInputChange($event)"
             />
+            <button
+              *ngIf="hasSearchTerm()"
+              type="button"
+              class="search-clear-chip"
+              (mousedown)="$event.preventDefault()"
+              (click)="clearSearchTerm($event)"
+              aria-label="Clear search term"
+              title="Clear search term"
+            >
+              <span aria-hidden="true">Esc</span>
+            </button>
             <button
               type="button"
               class="search-filter-button"
@@ -552,6 +564,7 @@ interface AnnouncementNotification {
         flex: 1;
         gap: var(--spacing-sm);
         min-width: 0;
+        z-index: 30;
       }
       .search-wrapper-hidden {
         display: none;
@@ -567,6 +580,7 @@ interface AnnouncementNotification {
         max-width: min(760px, 52vw);
         position: relative;
         min-width: 0;
+        z-index: 30;
       }
       .search-wrapper-compact .search-form {
         max-width: none;
@@ -608,6 +622,33 @@ interface AnnouncementNotification {
         background: transparent;
         color: rgba(255, 255, 255, 0.82);
         cursor: pointer;
+      }
+      .search-clear-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-width: 2.35rem;
+        height: 1.8rem;
+        margin-inline: var(--spacing-xs);
+        padding: 0 0.55rem;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.12);
+        color: var(--colour-toolbar-text);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .search-clear-chip:hover,
+      .search-clear-chip:focus-visible {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .search-clear-chip:focus-visible {
+        outline: 2px solid var(--colour-toolbar-text);
+        outline-offset: 2px;
       }
       .search-filter-button:hover,
       .search-filter-button:focus-visible {
@@ -1007,13 +1048,13 @@ interface AnnouncementNotification {
         top: calc(100% + 4px);
         left: 0;
         right: 0;
-        background: var(--colour-surface);
-        border-radius: var(--radius-md);
-        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
+        background: var(--colour-surface-elevated);
+        border-radius: var(--radius-lg);
+        box-shadow: 0 22px 48px var(--colour-shadow-strong);
         border: 1px solid var(--colour-border);
         max-height: 320px;
         overflow-y: auto;
-        z-index: 1000;
+        z-index: 5000;
       }
 
       .search-history-header {
@@ -1306,8 +1347,18 @@ export class TopBarComponent implements OnInit, OnDestroy {
     this.closeNotifications();
   }
 
-  @HostListener("document:keydown.escape")
-  closeNotificationsOnEscape(): void {
+  @HostListener("document:keydown.escape", ["$event"])
+  closeNotificationsOnEscape(event: KeyboardEvent): void {
+    if (this.hasSearchTerm()) {
+      this.clearSearchTerm(event);
+      return;
+    }
+
+    if (this.showSearchHistory) {
+      this.showSearchHistory = false;
+      event.stopPropagation();
+      return;
+    }
     this.closeNotifications();
   }
 
@@ -1449,6 +1500,28 @@ export class TopBarComponent implements OnInit, OnDestroy {
       this.router.navigate(["/entries"], {
         queryParams: { search: query, filters },
         queryParamsHandling: "merge",
+      });
+    }
+  }
+
+  protected hasSearchTerm(): boolean {
+    return Boolean((this.searchForm.get("query")?.value || "").trim());
+  }
+
+  protected clearSearchTerm(event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.searchForm.patchValue({ query: "" });
+    this.currentSearchQuery = "";
+    this.showSearchHistory = false;
+    this.updateFilteredHistory();
+    this.searchService.clear();
+
+    if ((this.location.path() || "").includes("/entries")) {
+      void this.router.navigate(["/entries"], {
+        queryParams: { search: null, filters: null },
+        queryParamsHandling: "merge",
+        replaceUrl: true,
       });
     }
   }

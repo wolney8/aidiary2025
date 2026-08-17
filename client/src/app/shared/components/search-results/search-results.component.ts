@@ -227,7 +227,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       >
         <button mat-stroked-button type="button" (click)="toggleCurrentPageSelection()">
           <mat-icon>{{ isCurrentPageSelected() ? "deselect" : "select_all" }}</mat-icon>
-          {{ isCurrentPageSelected() ? "Clear this page" : "Select this page" }}
+          <span>{{ isCurrentPageSelected() ? "Clear this page" : "Select this page" }}</span>
         </button>
         <span class="selection-count" aria-live="polite">
           {{ selectedEntries.size }} selected
@@ -240,7 +240,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           (click)="deleteSelected(searchState)"
         >
           <mat-icon>delete</mat-icon>
-          {{ deletingSelected ? "Deleting…" : "Delete selected" }}
+          <span>{{ deletingSelected ? "Deleting…" : "Delete selected" }}</span>
         </button>
       </div>
 
@@ -261,6 +261,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           [showFirstLastButtons]="true"
           (page)="onPageChange($event)"
           aria-label="Select page"
+          data-testid="search-results-top-paginator"
         >
         </mat-paginator>
       </div>
@@ -293,6 +294,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
             tabindex="0"
             [attr.aria-expanded]="isExpanded(result.id)"
             [attr.aria-label]="'Review search result ' + result.title"
+            data-testid="search-result-card"
             (click)="toggleExpand(result.id); $event.stopPropagation()"
             (keydown.enter)="toggleExpand(result.id); $event.stopPropagation()"
             (keydown.space)="$event.preventDefault(); toggleExpand(result.id); $event.stopPropagation()"
@@ -336,6 +338,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
             class="expanded-details-card"
             [@slideInOut]
             (click)="$event.stopPropagation()"
+            data-testid="search-result-detail"
           >
             <div class="expanded-header">
               <div class="expanded-actions">
@@ -427,6 +430,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           [showFirstLastButtons]="true"
           (page)="onPageChange($event)"
           aria-label="Select page"
+          data-testid="search-results-bottom-paginator"
         >
         </mat-paginator>
       </div>
@@ -435,7 +439,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
   styles: [
     `
       .search-results {
-        padding: 1rem;
+        padding: var(--spacing-sm) 0;
       }
 
       .loading-container {
@@ -778,19 +782,23 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .search-header {
-        margin-bottom: 2rem;
+        margin: 0 0 var(--spacing-md);
       }
 
       .search-header h2 {
-        font-size: 1.5rem;
-        font-weight: 500;
+        margin: 0;
+        font-size: clamp(1.45rem, 2.2vw, 2rem);
+        font-weight: 800;
+        letter-spacing: -0.02em;
         color: var(--colour-text-primary);
       }
 
       .results-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(auto-fill, minmax(min(18.75rem, 100%), 21.875rem));
+        justify-content: center;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md) 0;
         position: relative; /* Allow expanded cards to position relative to grid */
       }
       .selection-toolbar {
@@ -798,14 +806,21 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         align-items: center;
         flex-wrap: wrap;
         gap: var(--spacing-sm);
-        margin-block: var(--spacing-sm);
+        margin-block: var(--spacing-sm) var(--spacing-md);
         padding: var(--spacing-sm) var(--spacing-md);
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-pill);
-        background: var(--colour-surface);
+        background: var(--colour-surface-muted);
+      }
+      .selection-toolbar button {
+        border-radius: var(--radius-pill);
+      }
+      .selection-toolbar button .mat-icon {
+        margin-right: 0.45rem;
       }
       .selection-count {
         color: var(--colour-text-secondary);
+        font-weight: 700;
       }
       .delete-selected-button {
         margin-left: auto;
@@ -839,14 +854,14 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         /* Ensure expanded cards have proper stacking context */
         z-index: 1;
         /* Add extra bottom margin to prevent other cards from creeping up */
-        margin-bottom: 32px;
+        margin-bottom: var(--spacing-sm);
       }
 
       /* Visual connector between main card and expanded card */
       .expanded-connector {
         display: flex;
-        justify-content: flex-start; /* Align to left as per wireframe */
-        padding-left: 60px; /* Off-center to the left */
+        justify-content: center;
+        padding-left: 0;
         margin: 4px 0;
         z-index: 15;
         position: relative;
@@ -875,8 +890,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateZ(0);
         width: 100%;
-        min-width: 0;
-        max-width: none;
+        min-width: 300px;
+        max-width: 350px;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
         background: var(--colour-surface-elevated);
@@ -888,14 +903,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         background-color: var(--colour-surface-elevated);
         border-left: 4px solid var(--colour-primary);
         overflow: hidden;
-        /* Use CSS custom properties for dynamic sizing and positioning */
-        width: min(var(--expanded-width, 100%), 100%);
+        width: 100%;
         max-width: 100%;
         margin: 0; /* Remove default margin since we have connector spacing */
-        /* Position using CSS custom properties */
-        transform: translateX(
-          clamp(-1rem, var(--offset-x, 0px), 1rem)
-        );
+        transform: none;
         /* Ensure it appears above other content */
         z-index: 20;
         box-shadow: 0 4px 20px var(--colour-shadow-medium);
@@ -903,13 +914,11 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         /* Position relative to maintain document flow */
         position: relative;
-        /* Ensure it doesn't get cut off */
-        overflow: visible;
       }
 
       /* Make sure expanded cards push down subsequent content more */
       .result-container:has(.expanded-details-card) ~ .result-container {
-        margin-top: 24px; /* Increased spacing */
+        margin-top: 0;
       }
 
       /* Ensure other cards don't creep into expanded area */
@@ -925,30 +934,49 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateZ(0);
         width: 100%;
-        min-width: 0;
-        max-width: none;
+        min-width: 300px;
+        max-width: 350px;
         /* Force consistent height for search result cards too */
-        height: 350px;
+        height: 420px;
         display: flex;
         flex-direction: column;
       }
 
       .entry-card .mat-mdc-card-header {
+        position: relative;
         align-items: flex-start;
         min-height: 4.8rem;
-        padding: 1rem 1rem 0.5rem;
+        padding: 1rem 2.6rem 0.35rem 1rem;
       }
 
       .entry-card .mat-mdc-card-avatar {
+        flex: 0 0 2rem;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 2.5rem;
-        height: 2.5rem;
-        margin-right: 0.8rem;
+        width: 2rem;
+        height: 2rem;
+        margin: 0.05rem 0.75rem 0 0;
         border-radius: 50%;
         background: var(--colour-surface-muted);
         color: var(--colour-primary);
+      }
+      .entry-card .mat-mdc-card-avatar.mat-icon {
+        font-size: 1.25rem;
+        line-height: 1;
+      }
+      .entry-card .mat-mdc-card-title {
+        display: -webkit-box;
+        overflow: hidden;
+        line-height: 1.3;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        min-height: 2.6em;
+      }
+      .entry-card .mat-mdc-card-subtitle {
+        color: var(--colour-text-secondary);
+        font-weight: 700;
       }
 
       /* Highlight the selected/expanded card */
@@ -962,7 +990,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         flex: 1;
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        gap: 0.8rem;
         overflow: hidden; /* Prevent content overflow */
       }
 
@@ -972,19 +1000,23 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .entry-image-placeholder {
-        height: 120px; /* Reduced from 150px to give more space for text */
-        background: var(--colour-surface-muted);
+        height: 132px;
+        background: linear-gradient(
+          180deg,
+          var(--colour-surface-muted) 0%,
+          var(--colour-surface-strong) 100%
+        );
         display: flex;
         align-items: center;
         justify-content: center;
         border-radius: var(--radius-md);
-        margin-bottom: 12px;
+        margin-bottom: 0;
         flex-shrink: 0; /* Don't shrink, maintain fixed height */
 
         mat-icon {
-          font-size: 36px; /* Slightly smaller icon */
-          width: 36px;
-          height: 36px;
+          font-size: 48px;
+          width: 48px;
+          height: 48px;
           color: var(--colour-text-secondary);
         }
       }
@@ -994,15 +1026,15 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         gap: 0.5rem;
         overflow: hidden; /* Prevent overflow from container */
         flex: 1; /* Take remaining space after image placeholder */
-        max-height: 100px; /* Reduced since we only show one snippet now */
-        padding: 8px 0; /* Add some vertical padding for better spacing */
+        max-height: none;
+        padding: 0;
       }
 
       .snippet {
         margin: 0;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
         color: var(--colour-text-secondary);
-        line-height: 1.4;
+        line-height: 1.5;
         /* Text truncation for long snippets */
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1074,7 +1106,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       .expanded-actions {
         display: flex;
-        gap: 12px;
+        gap: var(--spacing-xs);
         align-items: center;
       }
 
@@ -1106,6 +1138,8 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
+        margin-inline: auto;
+        max-width: min(68rem, 100%);
       }
 
       .pagination-container:first-of-type {
@@ -1501,6 +1535,9 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   }
 
   getErrorMessage(error: string): string {
+    if (error.toLowerCase().startsWith("openmynd could not")) {
+      return error;
+    }
     // Parse common error types and provide user-friendly messages
     if (
       error.toLowerCase().includes("network") ||
@@ -1642,6 +1679,8 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
       return `No results found for "${query}" in ${context}`;
     } else if (count === 1) {
       return `About 1 result for "${query}" in ${context}`;
+    } else if (searchState.truncated) {
+      return `Showing first ${count} results for "${query}" in ${context}`;
     } else {
       return `About ${count} results for "${query}" in ${context}`;
     }
