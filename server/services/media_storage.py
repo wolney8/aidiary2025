@@ -11,11 +11,13 @@ import base64
 import mimetypes
 import os
 import time
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Final
 from uuid import uuid4
 
 from flask import Response, current_app, request
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 DEFAULT_MEDIA_URL_PREFIX: Final[str] = "/media"
@@ -40,6 +42,8 @@ _ALLOWED_EXTENSIONS: Final[set[str]] = {
     "webm",
     "aiff",
 }
+GENERATED_IMAGE_MAX_SIZE: Final[tuple[int, int]] = (1024, 1024)
+GENERATED_IMAGE_JPEG_QUALITY: Final[int] = 86
 
 
 def ensure_media_root(media_root: str) -> None:
@@ -53,11 +57,12 @@ def is_legacy_data_url(value: object) -> bool:
 
 
 def store_generated_image(image_bytes: bytes, *, user_id: int, entry_kind: str) -> str:
+    image_bytes = _normalise_generated_image_bytes(image_bytes)
     return _store_image_bytes(
         image_bytes,
         user_id=user_id,
         entry_kind=entry_kind,
-        extension="png",
+        extension="jpg",
     )
 
 
@@ -302,6 +307,37 @@ def _store_image_bytes(
     storage_key = f"entries/{entry_kind}/{user_id}/{uuid4().hex}.{extension}"
     _write_media_bytes(storage_key, image_bytes)
     return storage_key
+
+
+def _normalise_generated_image_bytes(image_bytes: bytes) -> bytes:
+    if not image_bytes:
+        raise ValueError("No generated image bytes were provided for storage.")
+
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        image = ImageOps.exif_transpose(image)
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError("Generated image data was not a supported image.") from exc
+
+    if image.mode not in ("RGB", "L"):
+        background = Image.new("RGB", image.size, (255, 255, 255))
+        rgba_image = image.convert("RGBA")
+        background.paste(rgba_image, mask=rgba_image.split()[-1])
+        image = background
+    else:
+        image = image.convert("RGB")
+
+    image.thumbnail(GENERATED_IMAGE_MAX_SIZE, Image.Resampling.LANCZOS)
+
+    output = BytesIO()
+    image.save(
+        output,
+        format="JPEG",
+        quality=GENERATED_IMAGE_JPEG_QUALITY,
+        optimize=True,
+        progressive=True,
+    )
+    return output.getvalue()
 
 
 def _write_media_bytes(storage_key: str, media_bytes: bytes) -> None:

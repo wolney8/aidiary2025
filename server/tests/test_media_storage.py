@@ -1,6 +1,7 @@
 from io import BytesIO
 
 from flask import Flask
+from PIL import Image
 
 from services.media_storage import (
     R2_MEDIA_BACKEND,
@@ -40,6 +41,12 @@ class FakeR2Client:
         self.objects.pop((Bucket, Key), None)
 
 
+def _tiny_png_bytes() -> bytes:
+    output = BytesIO()
+    Image.new("RGBA", (24, 24), (20, 80, 140, 255)).save(output, format="PNG")
+    return output.getvalue()
+
+
 def _r2_app(fake_client):
     app = Flask(__name__)
     app.config.update(
@@ -61,14 +68,18 @@ def test_r2_media_backend_stores_reads_resolves_and_deletes_media():
 
     with app.test_request_context("/"):
         storage_key = store_generated_image(
-            b"png-bytes",
+            _tiny_png_bytes(),
             user_id=7,
             entry_kind="dream",
         )
 
         assert storage_key.startswith("entries/dream/7/")
+        assert storage_key.endswith(".jpg")
         assert media_path_exists(storage_key) is True
-        assert read_media_bytes(storage_key) == b"png-bytes"
+        stored_bytes = read_media_bytes(storage_key)
+        assert stored_bytes is not None
+        assert stored_bytes.startswith(b"\xff\xd8")
+        assert fake_client.objects[("openmynd-test-media", storage_key)]["content_type"] == "image/jpeg"
         assert resolve_image_url(storage_key).startswith(
             "https://api.openmynd.example/media/entries/dream/7/"
         )
@@ -105,7 +116,7 @@ def test_r2_public_base_url_resolves_direct_object_url():
 
     with app.test_request_context("/"):
         storage_key = store_generated_image(
-            b"png-bytes",
+            _tiny_png_bytes(),
             user_id=7,
             entry_kind="dream",
         )
