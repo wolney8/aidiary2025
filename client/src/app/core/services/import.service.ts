@@ -112,6 +112,8 @@ export interface BulkDeleteReadiness {
   last_entry_date: string | null;
   daily_count: number;
   dream_count: number;
+  important_day_count?: number;
+  thought_record_count?: number;
   total_entries: number;
   has_entries: boolean;
   eligible_for_delete: boolean;
@@ -123,6 +125,8 @@ export interface BulkDeleteResult {
   message: string;
   deleted_daily: number;
   deleted_dreams: number;
+  deleted_important_days?: number;
+  deleted_thought_records?: number;
   deleted_total: number;
 }
 

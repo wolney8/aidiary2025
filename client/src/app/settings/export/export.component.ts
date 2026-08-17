@@ -145,16 +145,16 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
     <mat-card class="bulk-delete-card" data-testid="bulk-delete-settings-card">
       <mat-card-header>
         <mat-icon mat-card-avatar>warning</mat-icon>
-        <mat-card-title>Delete All Entries</mat-card-title>
+        <mat-card-title>Delete all journal data</mat-card-title>
         <mat-card-subtitle>
-          This permanently deletes every daily and dream entry for your account.
+          This permanently deletes entries, important days, and thought records for your account.
         </mat-card-subtitle>
       </mat-card-header>
 
       <mat-card-content>
         <p class="hint destructive">
-          To reduce accidental data loss, you must export the full range of your
-          entries in this session before bulk delete is unlocked.
+          To reduce accidental data loss, export all journal data in this session
+          before bulk delete is unlocked.
         </p>
 
         <div class="range-summary" *ngIf="readiness">
@@ -165,11 +165,13 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             Last entry: <strong>{{ formatReadableDate(readiness.last_entry_date) }}</strong>
           </p>
           <p>
-            Total entries:
+            Total journal records:
             <strong>{{ readiness.total_entries }}</strong>
-            ({{ readiness.daily_count }} daily, {{ readiness.dream_count }} dreams)
+            ({{ readiness.daily_count }} daily, {{ readiness.dream_count }} dreams,
+            {{ readiness.important_day_count || 0 }} important days,
+            {{ readiness.thought_record_count || 0 }} thought records)
           </p>
-          <p *ngIf="!readiness.has_entries">No entries found to delete.</p>
+          <p *ngIf="!readiness.has_entries">No journal data found to delete.</p>
         </div>
 
         <div class="danger-zone" *ngIf="readiness?.has_entries">
@@ -181,7 +183,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
             [disabled]="isDownloading || isDeleting"
           >
             <mat-icon>download</mat-icon>
-            Export full range first
+            Export all data first
           </button>
 
           <p class="feedback success" *ngIf="bulkDeleteSuccessMessage">
@@ -190,7 +192,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
 
           <div class="bulk-delete-stage" *ngIf="readiness?.eligible_for_delete">
             <p class="warning-copy">
-              Full-range export completed for this session. Type
+              Full export completed for this session. Type
               <strong>DELETE ALL</strong> to unlock permanent deletion.
             </p>
 
@@ -215,7 +217,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               "
             >
               <mat-icon>delete_forever</mat-icon>
-              {{ isDeleting ? "Deleting..." : "Delete all entries" }}
+              {{ isDeleting ? "Deleting..." : "Delete all journal data" }}
             </button>
           </div>
         </div>
@@ -522,7 +524,7 @@ export class ExportComponent implements OnInit {
           this.isDeleting = false;
           this.bulkDeleteSuccessMessage =
             result.message ||
-            `Deleted ${result.deleted_total} entries successfully.`;
+            `Deleted ${result.deleted_total} journal records successfully.`;
           this.bulkDeleteConfirmation = "";
           this.bulkDeleteGuardToken = "";
           this.refreshBulkDeleteReadiness();
