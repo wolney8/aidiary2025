@@ -6,6 +6,7 @@ import { AuthService } from "./auth.service";
 import {
   BillingEntitlement,
   BillingPlan,
+  BillingStorageUsageMetric,
   BillingTier,
   BillingUsageMetric,
 } from "./billing.service";
@@ -156,6 +157,7 @@ export interface AdminBillingUser {
     ai_image?: BillingUsageMetric;
     ocr_page?: BillingUsageMetric;
     transcription_minute?: BillingUsageMetric;
+    storage?: BillingStorageUsageMetric;
   };
   subscription?: {
     provider?: string;

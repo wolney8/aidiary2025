@@ -643,6 +643,16 @@ def _empty_usage_summary(tier: str) -> dict[str, object]:
         "ai_image": dict(empty),
         "ocr_page": dict(empty),
         "transcription_minute": dict(empty),
+        "storage": {
+            "used_bytes": 0,
+            "used_mb": 0,
+            "limit_mb": None,
+            "remaining_mb": None,
+            "unlimited": True,
+            "measured_assets": 0,
+            "unmeasured_assets": 0,
+            "estimated": False,
+        },
     }
 
 

@@ -63,6 +63,7 @@ export interface BillingStatus {
     ai_image?: BillingUsageMetric;
     ocr_page?: BillingUsageMetric;
     transcription_minute?: BillingUsageMetric;
+    storage?: BillingStorageUsageMetric;
   };
   plans: BillingPlan[];
   is_admin?: boolean;
@@ -73,6 +74,17 @@ export interface BillingUsageMetric {
   limit: number | null;
   remaining: number | null;
   unlimited: boolean;
+}
+
+export interface BillingStorageUsageMetric {
+  used_bytes: number;
+  used_mb: number;
+  limit_mb: number | null;
+  remaining_mb: number | null;
+  unlimited: boolean;
+  measured_assets: number;
+  unmeasured_assets: number;
+  estimated: boolean;
 }
 
 export interface BillingSessionResponse {

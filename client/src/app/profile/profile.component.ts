@@ -16,6 +16,7 @@ import { AuthService } from "../core/services/auth.service";
 import {
   BillingTier,
   BillingPeriod,
+  BillingStorageUsageMetric,
   BillingService,
   BillingStatus,
   BillingUsageMetric,
@@ -29,7 +30,8 @@ interface AccountUsageCard {
   icon: string;
   label: string;
   description: string;
-  metric: BillingUsageMetric;
+  metric?: BillingUsageMetric;
+  storageMetric?: BillingStorageUsageMetric;
 }
 
 @Component({
@@ -394,17 +396,20 @@ interface AccountUsageCard {
                     <p>{{ card.description }}</p>
                   </div>
                 </div>
-                <strong>{{ getUsageLabel(card.metric) }}</strong>
+                <strong>{{ getCardUsageLabel(card) }}</strong>
+                <small class="billing-usage-note" *ngIf="getCardUsageNote(card)">
+                  {{ getCardUsageNote(card) }}
+                </small>
                 <div
                   class="billing-meter"
                   role="meter"
                   [attr.aria-label]="card.label + ' used this month'"
                   aria-valuemin="0"
-                  [attr.aria-valuemax]="card.metric.limit ?? null"
-                  [attr.aria-valuenow]="card.metric.used"
-                  [attr.aria-valuetext]="getUsageLabel(card.metric)"
+                  [attr.aria-valuemax]="getCardUsageMax(card)"
+                  [attr.aria-valuenow]="getCardUsageNow(card)"
+                  [attr.aria-valuetext]="getCardUsageLabel(card)"
                 >
-                  <span [style.width.%]="getUsagePercent(card.metric)"></span>
+                  <span [style.width.%]="getCardUsagePercent(card)"></span>
                 </div>
               </article>
             </div>
@@ -817,6 +822,13 @@ interface AccountUsageCard {
         line-height: 1.2;
       }
 
+      .billing-usage-note {
+        color: var(--colour-text-secondary);
+        font-size: 0.78rem;
+        font-weight: 750;
+        line-height: 1.3;
+      }
+
       .billing-meter {
         height: 10px;
         overflow: hidden;
@@ -1153,6 +1165,16 @@ export class ProfileComponent implements OnInit {
       },
     ];
 
+    if (usage.storage) {
+      cards.push({
+        key: "media-storage",
+        icon: "hard_drive",
+        label: "Media storage",
+        description: "Images, PDFs, audio, and profile media.",
+        storageMetric: usage.storage,
+      });
+    }
+
     if (usage.ai_image) {
       cards.push({
         key: "ai-images",
@@ -1188,6 +1210,60 @@ export class ProfileComponent implements OnInit {
       return `${metric.used} used`;
     }
     return `${metric.used} of ${metric.limit}`;
+  }
+
+  getStorageUsageLabel(metric: BillingStorageUsageMetric): string {
+    const used = this.formatMegabytes(metric.used_mb);
+    if (metric.unlimited || metric.limit_mb === null) {
+      return `${used} used`;
+    }
+    return `${used} of ${this.formatMegabytes(metric.limit_mb)}`;
+  }
+
+  getCardUsageLabel(card: AccountUsageCard): string {
+    if (card.storageMetric) {
+      return this.getStorageUsageLabel(card.storageMetric);
+    }
+    return card.metric ? this.getUsageLabel(card.metric) : "0 used";
+  }
+
+  getCardUsageNote(card: AccountUsageCard): string {
+    if (!card.storageMetric?.estimated) {
+      return "";
+    }
+    const count = card.storageMetric.unmeasured_assets;
+    return `${count} older media ${count === 1 ? "item is" : "items are"} not byte-measured yet.`;
+  }
+
+  getCardUsageMax(card: AccountUsageCard): number | null {
+    if (card.storageMetric) {
+      return card.storageMetric.limit_mb;
+    }
+    return card.metric?.limit ?? null;
+  }
+
+  getCardUsageNow(card: AccountUsageCard): number {
+    if (card.storageMetric) {
+      return card.storageMetric.used_mb;
+    }
+    return card.metric?.used ?? 0;
+  }
+
+  getCardUsagePercent(card: AccountUsageCard): number {
+    if (card.storageMetric) {
+      if (card.storageMetric.unlimited || !card.storageMetric.limit_mb) {
+        return 0;
+      }
+      return Math.min(100, Math.max(0, (card.storageMetric.used_mb / card.storageMetric.limit_mb) * 100));
+    }
+    return card.metric ? this.getUsagePercent(card.metric) : 0;
+  }
+
+  formatMegabytes(value: number): string {
+    if (value >= 1024) {
+      return `${(value / 1024).toFixed(value >= 10240 ? 0 : 1)} GB`;
+    }
+    return `${Number(value.toFixed(value < 10 && value > 0 ? 2 : 0))} MB`;
   }
 
   getUsagePercent(metric: BillingUsageMetric): number {

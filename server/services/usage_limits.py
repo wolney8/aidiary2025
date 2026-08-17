@@ -25,6 +25,7 @@ EVENT_LIMIT_KEYS = {
 }
 FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
     "free": {
+        "storage_mb": 250,
         AI_ANALYSIS_LIMIT_KEY: 10,
         "ai_chat_monthly": 10,
         "ai_images_monthly": 0,
@@ -32,6 +33,7 @@ FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
         "transcription_minutes_monthly": 0,
     },
     "personal": {
+        "storage_mb": 2048,
         AI_ANALYSIS_LIMIT_KEY: 250,
         "ai_chat_monthly": 150,
         "ai_images_monthly": 10,
@@ -39,6 +41,7 @@ FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
         "transcription_minutes_monthly": 30,
     },
     "plus": {
+        "storage_mb": 10240,
         AI_ANALYSIS_LIMIT_KEY: 1000,
         "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
@@ -46,6 +49,7 @@ FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
         "transcription_minutes_monthly": 180,
     },
     "therapeutic": {
+        "storage_mb": 10240,
         AI_ANALYSIS_LIMIT_KEY: 1000,
         "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
@@ -53,6 +57,7 @@ FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
         "transcription_minutes_monthly": 180,
     },
     "lifetime": {
+        "storage_mb": 10240,
         AI_ANALYSIS_LIMIT_KEY: 1000,
         "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
@@ -60,6 +65,7 @@ FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
         "transcription_minutes_monthly": 180,
     },
     "complimentary": {
+        "storage_mb": 10240,
         AI_ANALYSIS_LIMIT_KEY: 1000,
         "ai_chat_monthly": 600,
         "ai_images_monthly": 40,
@@ -67,6 +73,7 @@ FALLBACK_PLAN_LIMITS: dict[str, dict[str, int | None]] = {
         "transcription_minutes_monthly": 180,
     },
     "administrator": {
+        "storage_mb": None,
         AI_ANALYSIS_LIMIT_KEY: None,
         "ai_chat_monthly": None,
         "ai_images_monthly": None,
@@ -133,7 +140,30 @@ def get_user_usage_summary(conn, user_id: int) -> dict[str, Any]:
         "plan": tier,
         "window": "month",
         "window_start": window_start,
+        "storage": get_user_storage_summary(conn, user_id, limit_mb=limits.get("storage_mb")),
         **usage_payload,
+    }
+
+
+def get_user_storage_summary(
+    conn,
+    user_id: int,
+    *,
+    limit_mb: int | None,
+) -> dict[str, Any]:
+    measured_bytes = _sum_user_asset_bytes(conn, user_id=user_id)
+    unmeasured_assets = _count_unmeasured_media_assets(conn, user_id=user_id)
+    used_mb = round(measured_bytes / (1024 * 1024), 2)
+    remaining_mb = None if limit_mb is None else max(float(limit_mb) - used_mb, 0)
+    return {
+        "used_bytes": measured_bytes,
+        "used_mb": used_mb,
+        "limit_mb": limit_mb,
+        "remaining_mb": None if remaining_mb is None else round(remaining_mb, 2),
+        "unlimited": limit_mb is None,
+        "measured_assets": _count_measured_assets(conn, user_id=user_id),
+        "unmeasured_assets": unmeasured_assets,
+        "estimated": unmeasured_assets > 0,
     }
 
 
@@ -213,6 +243,107 @@ def count_usage_events(conn, *, user_id: int, event_type: str, since: str) -> in
         """,
         (user_id, event_type, since),
     ).fetchone()
+    if row is None:
+        return 0
+    try:
+        return int(row["total"] or 0)
+    except (KeyError, TypeError, IndexError):
+        return int(row[0] or 0)
+
+
+def _sum_user_asset_bytes(conn, *, user_id: int) -> int:
+    try:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(file_size_bytes), 0) AS total
+            FROM entry_assets
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return 0
+    if row is None:
+        return 0
+    try:
+        return int(row["total"] or 0)
+    except (KeyError, TypeError, IndexError):
+        return int(row[0] or 0)
+
+
+def _count_measured_assets(conn, *, user_id: int) -> int:
+    try:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM entry_assets
+            WHERE user_id = ? AND COALESCE(file_size_bytes, 0) > 0
+            """,
+            (user_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return 0
+    if row is None:
+        return 0
+    try:
+        return int(row["total"] or 0)
+    except (KeyError, TypeError, IndexError):
+        return int(row[0] or 0)
+
+
+def _count_unmeasured_media_assets(conn, *, user_id: int) -> int:
+    total = 0
+    total += _count_storage_key_rows(
+        conn,
+        "dailydiary_entries",
+        "image_storage_key",
+        user_id=user_id,
+    )
+    total += _count_storage_key_rows(
+        conn,
+        "dreamdiary_entries",
+        "image_storage_key",
+        user_id=user_id,
+    )
+    total += _count_storage_key_rows(
+        conn,
+        "important_days",
+        "image_storage_key",
+        user_id=user_id,
+    )
+    total += _count_storage_key_rows(
+        conn,
+        "users",
+        "profile_picture_storage_key",
+        user_id=user_id,
+        user_column="id",
+    )
+    return total
+
+
+def _count_storage_key_rows(
+    conn,
+    table_name: str,
+    column_name: str,
+    *,
+    user_id: int,
+    user_column: str = "user_id",
+) -> int:
+    if not table_name.replace("_", "").isalnum() or not column_name.replace("_", "").isalnum():
+        return 0
+    if not user_column.replace("_", "").isalnum():
+        return 0
+    try:
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS total
+            FROM {table_name}
+            WHERE {user_column} = ? AND {column_name} IS NOT NULL AND {column_name} != ''
+            """,
+            (user_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return 0
     if row is None:
         return 0
     try:

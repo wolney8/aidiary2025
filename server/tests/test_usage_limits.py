@@ -69,6 +69,63 @@ def test_free_plan_usage_summary_tracks_monthly_ai_limit(tmp_path):
     assert summary["ai_image"]["limit"] == 0
     assert summary["ocr_page"]["limit"] == 5
     assert summary["transcription_minute"]["limit"] == 0
+    assert summary["storage"]["limit_mb"] == 250
+
+
+def test_usage_summary_reports_media_storage_capacity(tmp_path):
+    db_path = tmp_path / "usage.db"
+    _create_usage_db(db_path)
+
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE entry_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                entry_type TEXT NOT NULL,
+                entry_id INTEGER NOT NULL,
+                asset_role TEXT NOT NULL DEFAULT 'attachment',
+                storage_key TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                mime_type TEXT NOT NULL,
+                file_size_bytes INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE dailydiary_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                image_storage_key TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entry_assets (
+                user_id, entry_type, entry_id, storage_key, original_filename, mime_type, file_size_bytes
+            )
+            VALUES (1, 'daily', 1, 'entries/daily-assets/1/file.pdf', 'file.pdf', 'application/pdf', ?)
+            """,
+            (1024 * 1024,),
+        )
+        conn.execute(
+            """
+            INSERT INTO dailydiary_entries (user_id, image_storage_key)
+            VALUES (1, 'entries/daily/1/hero.jpg')
+            """
+        )
+
+        summary = get_user_usage_summary(conn, 1)
+
+    assert summary["storage"]["used_bytes"] == 1024 * 1024
+    assert summary["storage"]["used_mb"] == 1
+    assert summary["storage"]["limit_mb"] == 250
+    assert summary["storage"]["remaining_mb"] == 249
+    assert summary["storage"]["measured_assets"] == 1
+    assert summary["storage"]["unmeasured_assets"] == 1
+    assert summary["storage"]["estimated"] is True
 
 
 def test_usage_limit_blocks_when_monthly_limit_is_reached(tmp_path):
