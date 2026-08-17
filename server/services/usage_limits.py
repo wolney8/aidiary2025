@@ -208,6 +208,25 @@ def enforce_usage_limit(
     return summary
 
 
+def enforce_storage_limit(
+    conn,
+    *,
+    user_id: int,
+    incoming_bytes: int,
+) -> dict[str, Any]:
+    if incoming_bytes < 0:
+        raise ValueError("Incoming storage bytes must not be negative")
+    summary = get_user_usage_summary(conn, user_id)
+    storage = summary["storage"]
+    limit_mb = storage["limit_mb"]
+    if limit_mb is None:
+        return summary
+    limit_bytes = int(limit_mb) * 1024 * 1024
+    if int(storage["used_bytes"] or 0) + incoming_bytes > limit_bytes:
+        raise UsageLimitExceeded(summary)
+    return summary
+
+
 def record_usage_event(
     conn,
     *,

@@ -12,6 +12,7 @@ from services.usage_limits import (
     TRANSCRIPTION_MINUTE_EVENT,
     UsageLimitExceeded,
     enforce_usage_limit,
+    enforce_storage_limit,
     get_user_usage_summary,
     month_window_start,
     record_usage_event,
@@ -126,6 +127,54 @@ def test_usage_summary_reports_media_storage_capacity(tmp_path):
     assert summary["storage"]["measured_assets"] == 1
     assert summary["storage"]["unmeasured_assets"] == 1
     assert summary["storage"]["estimated"] is True
+
+
+def test_storage_limit_blocks_when_measured_media_would_exceed_plan(tmp_path):
+    db_path = tmp_path / "usage.db"
+    _create_usage_db(db_path)
+
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE entry_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                entry_type TEXT NOT NULL,
+                entry_id INTEGER NOT NULL,
+                asset_role TEXT NOT NULL DEFAULT 'attachment',
+                storage_key TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                mime_type TEXT NOT NULL,
+                file_size_bytes INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        upsert_plan(
+            conn,
+            {
+                "tier": "free",
+                "public_name": "Free",
+                "quotas": {"storage_mb": 1},
+                "features": ["Small media allowance"],
+                "is_public": True,
+                "sort_order": 10,
+            },
+        )
+        conn.execute(
+            """
+            INSERT INTO entry_assets (
+                user_id, entry_type, entry_id, storage_key, original_filename, mime_type, file_size_bytes
+            )
+            VALUES (1, 'daily', 1, 'entries/daily-assets/1/file.pdf', 'file.pdf', 'application/pdf', ?)
+            """,
+            (900 * 1024,),
+        )
+
+        with pytest.raises(UsageLimitExceeded) as exc_info:
+            enforce_storage_limit(conn, user_id=1, incoming_bytes=200 * 1024)
+
+    assert exc_info.value.summary["storage"]["limit_mb"] == 1
+    assert exc_info.value.summary["storage"]["used_bytes"] == 900 * 1024
 
 
 def test_usage_limit_blocks_when_monthly_limit_is_reached(tmp_path):

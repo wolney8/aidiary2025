@@ -48,6 +48,7 @@ from services.usage_limits import (
     OCR_PAGE_EVENT,
     TRANSCRIPTION_MINUTE_EVENT,
     UsageLimitExceeded,
+    enforce_storage_limit,
     enforce_usage_limit,
     record_usage_event,
 )
@@ -738,6 +739,19 @@ def _upload_entry_attachment(
         size_limit_mb = int(size_limit / (1024 * 1024))
         file_group = 'Audio files' if content_type.startswith('audio/') else 'Image and PDF files'
         return {'error': f'{file_group} must be {size_limit_mb} MB or smaller.'}, 400
+
+    try:
+        enforce_storage_limit(conn, user_id=user_id, incoming_bytes=len(file_bytes))
+    except UsageLimitExceeded as exc:
+        conn.close()
+        return _quota_exceeded_payload(
+            exc,
+            'This plan has reached its media storage limit. Delete media or upgrade from Account.',
+        )
+    except Exception:
+        current_app.logger.exception('Storage usage check failed for %s attachment upload', entry_type)
+        conn.close()
+        return {'error': 'Storage usage could not be checked. Please try again.'}, 503
 
     try:
         storage_key = store_entry_asset(
