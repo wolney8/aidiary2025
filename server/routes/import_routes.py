@@ -1523,15 +1523,24 @@ def export_entries():
         filename = f'openmynd_export_filtered_{stamp}.zip'
 
     ensure_export_history_table(conn)
+    selected_export_count = (
+        len(daily_rows)
+        + len(dream_rows)
+        + len(important_day_rows)
+        + len(thought_record_rows)
+    )
     is_full_range = bool(
-        include_daily
-        and include_dreams
-        and overall_first_date
-        and overall_last_date
-        and from_date
-        and to_date
-        and from_date.isoformat() == overall_first_date
-        and to_date.isoformat() == overall_last_date
+        (export_all and selected_export_count > 0)
+        or (
+            include_daily
+            and include_dreams
+            and overall_first_date
+            and overall_last_date
+            and from_date
+            and to_date
+            and from_date.isoformat() == overall_first_date
+            and to_date.isoformat() == overall_last_date
+        )
     )
     export_record = record_export_history(
         conn,
@@ -1544,7 +1553,7 @@ def export_entries():
         daily_count=len(daily_rows),
         dream_count=len(dream_rows),
         is_full_range=is_full_range,
-        issue_guard_token=is_full_range and (len(daily_rows) + len(dream_rows) > 0),
+        issue_guard_token=is_full_range and selected_export_count > 0,
     )
     conn.close()
 

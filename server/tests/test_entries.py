@@ -358,6 +358,36 @@ def seed_bulk_delete_entries(client, token: str) -> None:
         }),
         content_type='application/json'
     )
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        conn.execute(
+            """
+            INSERT INTO important_days (
+                user_id, label, starts_on, month, day, original_year,
+                category, recurrence, icon_name, accent_color, note
+            )
+            VALUES (1, 'Bulk delete important day', '2026-05-02', 5, 2, 2026,
+                    'milestone', 'yearly', 'event', 'blue', 'seed')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO cbt_worksheets (
+                user_id, worksheet_type, title, status, current_step, record_date
+            )
+            VALUES (1, 'thought_record', 'Bulk delete thought record',
+                    'completed', 7, '2026-05-04')
+            """
+        )
+        worksheet_id = conn.execute('SELECT MAX(id) FROM cbt_worksheets').fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO cbt_thought_record_data (
+                worksheet_id, situation, balanced_thought
+            )
+            VALUES (?, 'Bulk delete situation', 'Bulk delete balanced thought')
+            """,
+            (worksheet_id,),
+        )
     client.post('/api/dreams',
         headers={'Authorization': f'Bearer {token}'},
         data=json.dumps({
@@ -518,7 +548,9 @@ def test_bulk_delete_readiness_requires_guarded_export(client):
     assert data['has_entries'] is True
     assert data['eligible_for_delete'] is False
     assert data['first_entry_date'] == '2026-05-01'
-    assert data['last_entry_date'] == '2026-05-03'
+    assert data['last_entry_date'] == '2026-05-04'
+    assert data['important_day_count'] == 1
+    assert data['thought_record_count'] == 1
 
 
 def test_bulk_delete_rejects_without_matching_export_guard(client):
@@ -545,7 +577,7 @@ def test_bulk_delete_succeeds_after_full_range_export(client):
     seed_bulk_delete_entries(client, token)
 
     export_response = client.get(
-        '/api/import/export?from_date=2026-05-01&to_date=2026-05-03&include_daily=true&include_dreams=true',
+        '/api/import/export?export_all=true',
         headers={'Authorization': f'Bearer {token}'},
     )
     assert export_response.status_code == 200
@@ -571,9 +603,11 @@ def test_bulk_delete_succeeds_after_full_range_export(client):
 
     assert delete_response.status_code == 200
     delete_data = json.loads(delete_response.data)
-    assert delete_data['deleted_total'] == 2
     assert delete_data['deleted_daily'] == 1
     assert delete_data['deleted_dreams'] == 1
+    assert delete_data['deleted_important_days'] == 1
+    assert delete_data['deleted_thought_records'] == 1
+    assert delete_data['deleted_total'] == 4
 
     remaining_daily = client.get(
         '/api/daily',
@@ -585,6 +619,15 @@ def test_bulk_delete_succeeds_after_full_range_export(client):
     )
     assert json.loads(remaining_daily.data) == []
     assert json.loads(remaining_dreams.data) == []
+    with sqlite3.connect(os.environ['DB_PATH']) as conn:
+        remaining_important_days = conn.execute(
+            'SELECT COUNT(*) FROM important_days WHERE user_id = 1',
+        ).fetchone()[0]
+        remaining_thought_records = conn.execute(
+            'SELECT COUNT(*) FROM cbt_worksheets WHERE user_id = 1',
+        ).fetchone()[0]
+    assert remaining_important_days == 0
+    assert remaining_thought_records == 0
 
 def test_create_daily_entry_rejects_future_date(client):
     """POST /api/daily should reject future dates."""

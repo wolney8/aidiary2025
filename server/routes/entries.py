@@ -1148,19 +1148,50 @@ def _get_entry_range_summary(conn: sqlite3.Connection, user_id: int) -> dict[str
         'SELECT MIN(entry_date) AS min_date, MAX(entry_date) AS max_date, COUNT(*) AS total_count FROM dreamdiary_entries WHERE user_id = ?',
         (user_id,),
     ).fetchone()
+    important_day_row = conn.execute(
+        'SELECT MIN(starts_on) AS min_date, MAX(starts_on) AS max_date, COUNT(*) AS total_count FROM important_days WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
+    thought_record_row = conn.execute(
+        'SELECT MIN(record_date) AS min_date, MAX(record_date) AS max_date, COUNT(*) AS total_count FROM cbt_worksheets WHERE user_id = ?',
+        (user_id,),
+    ).fetchone()
 
-    all_min_dates = [value for value in [daily_row['min_date'], dream_row['min_date']] if value]
-    all_max_dates = [value for value in [daily_row['max_date'], dream_row['max_date']] if value]
+    all_min_dates = [
+        value
+        for value in [
+            daily_row['min_date'],
+            dream_row['min_date'],
+            important_day_row['min_date'],
+            thought_record_row['min_date'],
+        ]
+        if value
+    ]
+    all_max_dates = [
+        value
+        for value in [
+            daily_row['max_date'],
+            dream_row['max_date'],
+            important_day_row['max_date'],
+            thought_record_row['max_date'],
+        ]
+        if value
+    ]
     daily_count = int(daily_row['total_count'] or 0)
     dream_count = int(dream_row['total_count'] or 0)
+    important_day_count = int(important_day_row['total_count'] or 0)
+    thought_record_count = int(thought_record_row['total_count'] or 0)
+    total_count = daily_count + dream_count + important_day_count + thought_record_count
 
     return {
         'first_entry_date': min(all_min_dates) if all_min_dates else None,
         'last_entry_date': max(all_max_dates) if all_max_dates else None,
         'daily_count': daily_count,
         'dream_count': dream_count,
-        'total_entries': daily_count + dream_count,
-        'has_entries': (daily_count + dream_count) > 0,
+        'important_day_count': important_day_count,
+        'thought_record_count': thought_record_count,
+        'total_entries': total_count,
+        'has_entries': total_count > 0,
     }
 
 
@@ -1173,15 +1204,23 @@ def _build_bulk_delete_readiness(
     summary = _get_entry_range_summary(conn, user_id)
     guard_record = get_latest_bulk_delete_guard(conn, user_id, guard_token)
 
-    eligible = bool(
-        summary['has_entries']
-        and guard_record
+    guard_covers_full_range = bool(
+        guard_record
         and guard_record.get('is_full_range')
         and guard_record.get('include_daily') == 1
         and guard_record.get('include_dreams') == 1
-        and guard_record.get('from_date') == summary['first_entry_date']
-        and guard_record.get('to_date') == summary['last_entry_date']
+        and (
+            (
+                guard_record.get('from_date') == summary['first_entry_date']
+                and guard_record.get('to_date') == summary['last_entry_date']
+            )
+            or (
+                guard_record.get('from_date') is None
+                and guard_record.get('to_date') is None
+            )
+        )
     )
+    eligible = bool(summary['has_entries'] and guard_covers_full_range)
 
     return {
         **summary,
@@ -2517,7 +2556,7 @@ def delete_selected_entries():
 @entries_bp.route('/entries/bulk-delete', methods=['POST'])
 @jwt_required()
 def bulk_delete_entries():
-    """Delete all daily and dream entries for the current user after guarded export."""
+    """Delete all journal data for the current user after guarded export."""
     user_id = int(get_jwt_identity())
     data = request.get_json() or {}
     guard_token = str(data.get('guard_token') or '').strip()
@@ -2531,7 +2570,7 @@ def bulk_delete_entries():
     if not readiness['eligible_for_delete']:
         conn.close()
         return jsonify({
-            'error': 'A same-session full export of all entries is required before bulk delete.',
+            'error': 'A same-session full export of all journal data is required before bulk delete.',
             'readiness': readiness,
         }), 409
 
@@ -2542,13 +2581,32 @@ def bulk_delete_entries():
         UNION ALL
         SELECT image_storage_key AS storage_key FROM dreamdiary_entries WHERE user_id = ? AND image_storage_key IS NOT NULL
         UNION ALL
+        SELECT image_storage_key AS storage_key FROM important_days WHERE user_id = ? AND image_storage_key IS NOT NULL
+        UNION ALL
         SELECT storage_key FROM entry_assets WHERE user_id = ?
         ''',
-        (user_id, user_id, user_id),
+        (user_id, user_id, user_id, user_id),
     ).fetchall()
     storage_keys = [str(row['storage_key'] or '').strip() for row in image_rows if row['storage_key']]
     conn.execute('DELETE FROM entry_assets WHERE user_id = ?', (user_id,))
     _unlink_cbt_worksheets(conn, user_id=user_id)
+    thought_record_data_deleted = conn.execute(
+        '''
+        DELETE FROM cbt_thought_record_data
+        WHERE worksheet_id IN (
+            SELECT id FROM cbt_worksheets WHERE user_id = ?
+        )
+        ''',
+        (user_id,),
+    ).rowcount
+    thought_record_deleted = conn.execute(
+        'DELETE FROM cbt_worksheets WHERE user_id = ?',
+        (user_id,),
+    ).rowcount
+    important_day_deleted = conn.execute(
+        'DELETE FROM important_days WHERE user_id = ?',
+        (user_id,),
+    ).rowcount
     daily_deleted = conn.execute(
         'DELETE FROM dailydiary_entries WHERE user_id = ?',
         (user_id,),
@@ -2567,10 +2625,18 @@ def bulk_delete_entries():
         delete_image(storage_key)
 
     return jsonify({
-        'message': 'All entries deleted.',
+        'message': 'All journal data deleted.',
         'deleted_daily': daily_deleted,
         'deleted_dreams': dream_deleted,
-        'deleted_total': daily_deleted + dream_deleted,
+        'deleted_important_days': important_day_deleted,
+        'deleted_thought_records': thought_record_deleted,
+        'deleted_thought_record_data': thought_record_data_deleted,
+        'deleted_total': (
+            daily_deleted
+            + dream_deleted
+            + important_day_deleted
+            + thought_record_deleted
+        ),
     }), 200
 
 
