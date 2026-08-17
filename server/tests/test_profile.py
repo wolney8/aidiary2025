@@ -300,6 +300,121 @@ def test_profile_picture_upload_rejects_invalid_content(client_with_legacy_user_
     assert json.loads(response.data)["error"] == "Choose a valid JPEG, PNG, or WebP image"
 
 
+def test_profile_media_asset_cleanup_lists_and_deletes_owned_attachments(
+    client_with_legacy_user_schema,
+):
+    client, db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    media_root = Path(os.environ["MEDIA_ROOT"])
+    storage_key = "entries/daily-assets/1/cleanup.pdf"
+    media_path = media_root / storage_key
+    media_path.parent.mkdir(parents=True, exist_ok=True)
+    media_path.write_bytes(b"pdf-bytes")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE dailydiary_entries (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                entry_date TEXT,
+                title TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE dreamdiary_entries (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                entry_date TEXT,
+                title TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO dailydiary_entries (id, user_id, entry_date, title)
+            VALUES (10, 1, '2026-08-17', 'Stored attachment entry')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO entry_assets (
+                id, user_id, entry_type, entry_id, asset_role, storage_key,
+                original_filename, mime_type, file_size_bytes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                99,
+                1,
+                "daily",
+                10,
+                "attachment",
+                storage_key,
+                "cleanup.pdf",
+                "application/pdf",
+                len(b"pdf-bytes"),
+            ),
+        )
+
+    list_response = client.get("/api/profile/media-assets", headers=headers)
+    assert list_response.status_code == 200
+    assets = json.loads(list_response.data)["assets"]
+    assert assets == [
+        {
+            "id": 99,
+            "entry_type": "daily",
+            "entry_id": 10,
+            "entry_title": "Stored attachment entry",
+            "entry_date": "2026-08-17",
+            "filename": "cleanup.pdf",
+            "mime_type": "application/pdf",
+            "file_size_bytes": len(b"pdf-bytes"),
+            "url": "http://localhost/media/entries/daily-assets/1/cleanup.pdf",
+        }
+    ]
+
+    delete_response = client.delete("/api/profile/media-assets/99", headers=headers)
+    assert delete_response.status_code == 200
+    assert json.loads(delete_response.data)["deleted_asset_id"] == 99
+    assert not media_path.exists()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM entry_assets").fetchone()[0] == 0
+
+
+def test_profile_media_asset_cleanup_rejects_other_user_asset(
+    client_with_legacy_user_schema,
+):
+    client, db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO entry_assets (
+                id, user_id, entry_type, entry_id, asset_role, storage_key,
+                original_filename, mime_type, file_size_bytes
+            )
+            VALUES (
+                5, 2, 'daily', 1, 'attachment', 'entries/daily-assets/2/private.pdf',
+                'private.pdf', 'application/pdf', 10
+            )
+            """
+        )
+
+    response = client.delete(
+        "/api/profile/media-assets/5",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert json.loads(response.data)["error"] == "Media asset not found"
+
+
 def test_account_delete_requires_confirmation_and_removes_user_data(
     client_with_legacy_user_schema,
 ):

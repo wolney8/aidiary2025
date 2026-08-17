@@ -6,6 +6,18 @@ import { User } from '../models/user.model';
 import { AuthService } from './auth.service';
 import { environment } from '../../../environments/environment';
 
+export interface ProfileMediaAsset {
+  id: number;
+  entry_type: 'daily' | 'dream';
+  entry_id: number;
+  entry_title: string;
+  entry_date: string;
+  filename: string;
+  mime_type: string;
+  file_size_bytes: number;
+  url: string | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -66,6 +78,26 @@ export class ProfileService {
       { headers: this.buildHeaders() },
     ).pipe(
       tap((response) => this.authService.syncCurrentUser(response.user)),
+    );
+  }
+
+  getMediaAssets(limit = 25): Observable<{ assets: ProfileMediaAsset[] }> {
+    return this.http.get<{ assets: ProfileMediaAsset[] }>(
+      `${this.apiUrl}/profile/media-assets?limit=${limit}`,
+      { headers: this.buildHeaders() },
+    );
+  }
+
+  deleteMediaAsset(assetId: number): Observable<{
+    message: string;
+    deleted_asset_id: number;
+  }> {
+    return this.http.delete<{
+      message: string;
+      deleted_asset_id: number;
+    }>(
+      `${this.apiUrl}/profile/media-assets/${assetId}`,
+      { headers: this.buildHeaders() },
     );
   }
 

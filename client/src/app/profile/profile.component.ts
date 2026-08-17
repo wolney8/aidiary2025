@@ -1,6 +1,7 @@
 // Account screen mapping to users table columns
 import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { CommonModule, Location } from "@angular/common";
+import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { FormsModule } from "@angular/forms";
 import { MatCardModule } from "@angular/material/card";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -8,9 +9,11 @@ import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
+import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatDatepickerModule } from "@angular/material/datepicker";
 import { MatNativeDateModule } from "@angular/material/core";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
+import { firstValueFrom } from "rxjs";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
 import {
@@ -22,7 +25,7 @@ import {
   BillingUsageMetric,
   CheckoutTier,
 } from "../core/services/billing.service";
-import { ProfileService } from "../core/services/profile.service";
+import { ProfileMediaAsset, ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
 
 interface AccountUsageCard {
@@ -46,6 +49,7 @@ interface AccountUsageCard {
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
+    MatCheckboxModule,
     MatDatepickerModule,
     MatNativeDateModule,
     RouterLink,
@@ -414,6 +418,232 @@ interface AccountUsageCard {
               </article>
             </div>
 
+            <section
+              class="media-cleanup-panel"
+              aria-labelledby="media-cleanup-heading"
+              *ngIf="billingStatus?.usage?.storage"
+              data-testid="account-media-cleanup"
+            >
+              <div class="media-cleanup-header">
+                <div>
+                  <span class="section-eyebrow">Storage cleanup</span>
+                  <h3 id="media-cleanup-heading">Manage attachments</h3>
+                  <p>Review measured attachment files that count toward storage limits.</p>
+                </div>
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="billing-action"
+                  (click)="toggleMediaCleanup()"
+                  [disabled]="mediaAssetsLoading"
+                  data-testid="account-media-cleanup-toggle"
+                >
+                  <mat-icon aria-hidden="true">
+                    {{ showMediaCleanup ? "expand_less" : "folder_managed" }}
+                  </mat-icon>
+                  <span class="billing-action-label">
+                    {{ showMediaCleanup ? "Hide media" : "Review media" }}
+                  </span>
+                </button>
+              </div>
+
+              <div class="media-cleanup-list" *ngIf="showMediaCleanup">
+                <p class="billing-note" *ngIf="mediaAssetsLoading">Loading media...</p>
+                <p class="status error" *ngIf="mediaAssetsError">{{ mediaAssetsError }}</p>
+
+                <div
+                  class="media-review-toolbar"
+                  *ngIf="!mediaAssetsLoading && mediaAssets.length"
+                  aria-label="Media review search and filters"
+                >
+                  <mat-form-field appearance="outline" class="media-search-field">
+                    <mat-label>Search media</mat-label>
+                    <mat-icon matPrefix aria-hidden="true">search</mat-icon>
+                    <input
+                      matInput
+                      type="search"
+                      [(ngModel)]="mediaSearchTerm"
+                      name="media_search"
+                      placeholder="Filename, entry, date..."
+                      data-testid="account-media-search"
+                    />
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="media-filter-field">
+                    <mat-label>Type</mat-label>
+                    <mat-select
+                      [(ngModel)]="mediaTypeFilter"
+                      name="media_type_filter"
+                      data-testid="account-media-type-filter"
+                    >
+                      <mat-option value="all">All types</mat-option>
+                      <mat-option value="image">Images</mat-option>
+                      <mat-option value="pdf">PDFs</mat-option>
+                      <mat-option value="audio">Audio</mat-option>
+                      <mat-option value="other">Other</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="media-filter-field">
+                    <mat-label>Size</mat-label>
+                    <mat-select
+                      [(ngModel)]="mediaSizeFilter"
+                      name="media_size_filter"
+                      data-testid="account-media-size-filter"
+                    >
+                      <mat-option value="all">All sizes</mat-option>
+                      <mat-option value="small">Under 1 MB</mat-option>
+                      <mat-option value="medium">1-10 MB</mat-option>
+                      <mat-option value="large">Over 10 MB</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                </div>
+
+                <div
+                  class="media-selection-toolbar"
+                  *ngIf="!mediaAssetsLoading && mediaAssets.length"
+                >
+                  <mat-checkbox
+                    [checked]="areAllFilteredMediaSelected()"
+                    [indeterminate]="hasPartialFilteredMediaSelection()"
+                    [disabled]="!getFilteredMediaAssets().length || bulkDeletingMediaAssets"
+                    (change)="toggleAllFilteredMedia($event.checked)"
+                    data-testid="account-media-select-all"
+                  >
+                    Select visible
+                  </mat-checkbox>
+                  <span class="media-selection-count">
+                    {{ getSelectedMediaCount() }} selected ·
+                    {{ getFilteredMediaAssets().length }} shown
+                  </span>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="billing-action"
+                    [disabled]="!getSelectedMediaCount() || bulkDeletingMediaAssets"
+                    (click)="clearMediaSelection()"
+                  >
+                    <mat-icon aria-hidden="true">remove_done</mat-icon>
+                    <span>Deselect all</span>
+                  </button>
+                  <button
+                    mat-raised-button
+                    color="warn"
+                    type="button"
+                    class="billing-action"
+                    [disabled]="!getSelectedMediaCount() || bulkDeletingMediaAssets"
+                    (click)="deleteSelectedMediaAssets()"
+                    data-testid="account-media-delete-selected"
+                  >
+                    <mat-icon aria-hidden="true">
+                      {{ bulkDeletingMediaAssets ? "hourglass_top" : "delete_sweep" }}
+                    </mat-icon>
+                    <span>
+                      {{ bulkDeletingMediaAssets ? "Deleting..." : "Delete selected" }}
+                    </span>
+                  </button>
+                </div>
+
+                <p class="billing-note" *ngIf="!mediaAssetsLoading && !mediaAssets.length && !mediaAssetsError">
+                  No measured attachments found.
+                </p>
+                <p
+                  class="billing-note"
+                  *ngIf="!mediaAssetsLoading && mediaAssets.length && !getFilteredMediaAssets().length"
+                >
+                  No media matches these filters.
+                </p>
+
+                <article
+                  class="media-asset-row"
+                  *ngFor="let asset of getFilteredMediaAssets()"
+                  [class.is-selected]="isMediaAssetSelected(asset)"
+                  [attr.data-testid]="'account-media-asset-' + asset.id"
+                >
+                  <mat-checkbox
+                    class="media-asset-select"
+                    [checked]="isMediaAssetSelected(asset)"
+                    [disabled]="bulkDeletingMediaAssets || deletingMediaAssetId === asset.id"
+                    (change)="toggleMediaAssetSelection(asset, $event.checked)"
+                    [attr.aria-label]="'Select attachment ' + asset.filename"
+                  ></mat-checkbox>
+                  <button
+                    class="media-asset-preview"
+                    [class.is-image]="isImageMedia(asset)"
+                    type="button"
+                    [disabled]="!asset.url"
+                    [attr.aria-label]="'Preview attachment ' + asset.filename"
+                    (click)="openMediaPreview(asset)"
+                  >
+                    <img
+                      *ngIf="isImageMedia(asset) && asset.url"
+                      [src]="asset.url"
+                      [alt]="''"
+                      loading="lazy"
+                    />
+                    <mat-icon *ngIf="!isImageMedia(asset) || !asset.url" aria-hidden="true">
+                      {{ getMediaAssetIcon(asset) }}
+                    </mat-icon>
+                  </button>
+                  <div class="media-asset-copy">
+                    <div class="media-asset-title-line">
+                      <strong>{{ asset.filename }}</strong>
+                      <span class="media-type-pill" [ngClass]="getMediaTypeClass(asset)">
+                        <mat-icon aria-hidden="true">{{ getMediaAssetIcon(asset) }}</mat-icon>
+                        <span>{{ getMediaTypeLabel(asset) }}</span>
+                      </span>
+                    </div>
+                    <span>
+                      {{ getEntryTypeLabel(asset.entry_type) }} · {{ asset.entry_title }} ·
+                      {{ formatEntryDate(asset.entry_date) }}
+                    </span>
+                    <audio
+                      *ngIf="isAudioMedia(asset) && asset.url"
+                      class="media-audio-preview"
+                      controls
+                      preload="metadata"
+                      [attr.aria-label]="'Audio preview for ' + asset.filename"
+                    >
+                      <source [src]="asset.url" [type]="asset.mime_type" />
+                    </audio>
+                  </div>
+                  <span class="media-size-pill">{{ formatBytes(asset.file_size_bytes) }}</span>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="media-entry-link"
+                    [disabled]="!asset.url"
+                    (click)="openMediaPreview(asset)"
+                  >
+                    <mat-icon aria-hidden="true">visibility</mat-icon>
+                    <span>Preview</span>
+                  </button>
+                  <a
+                    mat-stroked-button
+                    class="media-entry-link"
+                    [routerLink]="['/entries', asset.entry_id]"
+                    [queryParams]="{ entryType: asset.entry_type }"
+                  >
+                    <mat-icon aria-hidden="true">open_in_new</mat-icon>
+                    <span>Entry</span>
+                  </a>
+                  <button
+                    mat-icon-button
+                    color="warn"
+                    type="button"
+                    class="media-delete-button"
+                    [disabled]="deletingMediaAssetId === asset.id"
+                    (click)="deleteMediaAsset(asset)"
+                    [attr.aria-label]="'Delete attachment ' + asset.filename"
+                  >
+                    <mat-icon aria-hidden="true">
+                      {{ deletingMediaAssetId === asset.id ? "hourglass_top" : "delete" }}
+                    </mat-icon>
+                  </button>
+                </article>
+              </div>
+            </section>
+
             <p class="billing-note" *ngIf="billingStatus && !billingStatus.stripe_configured">
               Billing is unavailable in this environment.
             </p>
@@ -477,6 +707,94 @@ interface AccountUsageCard {
           </section>
         </mat-card-content>
       </mat-card>
+
+      <div
+        class="media-preview-backdrop"
+        *ngIf="previewMediaAsset"
+        role="presentation"
+        (click)="closeMediaPreview()"
+      >
+        <section
+          class="media-preview-dialog"
+          role="dialog"
+          aria-modal="true"
+          [attr.aria-labelledby]="'media-preview-title'"
+          (click)="$event.stopPropagation()"
+          data-testid="account-media-preview-dialog"
+        >
+          <header class="media-preview-header">
+            <div>
+              <span class="section-eyebrow">{{ getMediaTypeLabel(previewMediaAsset) }}</span>
+              <h3 id="media-preview-title">{{ previewMediaAsset.filename }}</h3>
+              <p>
+                {{ getEntryTypeLabel(previewMediaAsset.entry_type) }} ·
+                {{ previewMediaAsset.entry_title }} ·
+                {{ formatBytes(previewMediaAsset.file_size_bytes) }}
+              </p>
+            </div>
+            <button
+              mat-icon-button
+              type="button"
+              class="media-preview-close"
+              (click)="closeMediaPreview()"
+              aria-label="Close media preview"
+            >
+              <mat-icon aria-hidden="true">close</mat-icon>
+            </button>
+          </header>
+
+          <div class="media-preview-body">
+            <img
+              *ngIf="isImageMedia(previewMediaAsset) && previewMediaAsset.url"
+              [src]="previewMediaAsset.url"
+              [alt]="previewMediaAsset.filename"
+            />
+            <iframe
+              *ngIf="isPdfMedia(previewMediaAsset) && previewMediaAsset.url"
+              [src]="getSafeMediaPreviewUrl(previewMediaAsset)"
+              [title]="'PDF preview for ' + previewMediaAsset.filename"
+            ></iframe>
+            <audio
+              *ngIf="isAudioMedia(previewMediaAsset) && previewMediaAsset.url"
+              controls
+              preload="metadata"
+              [attr.aria-label]="'Audio preview for ' + previewMediaAsset.filename"
+            >
+              <source [src]="previewMediaAsset.url" [type]="previewMediaAsset.mime_type" />
+            </audio>
+            <div
+              class="media-preview-fallback"
+              *ngIf="!canInlinePreview(previewMediaAsset)"
+            >
+              <mat-icon aria-hidden="true">{{ getMediaAssetIcon(previewMediaAsset) }}</mat-icon>
+              <p>Preview is not available for this file type.</p>
+            </div>
+          </div>
+
+          <footer class="media-preview-actions">
+            <a
+              mat-stroked-button
+              class="billing-action"
+              [routerLink]="['/entries', previewMediaAsset.entry_id]"
+              [queryParams]="{ entryType: previewMediaAsset.entry_type }"
+              (click)="closeMediaPreview()"
+            >
+              <mat-icon aria-hidden="true">open_in_new</mat-icon>
+              <span>Entry</span>
+            </a>
+            <button
+              mat-raised-button
+              color="warn"
+              type="button"
+              class="billing-action"
+              (click)="deleteMediaAssetFromPreview(previewMediaAsset)"
+            >
+              <mat-icon aria-hidden="true">delete</mat-icon>
+              <span>Delete</span>
+            </button>
+          </footer>
+        </section>
+      </div>
     </div>
   `,
   styles: [
@@ -918,6 +1236,338 @@ interface AccountUsageCard {
         line-height: 1.1;
       }
 
+      .media-cleanup-panel {
+        display: grid;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface);
+      }
+
+      .media-cleanup-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+      }
+
+      .media-cleanup-header h3,
+      .media-cleanup-header p {
+        margin: 0;
+      }
+
+      .media-cleanup-header p {
+        color: var(--colour-text-secondary);
+        font-weight: 750;
+      }
+
+      .media-cleanup-list {
+        display: grid;
+        gap: var(--spacing-sm);
+      }
+
+      .media-review-toolbar,
+      .media-selection-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
+      }
+
+      .media-review-toolbar mat-form-field {
+        margin-bottom: -1.25rem;
+      }
+
+      .media-search-field {
+        flex: 1 1 260px;
+      }
+
+      .media-filter-field {
+        flex: 0 1 180px;
+      }
+
+      .media-selection-toolbar {
+        justify-content: flex-start;
+      }
+
+      .media-selection-count {
+        color: var(--colour-text-secondary);
+        font-size: 0.88rem;
+        font-weight: 850;
+      }
+
+      .media-asset-row {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto;
+        align-items: center;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm);
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-muted);
+      }
+
+      .media-asset-row.is-selected {
+        border-color: var(--colour-primary);
+        background: color-mix(in srgb, var(--colour-primary) 12%, var(--colour-surface-muted));
+      }
+
+      .media-asset-select {
+        justify-self: center;
+      }
+
+      .media-asset-preview {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 56px;
+        height: 56px;
+        overflow: hidden;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: color-mix(in srgb, var(--colour-primary) 14%, var(--colour-surface));
+        color: var(--colour-primary);
+        cursor: pointer;
+        text-decoration: none;
+      }
+
+      .media-asset-preview:disabled {
+        cursor: not-allowed;
+        opacity: 0.56;
+      }
+
+      .media-asset-preview.is-image {
+        border-radius: var(--radius-md);
+        background: var(--colour-surface);
+      }
+
+      .media-asset-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .media-asset-preview mat-icon {
+        width: 24px;
+        height: 24px;
+        font-size: 24px;
+      }
+
+      .media-asset-preview:focus-visible {
+        outline: var(--focus-outline);
+        outline-offset: var(--focus-offset);
+      }
+
+      .media-asset-copy {
+        display: grid;
+        min-width: 0;
+        gap: 0.16rem;
+      }
+
+      .media-asset-title-line {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--spacing-xs);
+        min-width: 0;
+      }
+
+      .media-asset-copy strong,
+      .media-asset-copy span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .media-asset-copy span {
+        color: var(--colour-text-secondary);
+        font-size: 0.86rem;
+        font-weight: 750;
+      }
+
+      .media-audio-preview {
+        width: min(100%, 260px);
+        height: 34px;
+        margin-top: 0.2rem;
+      }
+
+      .media-size-pill,
+      .media-type-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        padding: 0.18rem 0.62rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        color: var(--colour-text-secondary);
+        font-size: 0.82rem;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      .media-type-pill {
+        gap: 0.28rem;
+        min-height: 28px;
+        padding: 0.14rem 0.52rem;
+        font-size: 0.76rem;
+      }
+
+      .media-type-pill mat-icon {
+        width: 16px;
+        height: 16px;
+        font-size: 16px;
+      }
+
+      .media-type-pill.type-image {
+        border-color: color-mix(in srgb, var(--colour-success-text) 48%, var(--colour-border));
+        background: color-mix(in srgb, var(--colour-success-text) 12%, var(--colour-surface));
+        color: var(--colour-success-text);
+      }
+
+      .media-type-pill.type-pdf {
+        border-color: color-mix(in srgb, var(--colour-danger-text) 42%, var(--colour-border));
+        background: color-mix(in srgb, var(--colour-danger-text) 10%, var(--colour-surface));
+        color: var(--colour-danger-text);
+      }
+
+      .media-type-pill.type-audio {
+        border-color: color-mix(in srgb, var(--colour-accent) 44%, var(--colour-border));
+        background: color-mix(in srgb, var(--colour-accent) 12%, var(--colour-surface));
+        color: var(--colour-accent);
+      }
+
+      .media-entry-link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        min-height: 40px;
+        border-radius: var(--radius-pill);
+      }
+
+      .media-entry-link mat-icon {
+        margin-right: 0;
+      }
+
+      .media-entry-link.is-disabled {
+        opacity: 0.55;
+        pointer-events: none;
+      }
+
+      .media-delete-button {
+        border: 1px solid color-mix(in srgb, var(--colour-danger-text) 46%, var(--colour-border));
+        background: color-mix(in srgb, var(--colour-danger-text) 10%, var(--colour-surface));
+        color: var(--colour-danger-text);
+      }
+
+      .media-preview-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: grid;
+        place-items: center;
+        padding: var(--spacing-lg);
+        background: color-mix(in srgb, #020817 72%, transparent);
+        backdrop-filter: blur(8px);
+      }
+
+      .media-preview-dialog {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        width: min(72rem, 100%);
+        max-height: min(84vh, 54rem);
+        overflow: hidden;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-xl);
+        background: var(--colour-surface);
+        color: var(--colour-text-primary);
+        box-shadow: 0 28px 80px var(--colour-shadow-strong);
+      }
+
+      .media-preview-header,
+      .media-preview-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+        border-bottom: 1px solid var(--colour-border);
+      }
+
+      .media-preview-header h3,
+      .media-preview-header p {
+        margin: 0;
+      }
+
+      .media-preview-header h3 {
+        overflow-wrap: anywhere;
+      }
+
+      .media-preview-header p {
+        color: var(--colour-text-secondary);
+        font-weight: 750;
+      }
+
+      .media-preview-close {
+        flex: 0 0 auto;
+      }
+
+      .media-preview-body {
+        display: grid;
+        place-items: center;
+        min-height: 18rem;
+        overflow: auto;
+        padding: var(--spacing-md);
+        background: var(--colour-surface-muted);
+      }
+
+      .media-preview-body img {
+        display: block;
+        max-width: 100%;
+        max-height: 68vh;
+        border-radius: var(--radius-lg);
+        object-fit: contain;
+      }
+
+      .media-preview-body iframe {
+        width: 100%;
+        min-height: 68vh;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface);
+      }
+
+      .media-preview-body audio {
+        width: min(100%, 42rem);
+      }
+
+      .media-preview-fallback {
+        display: grid;
+        place-items: center;
+        gap: var(--spacing-sm);
+        color: var(--colour-text-secondary);
+        text-align: center;
+      }
+
+      .media-preview-fallback mat-icon {
+        width: 56px;
+        height: 56px;
+        color: var(--colour-primary);
+        font-size: 56px;
+      }
+
+      .media-preview-actions {
+        justify-content: flex-end;
+        border-top: 1px solid var(--colour-border);
+        border-bottom: 0;
+      }
+
       .danger-section {
         display: grid;
         gap: var(--spacing-md);
@@ -958,7 +1608,8 @@ interface AccountUsageCard {
 
       @media (max-width: 600px) {
         .billing-header,
-        .billing-actions {
+        .billing-actions,
+        .media-cleanup-header {
           align-items: stretch;
           flex-direction: column;
           justify-content: flex-start;
@@ -977,6 +1628,29 @@ interface AccountUsageCard {
           align-items: flex-start;
           flex-direction: column;
         }
+
+        .media-asset-row {
+          grid-template-columns: auto auto minmax(0, 1fr);
+        }
+
+        .media-size-pill,
+        .media-entry-link {
+          grid-column: 3 / -1;
+          justify-self: start;
+        }
+
+        .media-delete-button {
+          grid-column: 1 / -1;
+          justify-self: start;
+        }
+
+        .media-preview-backdrop {
+          padding: var(--spacing-sm);
+        }
+
+        .media-preview-dialog {
+          max-height: 92vh;
+        }
       }
     `,
   ],
@@ -989,6 +1663,7 @@ export class ProfileComponent implements OnInit {
   private location = inject(Location);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private sanitizer = inject(DomSanitizer);
 
   profile: User | null = null;
   saving = false;
@@ -1002,6 +1677,17 @@ export class ProfileComponent implements OnInit {
   billingStatus: BillingStatus | null = null;
   billingBusyTier: CheckoutTier | null = null;
   billingPortalBusy = false;
+  showMediaCleanup = false;
+  mediaAssets: ProfileMediaAsset[] = [];
+  mediaAssetsLoading = false;
+  mediaAssetsError = "";
+  mediaSearchTerm = "";
+  mediaTypeFilter: "all" | "image" | "pdf" | "audio" | "other" = "all";
+  mediaSizeFilter: "all" | "small" | "medium" | "large" = "all";
+  selectedMediaAssetIds = new Set<number>();
+  bulkDeletingMediaAssets = false;
+  previewMediaAsset: ProfileMediaAsset | null = null;
+  deletingMediaAssetId: number | null = null;
   selectedBillingPeriod: BillingPeriod = "monthly";
   readonly today = new Date();
   dateOfBirthValue: Date | null = null;
@@ -1266,6 +1952,301 @@ export class ProfileComponent implements OnInit {
     return `${Number(value.toFixed(value < 10 && value > 0 ? 2 : 0))} MB`;
   }
 
+  toggleMediaCleanup(): void {
+    this.showMediaCleanup = !this.showMediaCleanup;
+    if (this.showMediaCleanup && !this.mediaAssets.length) {
+      this.loadMediaAssets();
+    }
+  }
+
+  loadMediaAssets(): void {
+    this.mediaAssetsLoading = true;
+    this.mediaAssetsError = "";
+
+    this.profileService.getMediaAssets(100).subscribe({
+      next: (response) => {
+        this.mediaAssets = response.assets;
+        this.selectedMediaAssetIds = new Set(
+          Array.from(this.selectedMediaAssetIds).filter((id) =>
+            this.mediaAssets.some((asset) => asset.id === id),
+          ),
+        );
+        this.mediaAssetsLoading = false;
+      },
+      error: (error) => {
+        this.mediaAssetsError =
+          error?.error?.error || "Media could not be loaded. Try again in a moment.";
+        this.mediaAssetsLoading = false;
+      },
+    });
+  }
+
+  async deleteMediaAsset(asset: ProfileMediaAsset): Promise<void> {
+    const confirmed = await this.appDialog.confirm({
+      title: "Delete this attachment?",
+      message: `${asset.filename} will be removed from its entry and storage. This cannot be undone.`,
+      confirmText: "Delete attachment",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    this.deletingMediaAssetId = asset.id;
+    this.mediaAssetsError = "";
+    this.profileService.deleteMediaAsset(asset.id).subscribe({
+      next: () => {
+        this.mediaAssets = this.mediaAssets.filter((item) => item.id !== asset.id);
+        this.selectedMediaAssetIds.delete(asset.id);
+        if (this.previewMediaAsset?.id === asset.id) {
+          this.previewMediaAsset = null;
+        }
+        this.deletingMediaAssetId = null;
+        this.loadBillingStatus();
+      },
+      error: (error) => {
+        this.mediaAssetsError =
+          error?.error?.error || "Attachment could not be deleted. Try again.";
+        this.deletingMediaAssetId = null;
+      },
+    });
+  }
+
+  async deleteMediaAssetFromPreview(asset: ProfileMediaAsset): Promise<void> {
+    await this.deleteMediaAsset(asset);
+  }
+
+  async deleteSelectedMediaAssets(): Promise<void> {
+    const selectedAssets = this.mediaAssets.filter((asset) =>
+      this.selectedMediaAssetIds.has(asset.id),
+    );
+    if (!selectedAssets.length) {
+      return;
+    }
+
+    const confirmed = await this.appDialog.confirm({
+      title: `Delete ${selectedAssets.length} attachments?`,
+      message:
+        "Selected attachments will be removed from their entries and storage. This cannot be undone.",
+      confirmText: "Delete selected",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    this.bulkDeletingMediaAssets = true;
+    this.mediaAssetsError = "";
+    const failed: string[] = [];
+
+    for (const asset of selectedAssets) {
+      try {
+        await firstValueFrom(this.profileService.deleteMediaAsset(asset.id));
+        this.mediaAssets = this.mediaAssets.filter((item) => item.id !== asset.id);
+        this.selectedMediaAssetIds.delete(asset.id);
+      } catch {
+        failed.push(asset.filename);
+      }
+    }
+
+    this.bulkDeletingMediaAssets = false;
+    this.loadBillingStatus();
+    if (failed.length) {
+      this.mediaAssetsError = `Could not delete ${failed.length} attachment${
+        failed.length === 1 ? "" : "s"
+      }: ${failed.join(", ")}`;
+    }
+  }
+
+  getFilteredMediaAssets(): ProfileMediaAsset[] {
+    const term = this.mediaSearchTerm.trim().toLowerCase();
+    return this.mediaAssets.filter((asset) => {
+      if (this.mediaTypeFilter !== "all" && this.getMediaKind(asset) !== this.mediaTypeFilter) {
+        return false;
+      }
+      if (!this.matchesMediaSizeFilter(asset)) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      const haystack = [
+        asset.filename,
+        asset.entry_title,
+        asset.entry_date,
+        this.getEntryTypeLabel(asset.entry_type),
+        this.getMediaTypeLabel(asset),
+        asset.mime_type,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+
+  toggleMediaAssetSelection(asset: ProfileMediaAsset, selected: boolean): void {
+    const next = new Set(this.selectedMediaAssetIds);
+    if (selected) {
+      next.add(asset.id);
+    } else {
+      next.delete(asset.id);
+    }
+    this.selectedMediaAssetIds = next;
+  }
+
+  isMediaAssetSelected(asset: ProfileMediaAsset): boolean {
+    return this.selectedMediaAssetIds.has(asset.id);
+  }
+
+  toggleAllFilteredMedia(selected: boolean): void {
+    const next = new Set(this.selectedMediaAssetIds);
+    for (const asset of this.getFilteredMediaAssets()) {
+      if (selected) {
+        next.add(asset.id);
+      } else {
+        next.delete(asset.id);
+      }
+    }
+    this.selectedMediaAssetIds = next;
+  }
+
+  clearMediaSelection(): void {
+    this.selectedMediaAssetIds = new Set();
+  }
+
+  getSelectedMediaCount(): number {
+    return this.selectedMediaAssetIds.size;
+  }
+
+  areAllFilteredMediaSelected(): boolean {
+    const filtered = this.getFilteredMediaAssets();
+    return Boolean(filtered.length) && filtered.every((asset) => this.selectedMediaAssetIds.has(asset.id));
+  }
+
+  hasPartialFilteredMediaSelection(): boolean {
+    const filtered = this.getFilteredMediaAssets();
+    const selectedCount = filtered.filter((asset) => this.selectedMediaAssetIds.has(asset.id)).length;
+    return selectedCount > 0 && selectedCount < filtered.length;
+  }
+
+  getEntryTypeLabel(entryType: ProfileMediaAsset["entry_type"]): string {
+    return entryType === "dream" ? "Dream" : "Diary";
+  }
+
+  getMediaAssetIcon(asset: ProfileMediaAsset): string {
+    if (asset.mime_type.startsWith("image/")) {
+      return "image";
+    }
+    if (asset.mime_type === "application/pdf") {
+      return "picture_as_pdf";
+    }
+    if (asset.mime_type.startsWith("audio/")) {
+      return "graphic_eq";
+    }
+    return "attach_file";
+  }
+
+  getMediaTypeLabel(asset: ProfileMediaAsset): string {
+    switch (this.getMediaKind(asset)) {
+      case "image":
+        return "Image";
+      case "pdf":
+        return "PDF";
+      case "audio":
+        return "Audio";
+      default:
+        return "File";
+    }
+  }
+
+  getMediaTypeClass(asset: ProfileMediaAsset): string {
+    return `type-${this.getMediaKind(asset)}`;
+  }
+
+  getMediaKind(asset: ProfileMediaAsset): "image" | "pdf" | "audio" | "other" {
+    if (asset.mime_type.startsWith("image/")) {
+      return "image";
+    }
+    if (asset.mime_type === "application/pdf") {
+      return "pdf";
+    }
+    if (asset.mime_type.startsWith("audio/")) {
+      return "audio";
+    }
+    return "other";
+  }
+
+  isImageMedia(asset: ProfileMediaAsset): boolean {
+    return asset.mime_type.startsWith("image/");
+  }
+
+  isPdfMedia(asset: ProfileMediaAsset): boolean {
+    return asset.mime_type === "application/pdf";
+  }
+
+  isAudioMedia(asset: ProfileMediaAsset): boolean {
+    return asset.mime_type.startsWith("audio/");
+  }
+
+  canInlinePreview(asset: ProfileMediaAsset): boolean {
+    return Boolean(asset.url) && (this.isImageMedia(asset) || this.isPdfMedia(asset) || this.isAudioMedia(asset));
+  }
+
+  openMediaPreview(asset: ProfileMediaAsset): void {
+    if (!asset.url) {
+      return;
+    }
+    this.previewMediaAsset = asset;
+  }
+
+  closeMediaPreview(): void {
+    this.previewMediaAsset = null;
+  }
+
+  getSafeMediaPreviewUrl(asset: ProfileMediaAsset): SafeResourceUrl | null {
+    if (!asset.url) {
+      return null;
+    }
+    return this.sanitizer.bypassSecurityTrustResourceUrl(asset.url);
+  }
+
+  private matchesMediaSizeFilter(asset: ProfileMediaAsset): boolean {
+    const size = asset.file_size_bytes || 0;
+    if (this.mediaSizeFilter === "small") {
+      return size < 1024 * 1024;
+    }
+    if (this.mediaSizeFilter === "medium") {
+      return size >= 1024 * 1024 && size <= 10 * 1024 * 1024;
+    }
+    if (this.mediaSizeFilter === "large") {
+      return size > 10 * 1024 * 1024;
+    }
+    return true;
+  }
+
+  formatEntryDate(value: string): string {
+    if (!value) {
+      return "No date";
+    }
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+  }
+
+  formatBytes(value: number): string {
+    if (value >= 1024 * 1024) {
+      return `${(value / (1024 * 1024)).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+    }
+    if (value >= 1024) {
+      return `${Math.round(value / 1024)} KB`;
+    }
+    return `${value} B`;
+  }
+
   getUsagePercent(metric: BillingUsageMetric): number {
     if (metric.unlimited || !metric.limit) {
       return 0;
@@ -1524,6 +2505,13 @@ export class ProfileComponent implements OnInit {
     }
     event.preventDefault();
     event.returnValue = "";
+  }
+
+  @HostListener("document:keydown.escape")
+  handleEscapeKey(): void {
+    if (this.previewMediaAsset) {
+      this.closeMediaPreview();
+    }
   }
 
   private validateProfile(profile: User): string | null {

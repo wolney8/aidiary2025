@@ -625,6 +625,114 @@ def delete_profile_picture():
     }), 200
 
 
+def _media_asset_payload(row) -> dict:
+    return {
+        'id': row['id'],
+        'entry_type': row['entry_type'],
+        'entry_id': row['entry_id'],
+        'entry_title': row['entry_title'] or (
+            'Dream entry' if row['entry_type'] == 'dream' else 'Diary entry'
+        ),
+        'entry_date': row['entry_date'],
+        'filename': row['original_filename'] or 'Attachment',
+        'mime_type': row['mime_type'] or 'application/octet-stream',
+        'file_size_bytes': int(row['file_size_bytes'] or 0),
+        'url': resolve_image_url(row['storage_key']),
+    }
+
+
+@profile_bp.route('/profile/media-assets', methods=['GET'])
+@jwt_required()
+def list_profile_media_assets():
+    """List the user's measured attachment media for storage cleanup."""
+    user_id = int(get_jwt_identity())
+    limit = request.args.get('limit', default=25, type=int)
+    limit = max(1, min(limit or 25, 100))
+
+    with get_db() as conn:
+        rows = conn.execute(
+            _sql(
+                '''
+                SELECT *
+                FROM (
+                    SELECT
+                        asset.id,
+                        asset.entry_type,
+                        asset.entry_id,
+                        asset.storage_key,
+                        asset.original_filename,
+                        asset.mime_type,
+                        asset.file_size_bytes,
+                        daily.title AS entry_title,
+                        daily.entry_date AS entry_date
+                    FROM entry_assets asset
+                    JOIN dailydiary_entries daily
+                      ON daily.id = asset.entry_id
+                     AND daily.user_id = asset.user_id
+                    WHERE asset.user_id = ?
+                      AND asset.entry_type = 'daily'
+                      AND asset.asset_role = 'attachment'
+
+                    UNION ALL
+
+                    SELECT
+                        asset.id,
+                        asset.entry_type,
+                        asset.entry_id,
+                        asset.storage_key,
+                        asset.original_filename,
+                        asset.mime_type,
+                        asset.file_size_bytes,
+                        dream.title AS entry_title,
+                        dream.entry_date AS entry_date
+                    FROM entry_assets asset
+                    JOIN dreamdiary_entries dream
+                      ON dream.id = asset.entry_id
+                     AND dream.user_id = asset.user_id
+                    WHERE asset.user_id = ?
+                      AND asset.entry_type = 'dream'
+                      AND asset.asset_role = 'attachment'
+                ) media_assets
+                ORDER BY COALESCE(file_size_bytes, 0) DESC, id DESC
+                LIMIT ?
+                '''
+            ),
+            (user_id, user_id, limit),
+        ).fetchall()
+
+    return jsonify({'assets': [_media_asset_payload(row) for row in rows]}), 200
+
+
+@profile_bp.route('/profile/media-assets/<int:asset_id>', methods=['DELETE'])
+@jwt_required()
+def delete_profile_media_asset(asset_id: int):
+    """Delete one owned entry attachment from the Account storage cleanup view."""
+    user_id = int(get_jwt_identity())
+    with get_db() as conn:
+        asset = conn.execute(
+            _sql(
+                '''
+                SELECT id, storage_key
+                FROM entry_assets
+                WHERE id = ?
+                  AND user_id = ?
+                  AND asset_role = 'attachment'
+                '''
+            ),
+            (asset_id, user_id),
+        ).fetchone()
+        if asset is None:
+            return jsonify({'error': 'Media asset not found'}), 404
+
+        conn.execute(
+            _sql('DELETE FROM entry_assets WHERE id = ? AND user_id = ?'),
+            (asset_id, user_id),
+        )
+
+    delete_image(asset['storage_key'])
+    return jsonify({'message': 'Media asset deleted', 'deleted_asset_id': asset_id}), 200
+
+
 @profile_bp.route('/profile/account', methods=['DELETE'])
 @limiter.limit(_account_delete_rate_limit)
 @jwt_required()
