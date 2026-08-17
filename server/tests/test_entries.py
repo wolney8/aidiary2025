@@ -12,7 +12,7 @@ from datetime import date
 from io import BytesIO
 from unittest.mock import patch, MagicMock
 from routes.analyse import ANALYSE_TEXT_MAX_LENGTH
-from routes.entries import _coerce_search_text, _parse_entry_date
+from routes.entries import _coerce_search_text, _parse_entry_date, _sql
 from services.openai_svc import AnalysisRateLimitError
 from PIL import Image
 
@@ -380,6 +380,15 @@ def test_search_text_coercion_handles_structured_values():
     assert _coerce_search_text(None) == ''
     assert _coerce_search_text(['Daylio', 'car']) == 'Daylio, car'
     assert _coerce_search_text({'source': 'Daylio'}) == '{"source": "Daylio"}'
+
+
+def test_entries_sql_helper_adapts_placeholders_for_postgres(client):
+    client.application.config['DATABASE_PROVIDER'] = 'postgres'
+
+    with client.application.app_context():
+        assert _sql('SELECT * FROM dailydiary_entries WHERE user_id = ?') == (
+            'SELECT * FROM dailydiary_entries WHERE user_id = %s'
+        )
 
 
 def test_search_supports_multi_word_queries(client):

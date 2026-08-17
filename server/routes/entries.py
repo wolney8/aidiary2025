@@ -25,7 +25,7 @@ from services.attachment_text import (
 )
 from services.database import SQLITE_PROVIDER
 from services.database_adapter import DatabaseAdapter
-from services.sql_compat import append_returning_id, inserted_id
+from services.sql_compat import adapt_placeholders, append_returning_id, inserted_id
 from services.openai_svc import (
     DAILY_IMAGE_STYLE_PREFIX,
     DREAM_IMAGE_STYLE_PREFIX,
@@ -138,6 +138,10 @@ def _database_adapter() -> DatabaseAdapter:
 
 def _database_provider() -> str:
     return current_app.config.get('DATABASE_PROVIDER', SQLITE_PROVIDER)
+
+
+def _sql(statement: str) -> str:
+    return adapt_placeholders(statement, _database_provider())
 
 
 def _parse_entry_date(value):
@@ -2603,17 +2607,17 @@ def search_entries():
     try:
         cursor = conn.cursor()
 
-        daily_rows = cursor.execute('''
+        daily_rows = cursor.execute(_sql('''
             SELECT id, entry_date, title, user_message, ai_response, tags, daily_people_names
             FROM dailydiary_entries
             WHERE user_id = ?
-        ''', (user_id,)).fetchall()
+        '''), (user_id,)).fetchall()
 
-        dream_rows = cursor.execute('''
+        dream_rows = cursor.execute(_sql('''
             SELECT id, entry_date, title, plot, interpretation, tags, dream_people_names
             FROM dreamdiary_entries
             WHERE user_id = ?
-        ''', (user_id,)).fetchall()
+        '''), (user_id,)).fetchall()
     finally:
         conn.close()
 
