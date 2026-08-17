@@ -154,9 +154,28 @@ export class OAuthCallbackComponent implements OnInit {
     if (!value.startsWith("/") || value.startsWith("//") || value.includes("://")) {
       return "/dashboard";
     }
+    if (/['"`\s]/.test(value)) {
+      return "/dashboard";
+    }
     if (value === "/login" || value === "/register" || value === "/oauth/callback") {
       return "/dashboard";
     }
-    return value;
+    const path = value.split("?")[0];
+    const allowedRoutePrefixes = [
+      "/dashboard",
+      "/entries",
+      "/cbt",
+      "/important-days",
+      "/reflections",
+      "/account",
+      "/settings",
+      "/plans",
+      "/admin",
+    ];
+    return allowedRoutePrefixes.some(
+      (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+    )
+      ? value
+      : "/dashboard";
   }
 }

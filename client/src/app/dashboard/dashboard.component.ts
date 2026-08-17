@@ -2413,7 +2413,7 @@ export class DashboardComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (overview) => {
-          this.overview = overview;
+          this.overview = this.normaliseOverview(overview);
           if (this.reconcileSelectedSeason()) {
             this.isLoading = false;
             this.isChartLoading = false;
@@ -2446,6 +2446,134 @@ export class DashboardComponent implements OnInit {
       }
     }
     return "Dashboard insights could not be loaded.";
+  }
+
+  private normaliseOverview(
+    overview: Partial<DashboardOverview> | null | undefined,
+  ): DashboardOverview {
+    const cbt = overview?.cbt;
+    const dreamInsights = overview?.dream_insights;
+    const focusSections = overview?.focus_sections;
+    const memoryEcho = focusSections?.memory_echo;
+    const groupedActivity =
+      (overview?.recent_activity_by_type || {}) as Partial<
+        DashboardOverview["recent_activity_by_type"]
+      >;
+    const includedEntryTypes = Array.isArray(overview?.streak?.included_entry_types)
+      ? overview.streak.included_entry_types
+      : ["daily", "dream"];
+
+    return {
+      range: this.isDashboardRange(overview?.range) ? overview.range : this.selectedRange,
+      theme_filter: overview?.theme_filter ?? null,
+      generated_at: overview?.generated_at || new Date().toISOString(),
+      available_seasons: Array.isArray(overview?.available_seasons)
+        ? overview.available_seasons
+        : [],
+      streak: {
+        current_days: 0,
+        best_days: 0,
+        weekly_goal: 4,
+        week_count: 0,
+        month_count: 0,
+        weekly_progress: 0,
+        ...(overview?.streak || {}),
+        included_entry_types: includedEntryTypes,
+      },
+      series: Array.isArray(overview?.series) ? overview.series : [],
+      themes: Array.isArray(overview?.themes) ? overview.themes : [],
+      cbt: {
+        total_records: Number(cbt?.total_records || 0),
+        common_patterns: Array.isArray(cbt?.common_patterns) ? cbt.common_patterns : [],
+        average_before: cbt?.average_before ?? null,
+        average_after: cbt?.average_after ?? null,
+        average_change: cbt?.average_change ?? null,
+        recent_reflections: Array.isArray(cbt?.recent_reflections)
+          ? cbt.recent_reflections
+          : [],
+      },
+      recent_activity: Array.isArray(overview?.recent_activity)
+        ? overview.recent_activity
+        : [],
+      recent_activity_by_type: {
+        daily: Array.isArray(groupedActivity.daily) ? groupedActivity.daily : [],
+        dream: Array.isArray(groupedActivity.dream) ? groupedActivity.dream : [],
+        thought_record: Array.isArray(groupedActivity.thought_record)
+          ? groupedActivity.thought_record
+          : [],
+        important_day: Array.isArray(groupedActivity.important_day)
+          ? groupedActivity.important_day
+          : [],
+      },
+      dream_insights: {
+        total_dreams: Number(dreamInsights?.total_dreams || 0),
+        top_symbols: Array.isArray(dreamInsights?.top_symbols)
+          ? dreamInsights.top_symbols
+          : [],
+        top_people: Array.isArray(dreamInsights?.top_people)
+          ? dreamInsights.top_people
+          : [],
+        top_places: Array.isArray(dreamInsights?.top_places)
+          ? dreamInsights.top_places
+          : [],
+        recent: Array.isArray(dreamInsights?.recent) ? dreamInsights.recent : [],
+        recent_repeating_patterns: Array.isArray(
+          dreamInsights?.recent_repeating_patterns,
+        )
+          ? dreamInsights.recent_repeating_patterns
+          : [],
+        latest: dreamInsights?.latest ?? null,
+      },
+      focus_sections: {
+        memory_echo: {
+          label: memoryEcho?.label || "This time before",
+          count: Number(memoryEcho?.count || 0),
+          items: Array.isArray(memoryEcho?.items) ? memoryEcho.items : [],
+        },
+        theme_drift: Array.isArray(focusSections?.theme_drift)
+          ? focusSections.theme_drift
+          : [],
+        mood_anchors: Array.isArray(focusSections?.mood_anchors)
+          ? focusSections.mood_anchors
+          : [],
+        important_day_cues: Array.isArray(focusSections?.important_day_cues)
+          ? focusSections.important_day_cues
+          : [],
+      },
+      quick_actions: Array.isArray(overview?.quick_actions)
+        ? overview.quick_actions
+        : this.defaultQuickActions(),
+    };
+  }
+
+  private defaultQuickActions(): DashboardQuickAction[] {
+    const today = new Date().toISOString().slice(0, 10);
+    return [
+      {
+        type: "daily",
+        label: "Diary",
+        icon: "book",
+        route: `/entries/create?date=${today}&type=daily`,
+      },
+      {
+        type: "dream",
+        label: "Dream",
+        icon: "nights_stay",
+        route: `/entries/create?date=${today}&type=dream`,
+      },
+      {
+        type: "thought_record",
+        label: "Thought record",
+        icon: "psychology_alt",
+        route: `/entries/create?date=${today}&type=thought_record`,
+      },
+      {
+        type: "important_day",
+        label: "Important day",
+        icon: "event",
+        route: `/entries/create?date=${today}&type=important_day`,
+      },
+    ];
   }
 
   selectRange(range: DashboardRange): void {

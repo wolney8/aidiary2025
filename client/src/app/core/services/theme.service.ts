@@ -17,6 +17,7 @@ export class ThemeService {
   private readonly legacyModeStorageKey = "ai_diary_theme_mode";
   private readonly presetStorageKey = "openmynd_theme_preset";
   private readonly legacyPresetStorageKey = "ai_diary_theme_preset";
+  private storageScope: string | null = null;
   private readonly preferenceSignal = signal<ThemePreference>("auto");
   private readonly resolvedModeSignal = signal<ThemeMode>("light");
   private readonly presetSignal = signal<ThemePreset>("default");
@@ -49,6 +50,17 @@ export class ThemeService {
     this.applyPreset(preset, true);
   }
 
+  setUserScope(scope: string | number | null | undefined): void {
+    const nextScope = scope === null || scope === undefined ? null : String(scope);
+    if (this.storageScope === nextScope) {
+      return;
+    }
+
+    this.storageScope = nextScope;
+    this.applyPreset(this.readStoredPreset(), false);
+    this.applyPreference(this.readStoredPreference(), false);
+  }
+
   private readonly handleSystemThemeChange = (event: MediaQueryListEvent): void => {
     if (this.preferenceSignal() === "auto") {
       this.applyResolvedMode(event.matches ? "dark" : "light");
@@ -67,13 +79,18 @@ export class ThemeService {
       return "auto";
     }
 
-    const storedValue =
-      localStorage.getItem(this.modeStorageKey) ??
-      localStorage.getItem(this.legacyModeStorageKey);
+    const storedValue = localStorage.getItem(this.scopedModeStorageKey());
     if (storedValue && THEME_PREFERENCES.has(storedValue as ThemePreference)) {
-      localStorage.setItem(this.modeStorageKey, storedValue);
-      localStorage.removeItem(this.legacyModeStorageKey);
       return storedValue as ThemePreference;
+    }
+
+    if (!this.storageScope) {
+      const legacyValue = localStorage.getItem(this.legacyModeStorageKey);
+      if (legacyValue && THEME_PREFERENCES.has(legacyValue as ThemePreference)) {
+        localStorage.setItem(this.modeStorageKey, legacyValue);
+        localStorage.removeItem(this.legacyModeStorageKey);
+        return legacyValue as ThemePreference;
+      }
     }
     return "auto";
   }
@@ -83,13 +100,18 @@ export class ThemeService {
       return "default";
     }
 
-    const storedValue =
-      localStorage.getItem(this.presetStorageKey) ??
-      localStorage.getItem(this.legacyPresetStorageKey);
+    const storedValue = localStorage.getItem(this.scopedPresetStorageKey());
     if (storedValue && THEME_PRESETS.has(storedValue as ThemePreset)) {
-      localStorage.setItem(this.presetStorageKey, storedValue);
-      localStorage.removeItem(this.legacyPresetStorageKey);
       return storedValue as ThemePreset;
+    }
+
+    if (!this.storageScope) {
+      const legacyValue = localStorage.getItem(this.legacyPresetStorageKey);
+      if (legacyValue && THEME_PRESETS.has(legacyValue as ThemePreset)) {
+        localStorage.setItem(this.presetStorageKey, legacyValue);
+        localStorage.removeItem(this.legacyPresetStorageKey);
+        return legacyValue as ThemePreset;
+      }
     }
     return "default";
   }
@@ -108,7 +130,7 @@ export class ThemeService {
     this.applyResolvedMode(resolvedMode);
 
     if (persist && typeof localStorage !== "undefined") {
-      localStorage.setItem(this.modeStorageKey, preference);
+      localStorage.setItem(this.scopedModeStorageKey(), preference);
       localStorage.removeItem(this.legacyModeStorageKey);
     }
   }
@@ -118,9 +140,21 @@ export class ThemeService {
     this.document?.documentElement.setAttribute("data-theme-preset", preset);
 
     if (persist && typeof localStorage !== "undefined") {
-      localStorage.setItem(this.presetStorageKey, preset);
+      localStorage.setItem(this.scopedPresetStorageKey(), preset);
       localStorage.removeItem(this.legacyPresetStorageKey);
     }
+  }
+
+  private scopedModeStorageKey(): string {
+    return this.storageScope
+      ? `${this.modeStorageKey}:${this.storageScope}`
+      : this.modeStorageKey;
+  }
+
+  private scopedPresetStorageKey(): string {
+    return this.storageScope
+      ? `${this.presetStorageKey}:${this.storageScope}`
+      : this.presetStorageKey;
   }
 
   private applyResolvedMode(mode: ThemeMode): void {

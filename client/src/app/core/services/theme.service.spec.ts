@@ -8,6 +8,10 @@ describe("ThemeService", () => {
   beforeEach(() => {
     localStorage.removeItem("openmynd_theme_mode");
     localStorage.removeItem("openmynd_theme_preset");
+    localStorage.removeItem("openmynd_theme_mode:1");
+    localStorage.removeItem("openmynd_theme_preset:1");
+    localStorage.removeItem("openmynd_theme_mode:2");
+    localStorage.removeItem("openmynd_theme_preset:2");
     localStorage.removeItem("ai_diary_theme_mode");
     localStorage.removeItem("ai_diary_theme_preset");
     document.documentElement.removeAttribute("data-theme");
@@ -41,6 +45,10 @@ describe("ThemeService", () => {
   afterEach(() => {
     localStorage.removeItem("openmynd_theme_mode");
     localStorage.removeItem("openmynd_theme_preset");
+    localStorage.removeItem("openmynd_theme_mode:1");
+    localStorage.removeItem("openmynd_theme_preset:1");
+    localStorage.removeItem("openmynd_theme_mode:2");
+    localStorage.removeItem("openmynd_theme_preset:2");
     localStorage.removeItem("ai_diary_theme_mode");
     localStorage.removeItem("ai_diary_theme_preset");
   });
@@ -81,5 +89,27 @@ describe("ThemeService", () => {
     expect(service.preference()).toBe("dark");
     expect(service.mode()).toBe("dark");
     expect(service.preset()).toBe("ocean");
+  });
+
+  it("keeps signed-in theme choices scoped per user", () => {
+    const service = TestBed.inject(ThemeService);
+
+    service.setUserScope(1);
+    service.setPreference("dark");
+    service.setPreset("forest");
+
+    service.setUserScope(2);
+
+    expect(service.preference()).toBe("auto");
+    expect(service.preset()).toBe("default");
+
+    service.setPreference("light");
+    service.setPreset("ocean");
+    service.setUserScope(1);
+
+    expect(service.preference()).toBe("dark");
+    expect(service.preset()).toBe("forest");
+    expect(localStorage.getItem("openmynd_theme_mode:1")).toBe("dark");
+    expect(localStorage.getItem("openmynd_theme_preset:2")).toBe("ocean");
   });
 });

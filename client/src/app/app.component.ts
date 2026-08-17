@@ -288,6 +288,7 @@ export class AppComponent {
     this.authService.currentUser$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((user) => {
+        this.themeService.setUserScope(user?.id ?? null);
         this.currentUser = user;
         this.isAuthenticated = !!user && this.authService.isAuthenticated();
         this.showAuthenticatedShell = this.shouldShowAuthenticatedShell(

@@ -76,7 +76,7 @@ interface ThemePresetOption {
         <mat-card-header>
           <mat-card-title>Colour theme</mat-card-title>
           <mat-card-subtitle>
-            Changes apply immediately and stay on this device.
+            Changes apply immediately for this account on this device.
           </mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
