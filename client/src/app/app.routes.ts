@@ -1,6 +1,6 @@
 // Application routing configuration
 import { Routes } from "@angular/router";
-import { authGuard, authMatchGuard } from "./auth/auth.guard";
+import { authGuard, authMatchGuard, localAuthGuard } from "./auth/auth.guard";
 import { pendingChangesGuard } from "./entries/pending-changes.guard";
 
 export const routes: Routes = [
@@ -106,7 +106,7 @@ export const routes: Routes = [
   {
     path: "dashboard",
     title: "Dashboard | OpenMynd",
-    canActivate: [authGuard],
+    canActivate: [localAuthGuard],
     canMatch: [authMatchGuard],
     loadComponent: () =>
       import("./dashboard/dashboard.component").then(

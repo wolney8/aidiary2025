@@ -10,7 +10,7 @@ import {
   UrlTree,
 } from "@angular/router";
 import { firstValueFrom, isObservable, Observable, of, throwError } from "rxjs";
-import { authGuard, authMatchGuard } from "./auth.guard";
+import { authGuard, authMatchGuard, localAuthGuard } from "./auth.guard";
 import { AuthService } from "../core/services/auth.service";
 import { ProfileService } from "../core/services/profile.service";
 
@@ -145,6 +145,23 @@ describe("authGuard", () => {
     );
 
     await expectAsync(resolveGuardResult(result)).toBeResolvedTo(true);
+  });
+
+  it("allows local authenticated dashboard activation without blocking on profile validation", async () => {
+    isAuthenticated = true;
+    profileServiceMock.getProfile = jasmine
+      .createSpy("getProfile")
+      .and.returnValue(of({ onboarding_completed: true }));
+
+    const result = TestBed.runInInjectionContext(() =>
+      localAuthGuard(
+        {} as ActivatedRouteSnapshot,
+        { url: "/dashboard" } as RouterStateSnapshot,
+      ),
+    );
+
+    await expectAsync(resolveGuardResult(result)).toBeResolvedTo(true);
+    expect(profileServiceMock.getProfile).not.toHaveBeenCalled();
   });
 
   it("redirects authenticated users with incomplete server onboarding to onboarding", async () => {

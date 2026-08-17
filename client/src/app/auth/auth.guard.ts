@@ -115,6 +115,13 @@ export const authGuard: CanActivateFn = (
   return requireAuthenticated(state.url || "/dashboard");
 };
 
+export const localAuthGuard: CanActivateFn = (
+  _route: ActivatedRouteSnapshot,
+  state: RouterStateSnapshot,
+): boolean | UrlTree | Observable<boolean | UrlTree> => {
+  return requireAuthenticated(state.url || "/dashboard", false);
+};
+
 export const authMatchGuard: CanMatchFn = (
   _route,
   segments: UrlSegment[],
