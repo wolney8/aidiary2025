@@ -13,10 +13,12 @@ import { AuthResponse, User } from "../../core/models/user.model";
   template: `
     <main class="oauth-callback-shell" data-testid="oauth-callback-page">
       <mat-card class="oauth-callback-card">
-        <mat-icon aria-hidden="true">
-          {{ errorMessage ? "error" : "verified_user" }}
-        </mat-icon>
-        <h1>{{ errorMessage ? "Sign-in could not be completed" : "Completing sign-in" }}</h1>
+        <div class="oauth-callback-heading">
+          <span class="oauth-callback-icon" aria-hidden="true">
+            <mat-icon>{{ errorMessage ? "error" : "verified_user" }}</mat-icon>
+          </span>
+          <h1>{{ errorMessage ? "Sign-in could not be completed" : "Completing sign-in" }}</h1>
+        </div>
         <p>{{ errorMessage || "Please wait while OpenMynd finishes signing you in." }}</p>
         <a *ngIf="errorMessage" routerLink="/login">Return to sign in</a>
       </mat-card>
@@ -45,15 +47,38 @@ import { AuthResponse, User } from "../../core/models/user.model";
       backdrop-filter: blur(22px);
     }
 
-    .oauth-callback-card mat-icon {
-      width: 44px;
-      height: 44px;
-      color: var(--colour-primary);
-      font-size: 44px;
+    .oauth-callback-heading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .oauth-callback-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 52px;
+      width: 52px;
+      height: 52px;
+      border-radius: var(--radius-pill);
+      background: var(--colour-primary-container);
+      color: var(--colour-primary-container-text);
+    }
+
+    .oauth-callback-icon mat-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      font-size: 28px;
+      line-height: 1;
     }
 
     .oauth-callback-card h1 {
-      margin: var(--spacing-sm) 0;
+      margin: 0;
       font-size: clamp(1.8rem, 5vw, 2.4rem);
       letter-spacing: -0.05em;
     }

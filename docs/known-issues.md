@@ -16,6 +16,8 @@
 - Startup side effects include NLTK downloads and database metadata backfill.
 - Frontend API configuration is environment-based, but deployment-specific production
   configuration still needs verification before hosting.
+- Search results and Card view need a focused UX consistency pass after the hosted
+  auth/database parity work is stable.
 
 ## Authentication security review
 

@@ -1,6 +1,7 @@
 # server/routes/profile.py
 # Profile management routes
 from io import BytesIO
+from datetime import date
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -40,6 +41,7 @@ PROFILE_IMAGE_JPEG_QUALITY = 88
 MAX_PROFILE_IMAGE_PIXELS = 40_000_000
 HOLIDAY_COUNTRY_CODE_PATTERN = re.compile(r"^[A-Z]{2}$")
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DISPLAY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$")
 CUSTOM_GUIDANCE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ,.?!'\"()&/\-:]{0,99}$")
 CODE_LIKE_PATTERN = re.compile(r"[<>{}\\[\\]`;]|javascript:|script|onerror|onclick", re.IGNORECASE)
@@ -221,6 +223,27 @@ def _normalise_timezone(value):
     return timezone_name
 
 
+def _normalise_date_of_birth(value):
+    if value is None:
+        return None
+
+    normalised = str(value).strip()
+    if not normalised:
+        return ''
+    if not DATE_PATTERN.fullmatch(normalised):
+        raise ValueError('Date of birth must use YYYY-MM-DD format')
+    try:
+        parsed = date.fromisoformat(normalised)
+    except ValueError as exc:
+        raise ValueError('Date of birth must be a valid date') from exc
+    today = date.today()
+    if parsed > today:
+        raise ValueError('Date of birth cannot be in the future')
+    if parsed.year < 1900:
+        raise ValueError('Date of birth is too far in the past')
+    return normalised
+
+
 def _normalise_reminder_days(value):
     if value is None:
         return None
@@ -317,6 +340,8 @@ def _normalise_profile_update(field: str, value):
         return _normalise_custom_guidance(value)
     if field == 'timezone':
         return _normalise_timezone(value)
+    if field == 'date_of_birth':
+        return _normalise_date_of_birth(value)
     if field == 'holiday_country_code':
         if value is None:
             return None
@@ -450,7 +475,7 @@ def _select_profile(conn, user_id: int):
                    WHEN {oauth_email_verified_select} = 1 THEN 1
                    ELSE 0
                END AS email_verified,
-               first_name, last_name, age, sex, goals,
+               first_name, last_name, age, date_of_birth, sex, goals,
                dailydiary_api_key, dreamdiary_api_key,
                chatgpt_daily_diary_coachname, chatgpt_dream_diary_coachname,
                registered_at,
@@ -491,7 +516,7 @@ def update_profile():
     
     # Build update query dynamically
     allowed_fields = [
-        'first_name', 'last_name', 'age', 'sex', 'goals',
+        'first_name', 'last_name', 'age', 'date_of_birth', 'sex', 'goals',
         'dailydiary_api_key', 'dreamdiary_api_key',
         'chatgpt_daily_diary_coachname', 'chatgpt_dream_diary_coachname',
         'display_name', 'pronouns', 'gender', 'custom_guidance',

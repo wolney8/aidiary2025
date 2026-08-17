@@ -63,34 +63,6 @@ import { ThemeService } from "../../services/theme.service";
 
           <a
             mat-list-item
-            [routerLink]="['/entries']"
-            [queryParams]="{ type: 'daily' }"
-            routerLinkActive="is-active"
-            [routerLinkActiveOptions]="{ exact: true }"
-            #dailyRla="routerLinkActive"
-            [attr.aria-current]="dailyRla.isActive ? 'page' : null"
-            (click)="closeSidenav.emit()"
-          >
-            <mat-icon matListItemIcon>book</mat-icon>
-            <span matListItemTitle>Daily Diary</span>
-          </a>
-
-          <a
-            mat-list-item
-            [routerLink]="['/entries']"
-            [queryParams]="{ type: 'dreams' }"
-            routerLinkActive="is-active"
-            [routerLinkActiveOptions]="{ exact: true }"
-            #dreamsRla="routerLinkActive"
-            [attr.aria-current]="dreamsRla.isActive ? 'page' : null"
-            (click)="closeSidenav.emit()"
-          >
-            <mat-icon matListItemIcon>nights_stay</mat-icon>
-            <span matListItemTitle>Dream Diary</span>
-          </a>
-
-          <a
-            mat-list-item
             routerLink="/cbt"
             routerLinkActive="is-active"
             [routerLinkActiveOptions]="{ exact: false }"

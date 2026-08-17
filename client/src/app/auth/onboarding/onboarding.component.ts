@@ -9,6 +9,8 @@ import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
+import { MatDatepickerModule } from "@angular/material/datepicker";
+import { MatNativeDateModule } from "@angular/material/core";
 import { AuthService } from "../../core/services/auth.service";
 import {
   BillingPlan,
@@ -17,6 +19,8 @@ import {
 } from "../../core/services/billing.service";
 import { ProfileService } from "../../core/services/profile.service";
 import { AuthResponse, User } from "../../core/models/user.model";
+import { PublicHolidaysService } from "../../core/services/public-holidays.service";
+import { PublicHolidayCountry } from "../../core/models/public-holiday.model";
 
 const DEFAULT_ONBOARDING_PLANS: BillingPlan[] = [
   {
@@ -135,6 +139,8 @@ type BillingPeriod = "monthly" | "annual";
     MatIconModule,
     MatInputModule,
     MatSelectModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     RouterLink,
   ],
   template: `
@@ -206,6 +212,50 @@ type BillingPeriod = "monthly" | "annual";
                   />
                   <mat-hint align="start">Letters, numbers, hyphens, or underscores.</mat-hint>
                   <mat-hint align="end">{{ getDisplayNameLength() }}/24</mat-hint>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline">
+                  <mat-label>Date of birth</mat-label>
+                  <input
+                    matInput
+                    [matDatepicker]="dateOfBirthPicker"
+                    [(ngModel)]="dateOfBirthValue"
+                    name="date_of_birth"
+                    [max]="today"
+                    (dateChange)="onDateOfBirthChange()"
+                  />
+                  <mat-datepicker-toggle
+                    matIconSuffix
+                    [for]="dateOfBirthPicker"
+                  ></mat-datepicker-toggle>
+                  <mat-datepicker #dateOfBirthPicker></mat-datepicker>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline">
+                  <mat-label>Country</mat-label>
+                  <mat-select
+                    [(ngModel)]="profile.holiday_country_code"
+                    name="holiday_country_code"
+                  >
+                    <mat-option value="">Choose later</mat-option>
+                    <mat-option
+                      *ngFor="let country of holidayCountries"
+                      [value]="country.countryCode"
+                    >
+                      {{ country.name }}
+                    </mat-option>
+                  </mat-select>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline">
+                  <mat-label>Timezone</mat-label>
+                  <input
+                    matInput
+                    [(ngModel)]="profile.timezone"
+                    name="timezone"
+                    maxlength="64"
+                    placeholder="Europe/London"
+                  />
                 </mat-form-field>
 
                 <mat-form-field appearance="outline">
@@ -1232,6 +1282,7 @@ export class OnboardingComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly billingService = inject(BillingService);
   private readonly profileService = inject(ProfileService);
+  private readonly publicHolidaysService = inject(PublicHolidaysService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -1249,6 +1300,9 @@ export class OnboardingComponent implements OnInit {
   checkoutBusyTier: CheckoutTier | null = null;
   selectedPlanTier: BillingPlan["tier"] = "free";
   selectedBillingPeriod: BillingPeriod = "monthly";
+  readonly today = new Date();
+  dateOfBirthValue: Date | null = null;
+  holidayCountries: PublicHolidayCountry[] = [];
   readonly planCopy = ONBOARDING_PLAN_COPY;
 
   get bestAnnualDiscountPercent(): number {
@@ -1270,8 +1324,20 @@ export class OnboardingComponent implements OnInit {
       });
       return;
     }
+    this.loadHolidayCountries();
     this.loadProfile();
     this.loadPlans();
+  }
+
+  private loadHolidayCountries(): void {
+    this.publicHolidaysService.getAvailableCountries().subscribe({
+      next: (countries) => {
+        this.holidayCountries = countries;
+      },
+      error: () => {
+        this.holidayCountries = [];
+      },
+    });
   }
 
   private loadProfile(): void {
@@ -1284,9 +1350,12 @@ export class OnboardingComponent implements OnInit {
         this.profile = {
           ...profile,
           display_name: profile.display_name || profile.first_name || "",
+          date_of_birth: profile.date_of_birth || "",
           pronouns: profile.pronouns || "",
           gender: profile.gender || "",
           custom_guidance: profile.custom_guidance || "",
+          holiday_country_code: profile.holiday_country_code || "",
+          timezone: profile.timezone || this.getBrowserTimezone(),
           chatgpt_daily_diary_coachname:
             profile.chatgpt_daily_diary_coachname || "",
           chatgpt_dream_diary_coachname:
@@ -1298,6 +1367,7 @@ export class OnboardingComponent implements OnInit {
               ? false
               : Boolean(profile.allow_ai_attachment_context),
         };
+        this.dateOfBirthValue = this.parseDateForPicker(this.profile.date_of_birth);
       },
       error: () => {
         this.errorMessage = "Unable to load account setup.";
@@ -1322,9 +1392,12 @@ export class OnboardingComponent implements OnInit {
     this.errorMessage = "";
     this.profileService.updateProfile({
       display_name: String(this.profile.display_name || "").trim(),
+      date_of_birth: this.formatDateForApi(this.dateOfBirthValue),
       pronouns: String(this.profile.pronouns || "").trim(),
       gender: String(this.profile.gender || "").trim(),
       custom_guidance: String(this.profile.custom_guidance || "").trim(),
+      holiday_country_code: String(this.profile.holiday_country_code || "").trim(),
+      timezone: String(this.profile.timezone || "").trim() || this.getBrowserTimezone(),
       chatgpt_daily_diary_coachname: String(
         this.profile.chatgpt_daily_diary_coachname || "",
       ).trim(),
@@ -1402,6 +1475,12 @@ export class OnboardingComponent implements OnInit {
 
   getGuidanceLength(): number {
     return String(this.profile?.custom_guidance || "").trim().length;
+  }
+
+  onDateOfBirthChange(): void {
+    if (this.profile) {
+      this.profile.date_of_birth = this.formatDateForApi(this.dateOfBirthValue);
+    }
   }
 
   getConnectedName(): string {
@@ -1559,7 +1638,41 @@ export class OnboardingComponent implements OnInit {
     ) {
       return "Goals or guidance must be plain text only; code or scripts are not allowed.";
     }
+    const dateOfBirth = this.formatDateForApi(this.dateOfBirthValue);
+    if (dateOfBirth && this.dateOfBirthValue && this.dateOfBirthValue > this.today) {
+      return "Date of birth cannot be in the future.";
+    }
+    profile.date_of_birth = dateOfBirth;
     return null;
+  }
+
+  private getBrowserTimezone(): string {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  }
+
+  private parseDateForPicker(value?: string | null): Date | null {
+    if (!value) {
+      return null;
+    }
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) {
+      return null;
+    }
+    return new Date(year, month - 1, day);
+  }
+
+  private formatDateForApi(value: Date | null): string {
+    if (!value) {
+      return "";
+    }
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, "0");
+    const day = `${value.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   private consumeOAuthFragment(): void {

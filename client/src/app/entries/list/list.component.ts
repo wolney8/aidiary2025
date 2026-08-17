@@ -2168,10 +2168,6 @@ export class ListComponent implements OnInit, OnDestroy {
     this.hasExplicitContentFilters = true;
     this.selectedDay = null;
 
-    if (!this.hasExplicitMonthSelection) {
-      this.autoSelectLatestMonthForView(true);
-    }
-
     this.filterEntries();
     this.currentPage = 0;
     this.updatePaginatedEntries();
@@ -4073,27 +4069,6 @@ export class ListComponent implements OnInit, OnDestroy {
     if (!this.hasExplicitMonthSelection) {
       this.selectCurrentMonth(false);
     }
-  }
-
-  private autoSelectLatestMonthForView(animate = false): void {
-    const entriesForView = this.getFilteredActivityItems();
-
-    if (entriesForView.length === 0) {
-      return;
-    }
-
-    const latestEntry = entriesForView.reduce((latest, candidate) =>
-      new Date(this.getCardItemDate(candidate)) >
-      new Date(this.getCardItemDate(latest))
-        ? candidate
-        : latest,
-    );
-
-    this.selectMonthByDate(
-      new Date(this.getCardItemDate(latestEntry)),
-      false,
-      animate,
-    );
   }
 
   private selectCurrentMonth(explicit: boolean): void {

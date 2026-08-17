@@ -10,6 +10,7 @@ export interface User {
   first_name?: string;
   last_name?: string;
   age?: number;
+  date_of_birth?: string | null;
   sex?: string;
   goals?: string;
   display_name?: string;

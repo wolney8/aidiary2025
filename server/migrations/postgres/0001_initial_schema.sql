@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     first_name TEXT,
     last_name TEXT,
     age INTEGER,
+    date_of_birth TEXT,
     sex TEXT,
     goals TEXT,
     dailydiary_api_key TEXT,

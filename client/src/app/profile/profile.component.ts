@@ -8,6 +8,8 @@ import { MatInputModule } from "@angular/material/input";
 import { MatSelectModule } from "@angular/material/select";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
+import { MatDatepickerModule } from "@angular/material/datepicker";
+import { MatNativeDateModule } from "@angular/material/core";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
@@ -42,6 +44,8 @@ interface AccountUsageCard {
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     RouterLink,
   ],
   template: `
@@ -178,14 +182,20 @@ interface AccountUsageCard {
               </mat-form-field>
 
               <mat-form-field appearance="outline">
-                <mat-label>Age</mat-label>
+                <mat-label>Date of birth</mat-label>
                 <input
                   matInput
-                  type="number"
-                  [(ngModel)]="profile.age"
-                  name="age"
-                  (input)="markProfileDirty()"
+                  [matDatepicker]="dateOfBirthPicker"
+                  [(ngModel)]="dateOfBirthValue"
+                  name="date_of_birth"
+                  [max]="today"
+                  (dateChange)="onDateOfBirthChange()"
                 />
+                <mat-datepicker-toggle
+                  matIconSuffix
+                  [for]="dateOfBirthPicker"
+                ></mat-datepicker-toggle>
+                <mat-datepicker #dateOfBirthPicker></mat-datepicker>
               </mat-form-field>
 
               <mat-form-field appearance="outline">
@@ -981,6 +991,8 @@ export class ProfileComponent implements OnInit {
   billingBusyTier: CheckoutTier | null = null;
   billingPortalBusy = false;
   selectedBillingPeriod: BillingPeriod = "monthly";
+  readonly today = new Date();
+  dateOfBirthValue: Date | null = null;
   private initialProfileSnapshot = "";
   profileDirty = false;
 
@@ -1007,6 +1019,7 @@ export class ProfileComponent implements OnInit {
     this.profileService.getProfile().subscribe({
       next: (profile) => {
         this.profile = { ...profile };
+        this.dateOfBirthValue = this.parseDateForPicker(profile.date_of_birth);
         this.initialProfileSnapshot = this.serialiseProfile(this.profile);
         this.profileDirty = false;
       },
@@ -1042,10 +1055,10 @@ export class ProfileComponent implements OnInit {
       next: (response) => {
         this.successMessage = response.message;
         this.saving = false;
-        if (this.profile) {
-          this.initialProfileSnapshot = this.serialiseProfile(this.profile);
-          this.profileDirty = false;
-        }
+        this.profile = { ...response.user };
+        this.dateOfBirthValue = this.parseDateForPicker(response.user.date_of_birth);
+        this.initialProfileSnapshot = this.serialiseProfile(this.profile);
+        this.profileDirty = false;
       },
       error: (error) => {
         this.errorMessage =
@@ -1289,6 +1302,13 @@ export class ProfileComponent implements OnInit {
     return `${name}'s profile picture`;
   }
 
+  onDateOfBirthChange(): void {
+    if (this.profile) {
+      this.profile.date_of_birth = this.formatDateForApi(this.dateOfBirthValue);
+    }
+    this.markProfileDirty();
+  }
+
   onProfilePictureSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -1430,14 +1450,20 @@ export class ProfileComponent implements OnInit {
     event.returnValue = "";
   }
 
-	  private validateProfile(profile: User): string | null {
-	    const displayName = String(profile.display_name || "").trim();
-	    if (displayName && displayName.length > 24) {
-	      return "Display name must be 24 characters or fewer.";
-	    }
-	    if (displayName && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/.test(displayName)) {
-	      return "Display name may only use letters, numbers, hyphens, and underscores.";
-	    }
+  private validateProfile(profile: User): string | null {
+    const displayName = String(profile.display_name || "").trim();
+    if (displayName && displayName.length > 24) {
+      return "Display name must be 24 characters or fewer.";
+    }
+    if (displayName && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/.test(displayName)) {
+      return "Display name may only use letters, numbers, hyphens, and underscores.";
+    }
+
+    const dateOfBirth = this.formatDateForApi(this.dateOfBirthValue);
+    if (dateOfBirth && this.dateOfBirthValue && this.dateOfBirthValue > this.today) {
+      return "Date of birth cannot be in the future.";
+    }
+    profile.date_of_birth = dateOfBirth;
 
     return null;
   }
@@ -1446,7 +1472,7 @@ export class ProfileComponent implements OnInit {
     return JSON.stringify({
       first_name: String(profile.first_name || "").trim(),
       last_name: String(profile.last_name || "").trim(),
-      age: profile.age ?? null,
+      date_of_birth: String(profile.date_of_birth || "").trim(),
       display_name: String(profile.display_name || "").trim(),
       pronouns: String(profile.pronouns || "").trim(),
       gender: String(profile.gender || "").trim(),
@@ -1457,11 +1483,32 @@ export class ProfileComponent implements OnInit {
     return {
       first_name: String(profile.first_name || "").trim(),
       last_name: String(profile.last_name || "").trim(),
-      age: profile.age ?? undefined,
+      date_of_birth: this.formatDateForApi(this.dateOfBirthValue),
       display_name: String(profile.display_name || "").trim(),
       pronouns: String(profile.pronouns || "").trim(),
       gender: String(profile.gender || "").trim(),
     };
+  }
+
+  private parseDateForPicker(value?: string | null): Date | null {
+    if (!value) {
+      return null;
+    }
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) {
+      return null;
+    }
+    return new Date(year, month - 1, day);
+  }
+
+  private formatDateForApi(value: Date | null): string {
+    if (!value) {
+      return "";
+    }
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, "0");
+    const day = `${value.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
   private loadBillingStatus(): void {

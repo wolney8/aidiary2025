@@ -55,6 +55,7 @@ _USER_SETTINGS_COLUMNS: dict[str, str] = {
     'email': 'TEXT',
     'email_verified': 'INTEGER DEFAULT 0',
     'registered_at': 'TEXT',
+    'date_of_birth': 'TEXT',
     'profile_picture_storage_key': 'TEXT',
     'display_name': 'TEXT',
     'pronouns': 'TEXT',

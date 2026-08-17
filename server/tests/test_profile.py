@@ -37,6 +37,7 @@ class _FakePostgresConnection:
                 "first_name": None,
                 "last_name": None,
                 "age": None,
+                "date_of_birth": None,
                 "sex": None,
                 "goals": None,
                 "dailydiary_api_key": None,
@@ -458,6 +459,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
         data=json.dumps(
             {
                 "display_name": "Alex",
+                "date_of_birth": "1990-05-12",
                 "pronouns": "they/them",
                 "gender": "non-binary",
                 "custom_guidance": "Help me stay grounded",
@@ -489,6 +491,7 @@ def test_profile_update_accepts_personalisation_fields(client_with_legacy_user_s
     data = json.loads(response.data)
     assert data["message"] == "Profile updated"
     assert data["user"]["display_name"] == "Alex"
+    assert data["user"]["date_of_birth"] == "1990-05-12"
     assert data["user"]["pronouns"] == "they/them"
     assert data["user"]["gender"] == "non-binary"
     assert data["user"]["custom_guidance"] == "Help me stay grounded"
@@ -661,6 +664,38 @@ def test_profile_update_rejects_invalid_timezone(client_with_legacy_user_schema)
 
     assert response.status_code == 400
     assert json.loads(response.data)["error"] == "Timezone must be a valid IANA timezone"
+
+
+def test_profile_update_rejects_invalid_date_of_birth_format(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"date_of_birth": "12/05/1990"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == (
+        "Date of birth must use YYYY-MM-DD format"
+    )
+
+
+def test_profile_update_rejects_future_date_of_birth(client_with_legacy_user_schema):
+    client, _db_path = client_with_legacy_user_schema
+    token = _register_and_get_token(client)
+
+    response = client.put(
+        "/api/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        data=json.dumps({"date_of_birth": "2999-01-01"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.data)["error"] == "Date of birth cannot be in the future"
 
 
 def test_profile_update_rejects_invalid_pronouns_choice(client_with_legacy_user_schema):
