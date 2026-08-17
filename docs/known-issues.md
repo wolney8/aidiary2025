@@ -16,9 +16,9 @@
 - Startup side effects include NLTK downloads and database metadata backfill.
 - Frontend API configuration is environment-based, but deployment-specific production
   configuration still needs verification before hosting.
-- Search results received an initial M3 card/action polish pass after hosted
-  auth/database parity stabilised. Card view and the broader standing UX polish issue
-  still need a focused consistency pass.
+- Search results and Card view received initial M3 card/action polish passes after
+  hosted auth/database parity stabilised. The broader standing UX polish issue still
+  needs route-by-route consistency review and manual smoke.
 
 ## Authentication security review
 
