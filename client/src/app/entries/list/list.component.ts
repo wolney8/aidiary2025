@@ -1606,6 +1606,8 @@ export class ListComponent implements OnInit, OnDestroy {
   onThisDayFeed: OnThisDayFeed | null = null;
   onThisDayMonthFeed: OnThisDayFeed | null = null;
   private publicHolidaysByYear = new Map<number, PublicHoliday[]>();
+  private publicHolidaySettingsLoaded = false;
+  private entriesLoadRequestId = 0;
   filteredEntries: CardItem[] = [];
   private hasExplicitMonthSelection = false;
   private pendingMonthSelection: { monthIndex: number; year: number } | null =
@@ -2018,6 +2020,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   loadEntries(): void {
+    const requestId = ++this.entriesLoadRequestId;
     this.isLoadingEntries = true;
     this.entriesLoadError = "";
     let hadLoadFailure = false;
@@ -2027,12 +2030,6 @@ export class ListComponent implements OnInit, OnDestroy {
     };
 
     forkJoin({
-      onThisDay: this.onThisDayService.getFeed().pipe(
-        catchError(() => {
-          markLoadFailure();
-          return of(null);
-        }),
-      ),
       daily: this.entriesService.getDailyEntries().pipe(
         catchError(() => {
           markLoadFailure();
@@ -2057,57 +2054,16 @@ export class ListComponent implements OnInit, OnDestroy {
           return of([]);
         }),
       ),
-      publicHolidays: this.publicHolidaysService
-        .getPublicHolidays(new Date().getFullYear())
-        .pipe(
-          catchError(() => {
-            markLoadFailure();
-            return of(null);
-          }),
-        ),
     }).subscribe({
-      next: ({
-        onThisDay,
-        daily,
-        dreams,
-        thoughtRecords,
-        importantDays,
-        publicHolidays,
-      }) => {
-        if (onThisDay) {
-          this.onThisDayFeed = onThisDay;
-          this.syncOnThisDayFilterAvailability(onThisDay.enabled);
-        } else {
-          this.onThisDayFeed = null;
-          this.syncOnThisDayFilterAvailability(false);
+      next: ({ daily, dreams, thoughtRecords, importantDays }) => {
+        if (requestId !== this.entriesLoadRequestId) {
+          return;
         }
 
         this.dailyEntries = daily.map((e) => ({ ...e, type: "daily" }));
         this.dreamEntries = dreams.map((e) => ({ ...e, type: "dream" }));
         this.thoughtRecords = thoughtRecords;
         this.importantDays = importantDays;
-
-        if (publicHolidays) {
-          this.publicHolidaysEnabled = Boolean(publicHolidays.enabled);
-          this.publicHolidayCountryCode = publicHolidays.countryCode || "";
-          this.publicHolidays = publicHolidays.holidays || [];
-          if (publicHolidays.enabled) {
-            this.publicHolidaysByYear.set(
-              publicHolidays.year,
-              publicHolidays.holidays || [],
-            );
-            this.loadedHolidayYears.add(publicHolidays.year);
-          } else {
-            this.publicHolidaysByYear.clear();
-            this.loadedHolidayYears.clear();
-          }
-        } else {
-          this.publicHolidays = [];
-          this.publicHolidaysEnabled = false;
-          this.publicHolidayCountryCode = "";
-          this.publicHolidaysByYear.clear();
-          this.loadedHolidayYears.clear();
-        }
 
         this.entriesLoadError = hadLoadFailure
           ? "Some journal data is temporarily unavailable. Retry once the connection settles."
@@ -2118,8 +2074,12 @@ export class ListComponent implements OnInit, OnDestroy {
         this.filterEntries();
         this.updatePaginatedEntries();
         this.isLoadingEntries = false;
+        this.loadOnThisDayFeed(requestId);
       },
       error: () => {
+        if (requestId !== this.entriesLoadRequestId) {
+          return;
+        }
         this.dailyEntries = [];
         this.dreamEntries = [];
         this.thoughtRecords = [];
@@ -2138,6 +2098,7 @@ export class ListComponent implements OnInit, OnDestroy {
         this.filterEntries();
         this.updatePaginatedEntries();
         this.isLoadingEntries = false;
+        this.loadOnThisDayFeed(requestId);
       },
     });
   }
@@ -4691,23 +4652,32 @@ export class ListComponent implements OnInit, OnDestroy {
 
   private syncPublicHolidaysForSelectedYear(): void {
     this.syncOnThisDayForSelectedMonth();
-    if (!this.selectedMonth || !this.publicHolidaysEnabled) {
+    if (!this.selectedMonth) {
+      return;
+    }
+
+    if (!this.publicHolidaysEnabled && this.publicHolidaySettingsLoaded) {
       return;
     }
 
     const selectedYear = this.selectedMonth.year;
-    if (this.loadedHolidayYears.has(selectedYear)) {
+    if (this.publicHolidaysEnabled && this.loadedHolidayYears.has(selectedYear)) {
       return;
     }
 
     this.publicHolidaysService.getPublicHolidays(selectedYear).subscribe({
       next: (feed) => {
+        this.publicHolidaySettingsLoaded = true;
         this.publicHolidaysEnabled = Boolean(feed.enabled);
         this.publicHolidayCountryCode = feed.countryCode || "";
-        this.publicHolidaysByYear.set(feed.year, feed.holidays || []);
-        this.publicHolidays = this.publicHolidaysByYear.get(selectedYear) ?? [];
         if (feed.enabled) {
+          this.publicHolidaysByYear.set(feed.year, feed.holidays || []);
+          this.publicHolidays = this.publicHolidaysByYear.get(selectedYear) ?? [];
           this.loadedHolidayYears.add(feed.year);
+        } else {
+          this.publicHolidays = [];
+          this.publicHolidaysByYear.clear();
+          this.loadedHolidayYears.clear();
         }
         this.filterEntries();
         this.updatePaginatedEntries();
@@ -4718,6 +4688,25 @@ export class ListComponent implements OnInit, OnDestroy {
         this.loadedHolidayYears.delete(selectedYear);
         this.filterEntries();
         this.updatePaginatedEntries();
+      },
+    });
+  }
+
+  private loadOnThisDayFeed(requestId: number): void {
+    this.onThisDayService.getFeed().subscribe({
+      next: (feed) => {
+        if (requestId !== this.entriesLoadRequestId) {
+          return;
+        }
+        this.onThisDayFeed = feed;
+        this.syncOnThisDayFilterAvailability(feed.enabled);
+      },
+      error: () => {
+        if (requestId !== this.entriesLoadRequestId) {
+          return;
+        }
+        this.onThisDayFeed = null;
+        this.syncOnThisDayFilterAvailability(false);
       },
     });
   }
