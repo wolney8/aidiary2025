@@ -1090,8 +1090,7 @@ def _redirect_oauth_success(
         'returnUrl': '/dashboard' if onboarding_required else _safe_return_url(return_url),
         'onboardingRequired': 'true' if onboarding_required else 'false',
     })
-    callback_path = 'onboarding' if onboarding_required else 'oauth/callback'
-    response = redirect(f'{_frontend_base_url()}/{callback_path}#{fragment}')
+    response = redirect(f'{_frontend_base_url()}/oauth/callback#{fragment}')
     return _attach_auth_cookie(response, token)
 
 

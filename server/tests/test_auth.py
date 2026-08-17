@@ -507,7 +507,7 @@ def test_oauth_callback_creates_user_identity_and_redirects_to_frontend(client, 
     response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].startswith("http://localhost:4200/onboarding#")
+    assert response.headers["Location"].startswith("http://localhost:4200/oauth/callback#")
     assert "token=" in response.headers["Location"]
     assert "returnUrl=%2Fdashboard" in response.headers["Location"]
     fragment = parse_qs(urlparse(response.headers["Location"]).fragment)
@@ -644,7 +644,7 @@ def test_oauth_callback_existing_incomplete_user_requires_onboarding(client, mon
     response = client.get(f"/api/oauth/google/callback?code=abc&state={state}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].startswith("http://localhost:4200/onboarding#")
+    assert response.headers["Location"].startswith("http://localhost:4200/oauth/callback#")
     fragment = parse_qs(urlparse(response.headers["Location"]).fragment)
     assert fragment["onboardingRequired"] == ["true"]
     assert fragment["returnUrl"] == ["/dashboard"]
