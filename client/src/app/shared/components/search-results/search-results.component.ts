@@ -314,6 +314,10 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
             </mat-card-header>
 
             <mat-card-content>
+              <span class="result-type-chip">
+                <mat-icon>{{ getResultIcon(result) }}</mat-icon>
+                <span>{{ getResultTypeLabel(result) }}</span>
+              </span>
               <div class="entry-image-placeholder">
                 <mat-icon>{{ getResultPlaceholderIcon(result) }}</mat-icon>
               </div>
@@ -796,7 +800,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       .results-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(18.75rem, 100%), 21.875rem));
+        grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 21rem));
         justify-content: center;
         gap: var(--spacing-md);
         padding: var(--spacing-md) 0;
@@ -886,19 +890,6 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         height: 20px;
       }
 
-      .entry-card {
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        transform: translateZ(0);
-        width: 100%;
-        min-width: 300px;
-        max-width: 350px;
-        border: 1px solid var(--colour-border);
-        border-radius: var(--radius-lg);
-        background: var(--colour-surface-elevated);
-        overflow: hidden;
-      }
-
       /* When expanded, make the expanded card appear below and span wider */
       .expanded-details-card {
         background-color: var(--colour-surface-elevated);
@@ -935,12 +926,15 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateZ(0);
         width: 100%;
-        min-width: 300px;
-        max-width: 350px;
-        /* Force consistent height for search result cards too */
-        height: 420px;
+        min-width: 18rem;
+        max-width: 21rem;
+        min-height: 22rem;
         display: flex;
         flex-direction: column;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        overflow: hidden;
       }
 
       .entry-card .mat-mdc-card-header {
@@ -991,7 +985,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 0.8rem;
+        gap: var(--spacing-xs);
         overflow: hidden; /* Prevent content overflow */
       }
 
@@ -1001,7 +995,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .entry-image-placeholder {
-        height: 132px;
+        height: 7.5rem;
         background: linear-gradient(
           180deg,
           var(--colour-surface-muted) 0%,
@@ -1020,6 +1014,28 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           height: 48px;
           color: var(--colour-text-secondary);
         }
+      }
+      .result-type-chip {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 2rem;
+        padding: 0.2rem 0.65rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .result-type-chip mat-icon {
+        width: 1rem;
+        height: 1rem;
+        font-size: 1rem;
+        color: var(--colour-primary);
       }
       .match-snippets {
         display: flex;
@@ -1044,17 +1060,23 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         -webkit-box-orient: vertical;
         word-break: break-word; /* Handle long words */
 
-        ::ng-deep mark {
-          background: none;
-          color: var(--colour-danger-text);
-          font-weight: 500;
+        ::ng-deep mark,
+        ::ng-deep .search-match {
+          padding: 0.05rem 0.18rem;
+          border-radius: var(--radius-sm);
+          background: color-mix(in srgb, var(--colour-primary) 20%, transparent);
+          color: var(--colour-text-primary);
+          font-weight: 800;
         }
       }
 
       /* Server may wrap matches in <span class="match">..</span> or <mark>..</mark> */
       ::ng-deep .match {
-        color: var(--colour-danger-text);
-        font-weight: 500;
+        padding: 0.05rem 0.18rem;
+        border-radius: var(--radius-sm);
+        background: color-mix(in srgb, var(--colour-primary) 20%, transparent);
+        color: var(--colour-text-primary);
+        font-weight: 800;
       }
 
       .expanded-header {
@@ -1449,6 +1471,9 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     }
     if (result.matches.people) {
       return this.truncateSnippet(result.matches.people);
+    }
+    if (result.matches.ai) {
+      return this.truncateSnippet(result.matches.ai);
     }
 
     // Fallback to a simple message if no matches found

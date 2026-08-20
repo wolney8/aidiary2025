@@ -128,7 +128,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           [disabled]="isDownloading"
         >
           <mat-icon>download</mat-icon>
-          {{ isDownloading ? "Preparing export..." : "Download Export" }}
+          <span>{{ isDownloading ? "Preparing export..." : "Download selected data" }}</span>
         </button>
         <button
           mat-stroked-button
@@ -137,7 +137,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           [disabled]="isDownloading"
         >
           <mat-icon>inventory_2</mat-icon>
-          Export all data
+          <span>Export all data</span>
         </button>
       </mat-card-actions>
     </mat-card>
@@ -385,8 +385,8 @@ export class ExportComponent implements OnInit {
   toDate = "";
   includeDaily = true;
   includeDreams = true;
-  includeImportantDays = false;
-  includeThoughtRecords = false;
+  includeImportantDays = true;
+  includeThoughtRecords = true;
   readiness: BulkDeleteReadiness | null = null;
   bulkDeleteConfirmation = "";
   private bulkDeleteGuardToken = "";
@@ -477,19 +477,10 @@ export class ExportComponent implements OnInit {
       return;
     }
 
-    this.fromDate = this.readiness.first_entry_date ?? "";
-    this.toDate = this.readiness.last_entry_date ?? "";
-    this.includeDaily = true;
-    this.includeDreams = true;
     this.isDownloading = true;
 
     this.importService
-      .downloadExport({
-        fromDate: this.fromDate,
-        toDate: this.toDate,
-        includeDaily: true,
-        includeDreams: true,
-      })
+      .downloadExport({ exportAll: true })
       .subscribe({
         next: (result) => {
           this.handleDownloadSuccess(result.blob, result.filename);

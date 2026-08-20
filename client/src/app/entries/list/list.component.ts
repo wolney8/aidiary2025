@@ -3124,28 +3124,66 @@ export class ListComponent implements OnInit, OnDestroy {
     const year = targetDate.getFullYear();
     const formattedDate = `${day}/${month}/${year}`;
 
+    const selectedWorkflow = this.getPreferredCreateWorkflow();
+
+    if (selectedWorkflow === "thought-record") {
+      void this.router.navigate(["/cbt"], {
+        queryParams: {
+          create: "true",
+          date: `${year}-${month}-${day}`,
+          returnTo: "calendar",
+          month: targetDate.getMonth() + 1,
+          year: targetDate.getFullYear(),
+          show: this.getSerialisedContentFilters(),
+        },
+      });
+      return;
+    }
+
     // Navigate to create entry with pre-populated date and type
     const queryParams: any = {
       date: formattedDate,
       display: this.displayMode,
       month: targetDate.getMonth() + 1,
       year: targetDate.getFullYear(),
+      type: selectedWorkflow,
+      show: this.getSerialisedContentFilters(),
     };
-
-    // Prefer the only selected entry type; otherwise use the Daily default.
-    if (
-      this.isContentFilterActive("dreams") &&
-      !this.isContentFilterActive("daily")
-    ) {
-      queryParams.type = "dream";
-    } else {
-      queryParams.type = "daily";
-    }
-    queryParams.show = this.getSerialisedContentFilters();
 
     this.router.navigate(["/entries/create"], {
       queryParams,
     });
+  }
+
+  private getPreferredCreateWorkflow():
+    | "daily"
+    | "dream"
+    | "important-day"
+    | "thought-record" {
+    const activeWorkflows = [
+      this.isContentFilterActive("daily") ? "daily" : null,
+      this.isContentFilterActive("dreams") ? "dream" : null,
+      this.isContentFilterActive("important-days") ? "important-day" : null,
+      this.isContentFilterActive("thought-records") ? "thought-record" : null,
+    ].filter(
+      (
+        workflow,
+      ): workflow is "daily" | "dream" | "important-day" | "thought-record" =>
+        workflow !== null,
+    );
+
+    if (activeWorkflows.length === 1) {
+      return activeWorkflows[0];
+    }
+
+    if (
+      this.isContentFilterActive("dreams") &&
+      !this.isContentFilterActive("daily")
+    ) {
+      return "dream";
+    }
+
+    return "daily";
   }
 
   resetToCurrentMonth(): void {

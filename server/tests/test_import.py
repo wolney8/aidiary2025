@@ -2211,7 +2211,7 @@ class TestExportDownload:
         }
         assert dream['tags'].split(',')[:2] == ['dream', 'flight']
 
-    def test_export_records_guard_token_for_full_range_export(self, client):
+    def test_export_records_no_guard_token_for_manual_date_range_export(self, client):
         token = _register_and_login(client)
         db_path = os.environ['DB_PATH']
         self._seed_export_rows(db_path)
@@ -2223,8 +2223,8 @@ class TestExportDownload:
 
         assert resp.status_code == 200
         guard_token = resp.headers.get('X-OpenMynd-Export-Token')
-        assert guard_token
-        assert resp.headers.get('X-AiDiary-Export-Token') == guard_token
+        assert guard_token is None
+        assert resp.headers.get('X-AiDiary-Export-Token') is None
 
         conn = sqlite3.connect(db_path)
         row = conn.execute(
@@ -2243,7 +2243,7 @@ class TestExportDownload:
         assert row[1] == '2026-01-21'
         assert row[2] == 1
         assert row[3] == 1
-        assert row[4] == 1
+        assert row[4] == 0
         assert row[5] == 2
         assert row[6] == 2
         assert row[7] == guard_token
@@ -2485,6 +2485,7 @@ class TestExportDownload:
         )
 
         assert resp.status_code == 200
+        assert resp.headers.get('X-OpenMynd-Export-Token')
         workbook, manifest, _ = _load_export_package(resp.data)
         assert workbook['Important Days'].cell(1, 1).value == IMPORTANT_DAY_IMPORT_HEADERS[0]
         assert workbook['Important Days'].cell(2, 2).value == 'Mum letter'

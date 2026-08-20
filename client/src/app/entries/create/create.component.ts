@@ -1898,11 +1898,19 @@ export class CreateComponent implements OnInit, OnDestroy {
       if (
         typeParam === "dream" ||
         typeParam === "daily" ||
+        typeParam === "important_day" ||
         typeParam === "important-day" ||
+        typeParam === "thought_record" ||
         typeParam === "thought-record"
       ) {
-        this.selectedType = typeParam;
-        this.previousSelectedType = typeParam;
+        const normalisedType =
+          typeParam === "important_day"
+            ? "important-day"
+            : typeParam === "thought_record"
+              ? "thought-record"
+              : typeParam;
+        this.selectedType = normalisedType;
+        this.previousSelectedType = normalisedType;
       }
 
       if (params.get("source") === "chat" && !this.isEditing) {

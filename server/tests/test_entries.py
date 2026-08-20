@@ -503,10 +503,10 @@ def test_search_multi_word_queries_require_each_exact_token(client):
     assert [result['title'] for result in body['results']] == ['Car day', 'Day with the car']
     title_match = body['results'][0]['matches']['title'].lower()
     body_match = body['results'][0]['matches']['body'].lower()
-    assert 'car</span>' in title_match
-    assert 'day</span>' in title_match
-    assert 'car</span>' in body_match
-    assert 'day</span>' in body_match
+    assert 'car</mark>' in title_match
+    assert 'day</mark>' in title_match
+    assert 'car</mark>' in body_match
+    assert 'day</mark>' in body_match
 
 
 def test_search_quoted_phrase_requires_exact_phrase(client):
@@ -540,7 +540,7 @@ def test_search_quoted_phrase_requires_exact_phrase(client):
     assert response.status_code == 200
     body = json.loads(response.data)
     assert [result['title'] for result in body['results']] == ['Car day']
-    assert 'car day</span>' in body['results'][0]['matches']['body'].lower()
+    assert 'car day</mark>' in body['results'][0]['matches']['body'].lower()
 
 
 def test_search_comma_queries_match_any_exact_token_and_rank_both_first(client):
@@ -637,8 +637,8 @@ def test_search_includes_thought_records(client):
     result = body['results'][0]
     assert result['type'] == 'thought_record'
     assert result['title'] == 'Crowded train worry'
-    assert 'grounding</span>' in result['matches']['body'].lower()
-    assert 'journey</span>' in result['matches']['body'].lower()
+    assert 'grounding</mark>' in result['matches']['body'].lower()
+    assert 'journey</mark>' in result['matches']['body'].lower()
 
 
 def test_search_includes_important_days(client):
@@ -677,8 +677,8 @@ def test_search_includes_important_days(client):
     result = body['results'][0]
     assert result['type'] == 'important_day'
     assert result['title'] == 'Mum letter'
-    assert 'letter</span>' in result['matches']['title'].lower()
-    assert 'writing</span>' in result['matches']['body'].lower()
+    assert 'letter</mark>' in result['matches']['title'].lower()
+    assert 'writing</mark>' in result['matches']['body'].lower()
 
 
 def test_search_caps_large_result_sets(client):

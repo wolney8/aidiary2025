@@ -1327,9 +1327,9 @@ def _render_highlighted_search_excerpt(excerpt: str, query_terms: list[dict]) ->
     for start, end in matches:
         parts.append(escape(excerpt[cursor:start]))
         parts.append(
-            '<span style="color: red; font-weight: bold;">'
+            '<mark class="search-match">'
             f'{escape(excerpt[start:end])}'
-            '</span>'
+            '</mark>'
         )
         cursor = end
     parts.append(escape(excerpt[cursor:]))
