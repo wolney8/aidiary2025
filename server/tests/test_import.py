@@ -186,6 +186,12 @@ def test_preview_import_supports_postgres_dict_rows_for_existing_entries():
     assert preview["ready_dream_rows"] == []
 
 
+def test_row_value_supports_postgres_dict_rows_for_aggregate_queries():
+    from services.import_service import _row_value
+
+    assert _row_value({'max_entry_number': 4}, 0, 'max_entry_number') == 4
+
+
 @pytest.fixture
 def client():
     """Flask test client with isolated in-memory database."""

@@ -984,10 +984,11 @@ def insert_entries(
 
         # Determine next entry_number for this date
         max_num = cursor.execute(
-            'SELECT MAX(entry_number) FROM dailydiary_entries '
+            'SELECT MAX(entry_number) AS max_entry_number FROM dailydiary_entries '
             'WHERE user_id = ? AND entry_date = ?',
             (user_id, entry_date),
-        ).fetchone()[0] or 0
+        ).fetchone()
+        max_num = _row_value(max_num, 0, 'max_entry_number') or 0
 
         cursor.execute(
             '''INSERT INTO dailydiary_entries
@@ -1052,10 +1053,11 @@ def insert_entries(
             continue
 
         max_num = cursor.execute(
-            'SELECT MAX(entry_number) FROM dreamdiary_entries '
+            'SELECT MAX(entry_number) AS max_entry_number FROM dreamdiary_entries '
             'WHERE user_id = ? AND entry_date = ?',
             (user_id, entry_date),
-        ).fetchone()[0] or 0
+        ).fetchone()
+        max_num = _row_value(max_num, 0, 'max_entry_number') or 0
 
         cursor.execute(
             '''INSERT INTO dreamdiary_entries
@@ -1500,9 +1502,10 @@ def _insert_daily_import_row(
     )
     ai_response = _sanitise(row.get('ai_response', ''))
     max_num = cursor.execute(
-        'SELECT MAX(entry_number) FROM dailydiary_entries WHERE user_id = ? AND entry_date = ?',
+        'SELECT MAX(entry_number) AS max_entry_number FROM dailydiary_entries WHERE user_id = ? AND entry_date = ?',
         (user_id, entry_date),
-    ).fetchone()[0] or 0
+    ).fetchone()
+    max_num = _row_value(max_num, 0, 'max_entry_number') or 0
 
     tags = _merge_tags(
         row.get('tags', '') or '',
@@ -1561,9 +1564,10 @@ def _insert_dream_import_row(
 ) -> None:
     entry_date = row['entry_date']
     max_num = cursor.execute(
-        'SELECT MAX(entry_number) FROM dreamdiary_entries WHERE user_id = ? AND entry_date = ?',
+        'SELECT MAX(entry_number) AS max_entry_number FROM dreamdiary_entries WHERE user_id = ? AND entry_date = ?',
         (user_id, entry_date),
-    ).fetchone()[0] or 0
+    ).fetchone()
+    max_num = _row_value(max_num, 0, 'max_entry_number') or 0
     tags = _merge_tags(row.get('tags', '') or '', _DUPLICATE_TAG if mark_duplicate else '')
 
     cursor.execute(
