@@ -86,7 +86,8 @@ always-on API service or a separate worker:
 
 - authenticated file uploads and generated images
 - media reads through `/media/...`
-- import jobs and background progress notifications
+- imports that exceed the Vercel request window (reviewed imports currently run
+  synchronously in the request because Vercel cannot retain a background worker)
 - OCR/PDF processing
 - database backup/restore evidence checks
 - rate-limiting storage outside process memory
@@ -95,8 +96,8 @@ Before making Vercel Functions the primary production API, prove:
 
 - media works through R2
 - explicit migrations run cleanly before deploy
-- long-running import/OCR work behaves within serverless limits or moves to a durable
-  worker path
+- reviewed imports behave within the Vercel request window; move genuinely long-running
+  import/OCR work to a durable worker before public use
 - backup evidence comes from Neon/R2/export evidence, not Vercel filesystem state
 - rate limiting uses a shared provider before public launch
 
@@ -239,7 +240,8 @@ After frontend and backend are deployed:
 5. Create Daily, Dream, Thought Record, and Important Day records.
 6. Upload an attachment and confirm it survives backend restart.
 7. Generate an AI response.
-8. Run import preview with a small file.
+8. Run import preview and reviewed import. The current private deployment has completed
+   a 2.1 MB, 1,173-entry import; retain a bounded-file smoke when changing this path.
 9. Export all data.
 10. Open Admin -> Operations and confirm readiness cards reflect the hosted config.
 

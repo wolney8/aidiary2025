@@ -2,9 +2,9 @@
 
 ## Confirmed from current repository
 
-- Existing documentation drift exists:
-  - `docs/ARCHITECTURE.md` references files such as `db/models.py` that are not present in the current runtime tree.
-  - `.github/copilot-instructions.md` describes a different stack from the actual repository.
+- Existing documentation drift exists in legacy material under `.github/agents/` and
+  older research/plan documents; `AGENTS.md`, current source, and current configuration
+  are authoritative.
 - `server/.venv` is not a safe default local runtime path on this machine. `server/venv` is the working local backend environment.
 - The frontend dependency tree currently reports npm audit findings. Dependency upgrades
   need a controlled compatibility pass rather than `npm audit fix --force`.
@@ -12,7 +12,9 @@
 ## Architectural risks
 
 - Backend schema handling is partly runtime-driven rather than managed by a formal migration tool.
-- The repository currently contains generated and runtime artefacts in the working tree, including local caches and database files.
+- Ignored generated caches and test output can appear locally but are covered by
+  `.gitignore`. Local databases, media, and environment files are intentionally ignored
+  and must be preserved during cleanup.
 - Startup side effects include NLTK downloads and database metadata backfill.
 - Frontend API configuration is environment-based, but deployment-specific production
   configuration still needs verification before hosting.
@@ -69,5 +71,5 @@ Current public-launch audit:
 
 ## To confirm
 
-- Whether `server/test_enrichment.py` is intended to remain outside `server/tests/`.
-- Whether `server/app.db` and `server/db/app.db` are both still needed locally.
+- The tracked historical `server/db/app.db.backup_20250923_140735` may contain user
+  data. It is not a runtime dependency and should only be removed after owner review.

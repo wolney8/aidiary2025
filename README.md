@@ -106,7 +106,8 @@ cd client && npm test
 ## Architecture
 
 - **Frontend:** Angular 17 with standalone components, Material Design, SCSS
-- **Backend:** Flask with JWT authentication, SQLAlchemy, OpenAI integration
+- **Backend:** Flask with JWT authentication, parameterised SQLite/Postgres-compatible
+  data access, and OpenAI integration
 - **Database:** SQLite for local development; provider-portable Postgres support for
   the Neon-backed hosted rehearsal (see `docs/ARCHITECTURE.md` and
   `docs/operations/vercel-neon-deployment-readiness.md`).
