@@ -5,9 +5,9 @@ Updated: 23 August 2026
 ## Current working state
 
 OpenMynd is paused after the search/import-export/account-media/calendar polish batch.
-The active branch is `feat/search-import-export-polish`; its final merge commit is the
-state to resume from. The private hosted route is a root-level Vercel project using the
-Flask function in `api/index.py`, Angular client, Neon Postgres, and R2 media storage.
+The paused state is on `main`; inspect the latest commit rather than assuming a stale
+branch name. The private hosted route is a root-level Vercel project using the Flask
+function in `api/index.py`, Angular client, Neon Postgres, and R2 media storage.
 
 ## Completed in the final batch
 
