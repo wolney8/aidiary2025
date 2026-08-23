@@ -886,6 +886,42 @@ class TestSuccessfulImport:
         assert job['status'] == 'completed'
         assert job['result']['summary']['inserted_daily'] == 1
 
+    def test_vercel_status_poll_marks_stale_job_failed_without_relaunching(self, client, monkeypatch):
+        monkeypatch.setenv('VERCEL', '1')
+        token = _register_and_login(client)
+        job_id = 'stale-vercel-import-job'
+        stale_time = '2026-07-20T12:00:00Z'
+        conn = sqlite3.connect(os.environ['DB_PATH'])
+        conn.execute(
+            '''INSERT INTO import_jobs
+               (id, user_id, import_session_id, status, processed, total, percent,
+                message, request_json, created_at, updated_at, worker_token,
+                lease_expires_at)
+               VALUES (?, 1, ?, 'running', 0, 1173, 0, ?, ?, ?, ?, ?, ?)''',
+            (
+                job_id,
+                'stale-session',
+                'Import queued…',
+                '{}',
+                stale_time,
+                stale_time,
+                'abandoned-worker',
+                '2026-07-20T12:30:00Z',
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        response = client.get(
+            f'/api/import/jobs/{job_id}',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+
+        assert response.status_code == 200
+        job = json.loads(response.data)
+        assert job['status'] == 'failed'
+        assert job['error'] == 'The import did not finish within the serverless request window. Start it again.'
+
     def test_daylio_csv_rejects_missing_date_header(self, client):
         token = _register_and_login(client)
         resp = _upload(

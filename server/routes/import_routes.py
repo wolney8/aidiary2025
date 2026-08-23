@@ -50,6 +50,7 @@ import_bp = Blueprint('import', __name__)
 _IMPORT_JOB_PROGRESS: dict[str, dict] = {}
 _ACTIVE_IMPORT_JOB_THREADS: set[str] = set()
 _IMPORT_JOBS_LOCK = threading.Lock()
+_VERCEL_IMPORT_STALE_AFTER = timedelta(seconds=90)
 
 
 def _runs_on_vercel() -> bool:
@@ -165,6 +166,45 @@ def _build_commit_response(
         'import_id': import_id,
         'import_session_id': None,
     }
+
+
+def _fail_stale_vercel_import_job(job_id: str, user_id: int) -> bool:
+    """End an abandoned Vercel job instead of restarting it from status polling."""
+    if not _runs_on_vercel():
+        return False
+
+    stale_before = (
+        datetime.now(timezone.utc) - _VERCEL_IMPORT_STALE_AFTER
+    ).strftime('%Y-%m-%dT%H:%M:%SZ')
+    conn = get_db()
+    try:
+        updated = conn.execute(
+            '''UPDATE import_jobs
+               SET status = 'failed',
+                   message = ?,
+                   error = ?,
+                   worker_token = NULL,
+                   lease_expires_at = NULL,
+                   completed_at = ?,
+                   updated_at = ?
+               WHERE id = ?
+                 AND user_id = ?
+                 AND status IN ('queued', 'running')
+                 AND updated_at < ?''',
+            (
+                'Import stopped because the Vercel request did not complete.',
+                'The import did not finish within the serverless request window. Start it again.',
+                datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                job_id,
+                user_id,
+                stale_before,
+            ),
+        )
+        conn.commit()
+        return updated.rowcount == 1
+    finally:
+        conn.close()
 
 
 def _import_inserted_total(result: dict) -> int:
@@ -1071,7 +1111,11 @@ def get_import_job_status(job_id: str):
     if not job:
         return jsonify({'status': 'error', 'errors': ['Import job not found.']}), 404
     if job['status'] in {'queued', 'running'}:
-        _launch_import_job(current_app._get_current_object(), job_id)
+        if _runs_on_vercel():
+            _fail_stale_vercel_import_job(job_id, user_id)
+            job = _get_import_job(job_id, user_id)
+        else:
+            _launch_import_job(current_app._get_current_object(), job_id)
     return jsonify(job), 200
 
 
