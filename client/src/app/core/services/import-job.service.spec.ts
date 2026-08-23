@@ -1,10 +1,11 @@
-import { TestBed } from "@angular/core/testing";
-import { Subscription, of } from "rxjs";
+import { TestBed, fakeAsync, tick } from "@angular/core/testing";
+import { Subscription, of, throwError } from "rxjs";
 import { AppNotification, ImportJobService } from "./import-job.service";
 import { ImportJobStatus, ImportService } from "./import.service";
 
 interface ImportJobServiceInternals {
   publishJob(job: ImportJobStatus): void;
+  startPolling(jobId: string): void;
 }
 
 describe("ImportJobService writing reminders", () => {
@@ -121,4 +122,33 @@ describe("ImportJobService writing reminders", () => {
     expect(notifications.length).toBe(1);
     expect(notifications[0].kind).toBe("import");
   });
+
+  it("stops polling and clears the stored job after repeated server failures", fakeAsync(() => {
+    importService.getImportJob.and.returnValue(
+      throwError(() => ({ status: 500 })),
+    );
+    localStorage.setItem("openmynd_active_import_job", "stalled-import");
+    internals.publishJob({
+      id: "stalled-import",
+      status: "running",
+      processed: 0,
+      total: 1173,
+      percent: 0,
+      message: "Import queued…",
+      created_at: "2026-08-23T11:00:00Z",
+      updated_at: "2026-08-23T11:00:00Z",
+    });
+
+    internals.startPolling("stalled-import");
+    tick(1500);
+
+    expect(localStorage.getItem("openmynd_active_import_job")).toBeNull();
+    expect(notifications[0]).toEqual(
+      jasmine.objectContaining({
+        id: "stalled-import",
+        status: "failed",
+        title: "Import failed",
+      }),
+    );
+  }));
 });

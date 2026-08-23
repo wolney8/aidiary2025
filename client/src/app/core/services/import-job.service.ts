@@ -167,17 +167,19 @@ export class ImportJobService {
                   error: "The server session ended before completion could be confirmed.",
                 });
               }
-              if (current && this.consecutivePollErrors >= 3) {
-                this.publishJob({
-                  ...current,
-                  is_delayed: true,
-                  message: "Progress is temporarily unavailable. The import may still be running.",
-                });
-              } else if (!current && this.consecutivePollErrors >= 3) {
+              if (this.consecutivePollErrors >= 3) {
+                if (current) {
+                  return of({
+                    ...current,
+                    status: "failed" as const,
+                    message: "Import progress stopped after repeated server errors.",
+                    error: "The import was not confirmed. Start the import again after checking the server.",
+                  });
+                }
                 const now = new Date().toISOString();
-                this.publishJob({
+                return of({
                   id: jobId,
-                  status: "failed",
+                  status: "failed" as const,
                   processed: 0,
                   total: 0,
                   percent: 0,
@@ -199,6 +201,7 @@ export class ImportJobService {
         if (job.status === "completed" || job.status === "failed") {
           this.pollSubscription?.unsubscribe();
           this.pollSubscription = null;
+          this.clearPersistedActiveJob();
         }
       });
   }
@@ -314,8 +317,12 @@ export class ImportJobService {
   private clearCurrentJob(): void {
     this.pollSubscription?.unsubscribe();
     this.pollSubscription = null;
+    this.clearPersistedActiveJob();
+    this.jobSubject.next(null);
+  }
+
+  private clearPersistedActiveJob(): void {
     localStorage.removeItem(ACTIVE_IMPORT_JOB_KEY);
     localStorage.removeItem(LEGACY_ACTIVE_IMPORT_JOB_KEY);
-    this.jobSubject.next(null);
   }
 }
