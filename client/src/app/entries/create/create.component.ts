@@ -30,6 +30,8 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatSelectModule } from "@angular/material/select";
 import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { MatStepperModule } from "@angular/material/stepper";
+import { MatTooltipModule } from "@angular/material/tooltip";
 import { COMMA, ENTER } from "@angular/cdk/keycodes";
 import { MatButtonToggleChange } from "@angular/material/button-toggle";
 import { AppDialogService } from "../../core/services/app-dialog.service";
@@ -120,6 +122,8 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
     MatSelectModule,
     MatCheckboxModule,
     MatProgressSpinnerModule,
+    MatStepperModule,
+    MatTooltipModule,
     BackToTopComponent,
   ],
   providers: [
@@ -165,7 +169,10 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
             </ng-container>
           </div>
 
-          <h1 mat-card-title>{{ getWorkflowHeading() }}</h1>
+          <div class="create-header-copy">
+            <p class="create-eyebrow">Create</p>
+            <h1 mat-card-title>Create entry</h1>
+          </div>
         </mat-card-header>
 
         <mat-card-content>
@@ -277,16 +284,32 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
             </mat-hint>
           </mat-form-field>
 
-          <!-- Mood Selection -->
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>How are you feeling?</mat-label>
-            <mat-select [(ngModel)]="selectedMood" name="mood">
-              <mat-option value="">Not specified</mat-option>
-              <mat-option *ngFor="let mood of moodOptions" [value]="mood.value">
-                {{ mood.emoji }} {{ mood.label }}
-              </mat-option>
-            </mat-select>
-          </mat-form-field>
+          <section class="selection-chip-section">
+            <div class="selection-chip-header">
+              <h3>How are you feeling?</h3>
+            </div>
+            <div class="selection-chip-list" data-testid="create-mood-chips">
+              <button
+                type="button"
+                class="selection-chip"
+                [class.is-selected]="selectedMood === ''"
+                (click)="selectMood('')"
+              >
+                <span>Skip</span>
+              </button>
+              <button
+                *ngFor="let mood of moodOptions"
+                type="button"
+                class="selection-chip"
+                [class.is-selected]="selectedMood === mood.value"
+                (click)="selectMood(mood.value)"
+                [attr.data-testid]="'create-mood-chip-' + mood.value"
+              >
+                <span aria-hidden="true">{{ mood.emoji }}</span>
+                <span>{{ mood.label }}</span>
+              </button>
+            </div>
+          </section>
 
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Title</mat-label>
@@ -335,44 +358,23 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               </mat-form-field>
             </div>
 
-            <div class="dream-row">
-              <mat-form-field appearance="outline" class="half-width">
-                <mat-label>Time Period</mat-label>
-                <mat-select [(ngModel)]="dreamPeriod" name="dreamPeriod">
-                  <mat-option value="">Type custom period below...</mat-option>
-                  <mat-option
-                    *ngFor="let period of dreamFieldOptions.periods"
-                    [value]="period"
-                  >
-                    {{ period }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" class="half-width">
-                <mat-label>Primary Emotion</mat-label>
-                <mat-select [(ngModel)]="dreamEmotion" name="dreamEmotion">
-                  <mat-option value="">Type custom emotion below...</mat-option>
-                  <mat-option
-                    *ngFor="let emotion of dreamFieldOptions.emotions"
-                    [value]="emotion"
-                  >
-                    {{ emotion }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-            </div>
-
-            <div
-              class="dream-row"
-              *ngIf="dreamPeriod === '' || dreamEmotion === ''"
-            >
-              <mat-form-field
-                appearance="outline"
-                class="half-width"
-                *ngIf="dreamPeriod === ''"
-              >
-                <mat-label>Custom Time Period</mat-label>
+            <section class="selection-chip-section">
+              <div class="selection-chip-header">
+                <h4>Time period</h4>
+              </div>
+              <div class="selection-chip-list" data-testid="dream-period-chips">
+                <button
+                  *ngFor="let period of dreamFieldOptions.periods"
+                  type="button"
+                  class="selection-chip"
+                  [class.is-selected]="dreamPeriod === period"
+                  (click)="selectDreamPeriod(period)"
+                >
+                  <span>{{ period }}</span>
+                </button>
+              </div>
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Custom time period</mat-label>
                 <input
                   matInput
                   [(ngModel)]="dreamPeriod"
@@ -380,13 +382,25 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                   placeholder="Describe the time period"
                 />
               </mat-form-field>
+            </section>
 
-              <mat-form-field
-                appearance="outline"
-                class="half-width"
-                *ngIf="dreamEmotion === ''"
-              >
-                <mat-label>Custom Emotion</mat-label>
+            <section class="selection-chip-section">
+              <div class="selection-chip-header">
+                <h4>Primary emotion</h4>
+              </div>
+              <div class="selection-chip-list" data-testid="dream-emotion-chips">
+                <button
+                  *ngFor="let emotion of dreamFieldOptions.emotions"
+                  type="button"
+                  class="selection-chip"
+                  [class.is-selected]="dreamEmotion === emotion"
+                  (click)="selectDreamEmotion(emotion)"
+                >
+                  <span>{{ emotion }}</span>
+                </button>
+              </div>
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Custom emotion</mat-label>
                 <input
                   matInput
                   [(ngModel)]="dreamEmotion"
@@ -394,7 +408,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
                   placeholder="Describe the emotion"
                 />
               </mat-form-field>
-            </div>
+            </section>
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Symbols & Imagery</mat-label>
@@ -866,41 +880,82 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               <mat-datepicker-toggle matIconSuffix [for]="importantDayPicker"></mat-datepicker-toggle>
               <mat-datepicker #importantDayPicker></mat-datepicker>
             </mat-form-field>
-            <div class="embedded-workflow-grid">
-              <mat-form-field appearance="outline">
-                <mat-label>Recurrence</mat-label>
-                <mat-select [(ngModel)]="importantDayRecurrence" name="importantDayRecurrence">
-                  <mat-option value="yearly">Every year</mat-option>
-                  <mat-option value="once">Once</mat-option>
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Category</mat-label>
-                <mat-select [(ngModel)]="importantDayCategory" name="importantDayCategory">
-                  <mat-option value="birthday">Birthday</mat-option>
-                  <mat-option value="anniversary">Anniversary</mat-option>
-                  <mat-option value="milestone">Milestone</mat-option>
-                  <mat-option value="other">Other</mat-option>
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Icon</mat-label>
-                <mat-select [(ngModel)]="importantDayIcon" name="importantDayIcon">
-                  <mat-option *ngFor="let option of importantDayIconOptions" [value]="option.value">
-                    <mat-icon aria-hidden="true">{{ option.value }}</mat-icon>
-                    {{ option.label }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Colour</mat-label>
-                <mat-select [(ngModel)]="importantDayAccent" name="importantDayAccent">
-                  <mat-option *ngFor="let option of importantDayAccentOptions" [value]="option.value">
-                    {{ option.label }}
-                  </mat-option>
-                </mat-select>
-              </mat-form-field>
-            </div>
+            <section class="selection-chip-section">
+              <div class="selection-chip-header">
+                <h4>Recurrence</h4>
+              </div>
+              <div class="selection-chip-list" data-testid="important-day-recurrence-chips">
+                <button
+                  type="button"
+                  class="selection-chip"
+                  [class.is-selected]="importantDayRecurrence === 'yearly'"
+                  (click)="importantDayRecurrence = 'yearly'"
+                >
+                  <span>Every year</span>
+                </button>
+                <button
+                  type="button"
+                  class="selection-chip"
+                  [class.is-selected]="importantDayRecurrence === 'once'"
+                  (click)="importantDayRecurrence = 'once'"
+                >
+                  <span>Once</span>
+                </button>
+              </div>
+            </section>
+            <section class="selection-chip-section">
+              <div class="selection-chip-header">
+                <h4>Category</h4>
+              </div>
+              <div class="selection-chip-list" data-testid="important-day-category-chips">
+                <button
+                  *ngFor="let option of importantDayCategoryOptions"
+                  type="button"
+                  class="selection-chip"
+                  [class.is-selected]="importantDayCategory === option.value"
+                  (click)="importantDayCategory = option.value"
+                >
+                  <span>{{ option.label }}</span>
+                </button>
+              </div>
+            </section>
+            <section class="selection-chip-section">
+              <div class="selection-chip-header">
+                <h4>Icon</h4>
+              </div>
+              <div class="important-day-icon-chips" data-testid="important-day-icon-chips">
+                <button
+                  *ngFor="let option of importantDayIconOptions"
+                  type="button"
+                  class="important-day-icon-chip"
+                  [class.is-selected]="importantDayIcon === option.value"
+                  [attr.aria-label]="option.label"
+                  [matTooltip]="option.label"
+                  (click)="importantDayIcon = option.value"
+                >
+                  <mat-icon aria-hidden="true">{{ option.value }}</mat-icon>
+                </button>
+              </div>
+            </section>
+            <section class="selection-chip-section">
+              <div class="selection-chip-header">
+                <h4>Colour</h4>
+              </div>
+              <div class="important-day-accent-chips" data-testid="important-day-accent-chips">
+                <button
+                  *ngFor="let option of importantDayAccentOptions"
+                  type="button"
+                  class="important-day-accent-chip"
+                  [class.is-selected]="importantDayAccent === option.value"
+                  [class]="'accent-' + option.value"
+                  [attr.aria-label]="option.label"
+                  [matTooltip]="option.label"
+                  (click)="importantDayAccent = option.value"
+                >
+                  <span aria-hidden="true"></span>
+                </button>
+              </div>
+            </section>
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Note</mat-label>
               <textarea matInput [(ngModel)]="importantDayNote" name="importantDayNote" rows="4" maxlength="500"></textarea>
@@ -951,65 +1006,136 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
               <mat-icon aria-hidden="true">psychology_alt</mat-icon>
               <div>
                 <h2>Thought record</h2>
-                <p>Start with the situation and a more balanced view.</p>
+                <p>Work through the seven-step reflection without leaving this flow.</p>
               </div>
             </div>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Thought record date</mat-label>
-              <input matInput [matDatepicker]="thoughtRecordPicker" [(ngModel)]="entryDate" name="thoughtRecordDate" [max]="maxDate" />
-              <mat-datepicker-toggle matIconSuffix [for]="thoughtRecordPicker"></mat-datepicker-toggle>
-              <mat-datepicker #thoughtRecordPicker></mat-datepicker>
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Title</mat-label>
-              <input matInput [(ngModel)]="thoughtRecordTitle" name="thoughtRecordTitle" maxlength="100" />
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Situation</mat-label>
-              <textarea matInput [(ngModel)]="thoughtRecordSituation" name="thoughtRecordSituation" rows="5" required></textarea>
-            </mat-form-field>
-            <div class="embedded-workflow-grid">
-              <mat-form-field appearance="outline">
-                <mat-label>Feeling before</mat-label>
-                <input matInput [(ngModel)]="thoughtRecordFeelingBeforeLabel" name="thoughtRecordFeelingBeforeLabel" maxlength="40" />
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Before intensity</mat-label>
-                <input matInput type="number" min="0" max="100" [(ngModel)]="thoughtRecordFeelingBeforeIntensity" name="thoughtRecordFeelingBeforeIntensity" />
-                <span matTextSuffix>%</span>
-              </mat-form-field>
-            </div>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Unhelpful thoughts</mat-label>
-              <textarea matInput [(ngModel)]="thoughtRecordUnhelpfulThoughts" name="thoughtRecordUnhelpfulThoughts" rows="5"></textarea>
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Evidence that supports the thought</mat-label>
-              <textarea matInput [(ngModel)]="thoughtRecordEvidenceFor" name="thoughtRecordEvidenceFor" rows="4"></textarea>
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Evidence against the thought</mat-label>
-              <textarea matInput [(ngModel)]="thoughtRecordEvidenceAgainst" name="thoughtRecordEvidenceAgainst" rows="4"></textarea>
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Balanced thought</mat-label>
-              <textarea matInput [(ngModel)]="thoughtRecordBalancedThought" name="thoughtRecordBalancedThought" rows="5"></textarea>
-            </mat-form-field>
-            <div class="embedded-workflow-grid">
-              <mat-form-field appearance="outline">
-                <mat-label>Feeling after</mat-label>
-                <input matInput [(ngModel)]="thoughtRecordFeelingAfterLabel" name="thoughtRecordFeelingAfterLabel" maxlength="40" />
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>After intensity</mat-label>
-                <input matInput type="number" min="0" max="100" [(ngModel)]="thoughtRecordFeelingAfterIntensity" name="thoughtRecordFeelingAfterIntensity" />
-                <span matTextSuffix>%</span>
-              </mat-form-field>
-            </div>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Helpful next step</mat-label>
-              <textarea matInput [(ngModel)]="thoughtRecordNextStep" name="thoughtRecordNextStep" rows="4"></textarea>
-            </mat-form-field>
+            <span class="embedded-step-pill" data-testid="embedded-thought-record-step-pill">
+              Step {{ thoughtRecordStepIndex + 1 }} of 7
+            </span>
+            <mat-stepper
+              class="embedded-thought-stepper"
+              orientation="vertical"
+              [linear]="false"
+              [selectedIndex]="thoughtRecordStepIndex"
+              (selectionChange)="thoughtRecordStepIndex = $event.selectedIndex"
+            >
+              <mat-step label="The situation">
+                <div class="embedded-step-content">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Thought record date</mat-label>
+                    <input matInput [matDatepicker]="thoughtRecordPicker" [(ngModel)]="entryDate" name="thoughtRecordDate" [max]="maxDate" />
+                    <mat-datepicker-toggle matIconSuffix [for]="thoughtRecordPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #thoughtRecordPicker></mat-datepicker>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Title</mat-label>
+                    <input matInput [(ngModel)]="thoughtRecordTitle" name="thoughtRecordTitle" maxlength="100" />
+                  </mat-form-field>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Situation</mat-label>
+                    <textarea matInput [(ngModel)]="thoughtRecordSituation" name="thoughtRecordSituation" rows="5" required></textarea>
+                  </mat-form-field>
+                  <div class="embedded-step-actions">
+                    <button mat-flat-button color="primary" type="button" (click)="setThoughtRecordStep(1)">Continue</button>
+                  </div>
+                </div>
+              </mat-step>
+
+              <mat-step label="Feelings at the time">
+                <div class="embedded-step-content">
+                  <div class="embedded-workflow-grid">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Feeling before</mat-label>
+                      <input matInput [(ngModel)]="thoughtRecordFeelingBeforeLabel" name="thoughtRecordFeelingBeforeLabel" maxlength="40" />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Before intensity</mat-label>
+                      <input matInput type="number" min="0" max="100" [(ngModel)]="thoughtRecordFeelingBeforeIntensity" name="thoughtRecordFeelingBeforeIntensity" />
+                      <span matTextSuffix>%</span>
+                    </mat-form-field>
+                  </div>
+                  <div class="embedded-step-actions">
+                    <button mat-stroked-button type="button" (click)="setThoughtRecordStep(0)">Back</button>
+                    <button mat-flat-button color="primary" type="button" (click)="setThoughtRecordStep(2)">Continue</button>
+                  </div>
+                </div>
+              </mat-step>
+
+              <mat-step label="Unhelpful thoughts">
+                <div class="embedded-step-content">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Unhelpful thoughts</mat-label>
+                    <textarea matInput [(ngModel)]="thoughtRecordUnhelpfulThoughts" name="thoughtRecordUnhelpfulThoughts" rows="5"></textarea>
+                  </mat-form-field>
+                  <div class="embedded-step-actions">
+                    <button mat-stroked-button type="button" (click)="setThoughtRecordStep(1)">Back</button>
+                    <button mat-flat-button color="primary" type="button" (click)="setThoughtRecordStep(3)">Continue</button>
+                  </div>
+                </div>
+              </mat-step>
+
+              <mat-step label="Evidence for">
+                <div class="embedded-step-content">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Evidence that supports the thought</mat-label>
+                    <textarea matInput [(ngModel)]="thoughtRecordEvidenceFor" name="thoughtRecordEvidenceFor" rows="4"></textarea>
+                  </mat-form-field>
+                  <div class="embedded-step-actions">
+                    <button mat-stroked-button type="button" (click)="setThoughtRecordStep(2)">Back</button>
+                    <button mat-flat-button color="primary" type="button" (click)="setThoughtRecordStep(4)">Continue</button>
+                  </div>
+                </div>
+              </mat-step>
+
+              <mat-step label="Evidence against">
+                <div class="embedded-step-content">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Evidence against the thought</mat-label>
+                    <textarea matInput [(ngModel)]="thoughtRecordEvidenceAgainst" name="thoughtRecordEvidenceAgainst" rows="4"></textarea>
+                  </mat-form-field>
+                  <div class="embedded-step-actions">
+                    <button mat-stroked-button type="button" (click)="setThoughtRecordStep(3)">Back</button>
+                    <button mat-flat-button color="primary" type="button" (click)="setThoughtRecordStep(5)">Continue</button>
+                  </div>
+                </div>
+              </mat-step>
+
+              <mat-step label="Balanced thought">
+                <div class="embedded-step-content">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Balanced thought</mat-label>
+                    <textarea matInput [(ngModel)]="thoughtRecordBalancedThought" name="thoughtRecordBalancedThought" rows="5"></textarea>
+                  </mat-form-field>
+                  <div class="embedded-step-actions">
+                    <button mat-stroked-button type="button" (click)="setThoughtRecordStep(4)">Back</button>
+                    <button mat-flat-button color="primary" type="button" (click)="setThoughtRecordStep(6)">Continue</button>
+                  </div>
+                </div>
+              </mat-step>
+
+              <mat-step label="How you feel now">
+                <div class="embedded-step-content">
+                  <div class="embedded-workflow-grid">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Feeling after</mat-label>
+                      <input matInput [(ngModel)]="thoughtRecordFeelingAfterLabel" name="thoughtRecordFeelingAfterLabel" maxlength="40" />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>After intensity</mat-label>
+                      <input matInput type="number" min="0" max="100" [(ngModel)]="thoughtRecordFeelingAfterIntensity" name="thoughtRecordFeelingAfterIntensity" />
+                      <span matTextSuffix>%</span>
+                    </mat-form-field>
+                  </div>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Helpful next step</mat-label>
+                    <textarea matInput [(ngModel)]="thoughtRecordNextStep" name="thoughtRecordNextStep" rows="4"></textarea>
+                  </mat-form-field>
+                  <div class="embedded-step-actions">
+                    <button mat-stroked-button type="button" (click)="setThoughtRecordStep(5)">Back</button>
+                  </div>
+                </div>
+              </mat-step>
+            </mat-stepper>
           </section>
           </fieldset>
 
@@ -1082,16 +1208,35 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
       .create-container {
         max-width: 800px;
         margin: 0 auto;
+        min-width: 0;
+        width: 100%;
+      }
+
+      .create-container > mat-card {
+        width: 100%;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .create-container > mat-card > mat-card-content {
+        min-width: 0;
       }
 
       .full-width {
+        display: block;
         width: 100%;
+        min-width: 0;
+        max-width: 100%;
         margin-bottom: var(--spacing-sm);
+        box-sizing: border-box;
       }
 
       .half-width {
         width: calc(50% - 8px);
+        min-width: 0;
+        max-width: 100%;
         margin-bottom: var(--spacing-sm);
+        box-sizing: border-box;
       }
 
       .dream-fields {
@@ -1100,6 +1245,8 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-md);
         background-color: var(--colour-surface-muted);
+        min-width: 0;
+        overflow-x: clip;
       }
 
       .embedded-workflow {
@@ -1110,6 +1257,8 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-lg);
         background: var(--colour-surface-muted);
+        min-width: 0;
+        overflow-x: clip;
       }
 
       .embedded-workflow-heading {
@@ -1142,6 +1291,7 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: var(--spacing-sm);
+        min-width: 0;
       }
 
       .dream-fields h3 {
@@ -1155,6 +1305,9 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         padding: 0;
         border: 0;
         min-width: 0;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
       }
 
       .entry-form-shell[disabled] {
@@ -1165,14 +1318,35 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         display: flex;
         gap: var(--spacing-md);
         align-items: flex-start;
+        min-width: 0;
+        flex-wrap: wrap;
       }
 
       .dream-row mat-form-field {
-        flex: 1;
+        flex: 1 1 16rem;
+        min-width: 0;
       }
 
       .entry-type-toggle {
         margin-bottom: var(--spacing-sm);
+        width: fit-content;
+        max-width: 100%;
+        overflow-x: auto;
+        display: flex;
+      }
+
+      .create-header-copy {
+        display: grid;
+        gap: 0.2rem;
+      }
+
+      .create-eyebrow {
+        margin: 0;
+        color: var(--colour-text-secondary);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
       }
 
       .hint {
@@ -1502,6 +1676,8 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         align-items: stretch;
         margin-bottom: var(--spacing-md);
         gap: var(--spacing-sm);
+        width: 100%;
+        min-width: 0;
       }
 
       .create-header-actions {
@@ -1509,6 +1685,8 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
         align-items: center;
         justify-content: space-between;
         gap: var(--spacing-sm);
+        width: 100%;
+        min-width: 0;
       }
 
       mat-card-title {
@@ -1522,6 +1700,316 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
 
       .header-back mat-icon {
         margin-right: var(--spacing-xs);
+      }
+
+      .selection-chip-section {
+        display: grid;
+        gap: 0.7rem;
+        margin-bottom: var(--spacing-md);
+      }
+
+      .selection-chip-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+      }
+
+      .selection-chip-header h3,
+      .selection-chip-header h4 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      .selection-chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        min-width: 0;
+      }
+
+      .selection-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        min-height: 2.75rem;
+        padding: 0.72rem 1rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        color: var(--colour-text-primary);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          border-color 140ms ease,
+          background-color 140ms ease,
+          color 140ms ease,
+          box-shadow 140ms ease,
+          transform 140ms ease;
+      }
+
+      .selection-chip:hover {
+        border-color: var(--colour-primary);
+        transform: translateY(-1px);
+      }
+
+      .selection-chip:focus-visible {
+        outline: 2px solid var(--colour-primary);
+        outline-offset: 2px;
+      }
+
+      .selection-chip.is-selected {
+        border-color: color-mix(in srgb, var(--colour-primary) 78%, white 22%);
+        background: color-mix(
+          in srgb,
+          var(--colour-primary) 18%,
+          var(--colour-surface) 82%
+        );
+        color: var(--colour-text-primary);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--colour-primary) 26%, transparent);
+      }
+
+      .important-day-icon-chips,
+      .important-day-accent-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+      }
+
+      .important-day-icon-chip,
+      .important-day-accent-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface);
+        color: var(--colour-text-primary);
+        cursor: pointer;
+        transition:
+          border-color 140ms ease,
+          background-color 140ms ease,
+          box-shadow 140ms ease,
+          transform 140ms ease;
+      }
+
+      .important-day-icon-chip:hover,
+      .important-day-accent-chip:hover {
+        border-color: var(--colour-primary);
+        transform: translateY(-1px);
+      }
+
+      .important-day-icon-chip:focus-visible,
+      .important-day-accent-chip:focus-visible {
+        outline: 2px solid var(--colour-primary);
+        outline-offset: 2px;
+      }
+
+      .important-day-icon-chip.is-selected,
+      .important-day-accent-chip.is-selected {
+        border-color: color-mix(in srgb, var(--colour-primary) 78%, white 22%);
+        background: color-mix(in srgb, var(--colour-primary) 16%, var(--colour-surface) 84%);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--colour-primary) 26%, transparent);
+      }
+
+      .important-day-icon-chip mat-icon {
+        width: 1.25rem;
+        height: 1.25rem;
+        font-size: 1.25rem;
+      }
+
+      .important-day-accent-chip span {
+        display: block;
+        width: 1.2rem;
+        height: 1.2rem;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0.95;
+      }
+
+      .important-day-accent-chip.accent-amber {
+        color: #f59e0b;
+      }
+
+      .important-day-accent-chip.accent-rose {
+        color: #f43f5e;
+      }
+
+      .important-day-accent-chip.accent-blue {
+        color: #60a5fa;
+      }
+
+      .important-day-accent-chip.accent-violet {
+        color: #a78bfa;
+      }
+
+      .important-day-accent-chip.accent-emerald {
+        color: #34d399;
+      }
+
+      .important-day-accent-chip.accent-slate {
+        color: #94a3b8;
+      }
+
+      .embedded-step-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.25rem;
+        width: fit-content;
+        padding: 0.35rem 0.85rem;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--colour-border);
+        background: var(--colour-surface);
+        color: var(--colour-text-secondary);
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .embedded-thought-stepper {
+        border-radius: var(--radius-lg);
+        background: transparent;
+        min-width: 0;
+      }
+
+      .embedded-thought-stepper ::ng-deep .mat-step-header {
+        border-radius: var(--radius-pill);
+        min-height: 3.25rem;
+      }
+
+      .embedded-thought-stepper
+        ::ng-deep
+        .mat-step-header[aria-selected="true"] {
+        background: color-mix(in srgb, var(--colour-primary) 12%, transparent);
+      }
+
+      .embedded-thought-stepper ::ng-deep .mat-step-text-label {
+        font-weight: 600;
+      }
+
+      .embedded-thought-stepper ::ng-deep .mat-step-icon {
+        background: color-mix(in srgb, var(--colour-primary) 86%, white 14%);
+        color: var(--colour-on-primary);
+      }
+
+      .embedded-thought-stepper
+        ::ng-deep
+        .mat-step-icon-selected,
+      .embedded-thought-stepper
+        ::ng-deep
+        .mat-step-icon-state-edit {
+        background: var(--colour-primary);
+        color: var(--colour-on-primary);
+      }
+
+      .embedded-thought-stepper ::ng-deep .mat-vertical-content-container {
+        margin-left: 1rem;
+        border-left-color: color-mix(
+          in srgb,
+          var(--colour-border) 88%,
+          transparent
+        );
+      }
+
+      .embedded-step-content {
+        display: grid;
+        gap: var(--spacing-sm);
+        padding-top: 0.4rem;
+        min-width: 0;
+      }
+
+      .embedded-step-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--spacing-sm);
+      }
+
+      .create-container ::ng-deep .mat-mdc-form-field {
+        --mdc-outlined-text-field-container-shape: 1.4rem;
+        --mdc-outlined-text-field-input-text-color: var(--colour-text-primary);
+        --mdc-outlined-text-field-label-text-color: var(--colour-text-secondary);
+        --mdc-outlined-text-field-hover-label-text-color: var(--colour-text-primary);
+        --mdc-outlined-text-field-focus-label-text-color: var(--colour-primary);
+        --mdc-outlined-text-field-outline-color: var(--colour-border);
+        --mdc-outlined-text-field-hover-outline-color: var(--colour-text-secondary);
+        --mdc-outlined-text-field-focus-outline-color: var(--colour-primary);
+        --mat-form-field-container-height: 3.5rem;
+        --mat-form-field-container-vertical-padding: 0.95rem;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        display: block;
+      }
+
+      .create-container ::ng-deep .mat-mdc-text-field-wrapper {
+        background: color-mix(in srgb, var(--colour-surface) 82%, transparent) !important;
+        border-radius: 1.4rem;
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .create-container ::ng-deep .mat-mdc-select-trigger,
+      .create-container ::ng-deep input.mat-mdc-input-element,
+      .create-container ::ng-deep textarea.mat-mdc-input-element {
+        font-size: 1rem;
+        box-sizing: border-box;
+        width: 100%;
+        color: var(--colour-text-primary) !important;
+        caret-color: var(--colour-primary);
+        background: transparent !important;
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+      }
+
+      .create-container ::ng-deep .mat-mdc-form-field-flex {
+        min-height: 3.5rem;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .create-container ::ng-deep textarea.mat-mdc-input-element {
+        min-height: 7.5rem;
+        resize: vertical;
+      }
+
+      .create-container ::ng-deep .mat-mdc-floating-label,
+      .create-container ::ng-deep .mdc-floating-label {
+        color: var(--colour-text-secondary) !important;
+      }
+
+      .create-container ::ng-deep .mdc-floating-label--float-above {
+        color: var(--colour-primary) !important;
+      }
+
+      .create-container ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+        padding-inline: 0.4rem;
+      }
+
+      .create-container ::ng-deep .mat-horizontal-content-container,
+      .create-container ::ng-deep .mat-vertical-content-container,
+      .create-container ::ng-deep .mat-stepper-vertical,
+      .create-container ::ng-deep .mat-stepper-horizontal {
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      .create-container ::ng-deep .mdc-text-field,
+      .create-container ::ng-deep .mat-mdc-form-field-flex,
+      .create-container ::ng-deep .mat-mdc-form-field-infix {
+        min-width: 0;
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .create-container ::ng-deep .mat-mdc-form-field-infix {
+        width: 100%;
       }
 
       .important-day-image-control {
@@ -1606,6 +2094,23 @@ const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
 
         .actions {
           flex-direction: column;
+        }
+
+        .selection-chip-list {
+          gap: 0.5rem;
+        }
+
+        .selection-chip {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .embedded-step-actions {
+          flex-direction: column;
+        }
+
+        .embedded-step-actions button {
+          width: 100%;
         }
 
         .embedded-workflow-grid {
@@ -1700,6 +2205,7 @@ export class CreateComponent implements OnInit, OnDestroy {
   thoughtRecordFeelingAfterIntensity = 30;
   thoughtRecordNextStep = "";
   thoughtRecordRespondWithAI = false;
+  thoughtRecordStepIndex = 0;
 
   readonly importantDayIconOptions: Array<{
     value: ImportantDayIcon;
@@ -1714,6 +2220,15 @@ export class CreateComponent implements OnInit, OnDestroy {
     { value: "sentiment_neutral", label: "Neutral" },
     { value: "sentiment_dissatisfied", label: "Difficult" },
     { value: "mood_bad", label: "Sad" },
+  ];
+  readonly importantDayCategoryOptions: Array<{
+    value: ImportantDayCategory;
+    label: string;
+  }> = [
+    { value: "birthday", label: "Birthday" },
+    { value: "anniversary", label: "Anniversary" },
+    { value: "milestone", label: "Milestone" },
+    { value: "other", label: "Other" },
   ];
   readonly importantDayAccentOptions: Array<{
     value: ImportantDayAccentColor;
@@ -1781,19 +2296,24 @@ export class CreateComponent implements OnInit, OnDestroy {
     );
   }
 
-  isDiaryWorkflow(): boolean {
-    return this.selectedType === "daily" || this.selectedType === "dream";
+  selectMood(value: string): void {
+    this.selectedMood = value;
   }
 
-  getWorkflowHeading(): string {
-    const prefix = this.isEditing ? "Edit" : "New";
-    const labels = {
-      daily: "Daily Entry",
-      dream: "Dream Entry",
-      "important-day": "Important Day Entry",
-      "thought-record": "Thought Record Entry",
-    } as const;
-    return `${prefix} ${labels[this.selectedType]}`;
+  selectDreamPeriod(period: string): void {
+    this.dreamPeriod = period;
+  }
+
+  selectDreamEmotion(emotion: string): void {
+    this.dreamEmotion = emotion;
+  }
+
+  setThoughtRecordStep(index: number): void {
+    this.thoughtRecordStepIndex = Math.max(0, Math.min(6, index));
+  }
+
+  isDiaryWorkflow(): boolean {
+    return this.selectedType === "daily" || this.selectedType === "dream";
   }
 
   getEmbeddedSaveLabel(): string {
@@ -1878,18 +2398,27 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.route.queryParamMap.subscribe((params) => {
       const dateParam = params.get("date");
       if (dateParam) {
-        // Parse UK format date DD/MM/YYYY
-        const [day, month, year] = dateParam.split("/");
-        if (day && month && year) {
-          const parsedDate = new Date(
-            parseInt(year),
-            parseInt(month) - 1,
-            parseInt(day),
-          );
-          if (!isNaN(parsedDate.getTime())) {
-            this.entryDate = parsedDate;
-            this.initialDate = this.entryDate.toDateString();
+        let parsedDate: Date | null = null;
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+          parsedDate = this.parseApiDateAsLocal(dateParam);
+        } else {
+          const [day, month, year] = dateParam.split("/");
+          if (day && month && year) {
+            const ukDate = new Date(
+              parseInt(year, 10),
+              parseInt(month, 10) - 1,
+              parseInt(day, 10),
+            );
+            if (!isNaN(ukDate.getTime())) {
+              parsedDate = ukDate;
+            }
           }
+        }
+
+        if (parsedDate && !isNaN(parsedDate.getTime())) {
+          this.entryDate = parsedDate;
+          this.initialDate = this.entryDate.toDateString();
         }
       }
 
@@ -1898,11 +2427,19 @@ export class CreateComponent implements OnInit, OnDestroy {
       if (
         typeParam === "dream" ||
         typeParam === "daily" ||
+        typeParam === "important_day" ||
         typeParam === "important-day" ||
+        typeParam === "thought_record" ||
         typeParam === "thought-record"
       ) {
-        this.selectedType = typeParam;
-        this.previousSelectedType = typeParam;
+        const normalisedType =
+          typeParam === "important_day"
+            ? "important-day"
+            : typeParam === "thought_record"
+              ? "thought-record"
+              : typeParam;
+        this.selectedType = normalisedType;
+        this.previousSelectedType = normalisedType;
       }
 
       if (params.get("source") === "chat" && !this.isEditing) {
@@ -2951,6 +3488,10 @@ export class CreateComponent implements OnInit, OnDestroy {
     }
 
     this.previousSelectedType = nextType;
+    this.errorMessage = "";
+    if (nextType === "thought-record") {
+      this.thoughtRecordStepIndex = 0;
+    }
   }
 
   private resetDreamFields() {
@@ -2988,6 +3529,7 @@ export class CreateComponent implements OnInit, OnDestroy {
     this.thoughtRecordFeelingAfterIntensity = 30;
     this.thoughtRecordNextStep = "";
     this.thoughtRecordRespondWithAI = false;
+    this.thoughtRecordStepIndex = 0;
   }
 
   canDeactivate(): boolean | Promise<boolean> {

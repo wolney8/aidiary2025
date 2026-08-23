@@ -67,6 +67,8 @@ availability.
 
 Keep project-work updates short, milestone-based, and easy to act on. Prefer concise
 prose over status tables unless the user explicitly asks for a tabular summary.
+Keep responses direct, concise, and forward-looking to avoid unnecessary token use.
+Default to the minimum context needed to let the user act or decide.
 
 - State what is being worked on, why it matters, and the next action when useful.
 - Keep completion percentages for roadmap or milestone reviews only; do not include

@@ -83,6 +83,51 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         </h2>
       </div>
 
+      <div
+        class="search-controls"
+        *ngIf="
+          !searchState.loading &&
+          !searchState.error &&
+          searchState.active &&
+          searchState.results.length > 0
+        "
+      >
+        <div
+          class="search-term-pills"
+          *ngIf="getSearchTermActions(searchState.query).length > 0"
+        >
+          <button
+            *ngFor="let action of getSearchTermActions(searchState.query)"
+            type="button"
+            class="search-term-pill"
+            (click)="searchForTerm(action.query, searchState)"
+          >
+            {{ action.label }}
+          </button>
+        </div>
+
+        <div class="result-view-toggle" data-testid="search-result-view-toggle">
+          <button
+            type="button"
+            class="result-view-pill"
+            [class.is-selected]="resultViewMode === 'cards'"
+            (click)="setResultViewMode('cards')"
+          >
+            <mat-icon>grid_view</mat-icon>
+            <span>Cards</span>
+          </button>
+          <button
+            type="button"
+            class="result-view-pill"
+            [class.is-selected]="resultViewMode === 'list'"
+            (click)="setResultViewMode('list')"
+          >
+            <mat-icon>view_list</mat-icon>
+            <span>List</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Enhanced Loading State -->
       <div *ngIf="searchState.loading" class="loading-container">
         <!-- Skeleton Loading Cards -->
@@ -268,6 +313,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
 
       <div
         class="results-grid"
+        [class.results-list]="resultViewMode === 'list'"
         *ngIf="
           !searchState.loading &&
           !searchState.error &&
@@ -291,6 +337,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           <!-- Main Card View (Fixed Size) -->
           <mat-card
             class="entry-card"
+            [class.entry-card-list]="resultViewMode === 'list'"
             role="button"
             tabindex="0"
             [attr.aria-expanded]="isExpanded(result)"
@@ -314,13 +361,18 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
             </mat-card-header>
 
             <mat-card-content>
+              <span class="result-type-chip">
+                <mat-icon>{{ getResultIcon(result) }}</mat-icon>
+                <span>{{ getResultTypeLabel(result) }}</span>
+              </span>
               <div class="entry-image-placeholder">
                 <mat-icon>{{ getResultPlaceholderIcon(result) }}</mat-icon>
               </div>
               <div class="match-snippets">
                 <p
+                  *ngFor="let snippet of getVisibleSnippets(result)"
                   class="snippet"
-                  [innerHTML]="getSafeHtml(getBestSnippet(result))"
+                  [innerHTML]="getSafeHtml(snippet)"
                 ></p>
               </div>
             </mat-card-content>
@@ -794,13 +846,73 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         color: var(--colour-text-primary);
       }
 
+      .search-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+        flex-wrap: wrap;
+        margin: 0 0 var(--spacing-md);
+      }
+
+      .search-term-pills,
+      .result-view-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+      }
+
+      .search-term-pill,
+      .result-view-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        min-height: 2.5rem;
+        padding: 0.55rem 0.9rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-primary);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          border-color 140ms ease,
+          background-color 140ms ease,
+          color 140ms ease,
+          transform 140ms ease;
+      }
+
+      .search-term-pill:hover,
+      .result-view-pill:hover {
+        border-color: var(--colour-primary);
+        transform: translateY(-1px);
+      }
+
+      .result-view-pill.is-selected {
+        background: color-mix(in srgb, var(--colour-primary) 18%, var(--colour-surface) 82%);
+        border-color: color-mix(in srgb, var(--colour-primary) 72%, white 28%);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--colour-primary) 24%, transparent);
+      }
+
+      .result-view-pill mat-icon {
+        width: 1rem;
+        height: 1rem;
+        font-size: 1rem;
+      }
+
       .results-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(18.75rem, 100%), 21.875rem));
+        grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 21rem));
         justify-content: center;
         gap: var(--spacing-md);
         padding: var(--spacing-md) 0;
-        position: relative; /* Allow expanded cards to position relative to grid */
+        position: relative;
+      }
+
+      .results-grid.results-list {
+        grid-template-columns: minmax(0, 1fr);
       }
       .selection-toolbar {
         display: flex;
@@ -834,9 +946,6 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         color: var(--colour-text-secondary);
         opacity: 0.62;
       }
-      .result-container {
-        position: relative;
-      }
       .result-selector {
         position: absolute;
         z-index: 3;
@@ -848,13 +957,12 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         display: flex;
         flex-direction: column;
         gap: 8px;
-        position: relative; /* Allow for absolute positioning of expanded cards */
+        position: relative;
+        min-width: 0;
       }
 
       .result-container:has(.expanded-details-card) {
-        /* Ensure expanded cards have proper stacking context */
         z-index: 1;
-        /* Add extra bottom margin to prevent other cards from creeping up */
         margin-bottom: var(--spacing-sm);
       }
 
@@ -886,61 +994,57 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         height: 20px;
       }
 
-      .entry-card {
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        transform: translateZ(0);
-        width: 100%;
-        min-width: 300px;
-        max-width: 350px;
-        border: 1px solid var(--colour-border);
-        border-radius: var(--radius-lg);
-        background: var(--colour-surface-elevated);
-        overflow: hidden;
-      }
-
-      /* When expanded, make the expanded card appear below and span wider */
       .expanded-details-card {
         background-color: var(--colour-surface-elevated);
         border-left: 4px solid var(--colour-primary);
         overflow: hidden;
         width: 100%;
         max-width: 100%;
-        margin: 0; /* Remove default margin since we have connector spacing */
+        margin: 0;
         transform: none;
-        /* Ensure it appears above other content */
         z-index: 20;
         box-shadow: 0 4px 20px var(--colour-shadow-medium);
         border-radius: var(--radius-lg);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        /* Position relative to maintain document flow */
         position: relative;
       }
 
-      /* Make sure expanded cards push down subsequent content more */
       .result-container:has(.expanded-details-card) ~ .result-container {
         margin-top: 0;
       }
 
-      /* Ensure other cards don't creep into expanded area */
       .result-container:has(.expanded-details-card) {
-        /* Create a clear boundary around expanded content */
         padding-bottom: 16px;
-        border-bottom: 1px solid transparent; /* Invisible spacer */
+        border-bottom: 1px solid transparent;
       }
 
-      /* Ensure search result cards also have consistent heights */
       .entry-card {
         cursor: pointer;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         transform: translateZ(0);
         width: 100%;
-        min-width: 300px;
-        max-width: 350px;
-        /* Force consistent height for search result cards too */
-        height: 420px;
+        min-width: 0;
+        max-width: 21rem;
+        min-height: 22rem;
         display: flex;
         flex-direction: column;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-lg);
+        background: var(--colour-surface-elevated);
+        overflow: hidden;
+      }
+
+      .entry-card.entry-card-list {
+        max-width: none;
+        min-height: 0;
+      }
+
+      .entry-card.entry-card-list .mat-mdc-card-content {
+        gap: var(--spacing-sm);
+      }
+
+      .entry-card.entry-card-list .entry-image-placeholder {
+        height: 5rem;
       }
 
       .entry-card .mat-mdc-card-header {
@@ -991,7 +1095,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 0.8rem;
+        gap: var(--spacing-xs);
         overflow: hidden; /* Prevent content overflow */
       }
 
@@ -1001,7 +1105,7 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
       }
 
       .entry-image-placeholder {
-        height: 132px;
+        height: 7.5rem;
         background: linear-gradient(
           180deg,
           var(--colour-surface-muted) 0%,
@@ -1021,12 +1125,34 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
           color: var(--colour-text-secondary);
         }
       }
+      .result-type-chip {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 2rem;
+        padding: 0.2rem 0.65rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .result-type-chip mat-icon {
+        width: 1rem;
+        height: 1rem;
+        font-size: 1rem;
+        color: var(--colour-primary);
+      }
       .match-snippets {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        overflow: hidden; /* Prevent overflow from container */
-        flex: 1; /* Take remaining space after image placeholder */
+        overflow: hidden;
+        flex: 1;
         max-height: none;
         padding: 0;
       }
@@ -1036,25 +1162,30 @@ import { AppDialogService } from "../../../core/services/app-dialog.service";
         font-size: 0.95rem;
         color: var(--colour-text-secondary);
         line-height: 1.5;
-        /* Text truncation for long snippets */
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
-        -webkit-line-clamp: 4; /* Increased to 4 lines since we only show one snippet */
+        -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
-        word-break: break-word; /* Handle long words */
+        word-break: break-word;
 
-        ::ng-deep mark {
-          background: none;
-          color: var(--colour-danger-text);
-          font-weight: 500;
+        ::ng-deep mark,
+        ::ng-deep .search-match {
+          padding: 0.05rem 0.18rem;
+          border-radius: var(--radius-sm);
+          background: color-mix(in srgb, #facc15 74%, transparent);
+          color: #231400;
+          font-weight: 800;
         }
       }
 
       /* Server may wrap matches in <span class="match">..</span> or <mark>..</mark> */
       ::ng-deep .match {
-        color: var(--colour-danger-text);
-        font-weight: 500;
+        padding: 0.05rem 0.18rem;
+        border-radius: var(--radius-sm);
+        background: color-mix(in srgb, #facc15 74%, transparent);
+        color: #231400;
+        font-weight: 800;
       }
 
       .expanded-header {
@@ -1306,6 +1437,7 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   protected paginatedResults: SearchResult[] = [];
   protected selectedEntries = new Map<string, SearchResult>();
   protected deletingSelected = false;
+  protected resultViewMode: "cards" | "list" = "cards";
   private selectionSearchKey = "";
 
   ngOnInit(): void {
@@ -1332,20 +1464,17 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
   }
 
   toggleExpand(result: SearchResult): void {
-    // Clean up any previously expanded cards
     this.cleanupPreviousExpanded();
 
     const key = this.selectionKey(result);
     this.expandedKey = this.expandedKey === key ? null : key;
 
-    // If expanding, scroll the card into view after a short delay for animation
     if (this.expandedKey !== null) {
       setTimeout(() => this.scrollToCard(key), 300);
     }
   }
 
   private cleanupPreviousExpanded(): void {
-    // Remove positioning classes and styles from all expanded cards
     const expandedCards = this.elementRef.nativeElement.querySelectorAll(
       ".expanded-details-card",
     );
@@ -1353,14 +1482,6 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
       card.classList.remove("align-left", "align-right");
       card.style.removeProperty("--offset-x");
       card.style.removeProperty("--expanded-width");
-    });
-
-    // Also clean up connector positioning if needed
-    const connectors = this.elementRef.nativeElement.querySelectorAll(
-      ".expanded-connector",
-    );
-    connectors.forEach((connector: HTMLElement) => {
-      connector.style.removeProperty("--connector-offset");
     });
   }
 
@@ -1370,50 +1491,6 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     );
     if (cardElement) {
       setTimeout(() => {
-        // Get the grid container and its bounds
-        const gridContainer =
-          this.elementRef.nativeElement.querySelector(".results-grid");
-        const expandedCard = cardElement.querySelector(
-          ".expanded-details-card",
-        );
-
-        if (expandedCard && gridContainer) {
-          const gridRect = gridContainer.getBoundingClientRect();
-          const cardRect = cardElement.getBoundingClientRect();
-
-          // Calculate position relative to grid
-          const cardPositionInGrid = cardRect.left - gridRect.left;
-          const gridWidth = gridRect.width;
-          const expandedWidth = Math.min(900, gridWidth * 0.9); // 90% of grid width max
-
-          // Check if card is in right half of grid
-          const isRightSide = cardPositionInGrid > gridWidth / 2;
-
-          // Calculate optimal position
-          let leftOffset = 0;
-          if (isRightSide) {
-            // Position so right edge aligns with grid right edge
-            leftOffset = gridWidth - expandedWidth - cardPositionInGrid;
-          } else {
-            // Position so left edge aligns with grid left edge
-            leftOffset = -cardPositionInGrid;
-          }
-
-          // Apply the positioning
-          expandedCard.style.setProperty("--offset-x", `${leftOffset}px`);
-          expandedCard.style.setProperty(
-            "--expanded-width",
-            `${expandedWidth}px`,
-          );
-
-          if (isRightSide) {
-            expandedCard.classList.add("align-right");
-          } else {
-            expandedCard.classList.add("align-left");
-          }
-        }
-
-        // Scroll into view
         cardElement.scrollIntoView({
           behavior: "smooth",
           block: "start",
@@ -1450,9 +1527,26 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     if (result.matches.people) {
       return this.truncateSnippet(result.matches.people);
     }
+    if (result.matches.ai) {
+      return this.truncateSnippet(result.matches.ai);
+    }
 
     // Fallback to a simple message if no matches found
     return "No preview available";
+  }
+
+  protected getVisibleSnippets(result: SearchResult): string[] {
+    const snippets = [
+      result.matches.body,
+      result.matches.tags,
+      result.matches.people,
+      result.matches.ai,
+      result.matches.date,
+    ]
+      .filter((snippet): snippet is string => Boolean(snippet))
+      .map((snippet) => this.truncateSnippet(snippet));
+
+    return snippets.length > 0 ? snippets.slice(0, 3) : [this.getBestSnippet(result)];
   }
 
   private truncateSnippet(snippet: string): string {
@@ -1719,6 +1813,64 @@ export class SearchResultsComponent implements OnInit, OnDestroy {
     } else {
       return `About ${count} results for "${query}" in ${context}`;
     }
+  }
+
+  protected setResultViewMode(mode: "cards" | "list"): void {
+    this.resultViewMode = mode;
+  }
+
+  protected getSearchTermActions(
+    query: string,
+  ): Array<{ label: string; query: string }> {
+    const matches = query.match(/"([^"]+)"|[^,\s]+/g) ?? [];
+    const cleaned = matches
+      .map((term) => term.replace(/^"|"$/g, "").trim())
+      .filter((term) => term.length > 0);
+
+    const uniqueTerms = [...new Set(cleaned)];
+    const actions: Array<{ label: string; query: string }> = [];
+    const trimmedQuery = query.trim();
+    const isQuotedPhrase =
+      trimmedQuery.startsWith('"') && trimmedQuery.endsWith('"');
+    const hasComma = trimmedQuery.includes(",");
+    const hasMultipleTerms = uniqueTerms.length > 1;
+
+    if (!hasComma && hasMultipleTerms && !isQuotedPhrase) {
+      actions.push({
+        label: `Search exact phrase "${uniqueTerms.join(" ")}"`,
+        query: `"${uniqueTerms.join(" ")}"`,
+      });
+    }
+
+    uniqueTerms.slice(0, 6).forEach((term) => {
+      actions.push({
+        label: `Search for ${term}`,
+        query: term,
+      });
+    });
+
+    return actions;
+  }
+
+  protected searchForTerm(term: string, searchState: SearchState): void {
+    const filters = {
+      tags: searchState.filters.includes("tags"),
+      date: searchState.filters.includes("date"),
+      keywords: searchState.filters.includes("keywords"),
+      people: searchState.filters.includes("people"),
+    };
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {
+        search: term,
+        filters: searchState.filters.length ? searchState.filters.join(",") : null,
+      },
+      queryParamsHandling: "merge",
+      replaceUrl: true,
+    });
+
+    this.searchService.search(term, filters).subscribe();
   }
 
   // Pagination Methods - Matching entries list exactly

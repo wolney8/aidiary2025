@@ -219,6 +219,7 @@ interface AnnouncementNotification {
           <!-- Search History Dropdown (Google-style) -->
           <div
             class="search-history-dropdown"
+            data-testid="top-bar-search-history"
             role="region"
             aria-label="Search history suggestions"
             tabindex="0"
@@ -515,6 +516,7 @@ interface AnnouncementNotification {
         min-height: 72px;
         padding-inline: clamp(0.5rem, 2vw, 1rem);
         position: relative;
+        z-index: 1200;
         flex-wrap: nowrap;
         background: var(--colour-toolbar);
         color: var(--colour-toolbar-text);
@@ -564,7 +566,10 @@ interface AnnouncementNotification {
         flex: 1;
         gap: var(--spacing-sm);
         min-width: 0;
-        z-index: 30;
+        z-index: 40;
+      }
+      .search-wrapper:focus-within {
+        z-index: 1400;
       }
       .search-wrapper-hidden {
         display: none;
@@ -580,7 +585,10 @@ interface AnnouncementNotification {
         max-width: min(760px, 52vw);
         position: relative;
         min-width: 0;
-        z-index: 30;
+        z-index: 40;
+      }
+      .search-form:focus-within {
+        z-index: 1400;
       }
       .search-wrapper-compact .search-form {
         max-width: none;
@@ -1054,7 +1062,7 @@ interface AnnouncementNotification {
         border: 1px solid var(--colour-border);
         max-height: 320px;
         overflow-y: auto;
-        z-index: 5000;
+        z-index: 1500;
       }
 
       .search-history-header {

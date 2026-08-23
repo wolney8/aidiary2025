@@ -1529,19 +1529,7 @@ def export_entries():
         + len(important_day_rows)
         + len(thought_record_rows)
     )
-    is_full_range = bool(
-        (export_all and selected_export_count > 0)
-        or (
-            include_daily
-            and include_dreams
-            and overall_first_date
-            and overall_last_date
-            and from_date
-            and to_date
-            and from_date.isoformat() == overall_first_date
-            and to_date.isoformat() == overall_last_date
-        )
-    )
+    is_full_range = bool(export_all and selected_export_count > 0)
     export_record = record_export_history(
         conn,
         user_id=user_id,

@@ -6,6 +6,7 @@ import { MatCardModule } from "@angular/material/card";
 import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
+import { MatFormFieldModule } from "@angular/material/form-field";
 import {
   type BulkDeleteReadiness,
   type ExportFilters,
@@ -23,6 +24,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
     MatButtonModule,
     MatIconModule,
     MatCheckboxModule,
+    MatFormFieldModule,
     MatInputModule,
   ],
   template: `
@@ -51,36 +53,48 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           </p>
         </div>
 
-        <div class="filters" aria-label="Export filters">
+        <section class="filters" aria-labelledby="export-filters-heading" data-testid="export-filters">
+          <div class="filters-heading">
+            <div>
+              <h2 id="export-filters-heading">Choose what to export</h2>
+              <p>Leave the dates blank to include every matching record.</p>
+            </div>
+            <span class="filter-summary" aria-live="polite">{{ getExportScopeLabel() }}</span>
+          </div>
           <div class="date-row">
-            <label class="filter-field" for="from-date">
-              <span>From date</span>
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>From date</mat-label>
               <input
+                matInput
                 id="from-date"
                 type="date"
                 [value]="fromDate"
                 [disabled]="isDownloading"
                 (change)="onFromDateChange($event)"
+                data-testid="export-from-date"
               />
-            </label>
+            </mat-form-field>
 
-            <label class="filter-field" for="to-date">
-              <span>To date</span>
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>To date</mat-label>
               <input
+                matInput
                 id="to-date"
                 type="date"
                 [value]="toDate"
                 [disabled]="isDownloading"
                 (change)="onToDateChange($event)"
+                data-testid="export-to-date"
               />
-            </label>
+            </mat-form-field>
           </div>
 
-          <div class="type-row">
+          <div class="type-row" aria-label="Record types to export">
             <mat-checkbox
               [checked]="includeDaily"
               [disabled]="isDownloading"
               (change)="onIncludeDailyChange($event.checked)"
+              data-testid="export-include-daily"
             >
               Include Daily
             </mat-checkbox>
@@ -89,6 +103,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               [checked]="includeDreams"
               [disabled]="isDownloading"
               (change)="onIncludeDreamsChange($event.checked)"
+              data-testid="export-include-dreams"
             >
               Include Dreams
             </mat-checkbox>
@@ -97,6 +112,7 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               [checked]="includeImportantDays"
               [disabled]="isDownloading"
               (change)="onIncludeImportantDaysChange($event.checked)"
+              data-testid="export-include-important-days"
             >
               Include Important Days
             </mat-checkbox>
@@ -105,17 +121,18 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
               [checked]="includeThoughtRecords"
               [disabled]="isDownloading"
               (change)="onIncludeThoughtRecordsChange($event.checked)"
+              data-testid="export-include-thought-records"
             >
               Include Thought Records
             </mat-checkbox>
           </div>
-        </div>
+        </section>
 
-        <p class="feedback success" *ngIf="successMessage">
+        <p class="feedback success" *ngIf="successMessage" role="status" aria-live="polite" data-testid="export-success">
           {{ successMessage }}
         </p>
 
-        <p class="feedback error" *ngIf="errorMessage">
+        <p class="feedback error" *ngIf="errorMessage" role="alert" data-testid="export-error">
           {{ errorMessage }}
         </p>
       </mat-card-content>
@@ -126,18 +143,20 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
           color="primary"
           (click)="downloadExport()"
           [disabled]="isDownloading"
+          data-testid="export-download-selected"
         >
           <mat-icon>download</mat-icon>
-          {{ isDownloading ? "Preparing export..." : "Download Export" }}
+          <span>{{ isDownloading ? "Preparing export..." : "Download selected data" }}</span>
         </button>
         <button
           mat-stroked-button
           type="button"
           (click)="downloadAllData()"
           [disabled]="isDownloading"
+          data-testid="export-download-all"
         >
           <mat-icon>inventory_2</mat-icon>
-          Export all data
+          <span>Export all data</span>
         </button>
       </mat-card-actions>
     </mat-card>
@@ -263,6 +282,41 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
         gap: var(--spacing-md);
       }
 
+      .filters-heading {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+      }
+
+      .filters-heading h2,
+      .filters-heading p {
+        margin: 0;
+      }
+
+      .filters-heading h2 {
+        font-size: 1rem;
+      }
+
+      .filters-heading p {
+        margin-top: var(--spacing-xs);
+        color: var(--colour-text-secondary);
+      }
+
+      .filter-summary {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        padding: 0.18rem 0.58rem;
+        border: 1px solid var(--colour-border);
+        border-radius: var(--radius-pill);
+        background: var(--colour-surface-muted);
+        color: var(--colour-text-secondary);
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
       .date-row {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -270,25 +324,26 @@ import { formatReadableLongDate } from "../../shared/utils/date-display";
       }
 
       .filter-field {
+        width: 100%;
+        margin-bottom: -1.25rem;
+      }
+
+      .bulk-delete-stage .filter-field {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        margin-bottom: 0;
         color: var(--colour-text-secondary);
         font-size: 0.9rem;
       }
 
-      .filter-field input {
+      .bulk-delete-stage .filter-field input {
+        min-height: 44px;
+        padding: 10px 14px;
         border: 1px solid var(--colour-border);
         border-radius: var(--radius-pill);
         background: var(--colour-surface-muted);
         color: var(--colour-text-primary);
-        padding: 10px 14px;
-        min-height: 44px;
-      }
-
-      .filter-field input:focus-visible {
-        outline: var(--focus-outline);
-        outline-offset: var(--focus-offset);
       }
 
       .type-row {
@@ -385,8 +440,8 @@ export class ExportComponent implements OnInit {
   toDate = "";
   includeDaily = true;
   includeDreams = true;
-  includeImportantDays = false;
-  includeThoughtRecords = false;
+  includeImportantDays = true;
+  includeThoughtRecords = true;
   readiness: BulkDeleteReadiness | null = null;
   bulkDeleteConfirmation = "";
   private bulkDeleteGuardToken = "";
@@ -425,6 +480,16 @@ export class ExportComponent implements OnInit {
   onIncludeThoughtRecordsChange(checked: boolean): void {
     this.includeThoughtRecords = checked;
     this.clearFeedback();
+  }
+
+  getExportScopeLabel(): string {
+    const included = [
+      this.includeDaily && "Daily",
+      this.includeDreams && "Dreams",
+      this.includeImportantDays && "Important Days",
+      this.includeThoughtRecords && "Thought Records",
+    ].filter(Boolean);
+    return included.length ? `${included.join(", ")} selected` : "No record types selected";
   }
 
   downloadExport(): void {
@@ -477,19 +542,10 @@ export class ExportComponent implements OnInit {
       return;
     }
 
-    this.fromDate = this.readiness.first_entry_date ?? "";
-    this.toDate = this.readiness.last_entry_date ?? "";
-    this.includeDaily = true;
-    this.includeDreams = true;
     this.isDownloading = true;
 
     this.importService
-      .downloadExport({
-        fromDate: this.fromDate,
-        toDate: this.toDate,
-        includeDaily: true,
-        includeDreams: true,
-      })
+      .downloadExport({ exportAll: true })
       .subscribe({
         next: (result) => {
           this.handleDownloadSuccess(result.blob, result.filename);
