@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 from datetime import datetime, date, time, timezone
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from services.nltk_enrichment import (
     derive_daily_nltk_fields as _runtime_derive_daily_nltk_fields,
     derive_dream_nltk_fields as _runtime_derive_dream_nltk_fields,
@@ -47,6 +47,13 @@ def _cursor_provider(cursor: sqlite3.Cursor) -> str:
     if connection is None:
         return 'sqlite'
     return _connection_provider(connection)
+
+
+def _row_value(row: object, index: int, key: str) -> object:
+    """Read a selected column from SQLite sequence rows or Postgres mapping rows."""
+    if isinstance(row, Mapping):
+        return row.get(key)
+    return row[index]
 
 DAILY_REQUIRED_HEADERS = ('date', 'title', 'user_entry', 'ai_response')
 DAILY_OPTIONAL_HEADERS = ('entry_time', 'entry_asset_ref')
@@ -1100,31 +1107,33 @@ def _fetch_existing_duplicate_keys(
 ) -> tuple[set[tuple[str, str, str, str]], set[tuple[str, str, str, str]]]:
     existing_daily = {
         (
-            row[0],
-            _normalise_time_key(row[1], entry_type='daily'),
-            _normalise_title_key(row[2] or ''),
-            _normalise_content_key(row[3] or ''),
+            _row_value(row, 0, 'entry_date'),
+            _normalise_time_key(_row_value(row, 1, 'entry_time'), entry_type='daily'),
+            _normalise_title_key(_row_value(row, 2, 'title') or ''),
+            _normalise_content_key(_row_value(row, 3, 'user_message') or ''),
         )
         for row in cursor.execute(
             'SELECT entry_date, entry_time, title, user_message '
             'FROM dailydiary_entries WHERE user_id = ?',
             (user_id,),
         )
-        if _normalise_title_key(row[2] or '') and _normalise_content_key(row[3] or '')
+        if _normalise_title_key(_row_value(row, 2, 'title') or '')
+        and _normalise_content_key(_row_value(row, 3, 'user_message') or '')
     }
     existing_dreams = {
         (
-            row[0],
-            _normalise_time_key(row[1], entry_type='dream'),
-            _normalise_title_key(row[2] or ''),
-            _normalise_content_key(row[3] or ''),
+            _row_value(row, 0, 'entry_date'),
+            _normalise_time_key(_row_value(row, 1, 'entry_time'), entry_type='dream'),
+            _normalise_title_key(_row_value(row, 2, 'title') or ''),
+            _normalise_content_key(_row_value(row, 3, 'plot') or ''),
         )
         for row in cursor.execute(
             'SELECT entry_date, entry_time, title, plot '
             'FROM dreamdiary_entries WHERE user_id = ?',
             (user_id,),
         )
-        if _normalise_title_key(row[2] or '') and _normalise_content_key(row[3] or '')
+        if _normalise_title_key(_row_value(row, 2, 'title') or '')
+        and _normalise_content_key(_row_value(row, 3, 'plot') or '')
     }
     return existing_daily, existing_dreams
 

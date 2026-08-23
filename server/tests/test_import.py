@@ -19,6 +19,7 @@ from services.import_service import (
     DREAM_IMPORT_HEADERS,
     IMPORTANT_DAY_IMPORT_HEADERS,
     THOUGHT_RECORD_IMPORT_HEADERS,
+    preview_import_entries,
 )
 from services.nltk_enrichment import derive_daily_nltk_fields
 
@@ -117,6 +118,72 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
     ''')
     conn.commit()
+
+
+class _PostgresDictRowCursor:
+    """Small cursor double mirroring psycopg's configured dict_row result shape."""
+
+    def __init__(self):
+        self._rows: list[dict[str, str]] = []
+
+    def execute(self, sql: str, _params=None):
+        if "dailydiary_entries" in sql:
+            self._rows = [
+                {
+                    "entry_date": "2026-08-23",
+                    "entry_time": "09:00",
+                    "title": "Existing daily",
+                    "user_message": "Already stored.",
+                }
+            ]
+        elif "dreamdiary_entries" in sql:
+            self._rows = [
+                {
+                    "entry_date": "2026-08-22",
+                    "entry_time": "08:00",
+                    "title": "Existing dream",
+                    "plot": "Already dreamed.",
+                }
+            ]
+        return self
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _PostgresDictRowConnection:
+    def cursor(self):
+        return _PostgresDictRowCursor()
+
+
+def test_preview_import_supports_postgres_dict_rows_for_existing_entries():
+    preview = preview_import_entries(
+        _PostgresDictRowConnection(),
+        user_id=7,
+        parsed={
+            "daily": [
+                {
+                    "entry_date": "2026-08-23",
+                    "entry_time": "09:00",
+                    "title": "Existing daily",
+                    "user_message": "Already stored.",
+                }
+            ],
+            "dreams": [
+                {
+                    "entry_date": "2026-08-22",
+                    "entry_time": "08:00",
+                    "title": "Existing dream",
+                    "plot": "Already dreamed.",
+                }
+            ],
+        },
+    )
+
+    assert preview["summary"]["duplicate_daily"] == 1
+    assert preview["summary"]["duplicate_dreams"] == 1
+    assert preview["ready_daily_rows"] == []
+    assert preview["ready_dream_rows"] == []
 
 
 @pytest.fixture
