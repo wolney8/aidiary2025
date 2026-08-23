@@ -9,6 +9,7 @@ const NOTIFICATIONS_KEY = "openmynd_notifications";
 const LEGACY_NOTIFICATIONS_KEY = "ai_diary_notifications";
 const DISMISSED_NOTIFICATIONS_KEY = "openmynd_dismissed_notifications";
 const LEGACY_DISMISSED_NOTIFICATIONS_KEY = "ai_diary_dismissed_notifications";
+const MAX_UNCHANGED_JOB_POLLS = 8;
 
 export interface AppNotification {
   id: string;
@@ -35,6 +36,8 @@ export class ImportJobService {
   );
   private pollSubscription: Subscription | null = null;
   private consecutivePollErrors = 0;
+  private consecutiveUnchangedJobPolls = 0;
+  private lastJobProgressKey: string | null = null;
 
   readonly job$ = this.jobSubject.asObservable();
   readonly notifications$ = this.notificationsSubject.asObservable();
@@ -152,6 +155,8 @@ export class ImportJobService {
   private startPolling(jobId: string): void {
     this.pollSubscription?.unsubscribe();
     this.consecutivePollErrors = 0;
+    this.consecutiveUnchangedJobPolls = 0;
+    this.lastJobProgressKey = null;
     this.pollSubscription = timer(0, 750)
       .pipe(
         switchMap(() =>
@@ -197,6 +202,7 @@ export class ImportJobService {
       .subscribe((job) => {
         if (!job) return;
         this.consecutivePollErrors = 0;
+        job = this.stopIfProgressIsStale(job);
         this.publishJob(job);
         if (job.status === "completed" || job.status === "failed") {
           this.pollSubscription?.unsubscribe();
@@ -204,6 +210,39 @@ export class ImportJobService {
           this.clearPersistedActiveJob();
         }
       });
+  }
+
+  private stopIfProgressIsStale(job: ImportJobStatus): ImportJobStatus {
+    if (job.status !== "queued" && job.status !== "running") {
+      this.consecutiveUnchangedJobPolls = 0;
+      this.lastJobProgressKey = null;
+      return job;
+    }
+
+    const progressKey = [
+      job.updated_at,
+      job.processed,
+      job.total,
+      job.percent,
+      job.message,
+    ].join("|");
+    if (progressKey === this.lastJobProgressKey) {
+      this.consecutiveUnchangedJobPolls += 1;
+    } else {
+      this.lastJobProgressKey = progressKey;
+      this.consecutiveUnchangedJobPolls = 0;
+    }
+
+    if (this.consecutiveUnchangedJobPolls < MAX_UNCHANGED_JOB_POLLS) {
+      return job;
+    }
+
+    return {
+      ...job,
+      status: "failed",
+      message: "Import progress stopped because the server kept returning the same job state.",
+      error: "The import was not confirmed. Start a fresh import after checking the server.",
+    };
   }
 
   private publishJob(job: ImportJobStatus): void {

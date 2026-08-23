@@ -151,4 +151,33 @@ describe("ImportJobService writing reminders", () => {
       }),
     );
   }));
+
+  it("stops polling and clears the stored job when progress never changes", fakeAsync(() => {
+    const staleJob: ImportJobStatus = {
+      id: "unchanged-import",
+      status: "running",
+      processed: 0,
+      total: 1173,
+      percent: 0,
+      message: "Import queued…",
+      created_at: "2026-08-23T11:00:00Z",
+      updated_at: "2026-08-23T11:00:00Z",
+    };
+    importService.getImportJob.and.returnValue(of(staleJob));
+    localStorage.setItem("openmynd_active_import_job", staleJob.id);
+    internals.publishJob(staleJob);
+
+    internals.startPolling(staleJob.id);
+    tick(6000);
+
+    expect(localStorage.getItem("openmynd_active_import_job")).toBeNull();
+    expect(notifications[0]).toEqual(
+      jasmine.objectContaining({
+        id: staleJob.id,
+        status: "failed",
+        title: "Import failed",
+      }),
+    );
+    expect(importService.getImportJob.calls.count()).toBe(9);
+  }));
 });
