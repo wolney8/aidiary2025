@@ -1,5 +1,5 @@
 import { TestBed, fakeAsync, tick } from "@angular/core/testing";
-import { Subscription, of, throwError } from "rxjs";
+import { Subject, Subscription, of, throwError } from "rxjs";
 import { AppNotification, ImportJobService } from "./import-job.service";
 import { ImportJobStatus, ImportService } from "./import.service";
 
@@ -179,5 +179,26 @@ describe("ImportJobService writing reminders", () => {
       }),
     );
     expect(importService.getImportJob.calls.count()).toBe(9);
+  }));
+
+  it("does not replace a slow status request with more status requests", fakeAsync(() => {
+    const pendingResponse = new Subject<ImportJobStatus>();
+    importService.getImportJob.and.returnValue(pendingResponse.asObservable());
+
+    internals.startPolling("slow-import");
+    tick(3000);
+
+    expect(importService.getImportJob.calls.count()).toBe(1);
+    pendingResponse.next({
+      id: "slow-import",
+      status: "failed",
+      processed: 0,
+      total: 1173,
+      percent: 0,
+      message: "Import stopped.",
+      created_at: "2026-08-23T11:00:00Z",
+      updated_at: "2026-08-23T11:00:03Z",
+    });
+    tick();
   }));
 });

@@ -1,6 +1,6 @@
 import { Injectable, inject } from "@angular/core";
 import { BehaviorSubject, Observable, Subscription, of, timer } from "rxjs";
-import { catchError, switchMap, tap } from "rxjs/operators";
+import { catchError, exhaustMap, tap } from "rxjs/operators";
 import { ImportJobStatus, ImportService } from "./import.service";
 
 const ACTIVE_IMPORT_JOB_KEY = "openmynd_active_import_job";
@@ -159,7 +159,11 @@ export class ImportJobService {
     this.lastJobProgressKey = null;
     this.pollSubscription = timer(0, 750)
       .pipe(
-        switchMap(() =>
+        // Status reads can take longer than the polling interval on a serverless
+        // deployment. Do not cancel an in-flight read and start another one: doing
+        // that creates an endless stream of server requests whose responses the
+        // browser never receives.
+        exhaustMap(() =>
           this.importService.getImportJob(jobId).pipe(
             catchError((error: Error & { status?: number }) => {
               this.consecutivePollErrors += 1;

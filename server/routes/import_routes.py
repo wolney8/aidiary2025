@@ -50,12 +50,14 @@ import_bp = Blueprint('import', __name__)
 _IMPORT_JOB_PROGRESS: dict[str, dict] = {}
 _ACTIVE_IMPORT_JOB_THREADS: set[str] = set()
 _IMPORT_JOBS_LOCK = threading.Lock()
-_VERCEL_IMPORT_STALE_AFTER = timedelta(seconds=90)
 
 
 def _runs_on_vercel() -> bool:
     """Return whether the current request is executing in a Vercel Function."""
-    return bool((os.getenv('VERCEL') or '').strip())
+    return bool(
+        (os.getenv('VERCEL') or '').strip()
+        or (os.getenv('VERCEL_ENV') or '').strip()
+    )
 
 
 def _configured_rate_limit(env_name: str, default: str) -> str:
@@ -169,13 +171,15 @@ def _build_commit_response(
 
 
 def _fail_stale_vercel_import_job(job_id: str, user_id: int) -> bool:
-    """End an abandoned Vercel job instead of restarting it from status polling."""
+    """End an orphaned Vercel job instead of restarting it from status polling.
+
+    Vercel imports are executed synchronously by ``start_import_job``. Therefore a
+    queued or running job observed by a later status request cannot have an active
+    worker and must not be left for the browser to poll.
+    """
     if not _runs_on_vercel():
         return False
 
-    stale_before = (
-        datetime.now(timezone.utc) - _VERCEL_IMPORT_STALE_AFTER
-    ).strftime('%Y-%m-%dT%H:%M:%SZ')
     conn = get_db()
     try:
         updated = conn.execute(
@@ -189,8 +193,7 @@ def _fail_stale_vercel_import_job(job_id: str, user_id: int) -> bool:
                    updated_at = ?
                WHERE id = ?
                  AND user_id = ?
-                 AND status IN ('queued', 'running')
-                 AND updated_at < ?''',
+                 AND status IN ('queued', 'running')''',
             (
                 'Import stopped because the Vercel request did not complete.',
                 'The import did not finish within the serverless request window. Start it again.',
@@ -198,7 +201,6 @@ def _fail_stale_vercel_import_job(job_id: str, user_id: int) -> bool:
                 datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 job_id,
                 user_id,
-                stale_before,
             ),
         )
         conn.commit()
