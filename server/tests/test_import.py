@@ -795,6 +795,41 @@ class TestSuccessfulImport:
         assert json.loads(persisted_job[4])['selected_row_ids'] == selected_ids
         assert persisted_job[5] == 1
 
+    def test_reviewed_import_completes_within_vercel_request(self, client, monkeypatch):
+        monkeypatch.setenv('VERCEL', '1')
+        token = _register_and_login(client)
+        preview = _upload(
+            client,
+            token,
+            (
+                'full_date,time,mood,note_title,note\n'
+                '2026-07-16,09:00,good,Vercel note,Stored before the response.\n'
+            ).encode(),
+            filename='daylio_export.csv',
+            content_type='text/csv',
+            source='daylio',
+        )
+        preview_data = json.loads(preview.data)
+        selected_ids = [row['row_id'] for row in preview_data['review_entries']]
+
+        started = client.post(
+            '/api/import/jobs',
+            headers={'Authorization': f'Bearer {token}'},
+            data=json.dumps({
+                'import_session_id': preview_data['import_session_id'],
+                'accepted_duplicate_row_ids': [],
+                'selected_row_ids': selected_ids,
+                'entry_type_overrides': {},
+            }),
+            content_type='application/json',
+        )
+
+        assert started.status_code == 202
+        job = json.loads(started.data)
+        assert job['status'] == 'completed'
+        assert job['processed'] == 1
+        assert job['result']['summary']['inserted_daily'] == 1
+
     def test_polling_recovers_a_durable_import_job_after_worker_lease_expires(self, client):
         token = _register_and_login(client)
         preview = _upload(

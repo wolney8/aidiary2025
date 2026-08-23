@@ -52,6 +52,11 @@ _ACTIVE_IMPORT_JOB_THREADS: set[str] = set()
 _IMPORT_JOBS_LOCK = threading.Lock()
 
 
+def _runs_on_vercel() -> bool:
+    """Return whether the current request is executing in a Vercel Function."""
+    return bool((os.getenv('VERCEL') or '').strip())
+
+
 def _configured_rate_limit(env_name: str, default: str) -> str:
     return os.getenv(env_name, default).strip() or default
 
@@ -733,7 +738,7 @@ def _run_import_job(
                 attempt_count=conn.execute(
                     'SELECT attempt_count FROM import_jobs WHERE id = ?',
                     (job_id,),
-                ).fetchone()[0] + 1,
+                ).fetchone()['attempt_count'] + 1,
                 message='Preparing selected entries…',
             )
             _update_import_job(job_id, status='running', message='Preparing selected entries…')
@@ -807,7 +812,7 @@ def _run_import_job(
                 processed=conn.execute(
                     'SELECT total FROM import_jobs WHERE id = ?',
                     (job_id,),
-                ).fetchone()[0],
+                ).fetchone()['total'],
                 percent=100,
                 message=(
                     f'Import complete: {_import_inserted_total(result)} records imported.'
@@ -858,7 +863,11 @@ def _run_import_job(
 
 
 def _launch_import_job(app, job_id: str) -> bool:
-    """Launch or recover one durable job once within this server process."""
+    """Launch or recover one durable job once within this server process.
+
+    Vercel may freeze a function immediately after a response. Its imports therefore
+    run inside the request lifecycle; always-on hosts retain the background worker.
+    """
     with _IMPORT_JOBS_LOCK:
         if job_id in _ACTIVE_IMPORT_JOB_THREADS:
             return False
@@ -870,6 +879,7 @@ def _launch_import_job(app, job_id: str) -> bool:
             ensure_import_jobs_table(conn)
             now = datetime.now(timezone.utc)
             now_text = now.strftime('%Y-%m-%dT%H:%M:%SZ')
+            stale_at = (now - timedelta(minutes=2)).strftime('%Y-%m-%dT%H:%M:%SZ')
             worker_token = secrets.token_urlsafe(18)
             lease_expires_at = (now + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
             claimed = conn.execute(
@@ -881,10 +891,22 @@ def _launch_import_job(app, job_id: str) -> bool:
                        status = 'queued'
                        OR (
                          status = 'running'
-                         AND (lease_expires_at IS NULL OR lease_expires_at < ?)
+                         AND (
+                           lease_expires_at IS NULL
+                           OR lease_expires_at < ?
+                           OR (? = 1 AND updated_at < ?)
+                         )
                        )
                      )''',
-                (worker_token, lease_expires_at, now_text, job_id, now_text),
+                (
+                    worker_token,
+                    lease_expires_at,
+                    now_text,
+                    job_id,
+                    now_text,
+                    1 if _runs_on_vercel() else 0,
+                    stale_at,
+                ),
             )
             conn.commit()
             if claimed.rowcount != 1:
@@ -908,23 +930,28 @@ def _launch_import_job(app, job_id: str) -> bool:
             _ACTIVE_IMPORT_JOB_THREADS.discard(job_id)
         return False
 
+    worker_kwargs = {
+        'app': app,
+        'job_id': job_id,
+        'user_id': int(row['user_id']),
+        'import_session_id': row['import_session_id'],
+        'accepted_duplicate_row_ids': set(
+            request_payload.get('accepted_duplicate_row_ids', [])
+        ),
+        'selected_row_ids': (
+            set(request_payload['selected_row_ids'])
+            if request_payload.get('selected_row_ids') is not None
+            else None
+        ),
+        'entry_type_overrides': request_payload.get('entry_type_overrides', {}),
+    }
+    if _runs_on_vercel():
+        _run_import_job(**worker_kwargs)
+        return True
+
     thread = threading.Thread(
         target=_run_import_job,
-        kwargs={
-            'app': app,
-            'job_id': job_id,
-            'user_id': int(row['user_id']),
-            'import_session_id': row['import_session_id'],
-            'accepted_duplicate_row_ids': set(
-                request_payload.get('accepted_duplicate_row_ids', [])
-            ),
-            'selected_row_ids': (
-                set(request_payload['selected_row_ids'])
-                if request_payload.get('selected_row_ids') is not None
-                else None
-            ),
-            'entry_type_overrides': request_payload.get('entry_type_overrides', {}),
-        },
+        kwargs=worker_kwargs,
         daemon=True,
         name=f'import-{job_id[:8]}',
     )
