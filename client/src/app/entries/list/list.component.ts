@@ -15,6 +15,7 @@ import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { MatDialog } from "@angular/material/dialog";
 import { catchError, of } from "rxjs";
 import { SearchResultsComponent } from "../../shared/components/search-results/search-results.component";
 import { EntriesService } from "../../core/services/entries.service";
@@ -27,7 +28,7 @@ import {
   SearchFilters,
   SearchService,
 } from "../../core/services/search.service";
-import { DailyEntry, DreamEntry } from "../../core/models/entry.model";
+import { DailyEntry, DreamEntry, EntryAsset } from "../../core/models/entry.model";
 import { ImportantDay } from "../../core/models/important-day.model";
 import { PublicHoliday } from "../../core/models/public-holiday.model";
 import { CbtWorksheet } from "../../core/models/cbt.model";
@@ -35,6 +36,10 @@ import {
   OnThisDayEntry,
   OnThisDayFeed,
 } from "../../core/models/on-this-day.model";
+import {
+  EntryImageGalleryComponent,
+  EntryImageGalleryData,
+} from "../../shared/components/entry-image-gallery/entry-image-gallery.component";
 
 type TimelineMonth = {
   label: string;
@@ -973,25 +978,27 @@ type OnThisDayPreviewState = {
                         <ng-template #unavailableDayNumber>
                           <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
                         </ng-template>
-                        <button
-                          *ngIf="hasCalendarDayBack(day)"
-                          type="button"
-                          class="calendar-day-flip"
-                          [attr.aria-label]="'Show more items for ' + getCalendarDayDateLabel(day)"
-                          matTooltip="Show more"
-                          (click)="toggleCalendarDayFace(day, $event)"
-                        >
-                          <mat-icon>touch_app</mat-icon>
-                        </button>
-                        <span
-                          *ngIf="day.hiddenItemCount > 0"
-                          class="calendar-filtered-indicator"
-                          [matTooltip]="day.hiddenItemLabel"
-                          aria-hidden="true"
-                        >
-                          <mat-icon>visibility_off</mat-icon>
-                          <span>{{ day.hiddenItemCount }}</span>
-                        </span>
+                        <div class="calendar-day-utilities">
+                          <button
+                            *ngIf="hasCalendarDayBack(day)"
+                            type="button"
+                            class="calendar-day-flip"
+                            [attr.aria-label]="'Show more items for ' + getCalendarDayDateLabel(day)"
+                            matTooltip="Show more"
+                            (click)="toggleCalendarDayFace(day, $event)"
+                          >
+                            <mat-icon>touch_app</mat-icon>
+                          </button>
+                          <span
+                            *ngIf="day.hiddenItemCount > 0"
+                            class="calendar-filtered-indicator"
+                            role="status"
+                            [attr.aria-label]="day.hiddenItemLabel"
+                          >
+                            <mat-icon aria-hidden="true">visibility_off</mat-icon>
+                            <span>{{ day.hiddenItemCount }}</span>
+                          </span>
+                        </div>
                         <div class="calendar-day-icons calendar-day-icons--front">
                           <div
                             class="calendar-day-icon-row calendar-day-icon-row--primary"
@@ -1057,24 +1064,26 @@ type OnThisDayPreviewState = {
                         <ng-template #unavailableBackDayNumber>
                           <span class="calendar-day-number" aria-hidden="true">{{ day.dayNumber }}</span>
                         </ng-template>
-                        <button
-                          type="button"
-                          class="calendar-day-flip"
-                          [attr.aria-label]="'Show first items for ' + getCalendarDayDateLabel(day)"
-                          matTooltip="Show first items"
-                          (click)="toggleCalendarDayFace(day, $event)"
-                        >
-                          <mat-icon>touch_app</mat-icon>
-                        </button>
-                        <span
-                          *ngIf="day.hiddenItemCount > 0"
-                          class="calendar-filtered-indicator"
-                          [matTooltip]="day.hiddenItemLabel"
-                          aria-hidden="true"
-                        >
-                          <mat-icon>visibility_off</mat-icon>
-                          <span>{{ day.hiddenItemCount }}</span>
-                        </span>
+                        <div class="calendar-day-utilities">
+                          <button
+                            type="button"
+                            class="calendar-day-flip"
+                            [attr.aria-label]="'Show first items for ' + getCalendarDayDateLabel(day)"
+                            matTooltip="Show first items"
+                            (click)="toggleCalendarDayFace(day, $event)"
+                          >
+                            <mat-icon>touch_app</mat-icon>
+                          </button>
+                          <span
+                            *ngIf="day.hiddenItemCount > 0"
+                            class="calendar-filtered-indicator"
+                            role="status"
+                            [attr.aria-label]="day.hiddenItemLabel"
+                          >
+                            <mat-icon aria-hidden="true">visibility_off</mat-icon>
+                            <span>{{ day.hiddenItemCount }}</span>
+                          </span>
+                        </div>
                         <div class="calendar-day-icons calendar-day-secondary-content">
                           <button
                             *ngFor="let metric of getSecondaryCalendarDayMetrics(day); trackBy: trackCalendarDayMetric"
@@ -1498,40 +1507,6 @@ type OnThisDayPreviewState = {
         </ng-container>
       </ng-container>
 
-      <div
-        class="important-day-image-modal"
-        *ngIf="importantDayImageModal"
-        (click)="closeImportantDayImage()"
-        role="dialog"
-        aria-modal="true"
-        [attr.aria-label]="'Image for ' + importantDayImageModal.label"
-        data-testid="important-day-image-modal"
-      >
-        <div class="important-day-image-modal-dialog" (click)="$event.stopPropagation()">
-          <header class="important-day-image-modal-header">
-            <div>
-              <strong>{{ importantDayImageModal.label }}</strong>
-              <span>{{ importantDayImageModal.dateLabel }}</span>
-            </div>
-            <button
-              mat-icon-button
-              type="button"
-              (click)="closeImportantDayImage()"
-              aria-label="Close important day image"
-            >
-              <mat-icon>close</mat-icon>
-            </button>
-          </header>
-          <div class="important-day-image-modal-body">
-            <img [src]="importantDayImageModal.imageUrl" [alt]="importantDayImageModal.label" />
-          </div>
-          <div class="important-day-image-modal-actions">
-            <button mat-stroked-button type="button" (click)="closeImportantDayImage()">
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   `,
 })
@@ -1540,6 +1515,7 @@ export class ListComponent implements OnInit, OnDestroy {
   private publicHolidaysService = inject(PublicHolidaysService);
   private onThisDayService = inject(OnThisDayService);
   private appDialog = inject(AppDialogService);
+  private dialog = inject(MatDialog);
   private themeService = inject(ThemeService);
   private authService = inject(AuthService);
   protected readonly searchService = inject(SearchService);
@@ -1613,11 +1589,6 @@ export class ListComponent implements OnInit, OnDestroy {
   calendarPreview: CalendarPreviewState | null = null;
   cbtPreview: CbtPreviewState | null = null;
   importantDayPreview: ImportantDayPreviewState | null = null;
-  importantDayImageModal: {
-    imageUrl: string;
-    label: string;
-    dateLabel: string;
-  } | null = null;
   occasionPreview: OccasionPreviewState | null = null;
   onThisDayPreview: OnThisDayPreviewState | null = null;
   private loadedHolidayYears = new Set<number>();
@@ -2397,26 +2368,43 @@ export class ListComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     const imageUrl = this.getImportantDayImageUrl(importantDay);
     if (!imageUrl) return;
-    this.importantDayImageModal = {
+    this.openImageGallery(
       imageUrl,
-      label: importantDay.label,
-      dateLabel: this.formatImportantDaySummaryLabel(importantDay),
-    };
+      importantDay.label,
+      this.formatImportantDaySummaryLabel(importantDay),
+    );
   }
 
   openOccasionImage(occasion: OccasionPreviewItem, event: Event): void {
     event.stopPropagation();
     const imageUrl = String(occasion.imageUrl || "").trim();
     if (!imageUrl) return;
-    this.importantDayImageModal = {
-      imageUrl,
-      label: occasion.label,
-      dateLabel: occasion.subtitle,
-    };
+    this.openImageGallery(imageUrl, occasion.label, occasion.subtitle);
   }
 
-  closeImportantDayImage(): void {
-    this.importantDayImageModal = null;
+  private openImageGallery(imageUrl: string, label: string, subtitle: string): void {
+    const image: EntryAsset = {
+      id: 0,
+      asset_role: "important_day_image",
+      original_filename: label,
+      mime_type: "image/*",
+      file_size_bytes: 0,
+      sort_order: 0,
+      created_at: "",
+      url: imageUrl,
+      is_image: true,
+    };
+    this.dialog.open<EntryImageGalleryComponent, EntryImageGalleryData>(
+      EntryImageGalleryComponent,
+      {
+        data: { images: [image], initialImageId: image.id, title: label, subtitle },
+        autoFocus: "dialog",
+        restoreFocus: true,
+        maxWidth: "calc(100vw - 2rem)",
+        maxHeight: "calc(100vh - 2rem)",
+        panelClass: "entry-image-gallery-dialog",
+      },
+    );
   }
 
   getImportantDayImageUrl(importantDay: ImportantDay): string | null {
@@ -3125,20 +3113,6 @@ export class ListComponent implements OnInit, OnDestroy {
     const formattedDate = `${day}/${month}/${year}`;
 
     const selectedWorkflow = this.getPreferredCreateWorkflow();
-
-    if (selectedWorkflow === "thought-record") {
-      void this.router.navigate(["/cbt"], {
-        queryParams: {
-          create: "true",
-          date: `${year}-${month}-${day}`,
-          returnTo: "calendar",
-          month: targetDate.getMonth() + 1,
-          year: targetDate.getFullYear(),
-          show: this.getSerialisedContentFilters(),
-        },
-      });
-      return;
-    }
 
     // Navigate to create entry with pre-populated date and type
     const queryParams: any = {
@@ -4209,9 +4183,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   getPrimaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
-    return this.getCalendarDayMetrics(day)
-      .filter((metric) => metric.type !== "public_holiday")
-      .slice(0, 5);
+    return this.getCalendarDayMetrics(day).slice(0, 5);
   }
 
   getFrontPrimaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
@@ -4227,14 +4199,7 @@ export class ListComponent implements OnInit, OnDestroy {
   }
 
   getSecondaryCalendarDayMetrics(day: CalendarDay): CalendarDayMetric[] {
-    const metrics = this.getCalendarDayMetrics(day);
-    const overflowMetrics = metrics
-      .filter((metric) => metric.type !== "public_holiday")
-      .slice(5);
-    const holidayMetrics = metrics.filter(
-      (metric) => metric.type === "public_holiday",
-    );
-    return [...overflowMetrics, ...holidayMetrics].slice(0, 5);
+    return this.getCalendarDayMetrics(day).slice(5, 10);
   }
 
   getCalendarDayFaceBackground(

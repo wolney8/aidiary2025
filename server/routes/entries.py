@@ -1344,9 +1344,19 @@ def _highlight_text_terms(source: str, query_terms: list[dict], context: int = 6
     if not matches:
         return None
 
-    first_start, first_end = matches[0]
-    start = max(first_start - context, 0)
-    end = min(first_end + context, len(source))
+    first_start = matches[0][0]
+    last_end = matches[-1][1]
+    span_length = last_end - first_start
+
+    if len(matches) > 1 and span_length <= context * 2:
+        padding = max(((context * 2) - span_length) // 2, 0)
+        start = max(first_start - padding, 0)
+        end = min(last_end + padding, len(source))
+    else:
+        first_end = matches[0][1]
+        start = max(first_start - context, 0)
+        end = min(first_end + context, len(source))
+
     excerpt = source[start:end]
     highlighted = _render_highlighted_search_excerpt(excerpt, query_terms)
     if start > 0:
@@ -1367,10 +1377,19 @@ def _highlight_inline_terms(source: str, query_terms: list[dict], max_length: in
     if len(source) <= max_length:
         return _render_highlighted_search_excerpt(source, query_terms)
 
-    first_start, first_end = matches[0]
-    context = max((max_length - (first_end - first_start)) // 2, 0)
-    start = max(first_start - context, 0)
-    end = min(first_end + context, len(source))
+    first_start = matches[0][0]
+    last_end = matches[-1][1]
+    span_length = last_end - first_start
+
+    if len(matches) > 1 and span_length <= max_length:
+        padding = max((max_length - span_length) // 2, 0)
+        start = max(first_start - padding, 0)
+        end = min(last_end + padding, len(source))
+    else:
+        first_end = matches[0][1]
+        context = max((max_length - (first_end - first_start)) // 2, 0)
+        start = max(first_start - context, 0)
+        end = min(first_end + context, len(source))
 
     if start > 0:
         space_before = source.rfind(' ', 0, start + 10)
@@ -2956,8 +2975,12 @@ def search_entries():
 
         highlight_terms = (
             [{'text': phrase_text, 'phrase': True}]
-            if query_mode == 'phrase' and phrase_text
-            else matched_terms
+            if phrase_text and exact_phrase_match
+            else (
+                [{'text': phrase_text, 'phrase': True}]
+                if query_mode == 'phrase' and phrase_text
+                else matched_terms
+            )
         )
 
         matches = {}

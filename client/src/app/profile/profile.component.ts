@@ -1,7 +1,6 @@
 // Account screen mapping to users table columns
 import { Component, HostListener, OnInit, inject } from "@angular/core";
 import { CommonModule, Location } from "@angular/common";
-import { DomSanitizer, SafeResourceUrl } from "@angular/platform-browser";
 import { FormsModule } from "@angular/forms";
 import { MatCardModule } from "@angular/material/card";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -12,6 +11,7 @@ import { MatIconModule } from "@angular/material/icon";
 import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatDatepickerModule } from "@angular/material/datepicker";
 import { MatNativeDateModule } from "@angular/material/core";
+import { MatDialog } from "@angular/material/dialog";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { firstValueFrom } from "rxjs";
 import { AppDialogService } from "../core/services/app-dialog.service";
@@ -27,6 +27,7 @@ import {
 } from "../core/services/billing.service";
 import { ProfileMediaAsset, ProfileService } from "../core/services/profile.service";
 import { User } from "../core/models/user.model";
+import { MediaPreviewDialogComponent } from "./media-preview-dialog.component";
 
 interface AccountUsageCard {
   key: string;
@@ -708,93 +709,6 @@ interface AccountUsageCard {
         </mat-card-content>
       </mat-card>
 
-      <div
-        class="media-preview-backdrop"
-        *ngIf="previewMediaAsset"
-        role="presentation"
-        (click)="closeMediaPreview()"
-      >
-        <section
-          class="media-preview-dialog"
-          role="dialog"
-          aria-modal="true"
-          [attr.aria-labelledby]="'media-preview-title'"
-          (click)="$event.stopPropagation()"
-          data-testid="account-media-preview-dialog"
-        >
-          <header class="media-preview-header">
-            <div>
-              <span class="section-eyebrow">{{ getMediaTypeLabel(previewMediaAsset) }}</span>
-              <h3 id="media-preview-title">{{ previewMediaAsset.filename }}</h3>
-              <p>
-                {{ getEntryTypeLabel(previewMediaAsset.entry_type) }} ·
-                {{ previewMediaAsset.entry_title }} ·
-                {{ formatBytes(previewMediaAsset.file_size_bytes) }}
-              </p>
-            </div>
-            <button
-              mat-icon-button
-              type="button"
-              class="media-preview-close"
-              (click)="closeMediaPreview()"
-              aria-label="Close media preview"
-            >
-              <mat-icon aria-hidden="true">close</mat-icon>
-            </button>
-          </header>
-
-          <div class="media-preview-body">
-            <img
-              *ngIf="isImageMedia(previewMediaAsset) && previewMediaAsset.url"
-              [src]="previewMediaAsset.url"
-              [alt]="previewMediaAsset.filename"
-            />
-            <iframe
-              *ngIf="isPdfMedia(previewMediaAsset) && previewMediaAsset.url"
-              [src]="getSafeMediaPreviewUrl(previewMediaAsset)"
-              [title]="'PDF preview for ' + previewMediaAsset.filename"
-            ></iframe>
-            <audio
-              *ngIf="isAudioMedia(previewMediaAsset) && previewMediaAsset.url"
-              controls
-              preload="metadata"
-              [attr.aria-label]="'Audio preview for ' + previewMediaAsset.filename"
-            >
-              <source [src]="previewMediaAsset.url" [type]="previewMediaAsset.mime_type" />
-            </audio>
-            <div
-              class="media-preview-fallback"
-              *ngIf="!canInlinePreview(previewMediaAsset)"
-            >
-              <mat-icon aria-hidden="true">{{ getMediaAssetIcon(previewMediaAsset) }}</mat-icon>
-              <p>Preview is not available for this file type.</p>
-            </div>
-          </div>
-
-          <footer class="media-preview-actions">
-            <a
-              mat-stroked-button
-              class="billing-action"
-              [routerLink]="['/entries', previewMediaAsset.entry_id]"
-              [queryParams]="{ entryType: previewMediaAsset.entry_type }"
-              (click)="closeMediaPreview()"
-            >
-              <mat-icon aria-hidden="true">open_in_new</mat-icon>
-              <span>Entry</span>
-            </a>
-            <button
-              mat-raised-button
-              color="warn"
-              type="button"
-              class="billing-action"
-              (click)="deleteMediaAssetFromPreview(previewMediaAsset)"
-            >
-              <mat-icon aria-hidden="true">delete</mat-icon>
-              <span>Delete</span>
-            </button>
-          </footer>
-        </section>
-      </div>
     </div>
   `,
   styles: [
@@ -1466,107 +1380,6 @@ interface AccountUsageCard {
         color: var(--colour-danger-text);
       }
 
-      .media-preview-backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 1200;
-        display: grid;
-        place-items: center;
-        padding: var(--spacing-lg);
-        background: color-mix(in srgb, #020817 72%, transparent);
-        backdrop-filter: blur(8px);
-      }
-
-      .media-preview-dialog {
-        display: grid;
-        grid-template-rows: auto minmax(0, 1fr) auto;
-        width: min(72rem, 100%);
-        max-height: min(84vh, 54rem);
-        overflow: hidden;
-        border: 1px solid var(--colour-border);
-        border-radius: var(--radius-xl);
-        background: var(--colour-surface);
-        color: var(--colour-text-primary);
-        box-shadow: 0 28px 80px var(--colour-shadow-strong);
-      }
-
-      .media-preview-header,
-      .media-preview-actions {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-md);
-        padding: var(--spacing-md);
-        border-bottom: 1px solid var(--colour-border);
-      }
-
-      .media-preview-header h3,
-      .media-preview-header p {
-        margin: 0;
-      }
-
-      .media-preview-header h3 {
-        overflow-wrap: anywhere;
-      }
-
-      .media-preview-header p {
-        color: var(--colour-text-secondary);
-        font-weight: 750;
-      }
-
-      .media-preview-close {
-        flex: 0 0 auto;
-      }
-
-      .media-preview-body {
-        display: grid;
-        place-items: center;
-        min-height: 18rem;
-        overflow: auto;
-        padding: var(--spacing-md);
-        background: var(--colour-surface-muted);
-      }
-
-      .media-preview-body img {
-        display: block;
-        max-width: 100%;
-        max-height: 68vh;
-        border-radius: var(--radius-lg);
-        object-fit: contain;
-      }
-
-      .media-preview-body iframe {
-        width: 100%;
-        min-height: 68vh;
-        border: 1px solid var(--colour-border);
-        border-radius: var(--radius-lg);
-        background: var(--colour-surface);
-      }
-
-      .media-preview-body audio {
-        width: min(100%, 42rem);
-      }
-
-      .media-preview-fallback {
-        display: grid;
-        place-items: center;
-        gap: var(--spacing-sm);
-        color: var(--colour-text-secondary);
-        text-align: center;
-      }
-
-      .media-preview-fallback mat-icon {
-        width: 56px;
-        height: 56px;
-        color: var(--colour-primary);
-        font-size: 56px;
-      }
-
-      .media-preview-actions {
-        justify-content: flex-end;
-        border-top: 1px solid var(--colour-border);
-        border-bottom: 0;
-      }
 
       .danger-section {
         display: grid;
@@ -1644,13 +1457,6 @@ interface AccountUsageCard {
           justify-self: start;
         }
 
-        .media-preview-backdrop {
-          padding: var(--spacing-sm);
-        }
-
-        .media-preview-dialog {
-          max-height: 92vh;
-        }
       }
     `,
   ],
@@ -1663,7 +1469,7 @@ export class ProfileComponent implements OnInit {
   private location = inject(Location);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
-  private sanitizer = inject(DomSanitizer);
+  private dialog = inject(MatDialog);
 
   profile: User | null = null;
   saving = false;
@@ -1686,7 +1492,6 @@ export class ProfileComponent implements OnInit {
   mediaSizeFilter: "all" | "small" | "medium" | "large" = "all";
   selectedMediaAssetIds = new Set<number>();
   bulkDeletingMediaAssets = false;
-  previewMediaAsset: ProfileMediaAsset | null = null;
   deletingMediaAssetId: number | null = null;
   selectedBillingPeriod: BillingPeriod = "monthly";
   readonly today = new Date();
@@ -1999,9 +1804,6 @@ export class ProfileComponent implements OnInit {
       next: () => {
         this.mediaAssets = this.mediaAssets.filter((item) => item.id !== asset.id);
         this.selectedMediaAssetIds.delete(asset.id);
-        if (this.previewMediaAsset?.id === asset.id) {
-          this.previewMediaAsset = null;
-        }
         this.deletingMediaAssetId = null;
         this.loadBillingStatus();
       },
@@ -2011,10 +1813,6 @@ export class ProfileComponent implements OnInit {
         this.deletingMediaAssetId = null;
       },
     });
-  }
-
-  async deleteMediaAssetFromPreview(asset: ProfileMediaAsset): Promise<void> {
-    await this.deleteMediaAsset(asset);
   }
 
   async deleteSelectedMediaAssets(): Promise<void> {
@@ -2198,18 +1996,18 @@ export class ProfileComponent implements OnInit {
     if (!asset.url) {
       return;
     }
-    this.previewMediaAsset = asset;
-  }
-
-  closeMediaPreview(): void {
-    this.previewMediaAsset = null;
-  }
-
-  getSafeMediaPreviewUrl(asset: ProfileMediaAsset): SafeResourceUrl | null {
-    if (!asset.url) {
-      return null;
-    }
-    return this.sanitizer.bypassSecurityTrustResourceUrl(asset.url);
+    this.dialog.open(MediaPreviewDialogComponent, {
+      data: { asset },
+      autoFocus: "dialog",
+      restoreFocus: true,
+      width: "72rem",
+      maxWidth: "calc(100vw - 2rem)",
+      maxHeight: "92vh",
+    }).afterClosed().subscribe((result) => {
+      if (result === "delete") {
+        void this.deleteMediaAsset(asset);
+      }
+    });
   }
 
   private matchesMediaSizeFilter(asset: ProfileMediaAsset): boolean {
@@ -2505,13 +2303,6 @@ export class ProfileComponent implements OnInit {
     }
     event.preventDefault();
     event.returnValue = "";
-  }
-
-  @HostListener("document:keydown.escape")
-  handleEscapeKey(): void {
-    if (this.previewMediaAsset) {
-      this.closeMediaPreview();
-    }
   }
 
   private validateProfile(profile: User): string | null {

@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { Location } from "@angular/common";
 import { NoopAnimationsModule } from "@angular/platform-browser/animations";
 import { Router, provideRouter } from "@angular/router";
+import { MatDialog } from "@angular/material/dialog";
 import { of } from "rxjs";
 import { AppDialogService } from "../core/services/app-dialog.service";
 import { AuthService } from "../core/services/auth.service";
@@ -26,6 +27,7 @@ describe("Account page", () => {
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let billingServiceMock: jasmine.SpyObj<BillingService>;
   let updateProfileSpy: jasmine.Spy;
+  let matDialogMock: jasmine.SpyObj<MatDialog>;
 
   const profileServiceStub: Pick<
     ProfileService,
@@ -160,6 +162,8 @@ describe("Account page", () => {
         is_admin: false,
       }),
     );
+    matDialogMock = jasmine.createSpyObj<MatDialog>("MatDialog", ["open"]);
+    matDialogMock.open.and.returnValue({ afterClosed: () => of(undefined) } as any);
 
     await TestBed.configureTestingModule({
       imports: [ProfileComponent, NoopAnimationsModule],
@@ -179,6 +183,10 @@ describe("Account page", () => {
         {
           provide: BillingService,
           useValue: billingServiceMock,
+        },
+        {
+          provide: MatDialog,
+          useValue: matDialogMock,
         },
         provideRouter([
           {
@@ -348,6 +356,30 @@ describe("Account page", () => {
 
     expect(backSpy).toHaveBeenCalled();
     expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("opens attachment previews in the shared dialog", () => {
+    const asset = {
+      id: 22,
+      entry_type: "daily" as const,
+      entry_id: 14,
+      entry_title: "A walk",
+      entry_date: "2026-08-20",
+      filename: "walk.jpg",
+      mime_type: "image/jpeg",
+      file_size_bytes: 1024,
+      url: "http://localhost/media/walk.jpg",
+    };
+
+    component.openMediaPreview(asset);
+
+    expect(matDialogMock.open).toHaveBeenCalledWith(
+      jasmine.any(Function),
+      jasmine.objectContaining({
+        data: { asset },
+        restoreFocus: true,
+      }),
+    );
   });
 
   it("falls back to entries when browser history is unavailable", () => {

@@ -74,6 +74,3 @@ server/app.db-journal
 # Virtual environment symlink
 server/.runtime-venv
 server/media/
-
-# Test files
-server/test_*.py

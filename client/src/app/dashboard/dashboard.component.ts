@@ -2565,7 +2565,7 @@ export class DashboardComponent implements OnInit {
         type: "thought_record",
         label: "Thought record",
         icon: "psychology_alt",
-        route: `/cbt?create=true&date=${today}`,
+        route: `/entries/create?date=${today}&type=thought-record`,
       },
       {
         type: "important_day",

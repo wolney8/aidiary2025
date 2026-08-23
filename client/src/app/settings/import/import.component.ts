@@ -92,8 +92,8 @@ type UploadState =
       (change)="onFileSelected($event)"
     />
 
-    <div class="import-container" role="main" aria-label="Import entries">
-      <mat-card class="step-card source-card">
+    <div class="import-container" role="main" aria-label="Import entries" data-testid="import-settings-page">
+      <mat-card class="step-card source-card" data-testid="import-source-card">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">move_to_inbox</mat-icon>
           <mat-card-title>Choose your import source</mat-card-title>
@@ -108,6 +108,7 @@ type UploadState =
               [attr.aria-pressed]="importSource === 'aidiary'"
               [disabled]="isImportSourceLocked()"
               (click)="changeImportSource('aidiary')"
+              data-testid="import-source-openmynd"
             >
               <span class="source-option__icon" aria-hidden="true">
                 <mat-icon>description</mat-icon>
@@ -127,6 +128,7 @@ type UploadState =
               [attr.aria-pressed]="importSource === 'daylio'"
               [disabled]="isImportSourceLocked()"
               (click)="changeImportSource('daylio')"
+              data-testid="import-source-daylio"
             >
               <span class="source-option__icon" aria-hidden="true">
                   <mat-icon>mood</mat-icon>
@@ -143,7 +145,7 @@ type UploadState =
       </mat-card>
 
       <!-- ── Step 1: Download Template ── -->
-      <mat-card class="step-card" *ngIf="importSource === 'aidiary'">
+      <mat-card class="step-card" *ngIf="importSource === 'aidiary'" data-testid="import-template-card">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">download</mat-icon>
           <mat-card-title>Step 1 — Download Template</mat-card-title>
@@ -185,7 +187,7 @@ type UploadState =
       </mat-card>
 
       <!-- ── Step 2: Select & Upload File ── -->
-      <mat-card class="step-card">
+      <mat-card class="step-card" data-testid="import-upload-card">
         <mat-card-header>
           <mat-icon mat-card-avatar class="step-icon">upload_file</mat-icon>
           <mat-card-title>{{ uploadCardTitle }}</mat-card-title>
@@ -205,6 +207,7 @@ type UploadState =
             tabindex="0"
             [attr.aria-label]="filePickerLabel"
             [attr.aria-describedby]="validationError ? validationErrorId : null"
+            data-testid="import-file-picker"
             (click)="triggerFilePicker()"
             (keydown.enter)="triggerFilePicker()"
             (keydown.space)="$event.preventDefault(); triggerFilePicker()"
@@ -531,14 +534,14 @@ type UploadState =
             class="duplicate-modal__table-wrapper"
             data-testid="import-review-table-wrapper"
           >
-            <div class="review-selection-bar">
-              <button mat-stroked-button type="button" (click)="selectAllReviewEntries()">
+            <div class="review-selection-bar" data-testid="import-review-selection-bar">
+              <button mat-stroked-button type="button" (click)="selectAllReviewEntries()" data-testid="import-review-select-all">
                 Select all
               </button>
-              <button mat-stroked-button type="button" (click)="clearReviewSelection()">
+              <button mat-stroked-button type="button" (click)="clearReviewSelection()" data-testid="import-review-clear-all">
                 Clear all
               </button>
-              <span>{{ selectedReviewRowIds.size }} of {{ importResult.review_entries?.length ?? 0 }} selected</span>
+              <span aria-live="polite">{{ selectedReviewRowIds.size }} of {{ importResult.review_entries?.length ?? 0 }} selected</span>
             </div>
             <div class="review-pagination review-pagination--top" *ngIf="reviewPageCount > 1">
               <button mat-icon-button type="button" (click)="changeReviewPage(-1)" [disabled]="reviewPage === 0" aria-label="Previous review page"><mat-icon>chevron_left</mat-icon></button>
@@ -1458,7 +1461,6 @@ export class ImportComponent implements OnInit {
   importSessionId: string | null = null;
   isDuplicateModalOpen = false;
   isCommittingReview = false;
-  selectedDuplicateRowIds = new Set<string>();
   selectedReviewRowIds = new Set<string>();
   reviewPage = 0;
   reviewEntryTypes = new Map<string, "daily" | "dream">();
@@ -1589,7 +1591,6 @@ export class ImportComponent implements OnInit {
     this.importErrorMessage = "";
     this.importSessionId = null;
     this.isDuplicateModalOpen = false;
-    this.selectedDuplicateRowIds.clear();
 
     this.importService
       .uploadFile(this.selectedFile, this.importSource)
@@ -1813,18 +1814,6 @@ export class ImportComponent implements OnInit {
     this.isDuplicateModalOpen = false;
   }
 
-  toggleDuplicateSelection(rowId: string, checked: boolean): void {
-    if (checked) {
-      this.selectedDuplicateRowIds.add(rowId);
-      return;
-    }
-    this.selectedDuplicateRowIds.delete(rowId);
-  }
-
-  isDuplicateSelected(rowId: string): boolean {
-    return this.selectedDuplicateRowIds.has(rowId);
-  }
-
   commitReviewedImport(): void {
     if (!this.importSessionId) {
       return;
@@ -1846,7 +1835,6 @@ export class ImportComponent implements OnInit {
         next: () => {
           this.importSessionId = null;
           this.isDuplicateModalOpen = false;
-          this.selectedDuplicateRowIds.clear();
           this.isCommittingReview = false;
           this.uploadState = "idle";
         },
@@ -1988,7 +1976,6 @@ export class ImportComponent implements OnInit {
     this.importErrorMessage = "";
     this.importSessionId = null;
     this.isDuplicateModalOpen = false;
-    this.selectedDuplicateRowIds.clear();
     this.selectedReviewRowIds.clear();
     this.reviewPage = 0;
     this.reviewEntryTypes.clear();

@@ -57,10 +57,22 @@ source venv/bin/activate
 python -m flask --app app.py --debug run -p 5001
 ```
 
-### Production API Process
+### Hosted Deployment
 
-Do not run `python app.py` or the Flask debug server in production. Hosted API
-deployments should use the root `Procfile`, which starts the existing WSGI app with
+The current private hosted path is the root-level Vercel project: it builds the
+Angular client and serves the Flask app from `api/index.py` under the same-origin
+`/api` and `/media` routes. Its database is Neon Postgres and its hosted media store
+is R2; use the configuration and deployment checklist in
+[`docs/operations/vercel-neon-deployment-readiness.md`](docs/operations/vercel-neon-deployment-readiness.md).
+
+Vercel is suitable for the current private-use deployment only after its configured
+environment passes the preflight, migrations, health checks, and authenticated entry
+save/retrieve smoke path. It is not the approved public-SaaS architecture.
+
+### Alternative Hosted API Process
+
+Do not run `python app.py` or the Flask debug server in production. The root
+`Procfile` is for the alternative always-on Flask host and starts the WSGI app with
 Gunicorn:
 
 ```bash
@@ -95,4 +107,6 @@ cd client && npm test
 
 - **Frontend:** Angular 17 with standalone components, Material Design, SCSS
 - **Backend:** Flask with JWT authentication, SQLAlchemy, OpenAI integration
-- **Database:** SQLite with existing schema (see docs/ARCHITECTURE.md)
+- **Database:** SQLite for local development; provider-portable Postgres support for
+  the Neon-backed hosted rehearsal (see `docs/ARCHITECTURE.md` and
+  `docs/operations/vercel-neon-deployment-readiness.md`).

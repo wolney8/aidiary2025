@@ -503,10 +503,8 @@ def test_search_multi_word_queries_require_each_exact_token(client):
     assert [result['title'] for result in body['results']] == ['Car day', 'Day with the car']
     title_match = body['results'][0]['matches']['title'].lower()
     body_match = body['results'][0]['matches']['body'].lower()
-    assert 'car</mark>' in title_match
-    assert 'day</mark>' in title_match
-    assert 'car</mark>' in body_match
-    assert 'day</mark>' in body_match
+    assert 'car day</mark>' in title_match
+    assert 'car day</mark>' in body_match
 
 
 def test_search_quoted_phrase_requires_exact_phrase(client):
@@ -677,7 +675,7 @@ def test_search_includes_important_days(client):
     result = body['results'][0]
     assert result['type'] == 'important_day'
     assert result['title'] == 'Mum letter'
-    assert 'letter</mark>' in result['matches']['title'].lower()
+    assert 'letter writing</mark>' in result['matches']['body'].lower()
     assert 'writing</mark>' in result['matches']['body'].lower()
 
 

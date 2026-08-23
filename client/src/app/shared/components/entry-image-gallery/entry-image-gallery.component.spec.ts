@@ -7,6 +7,7 @@ describe("EntryImageGalleryComponent", () => {
   let fixture: ComponentFixture<EntryImageGalleryComponent>;
   let component: EntryImageGalleryComponent;
   let dialogRef: jasmine.SpyObj<MatDialogRef<EntryImageGalleryComponent>>;
+  let dialogData: { images: typeof images; initialImageId: number; title?: string; subtitle?: string };
 
   const images = [
     {
@@ -35,11 +36,12 @@ describe("EntryImageGalleryComponent", () => {
 
   beforeEach(async () => {
     dialogRef = jasmine.createSpyObj("MatDialogRef", ["close"]);
+    dialogData = { images, initialImageId: 12 };
 
     await TestBed.configureTestingModule({
       imports: [EntryImageGalleryComponent, NoopAnimationsModule],
       providers: [
-        { provide: MAT_DIALOG_DATA, useValue: { images, initialImageId: 12 } },
+        { provide: MAT_DIALOG_DATA, useValue: dialogData },
         { provide: MatDialogRef, useValue: dialogRef },
       ],
     }).compileComponents();
@@ -68,5 +70,15 @@ describe("EntryImageGalleryComponent", () => {
 
     component.close();
     expect(dialogRef.close).toHaveBeenCalled();
+  });
+
+  it("uses contextual gallery copy when supplied by another route", () => {
+    dialogData.title = "Sam's birthday";
+    dialogData.subtitle = "14 February · Every year";
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector("h2")?.textContent).toContain("Sam's birthday");
+    expect(host.querySelector("p")?.textContent).toContain("14 February");
   });
 });

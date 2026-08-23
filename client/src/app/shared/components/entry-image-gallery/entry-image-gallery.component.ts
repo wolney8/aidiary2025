@@ -12,6 +12,8 @@ import { EntryAsset } from "../../../core/models/entry.model";
 export interface EntryImageGalleryData {
   images: EntryAsset[];
   initialImageId: number;
+  title?: string;
+  subtitle?: string;
 }
 
 @Component({
@@ -26,15 +28,13 @@ export interface EntryImageGalleryData {
     >
       <header class="entry-image-gallery-header">
         <div>
-          <h2 id="entry-image-gallery-title">Entry photos</h2>
-          <p aria-live="polite">
-            Photo {{ currentIndex + 1 }} of {{ images.length }}
-          </p>
+          <h2 id="entry-image-gallery-title">{{ data.title || "Entry photos" }}</h2>
+          <p aria-live="polite">{{ data.subtitle || "Photo " + (currentIndex + 1) + " of " + images.length }}</p>
         </div>
         <button
           mat-icon-button
           type="button"
-          aria-label="Close photo gallery"
+          [attr.aria-label]="'Close ' + (data.title || 'photo gallery')"
           data-testid="entry-image-gallery-close"
           (click)="close()"
         >

@@ -9,6 +9,7 @@ import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
 import { MatNativeDateModule } from "@angular/material/core";
+import { MatDialog } from "@angular/material/dialog";
 import { MatSelectModule } from "@angular/material/select";
 import { MatTooltipModule } from "@angular/material/tooltip";
 import { AppDialogService } from "../../core/services/app-dialog.service";
@@ -21,6 +22,11 @@ import {
   ImportantDayRecurrence,
 } from "../../core/models/important-day.model";
 import { ImportantDaysService } from "../../core/services/important-days.service";
+import { EntryAsset } from "../../core/models/entry.model";
+import {
+  EntryImageGalleryComponent,
+  EntryImageGalleryData,
+} from "../../shared/components/entry-image-gallery/entry-image-gallery.component";
 
 type ImportantDayDraft = {
   label: string;
@@ -364,39 +370,6 @@ type ImportantDayDraft = {
         </mat-card>
       </ng-template>
 
-      <div
-        class="important-day-image-modal"
-        *ngIf="imageModal"
-        (click)="closeImportantDayImage()"
-        role="dialog"
-        aria-modal="true"
-        [attr.aria-label]="'Image for ' + imageModal.label"
-      >
-        <div class="important-day-image-modal-dialog" (click)="$event.stopPropagation()">
-          <header class="important-day-image-modal-header">
-            <div>
-              <strong>{{ imageModal.label }}</strong>
-              <span>{{ imageModal.dateLabel }}</span>
-            </div>
-            <button
-              mat-icon-button
-              type="button"
-              (click)="closeImportantDayImage()"
-              aria-label="Close important day image"
-            >
-              <mat-icon>close</mat-icon>
-            </button>
-          </header>
-          <div class="important-day-image-modal-body">
-            <img [src]="imageModal.imageUrl" [alt]="imageModal.label" />
-          </div>
-          <div class="important-day-image-modal-actions">
-            <button mat-stroked-button type="button" (click)="closeImportantDayImage()">
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
     </section>
   `,
   styles: [
@@ -764,65 +737,6 @@ type ImportantDayDraft = {
         background: var(--colour-danger-bg) !important;
       }
 
-      .important-day-image-modal {
-        position: fixed;
-        inset: 0;
-        z-index: 1200;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 1.25rem;
-        background: rgba(15, 23, 42, 0.62);
-      }
-
-      .important-day-image-modal-dialog {
-        width: min(52rem, calc(100vw - 2rem));
-        max-height: calc(100vh - 2rem);
-        display: grid;
-        gap: 0.9rem;
-        padding: 1rem;
-        border: 1px solid var(--colour-border);
-        border-radius: var(--radius-lg);
-        background: var(--colour-surface-elevated);
-        box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
-      }
-
-      .important-day-image-modal-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem;
-      }
-
-      .important-day-image-modal-header strong,
-      .important-day-image-modal-header span {
-        display: block;
-      }
-
-      .important-day-image-modal-header span {
-        margin-top: 0.2rem;
-        color: var(--colour-text-secondary);
-        font-size: 0.88rem;
-      }
-
-      .important-day-image-modal-body {
-        max-height: min(72vh, 42rem);
-        overflow: auto;
-        border-radius: var(--radius-md);
-        background: var(--colour-surface-muted);
-      }
-
-      .important-day-image-modal-body img {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-
-      .important-day-image-modal-actions {
-        display: flex;
-        justify-content: flex-end;
-      }
-
       .empty-state {
         display: flex;
         gap: 0.85rem;
@@ -949,6 +863,7 @@ export class ImportantDaysComponent implements OnInit, OnDestroy {
   private readonly importantDaysService = inject(ImportantDaysService);
   private readonly appDialog = inject(AppDialogService);
   private readonly route = inject(ActivatedRoute);
+  private readonly dialog = inject(MatDialog);
 
   readonly iconOptions: Array<{ value: ImportantDayIcon; label: string }> = [
     { value: "cake", label: "Cake" },
@@ -984,8 +899,6 @@ export class ImportantDaysComponent implements OnInit, OnDestroy {
   errorMessage = "";
   pendingImageFile: File | null = null;
   draftImagePreviewUrl = "";
-  imageModal: { imageUrl: string; label: string; dateLabel: string } | null =
-    null;
   private objectUrlToRevoke = "";
 
   ngOnInit(): void {
@@ -1202,16 +1115,38 @@ export class ImportantDaysComponent implements OnInit, OnDestroy {
   ): void {
     const trimmedUrl = String(imageUrl || "").trim();
     if (!trimmedUrl) return;
-    this.imageModal = { imageUrl: trimmedUrl, label, dateLabel };
+    const image: EntryAsset = {
+      id: 0,
+      asset_role: "important_day_image",
+      original_filename: label,
+      mime_type: "image/*",
+      file_size_bytes: 0,
+      sort_order: 0,
+      created_at: "",
+      url: trimmedUrl,
+      is_image: true,
+    };
+    this.dialog.open<EntryImageGalleryComponent, EntryImageGalleryData>(
+      EntryImageGalleryComponent,
+      {
+        data: {
+          images: [image],
+          initialImageId: image.id,
+          title: label,
+          subtitle: dateLabel,
+        },
+        autoFocus: "dialog",
+        restoreFocus: true,
+        maxWidth: "calc(100vw - 2rem)",
+        maxHeight: "calc(100vh - 2rem)",
+        panelClass: "entry-image-gallery-dialog",
+      },
+    );
   }
 
   getImportantDayImageUrl(importantDay: ImportantDay): string | null {
     const imageUrl = String(importantDay.image_url || "").trim();
     return imageUrl || null;
-  }
-
-  closeImportantDayImage(): void {
-    this.imageModal = null;
   }
 
   getCategoryLabel(category: ImportantDayCategory): string {
