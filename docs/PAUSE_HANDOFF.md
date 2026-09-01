@@ -1,12 +1,12 @@
 # OpenMynd Pause Handoff
 
-Updated: 23 August 2026
+Updated: 1 September 2026
 
 ## Current working state
 
 OpenMynd is paused on `main` after the private-use Vercel/Neon import recovery and
 the earlier search, create, import/export, account-media, and calendar polish work.
-The latest application commit before this handoff is `5d31da3`.
+The latest application commit before this handoff is `66241e7`.
 
 The private hosted app is a root-level Vercel project: Angular is built from `client`,
 and Flask is served by `api/index.py` under same-origin `/api`, `/media`, and `/health`
@@ -25,6 +25,8 @@ routes. Persistent data is Neon Postgres; hosted media is Cloudflare R2.
   no longer overlaps slow requests, and an orphaned Vercel job stops rather than polling
   indefinitely.
 - A 2.1 MB, 1,173-entry hosted import completed successfully after these fixes.
+- Dream saves on Neon/Postgres now quote the schema's `"cast"` column correctly; the
+  Plot field is `TEXT`, so ordinary long narrative text is supported.
 
 ## Deliberately deferred
 
