@@ -421,6 +421,57 @@ def test_entries_sql_helper_adapts_placeholders_for_postgres(client):
         )
 
 
+def test_create_dream_entry_quotes_cast_column_for_postgres(client, monkeypatch):
+    """Postgres requires the schema's quoted Dream ``cast`` identifier on writes."""
+    from routes import entries as entries_routes
+
+    class CapturingCursor:
+        def __init__(self):
+            self.executed: list[str] = []
+
+        def execute(self, sql, _params=()):
+            self.executed.append(sql)
+            return self
+
+        def fetchone(self):
+            if self.executed[-1].lstrip().upper().startswith('SELECT'):
+                return {'max_num': 0}
+            return {'id': 73}
+
+    class CapturingConnection:
+        def __init__(self):
+            self.cursor_instance = CapturingCursor()
+
+        def cursor(self):
+            return self.cursor_instance
+
+        def commit(self):
+            return None
+
+        def close(self):
+            return None
+
+    connection = CapturingConnection()
+    token = get_auth_token(client)
+    monkeypatch.setattr(entries_routes, 'get_db', lambda: connection)
+    client.application.config['DATABASE_PROVIDER'] = 'postgres'
+
+    response = client.post(
+        '/api/dreams',
+        headers={'Authorization': f'Bearer {token}'},
+        data=json.dumps({
+            'entry_date': '2026-08-23',
+            'title': 'Postgres Dream',
+            'cast': 'Alex',
+            'plot': 'A long but ordinary dream narrative.',
+        }),
+        content_type='application/json',
+    )
+
+    assert response.status_code == 201
+    assert '"cast"' in connection.cursor_instance.executed[-1]
+
+
 def test_search_supports_multi_word_queries(client):
     token = get_auth_token(client)
     client.post('/api/daily',

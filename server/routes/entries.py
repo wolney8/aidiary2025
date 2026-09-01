@@ -2208,7 +2208,7 @@ def create_dream_entry():
     # Insert with all dream-specific fields
     cursor.execute(append_returning_id('''
         INSERT INTO dreamdiary_entries 
-        (user_id, entry_date, entry_time, entry_number, title, cast, location, 
+        (user_id, entry_date, entry_time, entry_number, title, "cast", location,
          period, emotion, plot, symbols_and_imagery, insight, action, other, tags,
          mood, ai_style, dream_people_names, dream_places)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2309,7 +2309,8 @@ def update_dream_entry(entry_id):
     
     for field in allowed_fields:
         if field in data:
-            updates.append(f'{field} = ?')
+            column = '"cast"' if field == 'cast' else field
+            updates.append(f'{column} = ?')
             values.append(_normalise_update_field_value(field, data[field]))
 
     dream_row_data = {
